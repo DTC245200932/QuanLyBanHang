@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Đăng nhập hệ thống quản lý bán hàng và kho."
+    />
+    <title>Đăng nhập | Quản lý bán hàng & kho</title>
+    <link rel="icon" href="assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/login.css" />
+  </head>
+  <body>
+    <main class="login-shell">
+      <section class="brand-panel" aria-labelledby="brand-title">
+        <div class="brand-heading">
+          <a class="brand" href="./" aria-label="Trang đăng nhập">
+            <span class="brand-mark" aria-hidden="true">
+              <img src="assets/brand-mark.svg" alt="" />
+            </span>
+            <span class="brand-name">SaleStock</span>
+          </a>
+
+          <div class="brand-copy">
+            <p class="brand-kicker">Bán đúng nhịp. Kho đúng số.</p>
+            <h1 id="brand-title">Một nơi để theo dõi bán hàng và tồn kho.</h1>
+            <p class="brand-description">
+              Kiểm soát hoạt động bán hàng, hàng hóa và tồn kho trong một giao diện
+              rõ ràng, nhất quán cho đội ngũ vận hành.
+            </p>
+          </div>
+        </div>
+
+        <div class="operations-visual" aria-hidden="true">
+          <div class="operations-topline">
+            <span>Hoạt động hôm nay</span>
+            <span class="status-pill"><i></i> Đang đồng bộ</span>
+          </div>
+
+          <div class="visual-grid">
+            <div class="warehouse-card">
+              <div class="warehouse-head">
+                <div>
+                  <span class="mini-label">Kho trung tâm</span>
+                  <strong>2.486</strong>
+                  <small>sản phẩm khả dụng</small>
+                </div>
+                <span class="warehouse-icon">
+                  <svg viewBox="0 0 24 24" role="img" aria-label="Kho hàng">
+                    <path d="M3 9.5 12 4l9 5.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5Z" />
+                    <path d="M8 21v-7h8v7M8 11h8" />
+                  </svg>
+                </span>
+              </div>
+
+              <div class="shelf shelf-one">
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <div class="shelf shelf-two">
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <div class="warehouse-footer">
+                <span>Nhập hàng</span>
+                <span class="flow-line"><i></i></span>
+                <span>Xuất bán</span>
+              </div>
+            </div>
+
+            <div class="sales-stack">
+              <div class="sales-card">
+                <span class="mini-label">Đơn đã xử lý</span>
+                <strong>128</strong>
+                <div class="bar-chart">
+                  <i style="--h: 42%"></i>
+                  <i style="--h: 62%"></i>
+                  <i style="--h: 54%"></i>
+                  <i style="--h: 84%"></i>
+                  <i style="--h: 72%"></i>
+                  <i style="--h: 96%"></i>
+                </div>
+              </div>
+
+              <div class="inventory-card">
+                <div class="inventory-copy">
+                  <span class="inventory-dot"></span>
+                  <div>
+                    <strong>Tồn kho ổn định</strong>
+                    <small>12 mặt hàng cần theo dõi</small>
+                  </div>
+                </div>
+                <span class="inventory-arrow">↗</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="brand-footnote">Hệ thống quản lý bán hàng và kho</p>
+      </section>
+
+      <section class="form-panel" aria-labelledby="login-title">
+        <div class="form-wrap">
+          <div class="mobile-brand">
+            <img src="assets/brand-mark.svg" alt="" />
+            <span>SaleStock</span>
+          </div>
+
+          <header class="form-header">
+            <p>Chào mừng quay lại</p>
+            <h2 id="login-title">Đăng nhập hệ thống</h2>
+            <span>Sử dụng tài khoản được cấp để tiếp tục làm việc.</span>
+          </header>
+
+          <form class="login-form" method="post" action="" autocomplete="on">
+            <div class="field-group">
+              <label for="username">Tên đăng nhập</label>
+              <div class="field-control">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
+                  </svg>
+                </span>
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  placeholder="Nhập tên đăng nhập"
+                  autocomplete="username"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="field-group">
+              <label for="password">Mật khẩu</label>
+              <div class="field-control">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="4" y="10" width="16" height="11" rx="2" />
+                    <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
+                  </svg>
+                </span>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  placeholder="Nhập mật khẩu"
+                  autocomplete="current-password"
+                  required
+                />
+                <button
+                  class="password-toggle"
+                  type="button"
+                  aria-label="Hiện mật khẩu"
+                  aria-pressed="false"
+                  data-password-toggle
+                >
+                  <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                    <circle cx="12" cy="12" r="2.5" />
+                  </svg>
+                  <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m3 3 18 18M10.6 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-2.4 3M6.6 6.7A15.3 15.3 0 0 0 2.5 12s3.5 6 9.5 6a9.8 9.8 0 0 0 3.2-.5M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-options">
+              <label class="remember-option" for="remember">
+                <input id="remember" name="remember" type="checkbox" />
+                <span class="checkbox-ui" aria-hidden="true">
+                  <svg viewBox="0 0 16 16"><path d="m3.5 8.2 2.7 2.7 6.3-6.3" /></svg>
+                </span>
+                <span>Ghi nhớ đăng nhập</span>
+              </label>
+              <span class="account-help">Quên mật khẩu? Liên hệ quản trị viên</span>
+            </div>
+
+            <button class="submit-button" type="submit">
+              <span>Đăng nhập</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14M14 7l5 5-5 5" />
+              </svg>
+            </button>
+          </form>
+
+          <footer class="form-footer">
+            <span class="secure-dot"></span>
+            Phiên đăng nhập được bảo vệ trong hệ thống nội bộ.
+          </footer>
+        </div>
+      </section>
+    </main>
+
+    <script src="js/login.js"></script>
+  </body>
+</html>

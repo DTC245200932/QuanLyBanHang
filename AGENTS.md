@@ -1,0 +1,1 @@
+read all the skills in the SKILLS folder and the codebase

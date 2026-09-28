@@ -88,8 +88,14 @@ public class DataInitializer implements CommandLineRunner {
      * Chế độ này mặc định tắt và không nên bật ở production.
      */
     private void createDemoUsers() {
-        Warehouse demoWarehouse = warehouseRepository.findAllByActiveTrueOrderByNameAsc().get(0);
-        Territory demoTerritory = territoryRepository.findAllByActiveTrueOrderByNameAsc().get(0);
+        Warehouse demoWarehouse = warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
+                .findFirst()
+                .orElseGet(() -> warehouseRepository.save(
+                        Warehouse.builder().code("KHO-DEMO").name("Kho Demo").build()));
+        Territory demoTerritory = territoryRepository.findAllByActiveTrueOrderByNameAsc().stream()
+                .findFirst()
+                .orElseGet(() -> territoryRepository.save(
+                        Territory.builder().code("DB-DEMO").name("Địa bàn Demo").build()));
 
         createDemoUser("sales.manager", "SalesManager123", "Quản lý kinh doanh Demo",
                 "sales.manager@demo.local", ERole.ROLE_SALES_MANAGER, Set.of(), Set.of());

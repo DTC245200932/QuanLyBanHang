@@ -32,6 +32,7 @@
 }
 
 * { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
 
 html {
   min-width: 320px;

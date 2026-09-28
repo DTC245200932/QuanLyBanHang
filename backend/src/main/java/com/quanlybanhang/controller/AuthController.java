@@ -10,17 +10,14 @@ import com.quanlybanhang.service.AdminUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 /**
  * Controller xử lý các API liên quan đến xác thực:
  * - POST /api/auth/login           → Đăng nhập
- * - POST /api/auth/register        → Đăng ký
  * - POST /api/auth/refresh         → Refresh token
  * - POST /api/auth/logout          → Đăng xuất (S1-02)
  * - POST /api/auth/change-password → Đổi mật khẩu (S1-04)
@@ -43,19 +40,6 @@ public class AuthController {
     public ResponseEntity<JwtResponse> login(@Valid @RequestBody LoginRequest request) {
         JwtResponse response = authService.login(request);
         return ResponseEntity.ok(response);
-    }
-
-    /**
-     * Đăng ký tài khoản mới.
-     */
-    @PostMapping("/register")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> register(@Valid @RequestBody RegisterRequest request) {
-        ApiResponse response = authService.register(request);
-        if (response.isSuccess()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        }
-        return ResponseEntity.badRequest().body(response);
     }
 
     /**

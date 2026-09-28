@@ -9,7 +9,6 @@ import com.quanlybanhang.config.RolePermissionConfig;
 import com.quanlybanhang.model.ERole;
 import com.quanlybanhang.model.Role;
 import com.quanlybanhang.model.User;
-import com.quanlybanhang.repository.RoleRepository;
 import com.quanlybanhang.repository.UserRepository;
 import com.quanlybanhang.security.JwtUtils;
 import com.quanlybanhang.security.UserDetailsImpl;
@@ -28,9 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Service xử lý logic đăng nhập, đăng ký, refresh token, đổi mật khẩu, đăng xuất.
@@ -56,7 +53,6 @@ public class AuthService {
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final TokenBlacklistService tokenBlacklistService;
@@ -145,57 +141,6 @@ public class AuthService {
             user.setLockTime(null);
             userRepository.save(user);
         }
-    }
-
-    /**
-     * Đăng ký tài khoản mới.
-     */
-    @Transactional
-    public ApiResponse register(RegisterRequest request) {
-        // Kiểm tra username đã tồn tại
-        if (userRepository.existsByUsername(request.getUsername())) {
-            return ApiResponse.error("Tên đăng nhập đã được sử dụng");
-        }
-
-        // Kiểm tra email đã tồn tại
-        if (userRepository.existsByEmail(request.getEmail())) {
-            return ApiResponse.error("Email đã được sử dụng");
-        }
-
-        // Xử lý roles
-        Set<Role> roles = new HashSet<>();
-        if (request.getRoles() == null || request.getRoles().isEmpty()) {
-            // Mặc định là SALES (nhân viên kinh doanh)
-            Role defaultRole = roleRepository.findByName(ERole.ROLE_SALES)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy role SALES"));
-            roles.add(defaultRole);
-        } else {
-            for (String roleName : request.getRoles()) {
-                ERole eRole;
-                try {
-                    eRole = ERole.valueOf(roleName.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    return ApiResponse.error("Role không hợp lệ: " + roleName);
-                }
-                Role role = roleRepository.findByName(eRole)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy role: " + roleName));
-                roles.add(role);
-            }
-        }
-
-        // Tạo user mới
-        User user = User.builder()
-                .username(request.getUsername())
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .fullName(request.getFullName())
-                .phone(request.getPhone())
-                .roles(roles)
-                .build();
-
-        userRepository.save(user);
-
-        return ApiResponse.success("Đăng ký tài khoản thành công");
     }
 
     /**

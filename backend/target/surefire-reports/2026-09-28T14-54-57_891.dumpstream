@@ -1,0 +1,5 @@
+# Created at 2026-09-28T14:54:59.672
+Boot Manifest-JAR contains absolute paths in classpath 'D:\GitHub\QuanLyBanHang\backend\target\test-classes'
+Hint: <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+'other' has different root
+

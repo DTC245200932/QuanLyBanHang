@@ -10,6 +10,7 @@ import com.quanlybanhang.repository.TerritoryRepository;
 import com.quanlybanhang.model.Warehouse;
 import com.quanlybanhang.model.Territory;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -34,6 +35,9 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final WarehouseRepository warehouseRepository;
     private final TerritoryRepository territoryRepository;
+
+    @Value("${app.seed-demo-users:false}")
+    private boolean seedDemoUsers;
 
     @Override
     public void run(String... args) {
@@ -73,5 +77,53 @@ public class DataInitializer implements CommandLineRunner {
             userRepository.save(admin);
             logger.info("Đã tạo tài khoản admin mặc định (username: admin, password: admin123)");
         }
+
+        if (seedDemoUsers) {
+            createDemoUsers();
+        }
+    }
+
+    /**
+     * Tạo tài khoản minh hoạ khi chạy local với APP_SEED_DEMO_USERS=true.
+     * Chế độ này mặc định tắt và không nên bật ở production.
+     */
+    private void createDemoUsers() {
+        Warehouse demoWarehouse = warehouseRepository.findAllByActiveTrueOrderByNameAsc().get(0);
+        Territory demoTerritory = territoryRepository.findAllByActiveTrueOrderByNameAsc().get(0);
+
+        createDemoUser("sales.manager", "SalesManager123", "Quản lý kinh doanh Demo",
+                "sales.manager@demo.local", ERole.ROLE_SALES_MANAGER, Set.of(), Set.of());
+        createDemoUser("sales.demo", "SalesDemo123", "Nhân viên kinh doanh Demo",
+                "sales@demo.local", ERole.ROLE_SALES, Set.of(), Set.of(demoTerritory));
+        createDemoUser("warehouse.demo", "Warehouse123", "Thủ kho Demo",
+                "warehouse@demo.local", ERole.ROLE_WAREHOUSE_STAFF,
+                Set.of(demoWarehouse), Set.of());
+        createDemoUser("accountant.demo", "Accountant123", "Kế toán Demo",
+                "accountant@demo.local", ERole.ROLE_ACCOUNTANT, Set.of(), Set.of());
+        createDemoUser("viewer.demo", "ViewerDemo123", "Người xem Demo",
+                "viewer@demo.local", ERole.ROLE_VIEWER, Set.of(), Set.of());
+    }
+
+    private void createDemoUser(String username, String rawPassword, String fullName,
+                                String email, ERole roleName, Set<Warehouse> warehouses,
+                                Set<Territory> territories) {
+        if (userRepository.existsByUsername(username)) {
+            return;
+        }
+
+        Role role = roleRepository.findByName(roleName)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy role " + roleName));
+        User user = User.builder()
+                .username(username)
+                .email(email)
+                .password(passwordEncoder.encode(rawPassword))
+                .fullName(fullName)
+                .active(true)
+                .roles(Set.of(role))
+                .warehouses(warehouses)
+                .territories(territories)
+                .build();
+        userRepository.save(user);
+        logger.info("Đã tạo tài khoản demo '{}' với vai trò {}", username, roleName);
     }
 }

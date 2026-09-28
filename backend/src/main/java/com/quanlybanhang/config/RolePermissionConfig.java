@@ -13,8 +13,8 @@ import static com.quanlybanhang.model.Permission.*;
  *
  * Nguyên tắc thiết kế:
  * - Mặc định là TỪ CHỐI — chỉ role nào được gán permission mới truy cập được
- * - ADMIN có toàn quyền
- * - Giá vốn + biên lợi nhuận chỉ cho SALES_MANAGER (và ADMIN)
+ * - ADMIN quản trị hệ thống nhưng không mặc nhiên xem dữ liệu giá vốn
+ * - Giá vốn + biên lợi nhuận chỉ cho SALES_MANAGER
  * - Thủ kho chỉ thao tác trên module kho, không thấy giá vốn
  * - Nhân viên kinh doanh không sửa tồn kho
  */

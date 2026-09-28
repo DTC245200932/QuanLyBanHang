@@ -41,7 +41,12 @@ Không nên lưu mật khẩu MySQL thật vào Git. Trước khi chạy backend
 $env:SPRING_DATASOURCE_URL="jdbc:mysql://localhost:3306/quanlybanhang?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true"
 $env:SPRING_DATASOURCE_USERNAME="root"
 $env:SPRING_DATASOURCE_PASSWORD="mat-khau-mysql-cua-ban"
+$env:APP_JWT_SECRET="chuoi-bi-mat-rieng-cua-moi-truong-it-nhat-32-ky-tu"
+$env:APP_BOOTSTRAP_ADMIN_PASSWORD="mat-khau-admin-ban-tu-chon"
 ```
+
+`APP_JWT_SECRET` là bắt buộc và phải là chuỗi bí mật riêng cho từng môi trường.
+Không commit giá trị thật của biến này vào repository.
 
 Các giá trị mặc định khác nằm trong [application.properties](backend/src/main/resources/application.properties).
 
@@ -89,11 +94,12 @@ Không mở trực tiếp `frontend/index.html` bằng địa chỉ `file://`; f
 
 ### Tài khoản luôn được tạo
 
-Ở lần chạy đầu tiên, backend tự tạo:
+Ở lần chạy đầu tiên, backend tự tạo tài khoản quản trị bằng mật khẩu trong
+`APP_BOOTSTRAP_ADMIN_PASSWORD`:
 
 | Tên đăng nhập | Mật khẩu | Vai trò |
 |---|---|---|
-| `admin` | `admin123` | Quản trị hệ thống |
+| `admin` | Giá trị `APP_BOOTSTRAP_ADMIN_PASSWORD` | Quản trị hệ thống |
 
 Đây là tài khoản phát triển. Hãy đổi mật khẩu ngay sau khi đăng nhập và không dùng thông tin này ở production.
 
@@ -105,6 +111,7 @@ Nếu dùng PowerShell:
 
 ```powershell
 $env:APP_SEED_DEMO_USERS="true"
+$env:APP_DEMO_USER_PASSWORD="mat-khau-demo-ban-tu-chon"
 cd D:\GitHub\QuanLyBanHang\backend
 .\mvnw.cmd spring-boot:run
 ```
@@ -113,6 +120,7 @@ Nếu dùng Command Prompt (`cmd.exe`):
 
 ```cmd
 set "APP_SEED_DEMO_USERS=true"
+set "APP_DEMO_USER_PASSWORD=MAT_KHAU_DEMO_BAN_TU_CHON"
 set "SPRING_DATASOURCE_USERNAME=root"
 set "SPRING_DATASOURCE_PASSWORD=MAT_KHAU_MYSQL_CUA_BAN"
 cd /d D:\GitHub\QuanLyBanHang\backend
@@ -123,11 +131,11 @@ Backend sẽ tạo các tài khoản chưa tồn tại:
 
 | Tên đăng nhập | Mật khẩu | Vai trò | Phạm vi mẫu |
 |---|---|---|---|
-| `sales.manager` | `SalesManager123` | Quản lý kinh doanh | Xem giá vốn và biên lợi nhuận |
-| `sales.demo` | `SalesDemo123` | Nhân viên kinh doanh | Một địa bàn mẫu |
-| `warehouse.demo` | `Warehouse123` | Thủ kho | Một kho mẫu |
-| `accountant.demo` | `Accountant123` | Kế toán | Công nợ và báo cáo tài chính |
-| `viewer.demo` | `ViewerDemo123` | Chỉ xem | Báo cáo được phép |
+| `sales.manager` | Giá trị `APP_DEMO_USER_PASSWORD` | Quản lý kinh doanh | Xem giá vốn và biên lợi nhuận |
+| `sales.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Nhân viên kinh doanh | Một địa bàn mẫu |
+| `warehouse.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Thủ kho | Một kho mẫu |
+| `accountant.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Kế toán | Công nợ và báo cáo tài chính |
+| `viewer.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Chỉ xem | Báo cáo được phép |
 
 Chỉ bật dữ liệu demo trên máy phát triển. Để tắt cho những lần chạy sau:
 
@@ -151,7 +159,7 @@ PowerShell:
 ```powershell
 $loginBody = @{
   username = "admin"
-  password = "admin123"
+  password = "mat-khau-admin-da-cau-hinh"
 } | ConvertTo-Json
 
 $session = Invoke-RestMethod `
@@ -196,6 +204,7 @@ $env:SPRING_MAIL_PASSWORD="gmail-app-password"
 ```
 
 Không dùng mật khẩu Gmail thông thường và không commit App Password vào repo.
+Nếu chưa cấu hình hai biến trên, hệ thống không thể gửi email đặt lại mật khẩu thật.
 
 Các URL frontend trong email mặc định dùng cổng `5500`:
 

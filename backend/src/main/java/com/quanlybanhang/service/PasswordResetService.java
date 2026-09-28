@@ -12,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,15 +31,15 @@ public class PasswordResetService {
 
     private static final Logger logger = LoggerFactory.getLogger(PasswordResetService.class);
 
-    /** Token reset hết hạn sau 30 phút. */
-    private static final int TOKEN_EXPIRATION_MINUTES = 30;
-
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JavaMailSender mailSender;
 
     @Value("${app.reset-password.frontend-url}")
     private String frontendResetUrl;
+
+    @Value("${app.reset-password.token-expiration-ms:1800000}")
+    private long tokenExpirationMs;
 
     /**
      * Gửi email chứa link reset mật khẩu.
@@ -62,7 +63,7 @@ public class PasswordResetService {
         String token = UUID.randomUUID().toString();
         user.setResetPasswordToken(token);
         user.setResetPasswordExpiry(
-                LocalDateTime.now().plusMinutes(TOKEN_EXPIRATION_MINUTES));
+                LocalDateTime.now().plus(Duration.ofMillis(tokenExpirationMs)));
         userRepository.save(user);
 
         // Gửi email
@@ -77,7 +78,7 @@ public class PasswordResetService {
                     + "Bạn đã yêu cầu đặt lại mật khẩu.\n"
                     + "Nhấn vào link sau để đặt lại mật khẩu:\n\n"
                     + resetLink + "\n\n"
-                    + "Link này sẽ hết hạn sau " + TOKEN_EXPIRATION_MINUTES + " phút "
+                    + "Link này sẽ hết hạn sau " + getTokenExpirationMinutes() + " phút "
                     + "và chỉ có thể sử dụng một lần.\n"
                     + "Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.\n\n"
                     + "Trân trọng,\n"
@@ -104,7 +105,8 @@ public class PasswordResetService {
                         "Link đặt lại mật khẩu không hợp lệ hoặc đã được sử dụng."));
 
         // Kiểm tra token hết hạn
-        if (user.getResetPasswordExpiry().isBefore(LocalDateTime.now())) {
+        if (user.getResetPasswordExpiry() == null
+                || !user.getResetPasswordExpiry().isAfter(LocalDateTime.now())) {
             // Xoá token hết hạn
             user.setResetPasswordToken(null);
             user.setResetPasswordExpiry(null);
@@ -123,5 +125,9 @@ public class PasswordResetService {
 
         userRepository.save(user);
         logger.info("Password reset successful for user: {}", user.getUsername());
+    }
+
+    private long getTokenExpirationMinutes() {
+        return Math.max(1, Duration.ofMillis(tokenExpirationMs).toMinutes());
     }
 }

@@ -21,6 +21,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -66,5 +68,18 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BadCredentialsException.class)
                 .hasMessage("Tên đăng nhập hoặc mật khẩu không đúng");
+    }
+
+    @Test
+    void logoutStillRevokesRefreshTokenWhenAccessTokenHasExpired() {
+        when(jwtUtils.validateToken("expired-access-token")).thenReturn(false);
+        when(jwtUtils.validateToken("valid-refresh-token")).thenReturn(true);
+
+        authService.logout("expired-access-token", "valid-refresh-token");
+
+        verify(tokenBlacklistService, never())
+                .blacklistToken("expired-access-token", "LOGOUT");
+        verify(tokenBlacklistService)
+                .blacklistToken("valid-refresh-token", "LOGOUT");
     }
 }

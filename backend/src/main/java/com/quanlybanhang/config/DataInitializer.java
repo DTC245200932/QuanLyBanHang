@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.Set;
 
@@ -39,6 +40,12 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.seed-demo-users:false}")
     private boolean seedDemoUsers;
 
+    @Value("${app.bootstrap.admin-password:}")
+    private String bootstrapAdminPassword;
+
+    @Value("${app.demo-user.password:}")
+    private String demoUserPassword;
+
     @Override
     public void run(String... args) {
         // Tạo 7 roles nếu chưa có
@@ -61,13 +68,18 @@ public class DataInitializer implements CommandLineRunner {
 
         // Tạo tài khoản admin mặc định nếu chưa có
         if (!userRepository.existsByUsername("admin")) {
+            if (!StringUtils.hasText(bootstrapAdminPassword)) {
+                throw new IllegalStateException(
+                        "Chưa cấu hình APP_BOOTSTRAP_ADMIN_PASSWORD để tạo tài khoản admin ban đầu");
+            }
+
             Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy role ADMIN"));
 
             User admin = User.builder()
                     .username("admin")
                     .email("admin@quanlybanhang.com")
-                    .password(passwordEncoder.encode("admin123"))
+                    .password(passwordEncoder.encode(bootstrapAdminPassword))
                     .fullName("Quản trị viên")
                     .phone("0900000000")
                     .active(true)
@@ -75,11 +87,15 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
 
             userRepository.save(admin);
-            logger.info("Đã tạo tài khoản admin mặc định (username: admin, password: admin123)");
+            logger.info("Đã tạo tài khoản admin ban đầu (username: admin)");
         }
 
         if (seedDemoUsers) {
-            createDemoUsers();
+            if (!StringUtils.hasText(demoUserPassword)) {
+                throw new IllegalStateException(
+                        "APP_DEMO_USER_PASSWORD là bắt buộc khi bật APP_SEED_DEMO_USERS");
+            }
+            createDemoUsers(demoUserPassword);
         }
     }
 
@@ -87,7 +103,7 @@ public class DataInitializer implements CommandLineRunner {
      * Tạo tài khoản minh hoạ khi chạy local với APP_SEED_DEMO_USERS=true.
      * Chế độ này mặc định tắt và không nên bật ở production.
      */
-    private void createDemoUsers() {
+    private void createDemoUsers(String password) {
         Warehouse demoWarehouse = warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
                 .findFirst()
                 .orElseGet(() -> warehouseRepository.save(
@@ -97,16 +113,16 @@ public class DataInitializer implements CommandLineRunner {
                 .orElseGet(() -> territoryRepository.save(
                         Territory.builder().code("DB-DEMO").name("Địa bàn Demo").build()));
 
-        createDemoUser("sales.manager", "SalesManager123", "Quản lý kinh doanh Demo",
+        createDemoUser("sales.manager", password, "Quản lý kinh doanh Demo",
                 "sales.manager@demo.local", ERole.ROLE_SALES_MANAGER, Set.of(), Set.of());
-        createDemoUser("sales.demo", "SalesDemo123", "Nhân viên kinh doanh Demo",
+        createDemoUser("sales.demo", password, "Nhân viên kinh doanh Demo",
                 "sales@demo.local", ERole.ROLE_SALES, Set.of(), Set.of(demoTerritory));
-        createDemoUser("warehouse.demo", "Warehouse123", "Thủ kho Demo",
+        createDemoUser("warehouse.demo", password, "Thủ kho Demo",
                 "warehouse@demo.local", ERole.ROLE_WAREHOUSE_STAFF,
                 Set.of(demoWarehouse), Set.of());
-        createDemoUser("accountant.demo", "Accountant123", "Kế toán Demo",
+        createDemoUser("accountant.demo", password, "Kế toán Demo",
                 "accountant@demo.local", ERole.ROLE_ACCOUNTANT, Set.of(), Set.of());
-        createDemoUser("viewer.demo", "ViewerDemo123", "Người xem Demo",
+        createDemoUser("viewer.demo", password, "Người xem Demo",
                 "viewer@demo.local", ERole.ROLE_VIEWER, Set.of(), Set.of());
     }
 

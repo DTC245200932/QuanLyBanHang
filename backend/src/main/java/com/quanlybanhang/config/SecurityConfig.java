@@ -76,7 +76,7 @@ public class SecurityConfig {
             // Phân quyền các endpoint
             .authorizeHttpRequests(auth -> auth
                 // ── Public: ai cũng truy cập được ──
-                .requestMatchers("/api/auth/login", "/api/auth/refresh",
+                .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
                         "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                 .requestMatchers("/api/auth/**").authenticated()
                 .requestMatchers("/api/test/public").permitAll()

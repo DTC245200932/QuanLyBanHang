@@ -12,7 +12,7 @@ Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message":
 | POST | `/auth/refresh` | Công khai | Gia hạn access token bằng refresh token |
 | POST | `/auth/forgot-password` | Công khai | Gửi liên kết đặt lại có hạn 30 phút |
 | POST | `/auth/reset-password` | Công khai | Đặt lại mật khẩu; token dùng một lần |
-| POST | `/auth/logout` | Đã đăng nhập | Thu hồi access token và refresh token hiện tại |
+| POST | `/auth/logout` | Có access hoặc refresh token | Thu hồi ngay các token hiện có; vẫn xử lý khi access token vừa hết hạn |
 | POST | `/auth/change-password` | Đã đăng nhập | Đổi mật khẩu và thu hồi mọi phiên khác |
 | GET | `/auth/me` | Đã đăng nhập | Hồ sơ, vai trò và phạm vi làm việc hiện tại |
 
@@ -22,7 +22,7 @@ Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message":
 POST /api/auth/login
 {
   "username": "admin",
-  "password": "admin123"
+  "password": "<APP_BOOTSTRAP_ADMIN_PASSWORD>"
 }
 ```
 
@@ -122,4 +122,5 @@ Endpoint chưa được khai báo bị từ chối mặc định. Các route gi�
 3. Chạy `backend\\mvnw.cmd spring-boot:run`.
 4. Phục vụ thư mục repo qua HTTP, ví dụ cổng `5500`, rồi mở `/frontend/index.html`.
 
-Tài khoản khởi tạo cho môi trường phát triển: `admin / admin123`. Hãy đổi ngay sau lần đăng nhập đầu tiên.
+Tài khoản khởi tạo cho môi trường phát triển là `admin`; mật khẩu lấy từ
+`APP_BOOTSTRAP_ADMIN_PASSWORD`. Hãy đổi ngay sau lần đăng nhập đầu tiên.

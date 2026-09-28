@@ -27,7 +27,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("Tên đăng nhập hoặc mật khẩu không đúng"));
+                .body(ApiResponse.error(ex.getMessage()));
     }
 
     /**

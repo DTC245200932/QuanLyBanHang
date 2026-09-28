@@ -107,17 +107,19 @@ public class AuthService {
 
         } catch (BadCredentialsException e) {
             // ❌ Sai password → tăng failed count
-            boolean locked = handleFailedLogin(user);
-            if (locked) throw new AccountTemporarilyLockedException(LOCK_DURATION_MINUTES);
-            // Luôn trả message chung — không tiết lộ username có tồn tại
-            throw new BadCredentialsException("Tên đăng nhập hoặc mật khẩu không đúng");
+            int remainingAttempts = handleFailedLogin(user);
+            if (remainingAttempts == 0) {
+                throw new AccountTemporarilyLockedException(LOCK_DURATION_MINUTES);
+            }
+            throw new BadCredentialsException(
+                    "Đăng nhập thất bại. Còn " + remainingAttempts + " lần thử.");
         }
     }
 
     /**
      * Xử lý khi đăng nhập sai: tăng failedLoginAttempts, khoá nếu đủ 5 lần.
      */
-    private boolean handleFailedLogin(User user) {
+    private int handleFailedLogin(User user) {
         int newFailCount = user.getFailedLoginAttempts() + 1;
         user.setFailedLoginAttempts(newFailCount);
 
@@ -129,7 +131,7 @@ public class AuthService {
         }
 
         userRepository.save(user);
-        return newFailCount >= MAX_FAILED_ATTEMPTS;
+        return Math.max(0, MAX_FAILED_ATTEMPTS - newFailCount);
     }
 
     /**

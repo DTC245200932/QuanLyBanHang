@@ -49,9 +49,10 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("bad"));
 
         for (int attempt = 1; attempt <= 4; attempt++) {
+            int remainingAttempts = 5 - attempt;
             assertThatThrownBy(() -> authService.login(request))
                     .isInstanceOf(BadCredentialsException.class)
-                    .hasMessage("Tên đăng nhập hoặc mật khẩu không đúng");
+                    .hasMessage("Đăng nhập thất bại. Còn " + remainingAttempts + " lần thử.");
         }
 
         assertThatThrownBy(() -> authService.login(request))

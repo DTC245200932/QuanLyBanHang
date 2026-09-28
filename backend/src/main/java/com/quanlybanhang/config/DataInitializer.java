@@ -16,7 +16,7 @@ import java.util.Set;
 
 /**
  * Tự động tạo dữ liệu ban đầu khi ứng dụng khởi chạy:
- * - 3 roles: ADMIN, MANAGER, EMPLOYEE
+ * - 7 roles nghiệp vụ
  * - 1 tài khoản admin mặc định
  */
 @Component
@@ -31,7 +31,7 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        // Tạo roles nếu chưa có
+        // Tạo 7 roles nếu chưa có
         for (ERole eRole : ERole.values()) {
             if (!roleRepository.existsByName(eRole)) {
                 roleRepository.save(new Role(eRole));

@@ -37,7 +37,7 @@
     return container;
   }
 
-  function showToast(message, type = "error") {
+  function showToast(message, type = "error", duration = 4000) {
     const container = createToastContainer();
 
     const toast = document.createElement("div");
@@ -47,6 +47,7 @@
     const icons = {
       error: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>`,
       success: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>`,
+      warning: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
     };
 
     toast.innerHTML = `
@@ -66,7 +67,7 @@
       toast.addEventListener("animationend", () => toast.remove(), {
         once: true,
       });
-    }, 4000);
+    }, duration);
   }
 
   // ── Field validation styling ──
@@ -118,13 +119,44 @@
     );
   }
 
+  // ── Role-based redirect (S1-01) ──
+  function getRedirectUrl(roles) {
+    // Admin → admin dashboard
+    if (roles.includes("ROLE_ADMIN")) return "dashboard.html";
+    // Sales Manager → sales overview
+    if (roles.includes("ROLE_SALES_MANAGER")) return "dashboard.html";
+    // Warehouse Manager → warehouse overview
+    if (roles.includes("ROLE_WAREHOUSE_MANAGER")) return "dashboard.html";
+    // All other roles → general dashboard
+    return "dashboard.html";
+  }
+
   // ── Check if already logged in ──
   function checkExistingSession() {
     const token = localStorage.getItem("accessToken");
-    if (token) {
-      // Optionally redirect to dashboard
-      // window.location.href = "dashboard.html";
+    const user = localStorage.getItem("user");
+    if (token && user) {
+      try {
+        const userData = JSON.parse(user);
+        window.location.href = getRedirectUrl(userData.roles || []);
+      } catch {
+        // Invalid stored data, clear and stay on login
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+      }
     }
+  }
+
+  // ── Shake form animation ──
+  function shakeForm() {
+    if (!form) return;
+    form.classList.add("login-form--shake");
+    form.addEventListener(
+      "animationend",
+      () => form.classList.remove("login-form--shake"),
+      { once: true },
+    );
   }
 
   // ── Login handler ──
@@ -165,6 +197,7 @@
       });
 
       if (response.ok) {
+        // ✅ Đăng nhập thành công
         const data = await response.json();
         saveAuthData(data);
 
@@ -173,27 +206,61 @@
           "success",
         );
 
-        // Redirect to dashboard after a brief delay
+        // Redirect theo vai trò
         setTimeout(() => {
-          window.location.href = "dashboard.html";
-        }, 1000);
-      } else if (response.status === 401) {
-        showToast("Tên đăng nhập hoặc mật khẩu không đúng.", "error");
-        setFieldError(usernameInput, true);
-        setFieldError(passwordInput, true);
+          window.location.href = getRedirectUrl(data.roles);
+        }, 800);
+        return;
+      }
 
-        // Shake the form for visual feedback
-        form.classList.add("login-form--shake");
-        form.addEventListener(
-          "animationend",
-          () => form.classList.remove("login-form--shake"),
-          { once: true },
-        );
-      } else {
-        const errorData = await response.json().catch(() => null);
-        const message =
-          errorData?.message || "Đã xảy ra lỗi. Vui lòng thử lại.";
-        showToast(message, "error");
+      // ── Xử lý các mã lỗi ──
+      const errorData = await response.json().catch(() => null);
+
+      switch (response.status) {
+        case 401:
+          // Sai username/password — message chung, không tiết lộ
+          showToast(
+            errorData?.message || "Tên đăng nhập hoặc mật khẩu không đúng.",
+            "error",
+          );
+          setFieldError(usernameInput, true);
+          setFieldError(passwordInput, true);
+          shakeForm();
+          break;
+
+        case 423:
+          // Khoá tạm do sai quá nhiều lần (S1-01)
+          const remaining = errorData?.data?.remainingMinutes || 15;
+          showToast(
+            `Tài khoản bị khoá tạm thời. Thử lại sau ${remaining} phút.`,
+            "warning",
+            8000,
+          );
+          setFieldError(usernameInput, true);
+          break;
+
+        case 403:
+          // Bị admin khoá
+          if (errorData?.data?.type === "ADMIN_LOCK") {
+            showToast(
+              "Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.",
+              "error",
+              6000,
+            );
+          } else {
+            showToast(
+              errorData?.message || "Bạn không có quyền truy cập.",
+              "error",
+            );
+          }
+          setFieldError(usernameInput, true);
+          break;
+
+        default:
+          showToast(
+            errorData?.message || "Đã xảy ra lỗi. Vui lòng thử lại.",
+            "error",
+          );
       }
     } catch (err) {
       console.error("Login error:", err);

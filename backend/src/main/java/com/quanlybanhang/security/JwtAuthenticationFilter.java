@@ -1,5 +1,6 @@
 package com.quanlybanhang.security;
 
+import com.quanlybanhang.service.TokenBlacklistService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,7 +20,7 @@ import java.io.IOException;
 
 /**
  * Filter chạy trước mỗi request để kiểm tra JWT token trong header Authorization.
- * Nếu token hợp lệ, set authentication vào SecurityContext.
+ * Nếu token hợp lệ VÀ không nằm trong blacklist, set authentication vào SecurityContext.
  */
 @Component
 @RequiredArgsConstructor
@@ -29,6 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
     private final UserDetailsServiceImpl userDetailsService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -37,16 +39,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String jwt = parseJwt(request);
             if (jwt != null && jwtUtils.validateToken(jwt)) {
-                String username = jwtUtils.getUsernameFromToken(jwt);
+                // Kiểm tra token có bị blacklist (đăng xuất, đổi mật khẩu, khoá tài khoản)
+                if (tokenBlacklistService.isBlacklisted(jwt)) {
+                    logger.debug("Token bị blacklist, bỏ qua xác thực");
+                } else {
+                    String username = jwtUtils.getUsernameFromToken(jwt);
 
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                userDetails, null, userDetails.getAuthorities());
-                authentication.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request));
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails, null, userDetails.getAuthorities());
+                    authentication.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request));
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             }
         } catch (Exception e) {
             logger.error("Không thể xác thực người dùng: {}", e.getMessage());

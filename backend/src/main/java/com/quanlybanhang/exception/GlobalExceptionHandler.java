@@ -22,6 +22,7 @@ public class GlobalExceptionHandler {
 
     /**
      * Xử lý lỗi đăng nhập sai mật khẩu/username.
+     * Luôn trả message chung — không tiết lộ tài khoản có tồn tại hay không.
      */
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse> handleBadCredentials(BadCredentialsException ex) {
@@ -30,12 +31,37 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Xử lý tài khoản bị khóa.
+     * Xử lý khoá tạm do đăng nhập sai quá nhiều lần (S1-01).
+     * Trả về 423 Locked kèm thời gian còn lại.
+     */
+    @ExceptionHandler(AccountTemporarilyLockedException.class)
+    public ResponseEntity<ApiResponse> handleTemporaryLock(AccountTemporarilyLockedException ex) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("remainingMinutes", ex.getRemainingMinutes());
+        data.put("type", "TEMPORARY_LOCK");
+
+        return ResponseEntity.status(HttpStatus.LOCKED)  // 423
+                .body(ApiResponse.builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(data)
+                        .build());
+    }
+
+    /**
+     * Xử lý tài khoản bị khóa bởi admin (S1-10).
      */
     @ExceptionHandler(LockedException.class)
     public ResponseEntity<ApiResponse> handleLocked(LockedException ex) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", "ADMIN_LOCK");
+
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.error("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên."));
+                .body(ApiResponse.builder()
+                        .success(false)
+                        .message("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.")
+                        .data(data)
+                        .build());
     }
 
     /**

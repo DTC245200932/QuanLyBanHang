@@ -1,4 +1,4 @@
-# 📋 API Documentation - Authentication Backend
+# 📋 API Documentation - Authentication & Authorization Backend
 
 ## Base URL
 ```
@@ -36,11 +36,35 @@ POST /api/auth/login
 }
 ```
 
-**Response (401 Unauthorized):**
+**Response (401 Unauthorized) — Sai thông tin:**
 ```json
 {
   "success": false,
   "message": "Tên đăng nhập hoặc mật khẩu không đúng"
+}
+```
+> ⚠️ Message luôn chung — không tiết lộ tài khoản có tồn tại hay không.
+
+**Response (423 Locked) — Bị khoá tạm (5 lần sai liên tiếp):**
+```json
+{
+  "success": false,
+  "message": "Tài khoản bị khoá tạm thời do đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.",
+  "data": {
+    "remainingMinutes": 15,
+    "type": "TEMPORARY_LOCK"
+  }
+}
+```
+
+**Response (403 Forbidden) — Bị admin khoá:**
+```json
+{
+  "success": false,
+  "message": "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
+  "data": {
+    "type": "ADMIN_LOCK"
+  }
 }
 ```
 
@@ -59,38 +83,18 @@ POST /api/auth/register
   "password": "123456",
   "fullName": "Nguyen Van A",
   "phone": "0901234567",
-  "roles": ["ROLE_EMPLOYEE"]
+  "roles": ["ROLE_SALES"]
 }
 ```
 
-> **Lưu ý:** `roles` là optional. Nếu không truyền → mặc định `ROLE_EMPLOYEE`.
-> Các role hợp lệ: `ROLE_ADMIN`, `ROLE_MANAGER`, `ROLE_EMPLOYEE`
+> **Lưu ý:** `roles` là optional. Nếu không truyền → mặc định `ROLE_SALES`.
+> Các role hợp lệ: `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER`
 
 **Response (201 Created):**
 ```json
 {
   "success": true,
   "message": "Đăng ký tài khoản thành công"
-}
-```
-
-**Response (400 Bad Request) - Username trùng:**
-```json
-{
-  "success": false,
-  "message": "Tên đăng nhập đã được sử dụng"
-}
-```
-
-**Response (400 Bad Request) - Validation lỗi:**
-```json
-{
-  "success": false,
-  "message": "Dữ liệu không hợp lệ",
-  "data": {
-    "username": "Tên đăng nhập phải từ 3-50 ký tự",
-    "password": "Mật khẩu phải từ 6-100 ký tự"
-  }
 }
 ```
 
@@ -173,7 +177,7 @@ POST /api/auth/reset-password
 
 > **Header bắt buộc:** `Authorization: Bearer <accessToken>`
 
-### 6. Lấy thông tin user hiện tại
+### 6. Lấy thông tin user hiện tại + permissions
 ```
 GET /api/test/user
 ```
@@ -183,17 +187,33 @@ GET /api/test/user
 {
   "message": "Xin chào Quản trị viên",
   "username": "admin",
-  "email": "admin@quanlybanhang.com"
+  "email": "admin@quanlybanhang.com",
+  "roles": ["ROLE_ADMIN"],
+  "permissions": [
+    "CUSTOMER_CREATE", "CUSTOMER_EDIT", "CUSTOMER_VIEW",
+    "FINANCE_MANAGE", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_DEBT", "FINANCE_VIEW_PROFIT_MARGIN",
+    "ORDER_APPROVE", "ORDER_CANCEL", "ORDER_CREATE", "ORDER_EDIT", "ORDER_VIEW",
+    "PRODUCT_CREATE", "PRODUCT_DELETE", "PRODUCT_EDIT", "PRODUCT_VIEW",
+    "REPORT_FINANCE", "REPORT_INVENTORY", "REPORT_SALES",
+    "USER_ASSIGN_ROLE", "USER_CREATE", "USER_EDIT", "USER_LOCK", "USER_VIEW",
+    "WAREHOUSE_ADJUST", "WAREHOUSE_APPROVE", "WAREHOUSE_EXPORT", "WAREHOUSE_IMPORT", "WAREHOUSE_VIEW"
+  ]
 }
 ```
 
-### 7. Test quyền Manager
+### 7. Xem ma trận phân quyền (ADMIN only)
+```
+GET /api/test/permissions
+```
+> Trả về mapping role → permissions cho toàn bộ 7 vai trò.
+
+### 8. Test quyền Manager
 ```
 GET /api/test/manager
 ```
-> Chỉ user có role `ROLE_MANAGER` hoặc `ROLE_ADMIN`
+> Chỉ user có role `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_MANAGER`, hoặc `ROLE_ADMIN`
 
-### 8. Test quyền Admin
+### 9. Test quyền Admin
 ```
 GET /api/test/admin
 ```
@@ -201,63 +221,25 @@ GET /api/test/admin
 
 ---
 
-## 🔑 Cách Frontend Sử Dụng
+## 📊 Phân quyền — 7 Vai trò Nghiệp vụ
 
-### Lưu token sau khi đăng nhập:
-```javascript
-// Sau khi gọi API login thành công
-const response = await fetch('/api/auth/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ username: 'admin', password: 'admin123' })
-});
-const data = await response.json();
+| Role | Mô tả | Xem giá vốn |
+|------|--------|:------------:|
+| `ROLE_ADMIN` | Quản trị hệ thống — toàn quyền | ✅ |
+| `ROLE_SALES_MANAGER` | Quản lý kinh doanh — đơn hàng, sản phẩm, giá vốn | ✅ |
+| `ROLE_WAREHOUSE_MANAGER` | Quản lý kho — phê duyệt nhập/xuất | ❌ |
+| `ROLE_SALES` | Nhân viên kinh doanh — tạo đơn, quản lý khách | ❌ |
+| `ROLE_WAREHOUSE_STAFF` | Thủ kho — nhập/xuất trên kho được gán | ❌ |
+| `ROLE_ACCOUNTANT` | Kế toán — báo cáo tài chính, công nợ | ❌ |
+| `ROLE_VIEWER` | Chỉ xem — xem báo cáo, không thao tác | ❌ |
 
-// Lưu token
-localStorage.setItem('accessToken', data.accessToken);
-localStorage.setItem('refreshToken', data.refreshToken);
-localStorage.setItem('user', JSON.stringify({
-  id: data.id,
-  username: data.username,
-  email: data.email,
-  fullName: data.fullName,
-  roles: data.roles
-}));
-```
+## 🔒 Bảo mật Login
 
-### Gọi API có xác thực:
-```javascript
-const token = localStorage.getItem('accessToken');
-const response = await fetch('/api/test/user', {
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  }
-});
-```
-
-### Refresh token khi hết hạn:
-```javascript
-// Khi nhận 401 Unauthorized → gọi refresh
-const refreshToken = localStorage.getItem('refreshToken');
-const response = await fetch('/api/auth/refresh', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ refreshToken })
-});
-const data = await response.json();
-localStorage.setItem('accessToken', data.accessToken);
-```
-
----
-
-## 📊 Phân quyền (Roles)
-
-| Role | Quyền |
-|------|-------|
-| `ROLE_ADMIN` | Toàn quyền - quản lý hệ thống, user, sản phẩm, đơn hàng |
-| `ROLE_MANAGER` | Quản lý nhân viên, sản phẩm, đơn hàng |
-| `ROLE_EMPLOYEE` | Bán hàng, xem sản phẩm |
+| Cơ chế | Chi tiết |
+|--------|----------|
+| Khoá tạm | 5 lần sai liên tiếp → khoá 15 phút |
+| Message chung | Sai password hay sai username đều trả `"Tên đăng nhập hoặc mật khẩu không đúng"` |
+| Khoá admin | `active=false` → không đăng nhập được, phiên bị thu hồi |
 
 ## 🗄️ Tài khoản mặc định
 

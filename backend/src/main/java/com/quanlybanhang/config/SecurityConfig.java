@@ -20,7 +20,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Cấu hình Spring Security: JWT stateless, CORS, endpoint permissions.
+ * Cấu hình Spring Security: JWT stateless, CORS, phân quyền 7 vai trò.
+ *
+ * Nguyên tắc: mặc định TỪ CHỐI — chỉ endpoint được khai báo mới truy cập được.
+ * Chi tiết quyền trên từng API dùng @PreAuthorize ở controller.
  */
 @Configuration
 @EnableWebSecurity
@@ -56,6 +59,9 @@ public class SecurityConfig {
             // Tắt CSRF vì dùng JWT (stateless)
             .csrf(AbstractHttpConfigurer::disable)
 
+            // Bật CORS (cấu hình ở CorsConfig)
+            .cors(cors -> {})
+
             // Xử lý lỗi xác thực
             .exceptionHandling(exception ->
                 exception.authenticationEntryPoint(unauthorizedHandler))
@@ -66,17 +72,39 @@ public class SecurityConfig {
 
             // Phân quyền các endpoint
             .authorizeHttpRequests(auth -> auth
-                // API auth: ai cũng truy cập được
+                // ── Public: ai cũng truy cập được ──
                 .requestMatchers("/api/auth/**").permitAll()
-
-                // API test public
                 .requestMatchers("/api/test/public").permitAll()
 
-                // API admin: chỉ ADMIN
+                // ── Admin only: quản lý user, cấu hình hệ thống ──
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
-                // API manager: ADMIN hoặc MANAGER
-                .requestMatchers("/api/manager/**").hasAnyRole("ADMIN", "MANAGER")
+                // ── Quản lý: ADMIN + SALES_MANAGER + WAREHOUSE_MANAGER ──
+                .requestMatchers("/api/manager/**").hasAnyRole(
+                        "ADMIN", "SALES_MANAGER", "WAREHOUSE_MANAGER")
+
+                // ── Kho: ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
+                .requestMatchers("/api/warehouse/**").hasAnyRole(
+                        "ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF")
+
+                // ── Đơn hàng: mọi role trừ VIEWER có thể tạo/sửa, nhưng VIEWER có thể xem ──
+                // Chi tiết dùng @PreAuthorize trên từng method
+                .requestMatchers("/api/orders/**").authenticated()
+
+                // ── Sản phẩm: mọi role đã đăng nhập ──
+                .requestMatchers("/api/products/**").authenticated()
+
+                // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
+                .requestMatchers("/api/customers/**").hasAnyRole(
+                        "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")
+
+                // ── Tài chính: ADMIN, SALES_MANAGER, ACCOUNTANT ──
+                .requestMatchers("/api/finance/**").hasAnyRole(
+                        "ADMIN", "SALES_MANAGER", "ACCOUNTANT")
+
+                // ── Báo cáo: mọi role đã đăng nhập ──
+                // Chi tiết loại báo cáo dùng @PreAuthorize
+                .requestMatchers("/api/reports/**").authenticated()
 
                 // Tất cả request khác phải đăng nhập
                 .anyRequest().authenticated()

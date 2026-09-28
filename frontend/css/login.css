@@ -861,6 +861,10 @@ label {
   background: linear-gradient(135deg, var(--teal), var(--teal-deep));
 }
 
+.toast--warning {
+  background: linear-gradient(135deg, #e6a23c, #cf8a2e);
+}
+
 .toast__icon {
   display: flex;
   flex-shrink: 0;

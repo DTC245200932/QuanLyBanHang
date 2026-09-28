@@ -27,7 +27,11 @@ public class RolePermissionConfig {
         rolePermissions = new EnumMap<>(ERole.class);
 
         // ── ADMIN: toàn quyền ──
-        rolePermissions.put(ERole.ROLE_ADMIN, EnumSet.allOf(Permission.class));
+        EnumSet<Permission> adminPermissions = EnumSet.allOf(Permission.class);
+        // Giá vốn và biên lợi nhuận là dữ liệu nghiệp vụ riêng của Quản lý kinh doanh.
+        adminPermissions.remove(FINANCE_VIEW_COST_PRICE);
+        adminPermissions.remove(FINANCE_VIEW_PROFIT_MARGIN);
+        rolePermissions.put(ERole.ROLE_ADMIN, adminPermissions);
 
         // ── SALES_MANAGER: quản lý kinh doanh — xem giá vốn, biên lợi nhuận ──
         rolePermissions.put(ERole.ROLE_SALES_MANAGER, EnumSet.of(

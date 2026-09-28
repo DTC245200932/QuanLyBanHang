@@ -38,7 +38,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
             String jwt = parseJwt(request);
-            if (jwt != null && jwtUtils.validateToken(jwt)) {
+            if (jwt != null && jwtUtils.validateToken(jwt)
+                    && "access".equals(jwtUtils.getTokenType(jwt))) {
                 // Kiểm tra token có bị blacklist (đăng xuất, đổi mật khẩu, khoá tài khoản)
                 if (tokenBlacklistService.isBlacklisted(jwt)) {
                     logger.debug("Token bị blacklist, bỏ qua xác thực");
@@ -46,13 +47,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     String username = jwtUtils.getUsernameFromToken(jwt);
 
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                    UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails, null, userDetails.getAuthorities());
-                    authentication.setDetails(
-                            new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    if (userDetails instanceof UserDetailsImpl details
+                            && details.isEnabled()
+                            && details.getTokenVersion() == jwtUtils.getTokenVersion(jwt)) {
+                        UsernamePasswordAuthenticationToken authentication =
+                                new UsernamePasswordAuthenticationToken(
+                                        userDetails, null, userDetails.getAuthorities());
+                        authentication.setDetails(
+                                new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
                 }
             }
         } catch (Exception e) {

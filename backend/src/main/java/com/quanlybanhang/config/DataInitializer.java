@@ -5,6 +5,10 @@ import com.quanlybanhang.model.Role;
 import com.quanlybanhang.model.User;
 import com.quanlybanhang.repository.RoleRepository;
 import com.quanlybanhang.repository.UserRepository;
+import com.quanlybanhang.repository.WarehouseRepository;
+import com.quanlybanhang.repository.TerritoryRepository;
+import com.quanlybanhang.model.Warehouse;
+import com.quanlybanhang.model.Territory;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +32,8 @@ public class DataInitializer implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final WarehouseRepository warehouseRepository;
+    private final TerritoryRepository territoryRepository;
 
     @Override
     public void run(String... args) {
@@ -37,6 +43,16 @@ public class DataInitializer implements CommandLineRunner {
                 roleRepository.save(new Role(eRole));
                 logger.info("Đã tạo role: {}", eRole.name());
             }
+        }
+
+        if (warehouseRepository.count() == 0) {
+            warehouseRepository.save(Warehouse.builder().code("KHO-HCM").name("Kho trung tâm TP.HCM").build());
+            warehouseRepository.save(Warehouse.builder().code("KHO-HN").name("Kho Hà Nội").build());
+        }
+        if (territoryRepository.count() == 0) {
+            territoryRepository.save(Territory.builder().code("HCM-DONG").name("TP.HCM - Khu Đông").build());
+            territoryRepository.save(Territory.builder().code("HCM-TAY").name("TP.HCM - Khu Tây").build());
+            territoryRepository.save(Territory.builder().code("HN").name("Hà Nội").build());
         }
 
         // Tạo tài khoản admin mặc định nếu chưa có

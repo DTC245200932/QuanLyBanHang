@@ -3,7 +3,9 @@ package com.quanlybanhang.service;
 import com.quanlybanhang.dto.request.*;
 import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.dto.response.JwtResponse;
+import com.quanlybanhang.dto.response.NamedResourceResponse;
 import com.quanlybanhang.exception.AccountTemporarilyLockedException;
+import com.quanlybanhang.config.RolePermissionConfig;
 import com.quanlybanhang.model.ERole;
 import com.quanlybanhang.model.Role;
 import com.quanlybanhang.model.User;
@@ -19,7 +21,6 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -30,7 +31,6 @@ import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Service xử lý logic đăng nhập, đăng ký, refresh token, đổi mật khẩu, đăng xuất.
@@ -60,6 +60,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final TokenBlacklistService tokenBlacklistService;
+    private final RolePermissionConfig rolePermissionConfig;
 
     /**
      * Đăng nhập — kiểm tra lockout trước, rồi xác thực.
@@ -72,7 +73,7 @@ public class AuthService {
      * 5. Đúng → reset failed count, trả JWT
      * 6. Sai → tăng failed count, khoá nếu đủ 5 lần
      */
-    @Transactional
+    @Transactional(noRollbackFor = {BadCredentialsException.class, AccountTemporarilyLockedException.class})
     public JwtResponse login(LoginRequest request) {
         // Tìm user — nếu không có, trả message chung (không tiết lộ user có tồn tại)
         User user = userRepository.findByUsername(request.getUsername())
@@ -106,24 +107,12 @@ public class AuthService {
             String refreshToken = jwtUtils.generateRefreshToken(authentication);
 
             UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-            List<String> roles = userDetails.getAuthorities().stream()
-                    .map(GrantedAuthority::getAuthority)
-                    .collect(Collectors.toList());
-
-            return JwtResponse.builder()
-                    .accessToken(accessToken)
-                    .refreshToken(refreshToken)
-                    .tokenType("Bearer")
-                    .id(userDetails.getId())
-                    .username(userDetails.getUsername())
-                    .email(userDetails.getEmail())
-                    .fullName(userDetails.getFullName())
-                    .roles(roles)
-                    .build();
+            return buildJwtResponse(user, accessToken, refreshToken);
 
         } catch (BadCredentialsException e) {
             // ❌ Sai password → tăng failed count
-            handleFailedLogin(user);
+            boolean locked = handleFailedLogin(user);
+            if (locked) throw new AccountTemporarilyLockedException(LOCK_DURATION_MINUTES);
             // Luôn trả message chung — không tiết lộ username có tồn tại
             throw new BadCredentialsException("Tên đăng nhập hoặc mật khẩu không đúng");
         }
@@ -132,7 +121,7 @@ public class AuthService {
     /**
      * Xử lý khi đăng nhập sai: tăng failedLoginAttempts, khoá nếu đủ 5 lần.
      */
-    private void handleFailedLogin(User user) {
+    private boolean handleFailedLogin(User user) {
         int newFailCount = user.getFailedLoginAttempts() + 1;
         user.setFailedLoginAttempts(newFailCount);
 
@@ -144,6 +133,7 @@ public class AuthService {
         }
 
         userRepository.save(user);
+        return newFailCount >= MAX_FAILED_ATTEMPTS;
     }
 
     /**
@@ -212,7 +202,8 @@ public class AuthService {
      * Refresh access token bằng refresh token.
      */
     public JwtResponse refreshToken(String refreshToken) {
-        if (!jwtUtils.validateToken(refreshToken)) {
+        if (!jwtUtils.validateToken(refreshToken)
+                || !"refresh".equals(jwtUtils.getTokenType(refreshToken))) {
             throw new RuntimeException("Refresh token không hợp lệ hoặc đã hết hạn");
         }
 
@@ -222,33 +213,26 @@ public class AuthService {
         }
 
         String username = jwtUtils.getUsernameFromToken(refreshToken);
-        String newAccessToken = jwtUtils.generateAccessTokenFromUsername(username);
-
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
-
-        List<String> roles = user.getRoles().stream()
-                .map(role -> role.getName().name())
-                .collect(Collectors.toList());
-
-        return JwtResponse.builder()
-                .accessToken(newAccessToken)
-                .refreshToken(refreshToken) // giữ nguyên refresh token
-                .tokenType("Bearer")
-                .id(user.getId())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .fullName(user.getFullName())
-                .roles(roles)
-                .build();
+        if (!user.getActive() || user.getTokenVersion() != jwtUtils.getTokenVersion(refreshToken)) {
+            throw new RuntimeException("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        }
+        String newAccessToken = jwtUtils.generateAccessToken(username, user.getTokenVersion());
+        return buildJwtResponse(user, newAccessToken, refreshToken);
     }
 
     /**
      * Đăng xuất — blacklist access token để vô hiệu hoá ngay phía server (S1-02).
      */
     @Transactional
-    public void logout(String accessToken) {
-        tokenBlacklistService.blacklistToken(accessToken, "LOGOUT");
+    public void logout(String accessToken, String refreshToken) {
+        if (accessToken != null && jwtUtils.validateToken(accessToken)) {
+            tokenBlacklistService.blacklistToken(accessToken, "LOGOUT");
+        }
+        if (refreshToken != null && jwtUtils.validateToken(refreshToken)) {
+            tokenBlacklistService.blacklistToken(refreshToken, "LOGOUT");
+        }
     }
 
     /**
@@ -275,14 +259,39 @@ public class AuthService {
 
         // Cập nhật mật khẩu
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
+        user.setTokenVersion(user.getTokenVersion() + 1);
         userRepository.save(user);
 
         // Blacklist token hiện tại — yêu cầu đăng nhập lại
-        tokenBlacklistService.blacklistToken(currentToken, "PASSWORD_CHANGE");
+        if (currentToken != null && jwtUtils.validateToken(currentToken)) {
+            tokenBlacklistService.blacklistToken(currentToken, "PASSWORD_CHANGE");
+        }
 
         logger.info("User '{}' đã đổi mật khẩu thành công", username);
 
         return ApiResponse.success("Đổi mật khẩu thành công. Vui lòng đăng nhập lại.");
+    }
+
+    private JwtResponse buildJwtResponse(User user, String accessToken, String refreshToken) {
+        List<ERole> roleEnums = user.getRoles().stream().map(Role::getName).toList();
+        return JwtResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .roles(roleEnums.stream().map(Enum::name).sorted().toList())
+                .permissions(rolePermissionConfig.getPermissions(roleEnums).stream()
+                        .map(Enum::name).sorted().toList())
+                .warehouses(user.getWarehouses().stream()
+                        .map(w -> new NamedResourceResponse(w.getId(), w.getCode(), w.getName())).toList())
+                .territories(user.getTerritories().stream()
+                        .map(t -> new NamedResourceResponse(t.getId(), t.getCode(), t.getName())).toList())
+                .mustChangePassword(user.getMustChangePassword())
+                .build();
     }
 }
 

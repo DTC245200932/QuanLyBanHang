@@ -6,12 +6,14 @@ import com.quanlybanhang.dto.response.JwtResponse;
 import com.quanlybanhang.security.UserDetailsImpl;
 import com.quanlybanhang.service.AuthService;
 import com.quanlybanhang.service.PasswordResetService;
+import com.quanlybanhang.service.AdminUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,6 +34,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
+    private final AdminUserService adminUserService;
 
     /**
      * Đăng nhập.
@@ -46,6 +49,7 @@ public class AuthController {
      * Đăng ký tài khoản mới.
      */
     @PostMapping("/register")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> register(@Valid @RequestBody RegisterRequest request) {
         ApiResponse response = authService.register(request);
         if (response.isSuccess()) {
@@ -72,12 +76,18 @@ public class AuthController {
      * Yêu cầu header: Authorization: Bearer <token>
      */
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse> logout(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse> logout(HttpServletRequest request,
+                                               @RequestBody(required = false) java.util.Map<String, String> body) {
         String token = parseJwt(request);
-        if (token != null) {
-            authService.logout(token);
-        }
+        String refreshToken = body == null ? null : body.get("refreshToken");
+        authService.logout(token, refreshToken);
         return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công"));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse> me(Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success("Thông tin người dùng",
+                adminUserService.getByUsername(authentication.getName())));
     }
 
     /**

@@ -114,6 +114,8 @@ public class PasswordResetService {
 
         // Cập nhật mật khẩu mới
         user.setPassword(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
+        user.setTokenVersion(user.getTokenVersion() + 1);
 
         // Xoá token — link chỉ dùng được MỘT LẦN
         user.setResetPasswordToken(null);

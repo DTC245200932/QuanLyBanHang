@@ -115,6 +115,10 @@
         email: data.email,
         fullName: data.fullName,
         roles: data.roles,
+        permissions: data.permissions || [],
+        warehouses: data.warehouses || [],
+        territories: data.territories || [],
+        mustChangePassword: Boolean(data.mustChangePassword),
       }),
     );
   }
@@ -286,6 +290,11 @@
   }
 
   // ── Init ──
+  const sessionMessage = sessionStorage.getItem("sessionMessage");
+  if (sessionMessage) {
+    sessionStorage.removeItem("sessionMessage");
+    setTimeout(() => showToast(sessionMessage, "warning", 6000), 0);
+  }
   checkExistingSession();
 
   if (form) {

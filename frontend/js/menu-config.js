@@ -101,6 +101,7 @@ const MenuConfig = (() => {
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>',
       href: "admin/users.html",
       roles: ["ROLE_ADMIN"],
+      permission: "USER_VIEW",
     },
   ];
 
@@ -110,6 +111,14 @@ const MenuConfig = (() => {
   function getMenuForRoles(userRoles) {
     return menuItems.filter((item) =>
       item.roles.some((role) => userRoles.includes(role)),
+    );
+  }
+
+  function getMenuForUser(user) {
+    const roles = user?.roles || [];
+    const permissions = user?.permissions || [];
+    return menuItems.filter((item) =>
+      item.permission ? permissions.includes(item.permission) : item.roles.some((role) => roles.includes(role)),
     );
   }
 
@@ -129,5 +138,5 @@ const MenuConfig = (() => {
     return names[role] || role;
   }
 
-  return { getMenuForRoles, getRoleDisplayName, menuItems };
+  return { getMenuForRoles, getMenuForUser, getRoleDisplayName, menuItems };
 })();

@@ -3,6 +3,7 @@ package com.quanlybanhang.config;
 import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
+import com.quanlybanhang.security.RestAccessDeniedHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,6 +35,7 @@ public class SecurityConfig {
     private final UserDetailsServiceImpl userDetailsService;
     private final AuthEntryPointJwt unauthorizedHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestAccessDeniedHandler accessDeniedHandler;
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
@@ -64,7 +66,8 @@ public class SecurityConfig {
 
             // Xử lý lỗi xác thực
             .exceptionHandling(exception ->
-                exception.authenticationEntryPoint(unauthorizedHandler))
+                exception.authenticationEntryPoint(unauthorizedHandler)
+                        .accessDeniedHandler(accessDeniedHandler))
 
             // Không tạo session - JWT stateless
             .sessionManagement(session ->
@@ -73,7 +76,9 @@ public class SecurityConfig {
             // Phân quyền các endpoint
             .authorizeHttpRequests(auth -> auth
                 // ── Public: ai cũng truy cập được ──
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/login", "/api/auth/refresh",
+                        "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                .requestMatchers("/api/auth/**").authenticated()
                 .requestMatchers("/api/test/public").permitAll()
 
                 // ── Admin only: quản lý user, cấu hình hệ thống ──
@@ -99,6 +104,8 @@ public class SecurityConfig {
                         "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")
 
                 // ── Tài chính: ADMIN, SALES_MANAGER, ACCOUNTANT ──
+                .requestMatchers("/api/finance/cost-price/**", "/api/finance/profit-margin/**")
+                        .hasRole("SALES_MANAGER")
                 .requestMatchers("/api/finance/**").hasAnyRole(
                         "ADMIN", "SALES_MANAGER", "ACCOUNTANT")
 
@@ -106,8 +113,10 @@ public class SecurityConfig {
                 // Chi tiết loại báo cáo dùng @PreAuthorize
                 .requestMatchers("/api/reports/**").authenticated()
 
-                // Tất cả request khác phải đăng nhập
-                .anyRequest().authenticated()
+                .requestMatchers("/api/test/**").authenticated()
+
+                // Endpoint mới không được khai báo bị từ chối mặc định.
+                .anyRequest().denyAll()
             )
 
             .authenticationProvider(authenticationProvider())

@@ -21,7 +21,8 @@ public class RegisterRequest {
     private String email;
 
     @NotBlank(message = "Mật khẩu không được để trống")
-    @Size(min = 6, max = 100, message = "Mật khẩu phải từ 6-100 ký tự")
+    @Size(min = 8, max = 100, message = "Mật khẩu phải từ 8-100 ký tự")
+    @Pattern(regexp = "^(?=.*[a-zA-Z])(?=.*\\d).+$", message = "Mật khẩu phải có cả chữ và số")
     private String password;
 
     @Size(max = 100, message = "Họ tên tối đa 100 ký tự")

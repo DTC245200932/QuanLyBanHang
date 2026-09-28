@@ -95,6 +95,10 @@ const Auth = (() => {
             email: data.email,
             fullName: data.fullName,
             roles: data.roles,
+            permissions: data.permissions || [],
+            warehouses: data.warehouses || [],
+            territories: data.territories || [],
+            mustChangePassword: Boolean(data.mustChangePassword),
           }),
         );
         return true;
@@ -135,7 +139,7 @@ const Auth = (() => {
       "sessionMessage",
       "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
     );
-    window.location.href = "index.html";
+    window.location.href = getLoginPageUrl();
   }
 
   // ── Logout (S1-02) ──
@@ -150,6 +154,7 @@ const Auth = (() => {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({ refreshToken: getRefreshToken() }),
         });
       } catch {
         // Ignore errors — still clear local session
@@ -157,7 +162,7 @@ const Auth = (() => {
     }
 
     clearSession();
-    window.location.href = "index.html";
+    window.location.href = getLoginPageUrl();
   }
 
   // ── Authenticated fetch helper ──
@@ -208,6 +213,15 @@ const Auth = (() => {
       }
     }
 
+    if (response.status === 403) {
+      const message = await response.clone().json().catch(() => null);
+      sessionStorage.setItem(
+        "errorMessage",
+        message?.message || "Bạn không có quyền truy cập chức năng này.",
+      );
+      window.location.href = getErrorPageUrl(403);
+    }
+
     return response;
   }
 
@@ -215,7 +229,7 @@ const Auth = (() => {
 
   function requireLogin() {
     if (!isLoggedIn()) {
-      window.location.href = "index.html";
+      window.location.href = getLoginPageUrl();
       return false;
     }
 
@@ -243,6 +257,19 @@ const Auth = (() => {
     return roles.some((r) => user?.roles?.includes(r));
   }
 
+  function hasPermission(permission) {
+    return getUser()?.permissions?.includes(permission) || false;
+  }
+
+  function getErrorPageUrl(status) {
+    const inAdmin = window.location.pathname.includes("/admin/");
+    return `${inAdmin ? "../" : ""}error.html?status=${status}`;
+  }
+
+  function getLoginPageUrl() {
+    return window.location.pathname.includes("/admin/") ? "../index.html" : "index.html";
+  }
+
   // ── Public API ──
   return {
     getAccessToken,
@@ -254,6 +281,7 @@ const Auth = (() => {
     requireLogin,
     hasRole,
     hasAnyRole,
+    hasPermission,
     clearSession,
     API_BASE,
   };

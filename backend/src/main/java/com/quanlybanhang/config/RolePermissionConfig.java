@@ -25,8 +25,11 @@ public class RolePermissionConfig {
 
     public RolePermissionConfig() {
         rolePermissions = new EnumMap<>(ERole.class);
+        initDefaultPermissions();
+    }
 
-        // ── ADMIN: toàn quyền ──
+    private void initDefaultPermissions() {
+        // ── ADMIN: toàn quyền quản trị ──
         EnumSet<Permission> adminPermissions = EnumSet.allOf(Permission.class);
         // Giá vốn và biên lợi nhuận là dữ liệu nghiệp vụ riêng của Quản lý kinh doanh.
         adminPermissions.remove(FINANCE_VIEW_COST_PRICE);
@@ -44,7 +47,7 @@ public class RolePermissionConfig {
                 REPORT_SALES, REPORT_INVENTORY, REPORT_FINANCE
         ));
 
-        // ── WAREHOUSE_MANAGER: quản lý kho — phê duyệt nhập/xuất ──
+        // ── WAREHOUSE_MANAGER: quản lý kho — phê duyệt nhập/xuất, điều chỉnh tồn kho ──
         rolePermissions.put(ERole.ROLE_WAREHOUSE_MANAGER, EnumSet.of(
                 PRODUCT_VIEW,
                 ORDER_VIEW,
@@ -53,7 +56,7 @@ public class RolePermissionConfig {
                 REPORT_INVENTORY
         ));
 
-        // ── SALES: nhân viên kinh doanh — tạo đơn, quản lý khách ──
+        // ── SALES: nhân viên kinh doanh — tạo đơn, quản lý khách, không sửa tồn kho, không xem giá vốn ──
         rolePermissions.put(ERole.ROLE_SALES, EnumSet.of(
                 PRODUCT_VIEW,
                 ORDER_VIEW, ORDER_CREATE, ORDER_EDIT,
@@ -61,14 +64,14 @@ public class RolePermissionConfig {
                 REPORT_SALES
         ));
 
-        // ── WAREHOUSE_STAFF: thủ kho — nhập/xuất kho, không thấy giá vốn ──
+        // ── WAREHOUSE_STAFF: thủ kho — nhập/xuất kho, không sửa tồn kho, không thấy giá vốn ──
         rolePermissions.put(ERole.ROLE_WAREHOUSE_STAFF, EnumSet.of(
                 PRODUCT_VIEW,
                 ORDER_VIEW,
                 WAREHOUSE_VIEW, WAREHOUSE_IMPORT, WAREHOUSE_EXPORT
         ));
 
-        // ── ACCOUNTANT: kế toán — báo cáo tài chính, công nợ ──
+        // ── ACCOUNTANT: kế toán — báo cáo tài chính, công nợ, không thấy giá vốn ──
         rolePermissions.put(ERole.ROLE_ACCOUNTANT, EnumSet.of(
                 PRODUCT_VIEW,
                 ORDER_VIEW,
@@ -85,6 +88,45 @@ public class RolePermissionConfig {
                 CUSTOMER_VIEW,
                 REPORT_SALES, REPORT_INVENTORY
         ));
+    }
+
+    /**
+     * Cập nhật danh sách quyền cho một vai trò, đảm bảo các quy tắc nghiệp vụ cốt lõi:
+     * 1. Giá vốn và biên lợi nhuận CHỈ lộ ra với vai trò Quản lý kinh doanh (ROLE_SALES_MANAGER).
+     * 2. Nhân viên kinh doanh (ROLE_SALES) KHÔNG được sửa điều chỉnh tồn kho (WAREHOUSE_ADJUST).
+     */
+    public synchronized void updateRolePermissions(ERole role, Set<Permission> newPermissions) {
+        if (role == null) {
+            throw new IllegalArgumentException("Vai trò không được để trống");
+        }
+        if (newPermissions == null) {
+            newPermissions = Collections.emptySet();
+        }
+
+        // Quy tắc: Giá vốn và biên lợi nhuận chỉ dành cho Quản lý kinh doanh
+        if (role != ERole.ROLE_SALES_MANAGER) {
+            if (newPermissions.contains(FINANCE_VIEW_COST_PRICE) || newPermissions.contains(FINANCE_VIEW_PROFIT_MARGIN)) {
+                throw new IllegalArgumentException("Giá vốn và biên lợi nhuận chỉ được phép cấp cho vai trò Quản lý kinh doanh");
+            }
+        }
+
+        // Quy tắc: Nhân viên kinh doanh không được sửa tồn kho
+        if (role == ERole.ROLE_SALES && newPermissions.contains(WAREHOUSE_ADJUST)) {
+            throw new IllegalArgumentException("Nhân viên kinh doanh không được phép sửa tồn kho");
+        }
+
+        EnumSet<Permission> perms = newPermissions.isEmpty()
+                ? EnumSet.noneOf(Permission.class)
+                : EnumSet.copyOf(newPermissions);
+        rolePermissions.put(role, perms);
+    }
+
+    /**
+     * Khôi phục ma trận phân quyền về mặc định ban đầu.
+     */
+    public synchronized void resetToDefault() {
+        rolePermissions.clear();
+        initDefaultPermissions();
     }
 
     /**

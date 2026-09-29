@@ -6,8 +6,12 @@ com\quanlybanhang\service\AuthService.class
 com\quanlybanhang\dto\response\JwtResponse$JwtResponseBuilder.class
 com\quanlybanhang\repository\UserRepository.class
 com\quanlybanhang\config\SecurityConfig.class
+com\quanlybanhang\service\UserService.class
 com\quanlybanhang\dto\request\ResetPasswordRequest.class
 com\quanlybanhang\QuanLyBanHangApplication.class
+com\quanlybanhang\dto\request\UserProfileRequest.class
+com\quanlybanhang\dto\response\UserProfileResponse.class
+com\quanlybanhang\dto\response\UserProfileResponse$UserProfileResponseBuilder.class
 com\quanlybanhang\dto\response\ApiResponse.class
 com\quanlybanhang\security\JwtAuthenticationFilter.class
 com\quanlybanhang\dto\request\ForgotPasswordRequest.class
@@ -17,12 +21,14 @@ com\quanlybanhang\config\DataInitializer.class
 com\quanlybanhang\controller\TestController.class
 com\quanlybanhang\dto\request\LoginRequest.class
 com\quanlybanhang\security\AuthEntryPointJwt.class
+com\quanlybanhang\service\UserServiceImpl.class
 com\quanlybanhang\security\JwtUtils.class
 com\quanlybanhang\dto\response\JwtResponse.class
 com\quanlybanhang\repository\RoleRepository.class
 com\quanlybanhang\security\UserDetailsServiceImpl.class
 com\quanlybanhang\model\User.class
 com\quanlybanhang\model\Role.class
+com\quanlybanhang\controller\UserController.class
 com\quanlybanhang\exception\GlobalExceptionHandler.class
 com\quanlybanhang\config\CorsConfig.class
 com\quanlybanhang\controller\AuthController.class

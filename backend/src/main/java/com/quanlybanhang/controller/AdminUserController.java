@@ -92,4 +92,18 @@ public class AdminUserController {
                 matrix.put(role.name(), permissions.stream().map(Permission::name).sorted().toList()));
         return ApiResponse.success("Ma trận phân quyền", matrix);
     }
+
+    @PutMapping("/permissions/{role}")
+    public ApiResponse updatePermissions(@PathVariable ERole role,
+                                         @RequestBody java.util.Set<Permission> permissions) {
+        rolePermissionConfig.updateRolePermissions(role, permissions);
+        return ApiResponse.success("Đã cập nhật quyền cho vai trò " + role.name(),
+                rolePermissionConfig.getPermissions(role).stream().map(Permission::name).sorted().toList());
+    }
+
+    @PostMapping("/permissions/reset")
+    public ApiResponse resetPermissions() {
+        rolePermissionConfig.resetToDefault();
+        return ApiResponse.success("Đã khôi phục ma trận phân quyền về mặc định", null);
+    }
 }

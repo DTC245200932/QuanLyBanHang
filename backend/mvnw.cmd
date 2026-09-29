@@ -3,6 +3,7 @@
 @echo off
 
 set MAVEN_PROJECTBASEDIR=%~dp0
+if "%MAVEN_PROJECTBASEDIR:~-1%"=="\" set MAVEN_PROJECTBASEDIR=%MAVEN_PROJECTBASEDIR:~0,-1%
 set MAVEN_CMD_LINE_ARGS=%*
 
 for %%i in ("%MAVEN_PROJECTBASEDIR%\.mvn\wrapper\maven-wrapper.properties") do (
@@ -19,6 +20,10 @@ REM Use Maven wrapper JAR if available, otherwise download Maven
 where mvn >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     mvn %MAVEN_CMD_LINE_ARGS%
+) else if exist "%USERPROFILE%\.m2\wrapper\dists\apache-maven-3.9.6-bin\3311e1d4\apache-maven-3.9.6\bin\mvn.cmd" (
+    call "%USERPROFILE%\.m2\wrapper\dists\apache-maven-3.9.6-bin\3311e1d4\apache-maven-3.9.6\bin\mvn.cmd" %MAVEN_CMD_LINE_ARGS%
+) else if exist "%MAVEN_PROJECTBASEDIR%\.mvn\wrapper\maven-wrapper.jar" (
+    java -Dmaven.multiModuleProjectDirectory="%MAVEN_PROJECTBASEDIR%" -cp "%MAVEN_PROJECTBASEDIR%\.mvn\wrapper\maven-wrapper.jar" org.apache.maven.wrapper.MavenWrapperMain %MAVEN_CMD_LINE_ARGS%
 ) else (
     echo Maven not found. Please install Maven or use: mvnw.cmd
     echo Download Maven from: https://maven.apache.org/download.cgi

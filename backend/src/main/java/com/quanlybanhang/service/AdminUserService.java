@@ -117,12 +117,13 @@ public class AdminUserService {
 
     @Transactional
     public UserResponse lock(Long id, String reason, String actingUsername) {
+        String normalizedReason = validateLockReason(reason);
         User user = findUser(id);
         if (user.getUsername().equals(actingUsername)) {
             throw new IllegalArgumentException("Bạn không thể tự khoá tài khoản đang đăng nhập");
         }
         user.setActive(false);
-        user.setLockReason(reason.trim());
+        user.setLockReason(normalizedReason);
         user.setTokenVersion(user.getTokenVersion() + 1);
 
         List<Dealer> dealers = dealerRepository.findByAssignedUserId(id);
@@ -232,5 +233,16 @@ public class AdminUserService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String validateLockReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Bắt buộc nhập lý do khoá");
+        }
+        String normalized = reason.trim();
+        if (normalized.length() > 500) {
+            throw new IllegalArgumentException("Lý do khoá tối đa 500 ký tự");
+        }
+        return normalized;
     }
 }

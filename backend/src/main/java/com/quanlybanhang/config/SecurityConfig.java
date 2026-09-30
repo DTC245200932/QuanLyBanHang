@@ -100,8 +100,9 @@ public class SecurityConfig {
                 // Chi tiết dùng @PreAuthorize trên từng method
                 .requestMatchers("/api/orders/**").authenticated()
 
-                // ── Sản phẩm: mọi role đã đăng nhập ──
+                // ── Sản phẩm & Nhóm hàng: mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
                 .requestMatchers("/api/products/**").authenticated()
+                .requestMatchers("/api/categories/**").authenticated()
 
                 // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
                 .requestMatchers("/api/customers/**").hasAnyRole(

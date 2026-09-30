@@ -94,6 +94,25 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Xử lý lỗi không thể xóa nhóm hàng khi còn sản phẩm (S2-06).
+     */
+    @ExceptionHandler(CategoryNotEmptyException.class)
+    public ResponseEntity<ApiResponse> handleCategoryNotEmpty(CategoryNotEmptyException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Xử lý lỗi không có quyền truy cập (@PreAuthorize hoặc AccessDeniedException).
+     * Trả về 403 Forbidden.
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("Bạn không có quyền thực hiện chức năng này"));
+    }
+
+    /**
      * Xử lý các RuntimeException chung.
      */
     @ExceptionHandler(RuntimeException.class)

@@ -230,6 +230,8 @@ public class AuthService {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .fullName(user.getFullName())
+                .avatarUrl(AvatarService.avatarUrl(user, false))
+                .avatarThumbnailUrl(AvatarService.avatarUrl(user, true))
                 .roles(roleEnums.stream().map(Enum::name).sorted().toList())
                 .permissions(rolePermissionConfig.getPermissions(roleEnums).stream()
                         .map(Enum::name).sorted().toList())

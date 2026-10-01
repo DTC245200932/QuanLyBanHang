@@ -71,6 +71,26 @@ public class Product {
     private String unit = "cái";
 
     /**
+     * Quy cách đóng gói (S2-05): Thùng 24 lon, Hộp 10 vỉ, Lốc 6 chai...
+     */
+    @Column(name = "packing_specification", length = 255)
+    private String packingSpecification;
+
+    /**
+     * Đường dẫn / URL ảnh sản phẩm (S2-05).
+     */
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
+    /**
+     * Đánh dấu sản phẩm đã phát sinh giao dịch bán/nhập hàng hay chưa (S2-05).
+     * Sản phẩm đã phát sinh giao dịch thì KHÔNG xoá được, chỉ ngừng kinh doanh.
+     */
+    @Column(name = "has_transactions", nullable = false)
+    @Builder.Default
+    private Boolean hasTransactions = false;
+
+    /**
      * Danh sách các đơn vị quy đổi của SKU (S2-07).
      * Ví dụ: SKU có đơn vị cơ sở "lon", có thể thêm "lốc" (hệ số 6), "thùng" (hệ số 24).
      */
@@ -103,6 +123,19 @@ public class Product {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    public String getSku() {
+        return this.code;
+    }
+
+    public void setSku(String sku) {
+        this.code = sku;
+    }
+
+    public boolean hasTransactions() {
+        return Boolean.TRUE.equals(this.hasTransactions) ||
+                (this.revenue != null && this.revenue.compareTo(BigDecimal.ZERO) > 0);
+    }
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
@@ -119,10 +152,18 @@ public class Product {
         if (this.revenue == null) {
             this.revenue = BigDecimal.ZERO;
         }
+        if (this.hasTransactions == null) {
+            this.hasTransactions = this.revenue.compareTo(BigDecimal.ZERO) > 0;
+        } else if (this.revenue.compareTo(BigDecimal.ZERO) > 0) {
+            this.hasTransactions = true;
+        }
     }
 
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
+        if (this.revenue != null && this.revenue.compareTo(BigDecimal.ZERO) > 0) {
+            this.hasTransactions = true;
+        }
     }
 }

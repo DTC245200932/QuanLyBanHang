@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nhóm hàng | SaleStock</title><link rel="icon" href="assets/brand-mark.svg"><link rel="stylesheet" href="css/dashboard.css"><link rel="stylesheet" href="css/product-groups.css"></head>
+<body><div class="admin-shell"><header class="admin-topbar"><a class="admin-brand" href="dashboard.html"><img src="assets/brand-mark.svg" alt=""><span>SaleStock</span></a><a class="back-dashboard" href="dashboard.html">Về tổng quan</a></header>
+<main class="admin-main">
+<section class="admin-heading">
+  <div>
+    <p>Kinh doanh</p>
+    <h1>Nhóm hàng</h1>
+    <span>Quản lý danh mục nhóm hàng nhiều cấp để phân tích doanh số theo ngành.</span>
+  </div>
+</section>
+
+<div class="pg-action-bar">
+  <div class="pg-search-wrap">
+    <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="search" id="pg-search" placeholder="Tìm nhóm hàng…" autocomplete="off">
+  </div>
+  <button class="btn btn--primary" id="add-root-group">Thêm nhóm gốc</button>
+</div>
+
+<div class="pg-layout">
+  <!-- LEFT: Tree panel -->
+  <aside class="pg-tree-panel">
+    <div id="tree-container" class="pg-tree">
+      <div class="pg-empty">Đang tải danh mục…</div>
+    </div>
+  </aside>
+
+  <!-- RIGHT: Detail panel -->
+  <section class="pg-detail-panel" id="detail-panel">
+    <div class="pg-empty pg-empty--detail">
+      <svg width="48" height="48" viewBox="0 0 24 24" stroke-width="1.2"><path d="M3 6h18M3 12h12M3 18h8"/></svg>
+      <p>Chọn một nhóm hàng để xem chi tiết</p>
+    </div>
+  </section>
+</div>
+</main></div>
+
+<!-- Modal: Thêm / Sửa nhóm -->
+<div class="modal-overlay" id="group-modal" hidden>
+  <div class="modal" role="dialog" aria-labelledby="group-modal-title">
+    <div class="modal__header">
+      <div><h2 id="group-modal-title">Thêm nhóm hàng</h2><p id="group-modal-sub">Tạo nhóm hàng mới trong danh mục.</p></div>
+      <button class="modal__close" data-close aria-label="Đóng">×</button>
+    </div>
+    <form class="modal__body" id="group-form">
+      <input type="hidden" id="group-id">
+      <div class="form-field">
+        <label for="group-name">Tên nhóm <span class="req">*</span></label>
+        <input id="group-name" type="text" required maxlength="120" placeholder="Ví dụ: Thực phẩm, Đồ khô, Gạo…">
+      </div>
+      <div class="form-field">
+        <label for="group-parent">Nhóm cha</label>
+        <select id="group-parent">
+          <option value="">— Nhóm gốc (cấp 1) —</option>
+        </select>
+        <small>Để trống nếu đây là nhóm cấp cao nhất.</small>
+      </div>
+      <div class="form-field">
+        <label for="group-desc">Mô tả</label>
+        <textarea id="group-desc" rows="3" maxlength="500" placeholder="Mô tả ngắn về nhóm hàng này…"></textarea>
+      </div>
+      <div id="group-form-message" class="form-message" hidden></div>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--secondary" data-close>Huỷ</button>
+        <button type="submit" class="btn btn--primary" id="save-group">Lưu nhóm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Chuyển nhóm sản phẩm -->
+<div class="modal-overlay" id="move-modal" hidden>
+  <div class="modal" role="dialog" aria-labelledby="move-modal-title">
+    <div class="modal__header">
+      <div><h2 id="move-modal-title">Chuyển sản phẩm sang nhóm khác</h2><p id="move-product-name" class="modal-subtitle"></p></div>
+      <button class="modal__close" data-close-move aria-label="Đóng">×</button>
+    </div>
+    <div class="modal__body">
+      <input type="hidden" id="move-product-id">
+      <div class="form-field">
+        <label for="move-target-group">Nhóm đích <span class="req">*</span></label>
+        <select id="move-target-group">
+          <option value="">— Chọn nhóm —</option>
+        </select>
+      </div>
+      <div id="move-form-message" class="form-message" hidden></div>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--secondary" data-close-move>Huỷ</button>
+        <button type="button" class="btn btn--primary" id="confirm-move">Chuyển nhóm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script src="js/auth.js"></script>
+<script src="js/menu-config.js"></script>
+<script src="js/product-groups.js"></script>
+</body></html>

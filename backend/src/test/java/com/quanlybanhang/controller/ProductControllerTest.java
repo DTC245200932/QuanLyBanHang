@@ -149,4 +149,38 @@ class ProductControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
     }
+
+    @Test
+    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @DisplayName("DELETE /api/products/{id} thất bại khi sản phẩm đã phát sinh giao dịch -> 400 Bad Request")
+    void deleteProduct_HasTransactions_Returns400() throws Exception {
+        org.mockito.Mockito.doThrow(new com.quanlybanhang.exception.ProductHasTransactionsException("SP01", "iPhone 15"))
+                .when(productService).delete(1L);
+
+        mockMvc.perform(delete("/api/products/1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("đã phát sinh giao dịch không thể xoá, chỉ có thể chuyển sang trạng thái ngừng kinh doanh")));
+    }
+
+    @Test
+    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @DisplayName("PATCH /api/products/{id}/status chuyển trạng thái ngừng kinh doanh -> 200 OK")
+    void updateProductStatus_Success() throws Exception {
+        ProductResponse response = ProductResponse.builder()
+                .id(1L)
+                .code("SP01")
+                .active(false)
+                .status("Ngừng kinh doanh")
+                .build();
+
+        when(productService.updateStatus(1L, false)).thenReturn(response);
+
+        mockMvc.perform(patch("/api/products/1/status")
+                        .param("active", "false"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.active").value(false))
+                .andExpect(jsonPath("$.data.status").value("Ngừng kinh doanh"));
+    }
 }

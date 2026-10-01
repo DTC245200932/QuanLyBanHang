@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Quản lý danh mục sản phẩm dùng chung trong hệ thống SaleStock."
+    />
+    <title>Danh mục sản phẩm | SaleStock</title>
+    <link rel="icon" href="assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/dashboard.css" />
+    <link rel="stylesheet" href="css/products.css" />
+  </head>
+  <body>
+    <div class="catalog-shell">
+      <header class="catalog-topbar">
+        <a class="catalog-brand" href="dashboard.html">
+          <img src="assets/brand-mark.svg" alt="" />
+          <span>SaleStock</span>
+        </a>
+        <a class="catalog-back" href="dashboard.html">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+          Về tổng quan
+        </a>
+      </header>
+
+      <main class="catalog-main">
+        <section class="catalog-heading" aria-labelledby="catalog-title">
+          <div>
+            <p class="catalog-heading__context">Danh mục dùng chung</p>
+            <h1 id="catalog-title">Sản phẩm</h1>
+            <span>
+              Chuẩn hoá mã SKU, tên gọi và đơn vị tính để mọi bộ phận dùng cùng một dữ liệu.
+            </span>
+          </div>
+          <button class="btn btn--primary" id="create-product" type="button" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Thêm sản phẩm
+          </button>
+        </section>
+
+        <div class="catalog-access-note" id="catalog-access-note" hidden>
+          Bạn đang xem danh mục ở chế độ chỉ đọc. Chỉ Quản lý kinh doanh được cập nhật sản phẩm.
+        </div>
+
+        <form class="catalog-filters" id="product-filters">
+          <label class="catalog-filter catalog-filter--search">
+            <span>Tìm sản phẩm</span>
+            <div class="catalog-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-4-4" />
+              </svg>
+              <input id="product-search" type="search" placeholder="SKU hoặc tên sản phẩm" />
+            </div>
+          </label>
+          <label class="catalog-filter">
+            <span>Nhóm hàng</span>
+            <select id="category-filter">
+              <option value="">Tất cả nhóm hàng</option>
+            </select>
+          </label>
+          <label class="catalog-filter">
+            <span>Trạng thái</span>
+            <select id="status-filter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="active">Đang kinh doanh</option>
+              <option value="inactive">Ngừng kinh doanh</option>
+            </select>
+          </label>
+          <button class="btn btn--secondary" id="clear-filters" type="button">Đặt lại</button>
+        </form>
+
+        <section class="catalog-panel" aria-live="polite">
+          <div class="catalog-panel__meta">
+            <p id="product-summary">Đang tải danh mục…</p>
+            <span id="category-summary"></span>
+          </div>
+          <div class="catalog-table-wrap">
+            <table class="catalog-table">
+              <thead>
+                <tr>
+                  <th>Sản phẩm</th>
+                  <th>Nhóm hàng</th>
+                  <th>Đơn vị / Quy cách</th>
+                  <th>Giá bán</th>
+                  <th class="cost-column" hidden>Giá vốn</th>
+                  <th>Trạng thái</th>
+                  <th class="catalog-table__actions"></th>
+                </tr>
+              </thead>
+              <tbody id="products-body">
+                <tr>
+                  <td class="catalog-empty" colspan="7">Đang tải danh sách sản phẩm…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-overlay" id="product-modal" hidden>
+      <div class="modal modal--product" role="dialog" aria-labelledby="product-modal-title">
+        <div class="modal__header product-modal__header">
+          <div>
+            <h2 id="product-modal-title">Thêm sản phẩm</h2>
+            <p>Mã SKU là định danh dùng chung và không được trùng.</p>
+          </div>
+          <button class="modal__close" data-close-product type="button" aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <form class="modal__body product-form" id="product-form" novalidate>
+          <input id="product-id" type="hidden" />
+          <div class="product-form__grid">
+            <label class="form-field">
+              <span>Mã SKU</span>
+              <input id="product-code" maxlength="50" autocomplete="off" required />
+              <small>Tối đa 50 ký tự, tự chuyển thành chữ in hoa.</small>
+            </label>
+            <label class="form-field">
+              <span>Tên sản phẩm</span>
+              <input id="product-name" maxlength="255" required />
+            </label>
+            <label class="form-field">
+              <span>Nhóm hàng</span>
+              <select id="product-category" required>
+                <option value="">Chọn nhóm hàng</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span>Đơn vị tính cơ sở</span>
+              <input id="product-unit" maxlength="50" placeholder="Cái, hộp, kg…" required />
+            </label>
+            <label class="form-field">
+              <span>Giá bán</span>
+              <input id="product-price" type="number" min="0" step="1000" value="0" required />
+            </label>
+            <label class="form-field cost-field">
+              <span>Giá vốn</span>
+              <input id="product-cost" type="number" min="0" step="1000" required />
+              <small id="cost-help">Chỉ Quản lý kinh doanh được xem và cập nhật.</small>
+            </label>
+            <label class="form-field">
+              <span>Trạng thái</span>
+              <select id="product-active">
+                <option value="true">Đang kinh doanh</option>
+                <option value="false">Ngừng kinh doanh</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="form-field product-form__description">
+            <span>Mô tả</span>
+            <textarea id="product-description" maxlength="1000" rows="3"></textarea>
+            <small>Tối đa 1.000 ký tự.</small>
+          </label>
+
+          <div class="product-form__message" id="product-form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <button class="btn btn--secondary" data-close-product type="button">Huỷ</button>
+            <button class="btn btn--primary" id="save-product" type="submit">Lưu sản phẩm</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/products.js"></script>
+  </body>
+</html>

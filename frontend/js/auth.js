@@ -286,12 +286,13 @@ const Auth = (() => {
   }
 
   function getErrorPageUrl(status) {
-    const inAdmin = window.location.pathname.includes("/admin/");
-    return `${inAdmin ? "../" : ""}error.html?status=${status}`;
+    const inSubdir = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/warehouse/");
+    return `${inSubdir ? "../" : ""}error.html?status=${status}`;
   }
 
   function getLoginPageUrl() {
-    return window.location.pathname.includes("/admin/") ? "../index.html" : "index.html";
+    const inSubdir = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/warehouse/");
+    return inSubdir ? "../index.html" : "index.html";
   }
 
   // ── Public API ──

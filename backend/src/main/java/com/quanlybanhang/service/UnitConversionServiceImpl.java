@@ -2,11 +2,14 @@ package com.quanlybanhang.service;
 
 import com.quanlybanhang.dto.request.UnitConversionRequest;
 import com.quanlybanhang.dto.response.UnitConversionResponse;
+import com.quanlybanhang.model.Permission;
 import com.quanlybanhang.model.Product;
 import com.quanlybanhang.model.UnitConversion;
 import com.quanlybanhang.repository.ProductRepository;
 import com.quanlybanhang.repository.UnitConversionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,7 +44,7 @@ public class UnitConversionServiceImpl implements UnitConversionService {
                 .baseUnit(product.getUnit())
                 .isBaseUnit(true)
                 .price(product.getPrice())
-                .costPrice(product.getCostPrice())
+                .costPrice(isSalesManager() ? product.getCostPrice() : null)
                 .description("Đơn vị cơ sở của sản phẩm")
                 .build());
 
@@ -80,7 +83,7 @@ public class UnitConversionServiceImpl implements UnitConversionService {
                 .conversionFactor(request.getConversionFactor())
                 .isBaseUnit(false)
                 .price(request.getPrice())
-                .costPrice(request.getCostPrice())
+                .costPrice(isSalesManager() ? request.getCostPrice() : null)
                 .barcode(request.getBarcode())
                 .description(request.getDescription())
                 .build();
@@ -119,7 +122,9 @@ public class UnitConversionServiceImpl implements UnitConversionService {
         conversion.setUnitName(unitName);
         conversion.setConversionFactor(request.getConversionFactor());
         conversion.setPrice(request.getPrice());
-        conversion.setCostPrice(request.getCostPrice());
+        if (isSalesManager()) {
+            conversion.setCostPrice(request.getCostPrice());
+        }
         conversion.setBarcode(request.getBarcode());
         conversion.setDescription(request.getDescription());
 
@@ -195,11 +200,21 @@ public class UnitConversionServiceImpl implements UnitConversionService {
                 .baseUnit(conversion.getProduct() != null ? conversion.getProduct().getUnit() : null)
                 .isBaseUnit(conversion.getIsBaseUnit() != null ? conversion.getIsBaseUnit() : false)
                 .price(conversion.getPrice())
-                .costPrice(conversion.getCostPrice())
+                .costPrice(isSalesManager() ? conversion.getCostPrice() : null)
                 .barcode(conversion.getBarcode())
                 .description(conversion.getDescription())
                 .createdAt(conversion.getCreatedAt())
                 .updatedAt(conversion.getUpdatedAt())
                 .build();
+    }
+
+    private boolean isSalesManager() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        return authentication.getAuthorities().stream().anyMatch(authority ->
+                "ROLE_SALES_MANAGER".equals(authority.getAuthority()) ||
+                        Permission.FINANCE_VIEW_COST_PRICE.name().equals(authority.getAuthority()));
     }
 }

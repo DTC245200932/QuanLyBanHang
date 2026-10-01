@@ -8,12 +8,16 @@ import com.quanlybanhang.model.UnitConversion;
 import com.quanlybanhang.repository.ProductRepository;
 import com.quanlybanhang.repository.UnitConversionRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -41,6 +45,7 @@ class UnitConversionServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         Category category = Category.builder().id(1L).code("CAT-BEER").name("Bia").build();
         biaHeineken = Product.builder()
                 .id(10L)
@@ -50,6 +55,11 @@ class UnitConversionServiceTest {
                 .price(new BigDecimal("19000"))
                 .category(category)
                 .build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -88,6 +98,29 @@ class UnitConversionServiceTest {
 
         assertThat(list.get(2).getUnitName()).isEqualTo("thùng");
         assertThat(list.get(2).getConversionFactor()).isEqualByComparingTo(new BigDecimal("24.0000"));
+    }
+
+    @Test
+    @DisplayName("Nhân viên kho không được xem giá vốn của đơn vị cơ sở hoặc đơn vị quy đổi")
+    void getConversions_WarehouseStaff_HidesCostPrice() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("warehouse.staff", "pass",
+                        List.of(new SimpleGrantedAuthority("ROLE_WAREHOUSE_STAFF"))));
+        biaHeineken.setCostPrice(new BigDecimal("15000"));
+        UnitConversion thung = UnitConversion.builder()
+                .id(102L)
+                .product(biaHeineken)
+                .unitName("thùng")
+                .conversionFactor(new BigDecimal("24.0000"))
+                .costPrice(new BigDecimal("355000"))
+                .build();
+
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionRepository.findByProductIdOrderByConversionFactorAsc(10L)).thenReturn(List.of(thung));
+
+        List<UnitConversionResponse> list = unitConversionService.getConversionsByProductId(10L);
+
+        assertThat(list).extracting(UnitConversionResponse::getCostPrice).containsOnlyNulls();
     }
 
     @Test

@@ -227,7 +227,7 @@ public class DataInitializer implements CommandLineRunner {
                 .active(true)
                 .build());
 
-        // Sản phẩm mẫu gắn với nhóm hàng và có doanh số
+        // Sản phẩm mẫu gắn với nhóm hàng và có doanh số (S2-05 & S2-06)
         productRepository.save(Product.builder()
                 .code("SP-IP15PM")
                 .name("iPhone 15 Pro Max 256GB")
@@ -236,6 +236,8 @@ public class DataInitializer implements CommandLineRunner {
                 .costPrice(new BigDecimal("24000000"))
                 .revenue(new BigDecimal("150000000"))
                 .unit("chiếc")
+                .packingSpecification("Hộp 1 máy kèm cáp sạc USB-C")
+                .hasTransactions(true)
                 .active(true)
                 .build());
 
@@ -247,6 +249,8 @@ public class DataInitializer implements CommandLineRunner {
                 .costPrice(new BigDecimal("21500000"))
                 .revenue(new BigDecimal("120000000"))
                 .unit("chiếc")
+                .packingSpecification("Hộp 1 máy kèm bút S-Pen")
+                .hasTransactions(true)
                 .active(true)
                 .build());
 
@@ -257,7 +261,9 @@ public class DataInitializer implements CommandLineRunner {
                 .price(new BigDecimal("650000"))
                 .costPrice(new BigDecimal("400000"))
                 .revenue(new BigDecimal("30000000"))
-                .unit("chiếc")
+                .unit("cái")
+                .packingSpecification("Hộp 1 củ sạc 3 cổng")
+                .hasTransactions(true)
                 .active(true)
                 .build());
 
@@ -269,9 +275,25 @@ public class DataInitializer implements CommandLineRunner {
                 .costPrice(new BigDecimal("3200000"))
                 .revenue(new BigDecimal("45000000"))
                 .unit("chiếc")
+                .packingSpecification("Thùng 1 nồi kèm vỉ nướng")
+                .hasTransactions(true)
                 .active(true)
                 .build());
 
-        logger.info("Đã khởi tạo cây nhóm hàng 3 cấp và các sản phẩm mẫu có doanh số cho S2-06");
+        // Sản phẩm mới chưa phát sinh giao dịch (để kiểm thử chức năng xoá)
+        productRepository.save(Product.builder()
+                .code("SP-TAI-NGHE-TEST")
+                .name("Tai nghe Bluetooth Không dây TWS")
+                .category(ncPhuKien)
+                .price(new BigDecimal("850000"))
+                .costPrice(new BigDecimal("500000"))
+                .revenue(BigDecimal.ZERO)
+                .unit("bộ")
+                .packingSpecification("Hộp 1 đôi kèm kén sạc và cáp")
+                .hasTransactions(false)
+                .active(true)
+                .build());
+
+        logger.info("Đã khởi tạo cây nhóm hàng 3 cấp và các sản phẩm mẫu có doanh số cho S2-05 và S2-06");
     }
 }

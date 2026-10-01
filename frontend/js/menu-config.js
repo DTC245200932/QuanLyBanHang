@@ -57,6 +57,14 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "product-groups",
+      label: "Nhóm hàng",
+      icon: '<path d="M3 6h18M3 12h12M3 18h8"/>',
+      href: "product-groups.html",
+      permission: "PRODUCT_GROUP_VIEW",
+      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_VIEWER"],
+    },
+    {
       id: "warehouse",
       section: "Kho hàng",
       label: "Tồn kho",

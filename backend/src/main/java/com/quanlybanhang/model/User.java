@@ -47,6 +47,19 @@ public class User {
     @Column(length = 15)
     private String phone;
 
+    /** Tên file ảnh đại diện vuông đã xử lý; file vật lý nằm trong avatar storage. */
+    @Column(length = 160)
+    private String avatarFileName;
+
+    /** Tên file thumbnail của ảnh đại diện. */
+    @Column(length = 160)
+    private String avatarThumbnailFileName;
+
+    @Column(length = 20)
+    private String avatarContentType;
+
+    private LocalDateTime avatarUpdatedAt;
+
     /**
      * Tài khoản có đang hoạt động không.
      * false = bị khoá bởi admin (S1-10).

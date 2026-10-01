@@ -1,6 +1,7 @@
 # Java / Maven build output
 *.class
 backend/target/
+backend/data/
 target/
 out/
 

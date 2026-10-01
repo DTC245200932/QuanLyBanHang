@@ -99,6 +99,8 @@ const Auth = (() => {
             warehouses: data.warehouses || [],
             territories: data.territories || [],
             mustChangePassword: Boolean(data.mustChangePassword),
+            avatarUrl: data.avatarUrl || null,
+            avatarThumbnailUrl: data.avatarThumbnailUrl || null,
           }),
         );
         return true;
@@ -183,11 +185,15 @@ const Auth = (() => {
       throw new Error("No access token");
     }
 
+    const isFormData = typeof FormData !== "undefined"
+      && options.body instanceof FormData;
     const headers = {
-      "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       ...options.headers,
     };
+    if (!isFormData && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
 
     const response = await fetch(
       url.startsWith("http") ? url : `${API_BASE}${url}`,
@@ -223,6 +229,24 @@ const Auth = (() => {
     }
 
     return response;
+  }
+
+  async function setProtectedImage(image, url) {
+    if (!image || !url) return false;
+    try {
+      const response = await apiFetch(url);
+      if (!response.ok) return false;
+      const blob = await response.blob();
+      if (!blob.type.startsWith("image/")) return false;
+      const previousUrl = image.dataset.objectUrl;
+      const objectUrl = URL.createObjectURL(blob);
+      image.src = objectUrl;
+      image.dataset.objectUrl = objectUrl;
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // ── Guard: require login ──
@@ -278,6 +302,7 @@ const Auth = (() => {
     isLoggedIn,
     logout,
     apiFetch,
+    setProtectedImage,
     requireLogin,
     hasRole,
     hasAnyRole,

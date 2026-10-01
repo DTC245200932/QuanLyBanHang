@@ -37,7 +37,16 @@
 
         <div class="sidebar__footer">
           <div class="sidebar__user" id="sidebar-user">
-            <div class="sidebar__avatar" id="user-avatar">A</div>
+            <button
+              class="sidebar__avatar"
+              id="btn-avatar"
+              type="button"
+              title="Cập nhật ảnh đại diện"
+              aria-label="Cập nhật ảnh đại diện"
+            >
+              <span id="user-avatar-fallback">A</span>
+              <img id="user-avatar-image" alt="" hidden />
+            </button>
             <div class="sidebar__user-info">
               <span class="sidebar__user-name" id="user-name">—</span>
               <span class="sidebar__user-role" id="user-role">—</span>
@@ -124,6 +133,49 @@
             <p>Chọn một mục từ menu bên trái để bắt đầu làm việc.</p>
           </div>
         </main>
+      </div>
+    </div>
+
+    <!-- ── Avatar Modal ── -->
+    <div class="modal-overlay" id="modal-avatar" hidden>
+      <div class="modal" role="dialog" aria-labelledby="modal-avatar-title">
+        <div class="modal__header">
+          <h2 id="modal-avatar-title">Cập nhật ảnh đại diện</h2>
+          <button class="modal__close" data-close-avatar aria-label="Đóng">
+            <svg viewBox="0 0 24 24">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form class="modal__body" id="form-avatar" novalidate>
+          <div class="avatar-editor__preview" aria-label="Xem trước ảnh đại diện">
+            <span id="avatar-preview-fallback">A</span>
+            <img id="avatar-preview-image" alt="Ảnh đại diện xem trước" hidden />
+          </div>
+
+          <div class="form-field avatar-editor__field">
+            <label for="avatar-file">Chọn ảnh</label>
+            <input
+              type="file"
+              id="avatar-file"
+              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+              required
+            />
+            <small>JPG, JPEG hoặc PNG; dung lượng tối đa 2MB. Ảnh sẽ được cắt vuông từ chính giữa.</small>
+          </div>
+
+          <div class="avatar-editor__message" id="avatar-message" role="alert" hidden></div>
+
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-avatar>
+              Huỷ
+            </button>
+            <button type="submit" class="btn btn--primary" id="btn-avatar-submit">
+              Lưu ảnh
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 

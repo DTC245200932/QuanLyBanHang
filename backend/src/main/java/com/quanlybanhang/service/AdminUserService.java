@@ -161,6 +161,8 @@ public class AdminUserService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .phone(user.getPhone())
+                .avatarUrl(AvatarService.avatarUrl(user, false))
+                .avatarThumbnailUrl(AvatarService.avatarUrl(user, true))
                 .active(user.getActive())
                 .lockReason(user.getLockReason())
                 .mustChangePassword(user.getMustChangePassword())

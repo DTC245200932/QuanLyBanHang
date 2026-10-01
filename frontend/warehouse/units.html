@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Quản lý đơn vị tính quy đổi và nhập xuất kho theo thùng/lốc/lon (S2-07) - SaleStock."
+    />
+    <title>Đơn vị tính quy đổi & Nhập xuất kho | SaleStock</title>
+    <link rel="icon" href="../assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../css/dashboard.css" />
+    <link rel="stylesheet" href="../css/warehouse-units.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ── Sidebar ── -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar__header">
+          <a class="sidebar__brand" href="../dashboard.html">
+            <img src="../assets/brand-mark.svg" alt="" class="sidebar__logo" />
+            <span class="sidebar__brand-name">SaleStock</span>
+          </a>
+          <button
+            class="sidebar__close"
+            id="sidebar-close"
+            aria-label="Đóng menu"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <nav class="sidebar__nav" id="sidebar-nav" aria-label="Menu chính">
+          <!-- Rendered dynamically by menu-config.js -->
+        </nav>
+
+        <div class="sidebar__footer">
+          <div class="sidebar__user" id="sidebar-user">
+            <div class="sidebar__avatar" id="user-avatar-fallback">K</div>
+            <img
+              id="user-avatar-image"
+              class="sidebar__avatar-image"
+              alt=""
+              hidden
+            />
+            <div class="sidebar__user-info">
+              <span class="sidebar__user-name" id="user-name">Thủ kho</span>
+              <span class="sidebar__user-role" id="user-role">Kho Tân Bình</span>
+            </div>
+          </div>
+          <button class="sidebar__logout" id="btn-logout" title="Đăng xuất">
+            <svg viewBox="0 0 24 24">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- ── Main Area ── -->
+      <div class="main-area">
+        <header class="topbar">
+          <button
+            class="topbar__menu-btn"
+            id="sidebar-toggle"
+            aria-label="Mở menu"
+          >
+            <svg viewBox="0 0 24 24">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+
+          <div class="topbar__breadcrumb">
+            <a href="../dashboard.html" class="topbar__crumb-link">Tổng quan</a>
+            <span class="topbar__crumb-sep">/</span>
+            <span>Kho hàng</span>
+            <span class="topbar__crumb-sep">/</span>
+            <span class="topbar__crumb-current">Đơn vị tính quy đổi (S2-07)</span>
+          </div>
+
+          <div class="topbar__actions">
+            <div class="warehouse-select-wrap">
+              <label for="active-warehouse-select" class="sr-only">Chọn kho làm việc</label>
+              <select id="active-warehouse-select" class="warehouse-selector" title="Chọn kho làm việc">
+                <option value="1">Kho Tổng Tân Bình (HCM)</option>
+                <option value="2">Kho Trung Chuyển Cầu Giấy (HN)</option>
+                <option value="3">Kho Miền Trung (Đà Nẵng)</option>
+              </select>
+            </div>
+            <a href="../dashboard.html" class="topbar__btn topbar__btn--back" title="Về tổng quan">
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              <span>Tổng quan</span>
+            </a>
+            <button
+              class="topbar__btn topbar__btn--logout"
+              id="btn-logout-topbar"
+              title="Đăng xuất"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Đăng xuất</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="content units-main">
+          <!-- ── Page Banner / Story Card (S2-07) ── -->
+          <section class="story-banner">
+            <div class="story-banner__main">
+              <div class="story-banner__tags">
+                <span class="badge badge--pill badge--primary">Nghiệp vụ kho · S2-07</span>
+                <span class="badge badge--pill badge--snapshot">
+                  <svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Bảo toàn hệ số Snapshot
+                </span>
+              </div>
+              <h1 class="story-banner__title">Đơn vị tính quy đổi SKU & Ghi sổ kho</h1>
+              <p class="story-banner__desc">
+                Cho phép Nhân viên kho khai báo nhiều đơn vị (thùng, lốc, lon...) theo từng SKU.
+                Khi tạo phiếu nhập xuất hay đơn hàng theo <strong>thùng</strong> hoặc <strong>lốc</strong>, hệ thống tự động quy đổi về <strong>đơn vị cơ sở (lon)</strong> khi ghi sổ.
+                Đặc biệt: <strong>việc thay đổi hệ số quy đổi không làm sai lệch bất kỳ giao dịch nào đã ghi trước đó</strong>.
+              </p>
+            </div>
+            <div class="story-banner__actions">
+              <button class="btn btn--primary" id="btn-quick-new-receipt">
+                <svg viewBox="0 0 24 24" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Lập phiếu nhập/xuất</span>
+              </button>
+              <button class="btn btn--secondary" id="btn-verify-integrity">
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <span>Kiểm chứng Snapshot</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- ── Metric Cards ── -->
+          <div class="units-metrics-grid">
+            <div class="metric-card">
+              <div class="metric-card__icon metric-card__icon--blue">
+                <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+              </div>
+              <div class="metric-card__content">
+                <span class="metric-card__label">SKU có quy đổi</span>
+                <span class="metric-card__val" id="metric-sku-count">7</span>
+                <span class="metric-card__sub">Bia, nước ngọt, sữa, gia vị</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-card__icon metric-card__icon--teal">
+                <svg viewBox="0 0 24 24"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"/><polyline points="18 8 22 12 18 16"/><line x1="6" y1="12" x2="22" y2="12"/></svg>
+              </div>
+              <div class="metric-card__content">
+                <span class="metric-card__label">Quy cách gọi hàng</span>
+                <span class="metric-card__val" id="metric-unit-count">16 đơn vị</span>
+                <span class="metric-card__sub">Thùng 24, Thùng 30, Lốc 6...</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-card__icon metric-card__icon--indigo">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </div>
+              <div class="metric-card__content">
+                <span class="metric-card__label">Phiếu kho & Đơn hàng</span>
+                <span class="metric-card__val" id="metric-ledger-count">6 chứng từ</span>
+                <span class="metric-card__sub">Ghi sổ chuẩn theo số lon</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-card__icon metric-card__icon--purple">
+                <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <div class="metric-card__content">
+                <span class="metric-card__label">Bảo toàn Snapshot</span>
+                <span class="metric-card__val metric-card__val--success">100% Khóa</span>
+                <span class="metric-card__sub">Lịch sử giao dịch bất biến</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Navigation Tabs ── -->
+          <div class="nav-tab-container">
+            <nav class="nav-tabs" role="tablist" aria-label="Các phân hệ đơn vị tính">
+              <button
+                class="nav-tab nav-tab--active"
+                role="tab"
+                aria-selected="true"
+                aria-controls="panel-sku-units"
+                id="tab-sku-units"
+                data-tab="sku-units"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <span>1. Khai báo đơn vị SKU</span>
+              </button>
+              <button
+                class="nav-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-create-receipt"
+                id="tab-create-receipt"
+                data-tab="create-receipt"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                <span>2. Lập phiếu kho & Đơn hàng</span>
+              </button>
+              <button
+                class="nav-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-ledger-audit"
+                id="tab-ledger-audit"
+                data-tab="ledger-audit"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>3. Sổ cái & Kiểm chứng Snapshot</span>
+              </button>
+              <button
+                class="nav-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-inventory-report"
+                id="tab-inventory-report"
+                data-tab="inventory-report"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                <span>4. Tồn kho quy đổi</span>
+              </button>
+            </nav>
+          </div>
+
+          <!-- ══════════════════════════════════════════════════
+               PANEL 1: KHAI BÁO ĐƠN VỊ SKU (SKU UNIT CONFIG)
+               ══════════════════════════════════════════════════ -->
+          <section
+            class="tab-panel tab-panel--active"
+            id="panel-sku-units"
+            role="tabpanel"
+            aria-labelledby="tab-sku-units"
+          >
+            <!-- Controls bar -->
+            <div class="panel-toolbar">
+              <div class="search-box">
+                <svg viewBox="0 0 24 24" class="search-box__icon">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="search"
+                  id="sku-search-input"
+                  placeholder="Tìm SKU, tên sản phẩm (VD: Heineken, Coca, lon, thùng...)"
+                  aria-label="Tìm kiếm sản phẩm"
+                />
+              </div>
+
+              <div class="filter-group">
+                <select id="sku-category-filter" aria-label="Lọc theo danh mục">
+                  <option value="">Tất cả danh mục</option>
+                  <option value="Bia & Rượu">Bia & Rượu</option>
+                  <option value="Nước giải khát">Nước giải khát</option>
+                  <option value="Sữa & Bơ">Sữa & Bơ</option>
+                  <option value="Gia vị & Dầu ăn">Gia vị & Dầu ăn</option>
+                  <option value="Mì ăn liền">Mì ăn liền</option>
+                </select>
+
+                <select id="sku-baseunit-filter" aria-label="Lọc theo đơn vị cơ sở">
+                  <option value="">Tất cả đơn vị cơ sở</option>
+                  <option value="lon">Đơn vị cơ sở: Lon</option>
+                  <option value="chai">Đơn vị cơ sở: Chai</option>
+                  <option value="gói">Đơn vị cơ sở: Gói</option>
+                  <option value="hộp">Đơn vị cơ sở: Hộp</option>
+                </select>
+              </div>
+
+              <div class="toolbar-actions">
+                <button class="btn btn--secondary btn--sm" id="btn-reset-demo" title="Khôi phục dữ liệu demo mẫu ban đầu">
+                  <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                  <span>Dữ liệu mẫu</span>
+                </button>
+                <button class="btn btn--primary btn--sm" id="btn-open-create-unit-modal">
+                  <svg viewBox="0 0 24 24" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span>Thêm đơn vị quy đổi</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- SKU Units Table / Cards -->
+            <div class="table-container">
+              <table class="data-table" id="sku-table">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm / SKU</th>
+                    <th>Đơn vị cơ sở (Lưu kho)</th>
+                    <th>Đơn vị quy đổi khai báo (Gọi hàng)</th>
+                    <th>Tồn kho hiện tại</th>
+                    <th class="th-actions">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="sku-table-body">
+                  <!-- Rendered via JS -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ══════════════════════════════════════════════════
+               PANEL 2: LẬP PHIẾU KHO & ĐƠN HÀNG (LIVE CONVERSION)
+               ══════════════════════════════════════════════════ -->
+          <section
+            class="tab-panel"
+            id="panel-create-receipt"
+            role="tabpanel"
+            aria-labelledby="tab-create-receipt"
+            hidden
+          >
+            <div class="card receipt-builder">
+              <div class="receipt-builder__header">
+                <div>
+                  <h2 class="section-title">Lập chứng từ kho & Đơn hàng</h2>
+                  <p class="section-desc">
+                    Nhập/xuất theo bất kỳ đơn vị đóng gói nào (thùng, lốc, lon...). Hệ thống tự động nhân hệ số và chốt số lượng ghi sổ chuẩn theo đơn vị cơ sở.
+                  </p>
+                </div>
+                <div class="receipt-type-selector" id="receipt-type-radios">
+                  <label class="receipt-type-pill receipt-type-pill--active">
+                    <input type="radio" name="receiptType" value="IMPORT" checked />
+                    <span>📥 Nhập kho (Nhà cung cấp)</span>
+                  </label>
+                  <label class="receipt-type-pill">
+                    <input type="radio" name="receiptType" value="EXPORT" />
+                    <span>📤 Xuất kho (Đại lý / Chi nhánh)</span>
+                  </label>
+                  <label class="receipt-type-pill">
+                    <input type="radio" name="receiptType" value="ORDER" />
+                    <span>🛒 Đơn hàng bán buôn</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Form Metadata -->
+              <div class="receipt-form-meta">
+                <div class="form-field">
+                  <label for="receipt-code">Số phiếu chứng từ</label>
+                  <div class="input-with-action">
+                    <input type="text" id="receipt-code" readonly class="input--code" />
+                    <button type="button" class="btn btn--secondary btn--xs" id="btn-regen-code" title="Sinh mã mới">Tự sinh</button>
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="receipt-date">Ngày lập chứng từ</label>
+                  <input type="date" id="receipt-date" />
+                </div>
+
+                <div class="form-field">
+                  <label for="receipt-warehouse">Kho thực hiện</label>
+                  <select id="receipt-warehouse">
+                    <option value="Kho Tổng Tân Bình (HCM)">Kho Tổng Tân Bình (HCM)</option>
+                    <option value="Kho Trung Chuyển Cầu Giấy (HN)">Kho Trung Chuyển Cầu Giấy (HN)</option>
+                    <option value="Kho Miền Trung (Đà Nẵng)">Kho Miền Trung (Đà Nẵng)</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="receipt-partner" id="label-receipt-partner">Nhà cung cấp / Đối tác</label>
+                  <input type="text" id="receipt-partner" placeholder="VD: Nhà máy Bia Heineken VN..." />
+                </div>
+
+                <div class="form-field form-field--span2">
+                  <label for="receipt-notes">Ghi chú nghiệp vụ kho</label>
+                  <input type="text" id="receipt-notes" placeholder="Nhập theo lệnh điều phối số... lô hàng kèm phiếu kiểm đếm" />
+                </div>
+              </div>
+
+              <!-- Line items table -->
+              <div class="line-items-section">
+                <div class="line-items-section__title-bar">
+                  <h3>Chi tiết mặt hàng & Quy đổi ghi sổ</h3>
+                  <span class="live-calc-hint">
+                    <svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    Hệ thống sẽ chốt <strong>Snapshot hệ số</strong> tại thời điểm bấm ghi sổ.
+                  </span>
+                </div>
+
+                <div class="table-container">
+                  <table class="line-items-table" id="line-items-table">
+                    <thead>
+                      <tr>
+                        <th style="width: 28%">Sản phẩm / SKU</th>
+                        <th style="width: 18%">Đơn vị gọi hàng</th>
+                        <th style="width: 14%">Số lượng nhập/xuất</th>
+                        <th style="width: 16%">Tỷ lệ quy đổi áp dụng</th>
+                        <th style="width: 18%">Số lượng cơ sở ghi sổ</th>
+                        <th style="width: 6%"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="line-items-body">
+                      <!-- Dynamic rows will be injected here -->
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="line-items-footer">
+                  <button type="button" class="btn btn--secondary btn--sm" id="btn-add-line-item">
+                    <svg viewBox="0 0 24 24" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span>Thêm mặt hàng</span>
+                  </button>
+
+                  <div class="receipt-summary-box">
+                    <div class="summary-line">
+                      <span>Tổng dòng hàng:</span>
+                      <strong id="summary-line-count">1 mặt hàng</strong>
+                    </div>
+                    <div class="summary-line">
+                      <span>Theo đơn vị gọi hàng:</span>
+                      <strong id="summary-packages-count">10 thùng</strong>
+                    </div>
+                    <div class="summary-line summary-line--highlight">
+                      <span>Tổng quy về đơn vị cơ sở:</span>
+                      <strong class="text-emerald" id="summary-base-qty-total">240 lon</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Submit Action Strip -->
+              <div class="receipt-actions">
+                <div class="receipt-policy-notice">
+                  <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span>
+                    Khi bấm <strong>Ghi sổ kho</strong>, số lượng sẽ được quy về đơn vị cơ sở và khóa cố định snapshot tỷ lệ.
+                  </span>
+                </div>
+                <div class="action-buttons">
+                  <button type="button" class="btn btn--secondary" id="btn-reset-receipt">Làm mới form</button>
+                  <button type="button" class="btn btn--primary btn--lg" id="btn-save-receipt">
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span>Lưu & Ghi sổ kho</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ══════════════════════════════════════════════════
+               PANEL 3: SỔ CÁI & MINH CHỨNG BẢO TOÀN SNAPSHOT (CORE)
+               ══════════════════════════════════════════════════ -->
+          <section
+            class="tab-panel"
+            id="panel-ledger-audit"
+            role="tabpanel"
+            aria-labelledby="tab-ledger-audit"
+            hidden
+          >
+            <!-- S2-07 Requirement Verification Banner -->
+            <div class="integrity-sandbox-card">
+              <div class="integrity-header">
+                <div class="integrity-header__badge">
+                  <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                  <span>Cơ chế bảo toàn Snapshot · Nghiệp vụ S2-07</span>
+                </div>
+                <h2>Đổi hệ số quy đổi không làm sai lệch các giao dịch đã ghi trước đó</h2>
+                <p>
+                  Mọi giao dịch khi chốt sổ đều lưu <strong>snapshot hệ số quy đổi</strong> vĩnh viễn kèm số lượng cơ sở đã ghi nhận.
+                  Nếu nhà máy đổi quy cách đóng gói (ví dụ: thùng từ 24 lon đổi thành 20 lon), hệ số mới chỉ áp dụng cho giao dịch tương lai, tuyệt đối không làm sai lệch số lon của các phiếu kho quá khứ.
+                </p>
+              </div>
+
+              <!-- Interactive Verification Sandbox -->
+              <div class="sandbox-controls">
+                <div class="sandbox-step">
+                  <span class="step-num">1</span>
+                  <div class="step-content">
+                    <label for="sandbox-sku-select">Chọn SKU thử nghiệm</label>
+                    <select id="sandbox-sku-select">
+                      <!-- Populated via JS -->
+                    </select>
+                  </div>
+                </div>
+
+                <div class="sandbox-step">
+                  <span class="step-num">2</span>
+                  <div class="step-content">
+                    <label for="sandbox-unit-select">Chọn đơn vị quy đổi</label>
+                    <select id="sandbox-unit-select">
+                      <!-- Populated via JS -->
+                    </select>
+                  </div>
+                </div>
+
+                <div class="sandbox-step">
+                  <span class="step-num">3</span>
+                  <div class="step-content">
+                    <label for="sandbox-new-rate">Hệ số quy đổi mới</label>
+                    <div class="rate-input-wrap">
+                      <input type="number" id="sandbox-new-rate" min="1" max="500" value="20" />
+                      <span class="rate-suffix" id="sandbox-rate-suffix">lon / thùng</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sandbox-step sandbox-step--action">
+                  <button type="button" class="btn btn--primary" id="btn-run-sandbox-test">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Đổi hệ số & Đối soát toàn vẹn</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Live Verification Result Card -->
+              <div class="sandbox-results" id="sandbox-results-box" hidden>
+                <!-- Injected by JS -->
+              </div>
+            </div>
+
+            <!-- Ledger Table Filters -->
+            <div class="panel-toolbar ledger-toolbar">
+              <div class="search-box">
+                <svg viewBox="0 0 24 24" class="search-box__icon">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="search"
+                  id="ledger-search-input"
+                  placeholder="Tìm theo số phiếu, tên sản phẩm, đơn vị (thùng, lốc...)"
+                  aria-label="Tìm kiếm sổ cái"
+                />
+              </div>
+
+              <div class="filter-group">
+                <select id="ledger-type-filter" aria-label="Lọc loại phiếu">
+                  <option value="">Tất cả loại chứng từ</option>
+                  <option value="IMPORT">Phiếu nhập kho</option>
+                  <option value="EXPORT">Phiếu xuất kho</option>
+                  <option value="ORDER">Đơn hàng bán</option>
+                </select>
+
+                <select id="ledger-sku-filter" aria-label="Lọc theo SKU">
+                  <option value="">Tất cả SKU</option>
+                  <!-- Populated by JS -->
+                </select>
+              </div>
+
+              <div class="toolbar-actions">
+                <button class="btn btn--secondary btn--sm" id="btn-export-ledger-excel">
+                  <svg viewBox="0 0 24 24" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Xuất Excel Sổ cái</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Ledger Table -->
+            <div class="table-container">
+              <table class="data-table ledger-table" id="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Số chứng từ / Thời gian</th>
+                    <th>Loại</th>
+                    <th>Sản phẩm / SKU</th>
+                    <th>Chứng từ gọi hàng</th>
+                    <th>Hệ số Snapshot chốt sổ</th>
+                    <th>Số lượng cơ sở ghi sổ</th>
+                    <th>Kho thực hiện</th>
+                    <th>Trạng thái</th>
+                    <th class="th-actions">Chi tiết</th>
+                  </tr>
+                </thead>
+                <tbody id="ledger-table-body">
+                  <!-- Rendered via JS -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ══════════════════════════════════════════════════
+               PANEL 4: TỒN KHO QUY ĐỔI HAI CHIỀU (DUAL UNIT VIEW)
+               ══════════════════════════════════════════════════ -->
+          <section
+            class="tab-panel"
+            id="panel-inventory-report"
+            role="tabpanel"
+            aria-labelledby="tab-inventory-report"
+            hidden
+          >
+            <div class="panel-toolbar">
+              <div class="search-box">
+                <svg viewBox="0 0 24 24" class="search-box__icon">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="search"
+                  id="inv-search-input"
+                  placeholder="Tìm tồn kho theo sản phẩm, mã SKU..."
+                  aria-label="Tìm tồn kho"
+                />
+              </div>
+
+              <div class="toolbar-actions">
+                <button class="btn btn--secondary btn--sm" id="btn-export-inventory-excel">
+                  <svg viewBox="0 0 24 24" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Xuất bảng kiểm kê</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table inventory-table" id="inventory-table">
+                <thead>
+                  <tr>
+                    <th>Mã SKU & Sản phẩm</th>
+                    <th>Đơn vị cơ sở</th>
+                    <th>Tồn kho cơ sở (Sổ sách)</th>
+                    <th>Diễn giải quy cách đóng gói (Thực tế kho)</th>
+                    <th>Định mức an toàn</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="inventory-table-body">
+                  <!-- Rendered via JS -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         MODAL 1: THÊM / SỬA ĐƠN VỊ TÍNH QUY ĐỔI CHO SKU
+         ══════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="modal-unit-edit" hidden>
+      <div class="modal modal--medium" role="dialog" aria-labelledby="modal-unit-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="modal-unit-title">Thêm đơn vị quy đổi</h2>
+            <p class="modal__subtitle">Khai báo đơn vị gọi hàng (thùng, lốc, két...) và hệ số quy đổi về đơn vị cơ sở.</p>
+          </div>
+          <button class="modal__close" data-close-unit-modal aria-label="Đóng">×</button>
+        </div>
+
+        <form id="form-unit-edit" class="modal__body unit-form" novalidate>
+          <input type="hidden" id="unit-edit-mode" value="create" />
+          <input type="hidden" id="unit-edit-id" value="" />
+
+          <div class="form-field">
+            <label for="unit-sku-select">Sản phẩm / SKU áp dụng</label>
+            <select id="unit-sku-select" required>
+              <!-- Populated via JS -->
+            </select>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="unit-name-input">Tên đơn vị quy đổi</label>
+              <input
+                type="text"
+                id="unit-name-input"
+                required
+                placeholder="VD: Thùng, Lốc, Két, Hộp..."
+                autocomplete="off"
+              />
+              <div class="quick-unit-suggestions">
+                <span>Gợi ý:</span>
+                <button type="button" class="btn-chip" data-val="thùng">Thùng</button>
+                <button type="button" class="btn-chip" data-val="lốc">Lốc</button>
+                <button type="button" class="btn-chip" data-val="két">Két</button>
+                <button type="button" class="btn-chip" data-val="thùng 30">Thùng 30</button>
+                <button type="button" class="btn-chip" data-val="hộp">Hộp</button>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label for="unit-rate-input">
+                Hệ số quy đổi
+                <span class="text-muted">(Số lượng cơ sở trong 1 đơn vị này)</span>
+              </label>
+              <input
+                type="number"
+                id="unit-rate-input"
+                required
+                min="1"
+                step="1"
+                placeholder="VD: 24 (nếu 1 thùng = 24 lon)"
+              />
+            </div>
+          </div>
+
+          <!-- Live Preview Box -->
+          <div class="formula-preview-box">
+            <div class="formula-preview-box__title">Quy tắc quy đổi áp dụng:</div>
+            <div class="formula-equation">
+              <span class="eq-token eq-token--source">1 <span id="preview-unit-name">đơn vị</span></span>
+              <span class="eq-op">=</span>
+              <span class="eq-token eq-token--rate"><span id="preview-rate">1</span> ×</span>
+              <span class="eq-token eq-token--base"><span id="preview-base-unit">đơn vị cơ sở</span></span>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="unit-barcode-input">Mã vạch bao bì / Barcode quy cách (Tùy chọn)</label>
+            <input type="text" id="unit-barcode-input" placeholder="8938888123456" />
+          </div>
+
+          <div class="form-field">
+            <label for="unit-notes-input">Quy cách & Ghi chú</label>
+            <input type="text" id="unit-notes-input" placeholder="VD: Thùng carton 24 lon sleek 330ml (4 lốc × 6)" />
+          </div>
+
+          <!-- Snapshot Warning for Edit Mode -->
+          <div class="alert-notice alert-notice--warning" id="unit-edit-snapshot-warning" hidden>
+            <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div>
+              <strong>Bảo toàn giao dịch cũ (S2-07):</strong>
+              <p>Thay đổi hệ số quy đổi này chỉ áp dụng cho các phiếu kho lập mới từ lúc này. Mọi giao dịch quá khứ đã ghi sổ sẽ bảo lưu nguyên vẹn hệ số cũ.</p>
+            </div>
+          </div>
+
+          <div class="form-message" id="unit-form-error" hidden></div>
+
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-unit-modal>Huỷ</button>
+            <button type="submit" class="btn btn--primary" id="btn-save-unit">Lưu đơn vị tính</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         MODAL 2: XEM LỊCH SỬ THAY ĐỔI HỆ SỐ QUY ĐỔI (AUDIT)
+         ══════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="modal-unit-history" hidden>
+      <div class="modal modal--medium" role="dialog" aria-labelledby="modal-history-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="modal-history-title">Lịch sử hệ số quy đổi</h2>
+            <p class="modal__subtitle" id="history-sku-subtitle">Bia Heineken Sleek 330ml</p>
+          </div>
+          <button class="modal__close" data-close-history-modal aria-label="Đóng">×</button>
+        </div>
+
+        <div class="modal__body">
+          <div class="history-audit-banner">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Nhật ký ghi nhận mọi lần điều chỉnh hệ số. Các giao dịch quá khứ giữ nguyên hệ số tại thời điểm lập.</span>
+          </div>
+
+          <div class="table-container history-table-wrap">
+            <table class="data-table" id="history-table">
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Đơn vị</th>
+                  <th>Hệ số cũ → Mới</th>
+                  <th>Người thực hiện</th>
+                  <th>Lý do & Ghi chú</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-history-modal>Đóng</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         MODAL 3: CHI TIẾT CHỨNG TỪ KHO & SNAPSHOT BẢO TOÀN
+         ══════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="modal-receipt-detail" hidden>
+      <div class="modal modal--wide" role="dialog" aria-labelledby="modal-receipt-title">
+        <div class="modal__header">
+          <div>
+            <div class="receipt-code-pill" id="detail-receipt-code">PNK-202610-001</div>
+            <h2 id="modal-receipt-title">Chi tiết chứng từ kho</h2>
+          </div>
+          <button class="modal__close" data-close-receipt-modal aria-label="Đóng">×</button>
+        </div>
+
+        <div class="modal__body" id="receipt-detail-content">
+          <!-- Rendered dynamically via JS -->
+        </div>
+
+        <div class="modal__actions modal__actions--between">
+          <button type="button" class="btn btn--secondary" id="btn-print-receipt">
+            <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span>In phiếu</span>
+          </button>
+          <button type="button" class="btn btn--primary" data-close-receipt-modal>Đóng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../js/vendor/xlsx.full.min.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/menu-config.js"></script>
+    <script src="../js/warehouse-units.js"></script>
+  </body>
+</html>

@@ -119,6 +119,8 @@
         warehouses: data.warehouses || [],
         territories: data.territories || [],
         mustChangePassword: Boolean(data.mustChangePassword),
+        avatarUrl: data.avatarUrl || null,
+        avatarThumbnailUrl: data.avatarThumbnailUrl || null,
       }),
     );
   }

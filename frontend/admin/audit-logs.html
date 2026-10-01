@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nhật ký thao tác & Đối soát kiểm kê | SaleStock</title>
+  <link rel="icon" href="../assets/brand-mark.svg">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/admin-users.css">
+  <link rel="stylesheet" href="../css/audit-logs.css">
+</head>
+<body>
+  <div class="admin-shell">
+    <!-- ── Topbar ── -->
+    <header class="admin-topbar">
+      <div class="admin-topbar__left">
+        <a class="admin-brand" href="../dashboard.html">
+          <img src="../assets/brand-mark.svg" alt="SaleStock Logo">
+          <span>SaleStock</span>
+        </a>
+        <nav class="admin-nav" aria-label="Quản trị">
+          <a class="admin-nav__link" href="users.html">Tài khoản nhân sự</a>
+          <a class="admin-nav__link admin-nav__link--active" href="audit-logs.html">Nhật ký thao tác</a>
+        </nav>
+      </div>
+      <a class="back-dashboard" href="../dashboard.html">Về tổng quan</a>
+    </header>
+
+    <main class="admin-main">
+      <!-- ── Heading & Actions ── -->
+      <section class="admin-heading">
+        <div>
+          <p>Quản trị hệ thống · S2-04</p>
+          <h1>Nhật ký thao tác & Đối soát</h1>
+          <span>Ghi lại mọi thao tác trên tồn kho, giá, hạn mức công nợ và hoá đơn; đối soát ai đã điều chỉnh tồn khi cuối tháng kiểm kê bị lệch.</span>
+        </div>
+        <div class="admin-heading__actions">
+          <button class="btn btn--secondary" id="btn-export-excel" type="button" title="Xuất dữ liệu đang hiển thị ra tệp Excel">
+            <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;margin-right:4px;">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Xuất Excel
+          </button>
+          <button class="btn btn--secondary" id="btn-reset-data" type="button" title="Khôi phục danh sách nhật ký mẫu ban đầu">
+            Khôi phục mẫu
+          </button>
+          <button class="btn btn--primary" id="btn-create-log" type="button">
+            + Ghi nhận thao tác mới
+          </button>
+        </div>
+      </section>
+
+      <!-- ── KPI Summary Cards ── -->
+      <section class="audit-kpi-grid">
+        <article class="audit-kpi-card">
+          <div class="audit-kpi-card__header">
+            <span class="audit-kpi-card__title">Tổng lượt thao tác</span>
+            <div class="audit-kpi-card__icon audit-kpi-card__icon--blue">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+          </div>
+          <div class="audit-kpi-card__value" id="kpi-total-logs">0</div>
+          <div class="audit-kpi-card__desc">Toàn bộ thay đổi đã được ghi vết</div>
+        </article>
+
+        <article class="audit-kpi-card">
+          <div class="audit-kpi-card__header">
+            <span class="audit-kpi-card__title">Điều chỉnh tồn kho</span>
+            <div class="audit-kpi-card__icon audit-kpi-card__icon--teal">
+              <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            </div>
+          </div>
+          <div class="audit-kpi-card__value" id="kpi-inventory-count">0</div>
+          <div class="audit-kpi-card__desc" id="kpi-inventory-desc">Bao gồm nhập, xuất & kiểm kê</div>
+        </article>
+
+        <article class="audit-kpi-card">
+          <div class="audit-kpi-card__header">
+            <span class="audit-kpi-card__title">Hạn mức & Công nợ</span>
+            <div class="audit-kpi-card__icon audit-kpi-card__icon--amber">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+          </div>
+          <div class="audit-kpi-card__value" id="kpi-debt-count">0</div>
+          <div class="audit-kpi-card__desc">Tăng, giảm hạn mức đại lý</div>
+        </article>
+
+        <article class="audit-kpi-card">
+          <div class="audit-kpi-card__header">
+            <span class="audit-kpi-card__title">Lệch kiểm kê cần chú ý</span>
+            <div class="audit-kpi-card__icon audit-kpi-card__icon--danger">
+              <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+          </div>
+          <div class="audit-kpi-card__value" id="kpi-discrepancy-count" style="color:var(--danger);">0</div>
+          <div class="audit-kpi-card__desc">Tồn kho bị điều chỉnh giảm cuối kỳ</div>
+        </article>
+      </section>
+
+      <!-- ── Discrepancy Highlight Banner (Cuối tháng kiểm kê bị lệch) ── -->
+      <section class="audit-alert-strip" id="discrepancy-banner">
+        <div class="audit-alert-strip__content">
+          <svg class="audit-alert-strip__icon" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <div class="audit-alert-strip__text">
+            <strong>Đối soát kiểm kê kỳ cuối tháng</strong>
+            <p>Hệ thống ghi nhận các đợt điều chỉnh giảm số lượng tồn kho do kiểm kê thực tế bị lệch so với sổ sách kế toán. Bấm để truy xuất ngay người thực hiện và lý do giải trình.</p>
+          </div>
+        </div>
+        <button type="button" class="audit-alert-strip__btn" id="btn-quick-discrepancy">
+          Truy vết lệch kiểm kê
+        </button>
+      </section>
+
+      <!-- ── Filter & Search Section ── -->
+      <section class="audit-filters-container">
+        <form class="audit-filters-form" id="audit-filters-form">
+          <label class="filter-field">
+            <span>Người thực hiện</span>
+            <select id="filter-user">
+              <option value="">Tất cả người dùng</option>
+            </select>
+          </label>
+
+          <label class="filter-field">
+            <span>Loại đối tượng</span>
+            <select id="filter-type">
+              <option value="">Tất cả loại đối tượng</option>
+              <option value="INVENTORY">Tồn kho</option>
+              <option value="PRICE">Giá bán</option>
+              <option value="DEBT_LIMIT">Hạn mức công nợ</option>
+              <option value="INVOICE">Hoá đơn</option>
+            </select>
+          </label>
+
+          <label class="filter-field">
+            <span>Từ ngày</span>
+            <input type="date" id="filter-from-date">
+          </label>
+
+          <label class="filter-field">
+            <span>Đến ngày</span>
+            <input type="date" id="filter-to-date">
+          </label>
+
+          <label class="filter-field">
+            <span>Tìm kiếm từ khóa</span>
+            <input type="search" id="filter-search" placeholder="Mã hàng, tên, mã HĐ, lý do...">
+          </label>
+
+          <div class="filter-actions">
+            <button class="btn btn--primary" type="submit">Lọc</button>
+            <button class="btn btn--secondary" type="button" id="btn-reset-filter">Đặt lại</button>
+          </div>
+        </form>
+
+        <!-- Quick filter chips -->
+        <div class="quick-filter-bar">
+          <span class="quick-filter-label">Chọn nhanh:</span>
+          <button type="button" class="filter-chip filter-chip--active" data-preset="all">Tất cả</button>
+          <button type="button" class="filter-chip filter-chip--highlight" data-preset="discrepancy">⚠ Lệch tồn kho kiểm kê</button>
+          <button type="button" class="filter-chip" data-preset="type-inventory">Tồn kho</button>
+          <button type="button" class="filter-chip" data-preset="type-debt">Hạn mức & Công nợ</button>
+          <button type="button" class="filter-chip" data-preset="type-price">Giá bán</button>
+          <button type="button" class="filter-chip" data-preset="type-invoice">Hoá đơn</button>
+          <button type="button" class="filter-chip" data-preset="today">Hôm nay</button>
+          <button type="button" class="filter-chip" data-preset="last7days">7 ngày qua</button>
+          <button type="button" class="filter-chip" data-preset="thismonth">Tháng này (Kiểm kê)</button>
+        </div>
+      </section>
+
+      <!-- ── Audit Table Panel ── -->
+      <section class="audit-panel">
+        <div class="audit-table-wrap">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th style="width: 140px;">Thời điểm</th>
+                <th style="width: 180px;">Người thực hiện</th>
+                <th style="width: 170px;">Loại & Thao tác</th>
+                <th style="min-width: 180px;">Đối tượng tác động</th>
+                <th style="min-width: 250px;">Giá trị trước ➔ Sau</th>
+                <th style="min-width: 190px;">Lý do / Căn cứ</th>
+                <th style="width: 90px; text-align: right;">Chi tiết</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body">
+              <tr>
+                <td colspan="7" class="empty">Đang tải nhật ký thao tác…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <footer class="audit-pagination">
+          <div id="audit-pagination-summary">Hiển thị 0 bản ghi</div>
+          <div class="audit-pagination__controls">
+            <button type="button" class="audit-pagination__btn" id="btn-page-first">« Đầu</button>
+            <button type="button" class="audit-pagination__btn" id="btn-page-prev">‹ Trước</button>
+            <span id="audit-page-indicator" style="font-weight:600;padding:0 8px;">Trang 1 / 1</span>
+            <button type="button" class="audit-pagination__btn" id="btn-page-next">Sau ›</button>
+            <button type="button" class="audit-pagination__btn" id="btn-page-last">Cuối »</button>
+          </div>
+        </footer>
+      </section>
+    </main>
+  </div>
+
+  <!-- ── Modal: Chi tiết bản ghi nhật ký ── -->
+  <div class="modal-overlay" id="modal-audit-detail" hidden>
+    <div class="modal modal--audit-detail" role="dialog" aria-labelledby="audit-detail-title">
+      <div class="modal__header">
+        <div>
+          <h2 id="audit-detail-title">Chi tiết bản ghi nhật ký</h2>
+          <p id="audit-detail-subtitle">Mã bản ghi: #AUD-000</p>
+        </div>
+        <button class="modal__close" data-close-detail aria-label="Đóng">×</button>
+      </div>
+      <div class="modal__body" id="audit-detail-body">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--secondary" data-close-detail>Đóng</button>
+        <button type="button" class="btn btn--primary" id="btn-print-audit">In biên bản đối soát</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Ghi nhận thao tác mới (Simulator & Live Recording) ── -->
+  <div class="modal-overlay" id="modal-create-log" hidden>
+    <div class="modal modal--wide" role="dialog" aria-labelledby="create-log-title">
+      <div class="modal__header">
+        <div>
+          <h2 id="create-log-title">Ghi nhận thao tác mới vào nhật ký</h2>
+          <p>Thực hiện ghi lại biến động tồn kho, giá, hạn mức công nợ hoặc hoá đơn theo thời gian thực.</p>
+        </div>
+        <button class="modal__close" data-close-create aria-label="Đóng">×</button>
+      </div>
+
+      <form class="modal__body" id="form-create-log">
+        <div class="form-grid">
+          <label class="form-field">
+            <span>Người thực hiện</span>
+            <select id="new-log-user" required>
+              <!-- Filled by JS -->
+            </select>
+          </label>
+
+          <label class="form-field">
+            <span>Loại đối tượng</span>
+            <select id="new-log-type" required>
+              <option value="INVENTORY">Tồn kho</option>
+              <option value="PRICE">Giá bán</option>
+              <option value="DEBT_LIMIT">Hạn mức công nợ</option>
+              <option value="INVOICE">Hoá đơn</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-grid" style="margin-top:12px;">
+          <label class="form-field">
+            <span>Tên thao tác</span>
+            <input id="new-log-action" required placeholder="VD: Điều chỉnh tồn kho kiểm kê">
+          </label>
+
+          <label class="form-field">
+            <span>Mã & Tên đối tượng</span>
+            <input id="new-log-target-name" required placeholder="VD: SP001 - Cà phê Robusta (Kho Tân Bình)">
+          </label>
+        </div>
+
+        <fieldset style="margin:14px 0;padding:12px;border:1px solid var(--line-light);border-radius:8px;">
+          <legend style="padding:0 6px;font-size:12.5px;font-weight:700;">So sánh giá trị trước và sau</legend>
+          <div class="form-grid">
+            <label class="form-field">
+              <span>Giá trị TRƯỚC thao tác</span>
+              <input id="new-log-val-before" required placeholder="VD: 120 bao hoặc 50.000.000 đ">
+            </label>
+
+            <label class="form-field">
+              <span>Giá trị SAU thao tác</span>
+              <input id="new-log-val-after" required placeholder="VD: 95 bao hoặc 100.000.000 đ">
+            </label>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:var(--ink-600);">
+            <strong>Chênh lệch dự kiến:</strong> <span id="new-log-delta-preview" style="font-weight:700;color:var(--ink-900);">Tự động tính toán</span>
+          </div>
+        </fieldset>
+
+        <label class="form-field" style="margin-top:8px;">
+          <span>Lý do / Căn cứ giải trình</span>
+          <textarea id="new-log-reason" required rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:13px;" placeholder="VD: Kiểm kê định kỳ ngày 30/09, phát hiện rách bao bì và ẩm mốc 25 bao tại ô kệ B-12..."></textarea>
+        </label>
+
+        <div class="modal__actions" style="margin-top:16px;">
+          <button type="button" class="btn btn--secondary" data-close-create>Huỷ</button>
+          <button type="submit" class="btn btn--primary" id="btn-save-new-log">Lưu vào nhật ký</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="audit-toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="../js/auth.js"></script>
+  <script src="../js/menu-config.js"></script>
+  <script src="../js/vendor/xlsx.full.min.js"></script>
+  <script src="../js/audit-logs.js"></script>
+</body>
+</html>
+

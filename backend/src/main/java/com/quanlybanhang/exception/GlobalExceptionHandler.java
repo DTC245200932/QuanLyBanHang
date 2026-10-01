@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -27,7 +28,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("Tên đăng nhập hoặc mật khẩu không đúng"));
+                .body(ApiResponse.error(ex.getMessage()));
     }
 
     /**
@@ -91,6 +92,40 @@ public class GlobalExceptionHandler {
                         .message("Dữ liệu không hợp lệ")
                         .data(errors)
                         .build());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ApiResponse.error("Ảnh đại diện không được vượt quá 2MB."));
+    }
+
+    /**
+     * Xử lý lỗi không thể xóa nhóm hàng khi còn sản phẩm (S2-06).
+     */
+    @ExceptionHandler(CategoryNotEmptyException.class)
+    public ResponseEntity<ApiResponse> handleCategoryNotEmpty(CategoryNotEmptyException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Xử lý lỗi không thể xóa sản phẩm đã phát sinh giao dịch (S2-05).
+     */
+    @ExceptionHandler(ProductHasTransactionsException.class)
+    public ResponseEntity<ApiResponse> handleProductHasTransactions(ProductHasTransactionsException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Xử lý lỗi không có quyền truy cập (@PreAuthorize hoặc AccessDeniedException).
+     * Trả về 403 Forbidden.
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("Bạn không có quyền thực hiện chức năng này"));
     }
 
     /**

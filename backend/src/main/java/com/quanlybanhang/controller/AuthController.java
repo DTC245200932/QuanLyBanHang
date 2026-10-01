@@ -5,15 +5,21 @@ import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.dto.response.JwtResponse;
 import com.quanlybanhang.security.UserDetailsImpl;
 import com.quanlybanhang.service.AuthService;
+import com.quanlybanhang.service.AvatarService;
 import com.quanlybanhang.service.PasswordResetService;
 import com.quanlybanhang.service.AdminUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
 
 /**
  * Controller xử lý các API liên quan đến xác thực:
@@ -32,6 +38,7 @@ public class AuthController {
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
     private final AdminUserService adminUserService;
+    private final AvatarService avatarService;
 
     /**
      * Đăng nhập.
@@ -73,6 +80,28 @@ public class AuthController {
     public ResponseEntity<ApiResponse> me(Authentication authentication) {
         return ResponseEntity.ok(ApiResponse.success("Thông tin người dùng",
                 adminUserService.getByUsername(authentication.getName())));
+    }
+
+    @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse> updateAvatar(
+            @RequestPart("file") MultipartFile file,
+            Authentication authentication) {
+        var user = avatarService.updateAvatar(authentication.getName(), file);
+        Map<String, String> data = Map.of(
+                "avatarUrl", AvatarService.avatarUrl(user, false),
+                "avatarThumbnailUrl", AvatarService.avatarUrl(user, true));
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật ảnh đại diện", data));
+    }
+
+    @GetMapping("/users/{id}/avatar")
+    public ResponseEntity<byte[]> avatar(@PathVariable Long id,
+                                         @RequestParam(defaultValue = "false") boolean thumbnail) {
+        return avatarService.getAvatar(id, thumbnail)
+                .map(content -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.noCache())
+                        .contentType(MediaType.parseMediaType(content.contentType()))
+                        .body(content.bytes()))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     /**

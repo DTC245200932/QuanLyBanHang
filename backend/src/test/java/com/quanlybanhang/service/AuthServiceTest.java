@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
@@ -21,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,9 +53,10 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("bad"));
 
         for (int attempt = 1; attempt <= 4; attempt++) {
+            int remainingAttempts = 5 - attempt;
             assertThatThrownBy(() -> authService.login(request))
                     .isInstanceOf(BadCredentialsException.class)
-                    .hasMessage("Tên đăng nhập hoặc mật khẩu không đúng");
+                    .hasMessage("Đăng nhập thất bại. Còn " + remainingAttempts + " lần thử.");
         }
 
         assertThatThrownBy(() -> authService.login(request))
@@ -81,5 +84,36 @@ class AuthServiceTest {
                 .blacklistToken("expired-access-token", "LOGOUT");
         verify(tokenBlacklistService)
                 .blacklistToken("valid-refresh-token", "LOGOUT");
+    }
+
+    @Test
+    void accountLockedByAdminCannotLogin() {
+        User user = User.builder().username("sales01").password("encoded").active(false).build();
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(LockedException.class)
+                .hasMessage("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.");
+        verify(authenticationManager, never()).authenticate(any());
+    }
+
+    @Test
+    void accountLockedByAdminCannotRefreshAnOpenSession() {
+        User user = User.builder()
+                .username("sales01")
+                .password("encoded")
+                .active(false)
+                .tokenVersion(8L)
+                .build();
+        when(jwtUtils.validateToken("refresh-token")).thenReturn(true);
+        when(jwtUtils.getTokenType("refresh-token")).thenReturn("refresh");
+        when(tokenBlacklistService.isBlacklisted("refresh-token")).thenReturn(false);
+        when(jwtUtils.getUsernameFromToken("refresh-token")).thenReturn("sales01");
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.refreshToken("refresh-token"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        verify(jwtUtils, never()).generateAccessToken(any(String.class), anyLong());
     }
 }

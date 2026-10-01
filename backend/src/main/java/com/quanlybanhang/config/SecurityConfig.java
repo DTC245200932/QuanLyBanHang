@@ -81,14 +81,18 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").authenticated()
                 .requestMatchers("/api/test/public").permitAll()
 
-                // ── Admin only: quản lý user, cấu hình hệ thống ──
+                // ── Admin only: quản lý user, cấu hình hệ thống, ma trận phân quyền ──
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                 // ── Quản lý: ADMIN + SALES_MANAGER + WAREHOUSE_MANAGER ──
                 .requestMatchers("/api/manager/**").hasAnyRole(
                         "ADMIN", "SALES_MANAGER", "WAREHOUSE_MANAGER")
 
-                // ── Kho: ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
+                // ── Điều chỉnh kho: CHỈ ADMIN + WAREHOUSE_MANAGER (đảm bảo SALES và WAREHOUSE_STAFF không sửa được tồn kho!) ──
+                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**").hasAnyRole(
+                        "ADMIN", "WAREHOUSE_MANAGER")
+
+                // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
                 .requestMatchers("/api/warehouse/**").hasAnyRole(
                         "ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF")
 
@@ -96,16 +100,20 @@ public class SecurityConfig {
                 // Chi tiết dùng @PreAuthorize trên từng method
                 .requestMatchers("/api/orders/**").authenticated()
 
-                // ── Sản phẩm: mọi role đã đăng nhập ──
+                // ── Sản phẩm & Nhóm hàng: mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
                 .requestMatchers("/api/products/**").authenticated()
+                .requestMatchers("/api/categories/**").authenticated()
 
                 // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
                 .requestMatchers("/api/customers/**").hasAnyRole(
                         "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")
 
-                // ── Tài chính: ADMIN, SALES_MANAGER, ACCOUNTANT ──
-                .requestMatchers("/api/finance/cost-price/**", "/api/finance/profit-margin/**")
+                // ── Giá vốn & Biên lợi nhuận: CHỈ DUY NHẤT Quản lý kinh doanh (ROLE_SALES_MANAGER) ──
+                .requestMatchers("/api/finance/cost-price", "/api/finance/cost-price/**",
+                        "/api/finance/profit-margin", "/api/finance/profit-margin/**")
                         .hasRole("SALES_MANAGER")
+
+                // ── Tài chính khác (công nợ, quản lý): ADMIN, SALES_MANAGER, ACCOUNTANT ──
                 .requestMatchers("/api/finance/**").hasAnyRole(
                         "ADMIN", "SALES_MANAGER", "ACCOUNTANT")
 
@@ -115,7 +123,10 @@ public class SecurityConfig {
 
                 .requestMatchers("/api/test/**").authenticated()
 
-                // Endpoint mới không được khai báo bị từ chối mặc định.
+                // Cho phép /error để hiển thị đúng mã lỗi
+                .requestMatchers("/error").permitAll()
+
+                // Mọi chức năng khác đều kiểm quyền ở tầng server, mặc định là từ chối.
                 .anyRequest().denyAll()
             )
 

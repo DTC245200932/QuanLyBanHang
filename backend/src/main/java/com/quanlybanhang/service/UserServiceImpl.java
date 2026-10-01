@@ -1,0 +1,56 @@
+package com.quanlybanhang.service;
+
+import com.quanlybanhang.dto.request.UserProfileRequest;
+import com.quanlybanhang.dto.response.ApiResponse;
+import com.quanlybanhang.dto.response.UserProfileResponse;
+import com.quanlybanhang.model.User;
+import com.quanlybanhang.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class UserServiceImpl implements UserService {
+
+    private final UserRepository userRepository;
+
+    @Override
+    public UserProfileResponse getUserProfile(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
+        
+        return UserProfileResponse.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .phone(user.getPhone())
+                .roles(user.getRoles().stream()
+                        .map(role -> role.getName().name())
+                        .collect(Collectors.toList()))
+                .active(user.getActive())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse updateUserProfile(String username, UserProfileRequest request) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
+        
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            user.setFullName(request.getFullName().trim());
+        }
+        
+        if (request.getPhone() != null && !request.getPhone().isBlank()) {
+            user.setPhone(request.getPhone().trim());
+        }
+        
+        userRepository.save(user);
+        
+        return ApiResponse.success("Cập nhật hồ sơ thành công");
+    }
+}

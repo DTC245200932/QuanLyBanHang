@@ -57,6 +57,8 @@ public class ProductResponse {
     private Boolean hasTransactions;
     private Boolean canDelete;
 
+    private java.util.List<UnitConversionResponse> unitConversions;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

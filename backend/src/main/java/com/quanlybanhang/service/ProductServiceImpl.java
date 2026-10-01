@@ -32,6 +32,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final AuditLogService auditLogService;
 
     @Override
     @Transactional
@@ -119,6 +120,18 @@ public class ProductServiceImpl implements ProductService {
         product.setCategory(category);
 
         if (request.getPrice() != null) {
+            if (product.getPrice() == null || product.getPrice().compareTo(request.getPrice()) != 0) {
+                Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+                String username = authentication != null ? authentication.getName() : "SYSTEM";
+                auditLogService.logAction(
+                        "PRICE",
+                        product.getId().toString(),
+                        "UPDATE",
+                        product.getPrice() != null ? product.getPrice().toString() : null,
+                        request.getPrice().toString(),
+                        username
+                );
+            }
             product.setPrice(request.getPrice());
         }
 

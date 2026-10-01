@@ -4,7 +4,7 @@
  * Tính năng:
  * - Auto-refresh token khi còn hoạt động
  * - Kiểm tra phiên hết hạn → redirect login
- * - Đăng xuất (gọi API + xoá localStorage)
+ * - Đăng xuất (gọi API + xoá phiên trình duyệt)
  * - API helper gắn token tự động
  */
 const Auth = (() => {
@@ -23,16 +23,16 @@ const Auth = (() => {
   // ── Token helpers ──
 
   function getAccessToken() {
-    return localStorage.getItem("accessToken");
+    return sessionStorage.getItem("accessToken");
   }
 
   function getRefreshToken() {
-    return localStorage.getItem("refreshToken");
+    return sessionStorage.getItem("refreshToken");
   }
 
   function getUser() {
     try {
-      return JSON.parse(localStorage.getItem("user"));
+      return JSON.parse(sessionStorage.getItem("user"));
     } catch {
       return null;
     }
@@ -43,9 +43,9 @@ const Auth = (() => {
   }
 
   function clearSession() {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("refreshToken");
+    sessionStorage.removeItem("user");
     stopAutoRefresh();
   }
 
@@ -99,8 +99,8 @@ const Auth = (() => {
 
       if (response.ok) {
         const data = await response.json();
-        localStorage.setItem("accessToken", data.accessToken);
-        localStorage.setItem(
+        sessionStorage.setItem("accessToken", data.accessToken);
+        sessionStorage.setItem(
           "user",
           JSON.stringify({
             id: data.id,

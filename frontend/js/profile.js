@@ -49,7 +49,7 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) throw new Error(result.message || "Không cập nhật được hồ sơ.");
       const cached = Auth.getUser() || {};
-      localStorage.setItem("user", JSON.stringify({ ...cached, fullName, phone }));
+      sessionStorage.setItem("user", JSON.stringify({ ...cached, fullName, phone }));
       showMessage(result.message || "Đã cập nhật hồ sơ.");
       await loadProfile();
     } catch (error) {

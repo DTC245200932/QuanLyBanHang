@@ -94,7 +94,7 @@ public class SecurityConfig {
                         "ADMIN", "WAREHOUSE_MANAGER")
 
                 // Dữ liệu tồn và chứng từ được phép xem bởi quản lý kinh doanh/người chỉ xem.
-                .requestMatchers("/api/warehouse/inventory", "/api/warehouse/vouchers", "/api/warehouse/vouchers/**")
+                .requestMatchers("/api/warehouse/options", "/api/warehouse/inventory", "/api/warehouse/vouchers", "/api/warehouse/vouchers/**")
                         .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "VIEWER")
 
                 // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──

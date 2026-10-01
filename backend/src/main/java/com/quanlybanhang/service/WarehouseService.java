@@ -2,12 +2,14 @@ package com.quanlybanhang.service;
 
 import com.quanlybanhang.dto.request.WarehouseVoucherRequest;
 import com.quanlybanhang.dto.response.WarehouseInventoryResponse;
+import com.quanlybanhang.dto.response.NamedResourceResponse;
 import com.quanlybanhang.dto.response.WarehouseVoucherResponse;
 import com.quanlybanhang.model.WarehouseVoucherType;
 
 import java.util.List;
 
 public interface WarehouseService {
+    List<NamedResourceResponse> getWarehouseOptions();
 
     WarehouseVoucherResponse importGoods(WarehouseVoucherRequest request, String username);
 

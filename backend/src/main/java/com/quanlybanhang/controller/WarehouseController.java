@@ -33,6 +33,12 @@ public class WarehouseController {
 
     private final WarehouseService warehouseService;
 
+    @GetMapping("/options")
+    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    public ApiResponse warehouseOptions() {
+        return ApiResponse.success("Danh sách kho đang hoạt động", warehouseService.getWarehouseOptions());
+    }
+
     /**
      * API điều chỉnh tồn kho — CHỈ Quản lý kho (ROLE_WAREHOUSE_MANAGER) và Quản trị viên.
      * Đảm bảo Nhân viên kinh doanh (ROLE_SALES) và Thủ kho (ROLE_WAREHOUSE_STAFF) không sửa được tồn kho!

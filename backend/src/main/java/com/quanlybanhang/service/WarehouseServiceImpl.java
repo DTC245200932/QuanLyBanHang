@@ -3,6 +3,7 @@ package com.quanlybanhang.service;
 import com.quanlybanhang.dto.request.WarehouseVoucherItemRequest;
 import com.quanlybanhang.dto.request.WarehouseVoucherRequest;
 import com.quanlybanhang.dto.response.WarehouseInventoryResponse;
+import com.quanlybanhang.dto.response.NamedResourceResponse;
 import com.quanlybanhang.dto.response.WarehouseVoucherItemResponse;
 import com.quanlybanhang.dto.response.WarehouseVoucherResponse;
 import com.quanlybanhang.model.*;
@@ -29,6 +30,15 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final WarehouseVoucherRepository voucherRepository;
     private final WarehouseInventoryRepository inventoryRepository;
     private final AuditLogService auditLogService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<NamedResourceResponse> getWarehouseOptions() {
+        return warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
+                .map(warehouse -> new NamedResourceResponse(
+                        warehouse.getId(), warehouse.getCode(), warehouse.getName()))
+                .toList();
+    }
 
     @Override
     @Transactional

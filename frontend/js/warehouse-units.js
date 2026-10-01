@@ -295,11 +295,12 @@
     },
 
     async init() {
-      const [products, inventory, vouchers, orders] = await Promise.all([
+      const [products, inventory, vouchers, orders, warehouses] = await Promise.all([
         this.request("/products"),
         this.request("/warehouse/inventory"),
         this.request("/warehouse/vouchers"),
         this.request("/orders"),
+        this.request("/warehouse/options"),
       ]);
 
       const conversions = await Promise.all((products || []).map((product) =>
@@ -375,10 +376,9 @@
       this.receipts = [...voucherRows, ...orderRows].sort((a, b) =>
         new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-      const warehouses = user.warehouses || [];
       for (const id of ["active-warehouse-select", "receipt-warehouse"]) {
         const select = $(id);
-        if (select && warehouses.length) {
+        if (select && (warehouses || []).length) {
           select.innerHTML = warehouses.map((warehouse) =>
             `<option value="${warehouse.id}">${escapeHtml(warehouse.name)}</option>`).join("");
         }
@@ -386,7 +386,7 @@
     },
 
     save() {
-      // Dữ liệu nghiệp vụ được lưu tại backend; không lưu bản sao localStorage.
+      // Dữ liệu nghiệp vụ được lưu tại backend; trình duyệt không giữ bản sao.
     },
 
     async resetToDemo() {
@@ -533,6 +533,7 @@
   // ══════════════════════════════════════════════════
   const sidebar = $("sidebar");
   const nav = $("sidebar-nav");
+  const requestedWarehouseTab = new URLSearchParams(window.location.search).get("tab") || "units";
   const overlay = document.createElement("div");
   overlay.className = "sidebar-overlay";
   document.body.appendChild(overlay);
@@ -553,7 +554,8 @@
       ? `<div class="sidebar__section-label">${escapeHtml(item.section)}</div>` : "";
     if (item.section) lastSection = item.section;
     const resolvedHref = MenuConfig.resolveHref ? MenuConfig.resolveHref(item.href) : item.href;
-    const isActive = item.id === "unit-conversions" || item.id === "import-export";
+    const activeMenuId = requestedWarehouseTab === "units" ? "unit-conversions" : "import-export";
+    const isActive = item.id === activeMenuId;
     return `${section}<a class="sidebar__link ${isActive ? "sidebar__link--active" : ""}"
       href="${resolvedHref}" data-page="${item.id}">
       <svg viewBox="0 0 24 24">${item.icon}</svg>
@@ -609,6 +611,13 @@
   const tabs = document.querySelectorAll(".nav-tab");
   const panels = document.querySelectorAll(".tab-panel");
 
+  function updateWarehouseMenuState(tabId) {
+    const activeMenuId = tabId === "sku-units" ? "unit-conversions" : "import-export";
+    nav.querySelectorAll("[data-page]").forEach((link) => {
+      link.classList.toggle("sidebar__link--active", link.dataset.page === activeMenuId);
+    });
+  }
+
   function switchTab(tabId) {
     tabs.forEach((tab) => {
       const active = tab.dataset.tab === tabId;
@@ -625,6 +634,7 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") { renderLedgerTable(); renderSandboxOptions(); }
     if (tabId === "inventory-report") renderInventoryTable();
+    updateWarehouseMenuState(tabId);
     updateMetrics();
   }
 
@@ -783,13 +793,20 @@
     lines: []
   };
 
+  function createDefaultReceiptLine(id = "line-1") {
+    const product = Store.products[0];
+    if (!product) return null;
+    const unit = product.units.find((item) => !item.isBase) || product.units[0];
+    if (!unit) return null;
+    return { id, sku: product.sku, inputUnit: unit.name, inputQuantity: 1, notes: "" };
+  }
+
   function prepareReceiptForm() {
     $("receipt-date").value = new Date().toISOString().slice(0, 10);
     $("receipt-code").value = Store.generateReceiptCode(receiptState.type);
     if (!receiptState.lines.length) {
-      receiptState.lines = [
-        { id: "line-1", sku: "HEIN-330", inputUnit: "thùng", inputQuantity: 10, notes: "" }
-      ];
+      const defaultLine = createDefaultReceiptLine();
+      receiptState.lines = defaultLine ? [defaultLine] : [];
     }
     renderLineItems();
   }
@@ -824,6 +841,11 @@
 
   function renderLineItems() {
     const tbody = $("line-items-body");
+    if (!Store.products.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Chưa có sản phẩm thật trong cơ sở dữ liệu.</td></tr>';
+      updateReceiptSummary();
+      return;
+    }
     tbody.innerHTML = receiptState.lines.map((line, index) => {
       const prod = Store.getProductBySku(line.sku) || Store.products[0];
       const validUnits = prod?.units || [];
@@ -960,6 +982,10 @@
   });
 
   $("btn-add-line-item")?.addEventListener("click", () => {
+    if (!Store.products.length) {
+      showToast("Chưa có sản phẩm để thêm vào phiếu.", "warning");
+      return;
+    }
     const randomSku = Store.products[receiptState.lines.length % Store.products.length];
     const defaultUnit = randomSku.units.find((u) => !u.isBase) || randomSku.units[0];
     receiptState.lines.push({
@@ -974,9 +1000,8 @@
 
   $("btn-reset-receipt")?.addEventListener("click", () => {
     if (confirm("Làm mới toàn bộ thông tin phiếu?")) {
-      receiptState.lines = [
-        { id: "line-1", sku: "HEIN-330", inputUnit: "thùng", inputQuantity: 10, notes: "" }
-      ];
+      const defaultLine = createDefaultReceiptLine();
+      receiptState.lines = defaultLine ? [defaultLine] : [];
       $("receipt-partner").value = "";
       $("receipt-notes").value = "";
       prepareReceiptForm();
@@ -1007,9 +1032,8 @@
       showToast(`Đã ghi sổ thành công ${receiptRecord.id}! Hệ số snapshot đã được đóng băng.`, "success");
 
       // Reset form lines
-      receiptState.lines = [
-        { id: "line-1", sku: "HEIN-330", inputUnit: "thùng", inputQuantity: 10, notes: "" }
-      ];
+      const defaultLine = createDefaultReceiptLine();
+      receiptState.lines = defaultLine ? [defaultLine] : [];
       $("receipt-partner").value = "";
       $("receipt-notes").value = "";
       prepareReceiptForm();

@@ -19,9 +19,6 @@
     return;
   }
 
-  // ── Khóa lưu trữ LocalStorage ──
-  const STORAGE_KEY = "salestock_audit_logs_v1";
-
   // ── Bộ nhãn tiếng Việt chuẩn ──
   const TYPE_CONFIG = {
     INVENTORY: {
@@ -435,27 +432,13 @@
       '"': "&quot;",
     }[c]));
 
-  // ── Khởi tạo dữ liệu từ LocalStorage hoặc API ──
+  // Nhật ký nghiệp vụ chỉ được đọc từ backend/database.
   function getStoredLogs() {
-    try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length) return parsed;
-      }
-    } catch {
-      // Bỏ qua lỗi cú pháp lưu trữ
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_LOGS));
-    return [...INITIAL_SAMPLE_LOGS];
+    return [];
   }
 
-  function saveLogsToStorage(logs) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-    } catch (e) {
-      console.warn("Không thể lưu localStorage:", e);
-    }
+  function saveLogsToStorage() {
+    // Không ghi nhật ký giả ở trình duyệt; backend là nguồn dữ liệu duy nhất.
   }
 
   // ── Nạp danh sách nhân sự từ API để đồng bộ với cơ sở dữ liệu thật ──
@@ -1086,13 +1069,7 @@
 
   // ── Khôi phục dữ liệu mẫu ban đầu ──
   function resetSampleData() {
-    if (confirm("Khôi phục danh sách nhật ký về dữ liệu chuẩn ban đầu?")) {
-      localStorage.removeItem(STORAGE_KEY);
-      state.logs = getStoredLogs();
-      state.page = 0;
-      applyFilters();
-      showToast("Đã khôi phục dữ liệu nhật ký mẫu ban đầu.", "success");
-    }
+    loadLogs();
   }
 
   // ── Toast thông báo ──

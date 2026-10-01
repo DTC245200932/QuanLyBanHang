@@ -187,7 +187,7 @@
       }
       user.avatarUrl = result.data.avatarUrl;
       user.avatarThumbnailUrl = result.data.avatarThumbnailUrl;
-      localStorage.setItem("user", JSON.stringify(user));
+      sessionStorage.setItem("user", JSON.stringify(user));
       await renderCurrentAvatar();
       setAvatarModal(false);
       showToast(result.message || "Đã cập nhật ảnh đại diện.", "success");

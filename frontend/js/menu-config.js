@@ -24,6 +24,13 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "profile",
+      label: "Hồ sơ cá nhân",
+      icon: '<circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/>',
+      href: "profile.html",
+      roles: ALL_ROLES,
+    },
+    {
       id: "orders",
       section: "Kinh doanh",
       label: "Đơn hàng",
@@ -101,7 +108,6 @@ const MenuConfig = (() => {
         "ROLE_WAREHOUSE_MANAGER",
         "ROLE_WAREHOUSE_STAFF",
         "ROLE_SALES_MANAGER",
-        "ROLE_ACCOUNTANT",
         "ROLE_VIEWER",
       ],
     },

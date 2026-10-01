@@ -18,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -50,6 +51,19 @@ public class AdminUserController {
     public ResponseEntity<ApiResponse> create(@Valid @RequestBody AdminUserRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
                 "Đã tạo tài khoản và gửi thông tin kích hoạt qua email", adminUserService.create(request)));
+    }
+
+    @PostMapping("/users/import/preview")
+    public ApiResponse previewImport(@RequestBody List<AdminUserRequest> rows) {
+        return ApiResponse.success("Kết quả kiểm tra tệp nhập người dùng",
+                adminUserService.previewImport(rows));
+    }
+
+    @PostMapping("/users/import")
+    public ApiResponse importUsers(@RequestBody List<AdminUserRequest> rows) {
+        var result = adminUserService.importUsers(rows);
+        return ApiResponse.success("Đã nhập " + result.getImportedRows() + "/" + result.getTotalRows()
+                + " tài khoản hợp lệ", result);
     }
 
     @PutMapping("/users/{id}")

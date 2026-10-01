@@ -36,6 +36,9 @@ class OrderServiceTest {
     @Mock
     private UnitConversionService unitConversionService;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 

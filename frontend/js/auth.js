@@ -219,8 +219,13 @@ const Auth = (() => {
       headers["Content-Type"] = "application/json";
     }
 
+    const requestUrl = url.startsWith("http")
+      ? url
+      : url.startsWith("/api/")
+        ? `${API_BASE.replace(/\/api$/, "")}${url}`
+        : `${API_BASE}${url}`;
     const response = await fetch(
-      url.startsWith("http") ? url : `${API_BASE}${url}`,
+      requestUrl,
       { ...options, headers },
     );
 
@@ -230,7 +235,7 @@ const Auth = (() => {
       if (refreshed) {
         const retryToken = getAccessToken();
         const retryResponse = await fetch(
-          url.startsWith("http") ? url : `${API_BASE}${url}`,
+          requestUrl,
           {
             ...options,
             headers: { ...headers, Authorization: `Bearer ${retryToken}` },

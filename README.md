@@ -52,6 +52,8 @@ Các giá trị mặc định khác nằm trong [application.properties](backend
 
 ## 3. Chạy backend
 
+Nếu các bí mật từng được commit, cần xoay vòng chúng vì xóa khỏi file không loại bỏ chúng khỏi lịch sử Git.
+
 Mở PowerShell tại thư mục repo:
 
 ```powershell

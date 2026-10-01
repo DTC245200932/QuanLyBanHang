@@ -2,6 +2,7 @@ package com.quanlybanhang.service;
 
 import com.quanlybanhang.dto.request.UserProfileRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
+import com.quanlybanhang.dto.response.NamedResourceResponse;
 import com.quanlybanhang.dto.response.UserProfileResponse;
 import com.quanlybanhang.model.User;
 import com.quanlybanhang.repository.UserRepository;
@@ -31,6 +32,14 @@ public class UserServiceImpl implements UserService {
                 .roles(user.getRoles().stream()
                         .map(role -> role.getName().name())
                         .collect(Collectors.toList()))
+                .warehouses(user.getWarehouses().stream()
+                        .map(warehouse -> new NamedResourceResponse(
+                                warehouse.getId(), warehouse.getCode(), warehouse.getName()))
+                        .toList())
+                .territories(user.getTerritories().stream()
+                        .map(territory -> new NamedResourceResponse(
+                                territory.getId(), territory.getCode(), territory.getName()))
+                        .toList())
                 .active(user.getActive())
                 .build();
     }

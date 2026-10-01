@@ -62,6 +62,8 @@ Tất cả endpoint dưới `/admin/**` yêu cầu `ROLE_ADMIN` và được ki�
 | GET | `/admin/users` | Tìm kiếm, lọc và phân trang (mặc định 20) |
 | GET | `/admin/users/{id}` | Chi tiết tài khoản |
 | POST | `/admin/users` | Tạo tài khoản, sinh mật khẩu tạm và gửi email |
+| POST | `/admin/users/import/preview` | Kiểm tra trước từng dòng dữ liệu Excel đã được frontend chuyển thành JSON |
+| POST | `/admin/users/import` | Nhập các dòng hợp lệ, bỏ qua dòng lỗi và trả báo cáo tổng kết |
 | PUT | `/admin/users/{id}` | Sửa hồ sơ, nhiều vai trò, kho và địa bàn |
 | POST | `/admin/users/{id}/lock` | Khóa, thu hồi phiên và cảnh báo bàn giao đại lý |
 | POST | `/admin/users/{id}/unlock` | Mở khóa |
@@ -105,6 +107,13 @@ POST /api/admin/users/15/lock
 
 Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý liên quan được đánh dấu `handoverRequired = true`.
 
+## Hồ sơ cá nhân
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/users/profile` | Đã đăng nhập | Xem hồ sơ, vai trò, kho và địa bàn hiện tại |
+| PUT | `/users/profile` | Đã đăng nhập | Chỉ cập nhật họ tên và số điện thoại Việt Nam |
+
 ## Kho & Tồn kho
 
 | Method | Endpoint | Quyền | Mô tả |
@@ -113,6 +122,9 @@ Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý l
 | POST | `/warehouse/import` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Nhập kho |
 | POST | `/warehouse/export` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xuất kho |
 | GET | `/warehouse/inventory` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem danh sách tồn kho |
+| GET | `/warehouse/vouchers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem các phiếu kho và snapshot quy đổi |
+
+Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` với người thực hiện và giá trị trước/sau.
 
 ## Tài chính (Bảo mật giá vốn & biên lợi nhuận)
 

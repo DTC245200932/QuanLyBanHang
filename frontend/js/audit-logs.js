@@ -506,23 +506,47 @@
     }
   }
 
-  // ── Tải toàn bộ dữ liệu nhật ký (Thử gọi API trước, nếu chưa có thì dùng LocalStorage) ──
+  function normalizeApiLog(log) {
+    const actor = state.users.find((user) => user.username === log.username);
+    const beforeNumber = Number.parseFloat(String(log.oldValue || "").replace(/[^\d.-]/g, ""));
+    const afterNumber = Number.parseFloat(String(log.newValue || "").replace(/[^\d.-]/g, ""));
+    const delta = Number.isFinite(beforeNumber) && Number.isFinite(afterNumber) ? afterNumber - beforeNumber : null;
+    return {
+      id: String(log.id),
+      timestamp: log.createdAt,
+      targetType: log.entityType,
+      action: log.action,
+      targetCode: log.entityId,
+      targetName: log.entityId,
+      context: "Dữ liệu nghiệp vụ trên hệ thống",
+      actor: {
+        username: log.username,
+        fullName: actor?.fullName || log.username,
+        role: actor?.role || "ROLE_ADMIN",
+      },
+      valBefore: log.oldValue || "—",
+      valAfter: log.newValue || "—",
+      deltaText: delta == null ? "Đã thay đổi" : `${delta > 0 ? "+" : ""}${delta}`,
+      deltaType: delta == null || delta === 0 ? "neutral" : delta > 0 ? "positive" : "negative",
+      isDiscrepancy: log.entityType === "INVENTORY" && delta != null && delta < 0,
+      reason: "Ghi tự động từ thao tác nghiệp vụ đã xác thực.",
+      meta: {},
+    };
+  }
+
+  // ── Tải dữ liệu nhật ký thật từ backend ──
   async function loadLogs() {
     try {
-      const response = await Auth.apiFetch("/admin/audit-logs");
-      if (response.ok) {
-        const result = await response.json();
-        if (Array.isArray(result?.data)) {
-          state.logs = result.data;
-          applyFilters();
-          return;
-        }
+      const response = await Auth.apiFetch("/admin/audit-logs?size=100");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(result?.data)) {
+        throw new Error(result.message || "Không tải được nhật ký thao tác");
       }
-    } catch {
-      // Backend chưa có endpoint nhật ký S2-04, chuyển sang LocalStorage
+      state.logs = result.data.map(normalizeApiLog);
+    } catch (error) {
+      console.error(error);
+      state.logs = [];
     }
-
-    state.logs = getStoredLogs();
     applyFilters();
   }
 

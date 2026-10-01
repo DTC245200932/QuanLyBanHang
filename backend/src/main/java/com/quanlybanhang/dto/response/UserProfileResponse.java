@@ -14,5 +14,7 @@ public class UserProfileResponse {
     private String fullName;
     private String phone;
     private List<String> roles;
+    private List<NamedResourceResponse> warehouses;
+    private List<NamedResourceResponse> territories;
     private Boolean active;
 }

@@ -2,6 +2,8 @@ package com.quanlybanhang.service;
 
 import com.quanlybanhang.dto.request.AdminUserRequest;
 import com.quanlybanhang.dto.response.NamedResourceResponse;
+import com.quanlybanhang.dto.response.UserImportResponse;
+import com.quanlybanhang.dto.response.UserImportRowResponse;
 import com.quanlybanhang.dto.response.UserResponse;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.*;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +26,8 @@ public class AdminUserService {
     private static final Set<ERole> WAREHOUSE_ROLES = EnumSet.of(
             ERole.ROLE_WAREHOUSE_MANAGER, ERole.ROLE_WAREHOUSE_STAFF);
     private static final String PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    private static final Pattern VIETNAMESE_PHONE_PATTERN = Pattern.compile("^(0|\\+84|84)[35789]\\d{8}$");
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -89,6 +94,57 @@ public class AdminUserService {
         userRepository.save(user);
         accountMailService.sendActivation(user, temporaryPassword);
         return toResponse(user);
+    }
+
+    @Transactional(readOnly = true)
+    public UserImportResponse previewImport(List<AdminUserRequest> requests) {
+        List<AdminUserRequest> safeRequests = requests == null ? List.of() : requests;
+        Set<String> usernamesInFile = new HashSet<>();
+        Set<String> emailsInFile = new HashSet<>();
+        List<UserImportRowResponse> rows = new ArrayList<>();
+
+        for (int index = 0; index < safeRequests.size(); index++) {
+            AdminUserRequest request = safeRequests.get(index);
+            List<String> errors = validateImportRow(request, usernamesInFile, emailsInFile);
+            rows.add(UserImportRowResponse.builder()
+                    .rowNumber(index + 2)
+                    .row(request)
+                    .valid(errors.isEmpty())
+                    .errors(errors)
+                    .build());
+        }
+
+        int validRows = (int) rows.stream().filter(UserImportRowResponse::isValid).count();
+        return UserImportResponse.builder()
+                .totalRows(rows.size())
+                .validRows(validRows)
+                .invalidRows(rows.size() - validRows)
+                .importedRows(0)
+                .rows(rows)
+                .build();
+    }
+
+    public UserImportResponse importUsers(List<AdminUserRequest> requests) {
+        UserImportResponse result = previewImport(requests);
+        int imported = 0;
+        for (UserImportRowResponse row : result.getRows()) {
+            if (!row.isValid()) {
+                continue;
+            }
+            try {
+                row.setCreatedUser(create(row.getRow()));
+                imported++;
+            } catch (RuntimeException exception) {
+                row.setValid(false);
+                row.setErrors(List.of(exception.getMessage() == null
+                        ? "Không thể tạo tài khoản" : exception.getMessage()));
+            }
+        }
+        int validRows = (int) result.getRows().stream().filter(UserImportRowResponse::isValid).count();
+        result.setValidRows(validRows);
+        result.setInvalidRows(result.getTotalRows() - validRows);
+        result.setImportedRows(imported);
+        return result;
     }
 
     @Transactional
@@ -224,6 +280,54 @@ public class AdminUserService {
         userRepository.findByEmail(email.trim().toLowerCase(Locale.ROOT)).ifPresent(existing -> {
             if (!existing.getId().equals(currentId)) throw new IllegalArgumentException("Email đã được sử dụng");
         });
+    }
+
+    private List<String> validateImportRow(AdminUserRequest request,
+                                           Set<String> usernamesInFile,
+                                           Set<String> emailsInFile) {
+        List<String> errors = new ArrayList<>();
+        if (request == null) {
+            return List.of("Dòng dữ liệu trống");
+        }
+
+        String username = trimToNull(request.getUsername());
+        String email = trimToNull(request.getEmail());
+        String fullName = trimToNull(request.getFullName());
+        String phone = trimToNull(request.getPhone());
+
+        if (username == null || username.length() < 3 || username.length() > 50) {
+            errors.add("Tên đăng nhập phải từ 3-50 ký tự");
+        } else {
+            String normalized = username.toLowerCase(Locale.ROOT);
+            if (!usernamesInFile.add(normalized)) errors.add("Tên đăng nhập bị trùng trong tệp");
+            if (userRepository.findByUsername(username).isPresent()) errors.add("Tên đăng nhập đã được sử dụng");
+        }
+
+        if (email == null || email.length() > 100 || !EMAIL_PATTERN.matcher(email).matches()) {
+            errors.add("Email không hợp lệ");
+        } else {
+            String normalized = email.toLowerCase(Locale.ROOT);
+            if (!emailsInFile.add(normalized)) errors.add("Email bị trùng trong tệp");
+            if (userRepository.findByEmail(normalized).isPresent()) errors.add("Email đã được sử dụng");
+        }
+
+        if (fullName == null || fullName.length() > 100) errors.add("Họ tên không được để trống và tối đa 100 ký tự");
+        if (phone != null && !VIETNAMESE_PHONE_PATTERN.matcher(phone).matches()) {
+            errors.add("Số điện thoại không đúng định dạng Việt Nam");
+        }
+        if (request.getRoles() == null || request.getRoles().isEmpty()) {
+            errors.add("Phải chọn ít nhất một vai trò");
+        } else {
+            try {
+                Set<Role> roles = resolveRoles(request.getRoles());
+                Set<Warehouse> warehouses = resolveWarehouses(request.getWarehouseIds());
+                validateWarehouseAssignment(roles, warehouses);
+                resolveTerritories(request.getTerritoryIds());
+            } catch (IllegalArgumentException exception) {
+                errors.add(exception.getMessage());
+            }
+        }
+        return errors;
     }
 
     private String generateTemporaryPassword() {

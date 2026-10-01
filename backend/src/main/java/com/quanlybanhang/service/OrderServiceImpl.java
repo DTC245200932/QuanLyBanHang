@@ -28,6 +28,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final UnitConversionService unitConversionService;
+    private final AuditLogService auditLogService;
 
     @Override
     @Transactional
@@ -99,6 +100,8 @@ public class OrderServiceImpl implements OrderService {
 
         order.setTotalAmount(grandTotal);
         Order saved = orderRepository.save(order);
+        auditLogService.logAction("INVOICE", saved.getOrderCode(), "CREATE", null,
+                saved.getTotalAmount().toPlainString(), username != null ? username : "system");
         return mapToResponse(saved);
     }
 
@@ -123,8 +126,11 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse cancelOrder(Long id, String username) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
+        String oldStatus = order.getStatus();
         order.setStatus("CANCELLED");
         Order saved = orderRepository.save(order);
+        auditLogService.logAction("INVOICE", saved.getOrderCode(), "CANCEL", oldStatus,
+                saved.getStatus(), username != null ? username : "system");
         return mapToResponse(saved);
     }
 

@@ -86,7 +86,7 @@
 
   function productThumbnail(product) {
     if (product.imageUrl) {
-      return `<span class="product-thumbnail"><img src="${escapeHtml(product.imageUrl)}" alt="Ảnh ${escapeHtml(product.name)}"></span>`;
+      return `<span class="product-thumbnail"><img data-protected-src="${escapeHtml(product.imageUrl)}" alt="Ảnh ${escapeHtml(product.name)}"></span>`;
     }
     const fallback = String(product.code || product.name || "SP").slice(0, 2).toUpperCase();
     return `<span class="product-thumbnail" aria-hidden="true">${escapeHtml(fallback)}</span>`;
@@ -105,14 +105,16 @@
 
     $("products-body").innerHTML = products.map((product) => {
       const active = product.active !== false;
-      const packaging = product.packaging
-        ? escapeHtml(product.packaging)
+      const packaging = product.packingSpecification
+        ? escapeHtml(product.packingSpecification)
         : '<span class="product-backend-note">Chưa có dữ liệu quy cách</span>';
       const costCell = canManage
         ? `<td class="cost-column"><span class="product-price">${product.costPrice == null ? "—" : formatCurrency(product.costPrice)}</span>${product.costPrice == null ? '<span class="product-detail">API chưa trả giá vốn</span>' : ""}</td>`
         : "";
       const actions = canManage
-        ? `<button class="product-edit" type="button" data-edit-product="${product.id}">Sửa</button>`
+        ? `<button class="product-edit" type="button" data-edit-product="${product.id}">Sửa</button>
+           <button class="product-edit" type="button" data-toggle-product="${product.id}">${active ? "Ngừng bán" : "Kích hoạt"}</button>
+           ${product.canDelete ? `<button class="product-edit" type="button" data-delete-product="${product.id}">Xoá</button>` : ""}`
         : "";
       return `
         <tr>
@@ -139,6 +141,9 @@
           <td><div class="product-actions">${actions}</div></td>
         </tr>`;
     }).join("");
+    document.querySelectorAll("img[data-protected-src]").forEach((image) => {
+      Auth.setProtectedImage(image, image.dataset.protectedSrc);
+    });
   }
 
   async function loadCatalog() {
@@ -186,10 +191,12 @@
     $("product-name").value = product?.name || "";
     $("product-category").innerHTML = `<option value="">Chọn nhóm hàng</option>${categoryOptions(product?.categoryId)}`;
     $("product-unit").value = product?.unit || "cái";
+    $("product-packing").value = product?.packingSpecification || "";
     $("product-price").value = Number(product?.price || 0);
     $("product-cost").value = product?.costPrice ?? "";
     $("product-description").value = product?.description || "";
     $("product-active").value = String(product?.active !== false);
+    $("product-image-url").value = product?.imageUrl || "";
     costHelp.textContent = product && product.costPrice == null
       ? "Backend chưa trả giá vốn hiện tại; cần nhập lại để cập nhật an toàn."
       : "Chỉ Quản lý kinh doanh được xem và cập nhật.";
@@ -243,6 +250,8 @@
       costPrice: Number($("product-cost").value),
       revenue: Number(product?.revenue || 0),
       unit: $("product-unit").value.trim(),
+      packingSpecification: $("product-packing").value.trim(),
+      imageUrl: $("product-image-url").value,
       active: $("product-active").value === "true",
     };
 
@@ -250,6 +259,17 @@
     saveButton.textContent = "Đang lưu…";
     setFormMessage();
     try {
+      const imageFile = $("product-image").files?.[0];
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append("file", imageFile);
+        const uploadResponse = await Auth.apiFetch("/products/upload-image", { method: "POST", body: formData });
+        const uploadResult = await uploadResponse.json().catch(() => null);
+        if (!uploadResponse.ok || !uploadResult?.success) {
+          throw new Error(uploadResult?.message || "Không tải được ảnh sản phẩm.");
+        }
+        payload.imageUrl = uploadResult.data.imageUrl;
+      }
       const response = await Auth.apiFetch(product ? `/products/${product.id}` : "/products", {
         method: product ? "PUT" : "POST",
         body: JSON.stringify(payload),
@@ -275,9 +295,28 @@
   });
   $("products-body").addEventListener("click", (event) => {
     const editButton = event.target.closest("[data-edit-product]");
-    if (!editButton) return;
-    const product = state.products.find((item) => String(item.id) === editButton.dataset.editProduct);
-    if (product) openProductModal(product);
+    const toggleButton = event.target.closest("[data-toggle-product]");
+    const deleteButton = event.target.closest("[data-delete-product]");
+    if (editButton) {
+      const product = state.products.find((item) => String(item.id) === editButton.dataset.editProduct);
+      if (product) openProductModal(product);
+      return;
+    }
+    if (toggleButton) {
+      const product = state.products.find((item) => String(item.id) === toggleButton.dataset.toggleProduct);
+      if (!product) return;
+      Auth.apiFetch(`/products/${product.id}/status?active=${product.active === false}`, { method: "PATCH" })
+        .then(async response => { const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message); showToast(result.message); await loadCatalog(); })
+        .catch(error => showToast(error.message || "Không cập nhật được trạng thái.", "error"));
+      return;
+    }
+    if (deleteButton) {
+      const product = state.products.find((item) => String(item.id) === deleteButton.dataset.deleteProduct);
+      if (!product || !confirm(`Xoá sản phẩm ${product.code}?`)) return;
+      Auth.apiFetch(`/products/${product.id}`, { method: "DELETE" })
+        .then(async response => { const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message); showToast(result.message); await loadCatalog(); })
+        .catch(error => showToast(error.message || "Không xoá được sản phẩm.", "error"));
+    }
   });
   [$("product-search"), $("category-filter"), $("status-filter")].forEach((control) => {
     control.addEventListener(control.tagName === "INPUT" ? "input" : "change", renderProducts);

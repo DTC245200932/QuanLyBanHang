@@ -50,6 +50,9 @@ class UnitConversionHistoricalIntegrityTest {
     private WarehouseInventoryRepository inventoryRepository;
 
     @Mock
+    private AuditLogService auditLogService;
+
+    @Mock
     private OrderRepository orderRepository;
 
     @InjectMocks

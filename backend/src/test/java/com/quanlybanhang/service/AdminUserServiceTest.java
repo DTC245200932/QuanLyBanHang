@@ -1,7 +1,11 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.AdminUserRequest;
+import com.quanlybanhang.dto.response.UserImportResponse;
 import com.quanlybanhang.dto.response.UserResponse;
 import com.quanlybanhang.model.Dealer;
+import com.quanlybanhang.model.ERole;
+import com.quanlybanhang.model.Role;
 import com.quanlybanhang.model.User;
 import com.quanlybanhang.repository.DealerRepository;
 import com.quanlybanhang.repository.RoleRepository;
@@ -18,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -98,6 +103,36 @@ class AdminUserServiceTest {
         assertThat(user.getFailedLoginAttempts()).isZero();
         assertThat(user.getLockTime()).isNull();
         assertThat(user.getTokenVersion()).isEqualTo(5L);
+    }
+
+    @Test
+    void previewBulkImportReportsErrorsPerRowAndKeepsValidRows() {
+        AdminUserRequest valid = new AdminUserRequest();
+        valid.setUsername("sales02");
+        valid.setEmail("sales02@example.com");
+        valid.setFullName("Nhân viên kinh doanh");
+        valid.setPhone("0901234567");
+        valid.setRoles(Set.of("ROLE_SALES"));
+
+        AdminUserRequest invalid = new AdminUserRequest();
+        invalid.setUsername("");
+        invalid.setEmail("email-sai");
+        invalid.setFullName("");
+        invalid.setRoles(Set.of());
+
+        when(userRepository.findByUsername("sales02")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("sales02@example.com")).thenReturn(Optional.empty());
+        when(roleRepository.findByName(ERole.ROLE_SALES)).thenReturn(Optional.of(new Role(ERole.ROLE_SALES)));
+        when(warehouseRepository.findAllById(Set.of())).thenReturn(List.of());
+        when(territoryRepository.findAllById(Set.of())).thenReturn(List.of());
+
+        UserImportResponse result = adminUserService.previewImport(List.of(valid, invalid));
+
+        assertThat(result.getTotalRows()).isEqualTo(2);
+        assertThat(result.getValidRows()).isEqualTo(1);
+        assertThat(result.getInvalidRows()).isEqualTo(1);
+        assertThat(result.getRows().get(0).isValid()).isTrue();
+        assertThat(result.getRows().get(1).getErrors()).isNotEmpty();
     }
 
     private User user(Long id, String username, boolean active, long tokenVersion) {

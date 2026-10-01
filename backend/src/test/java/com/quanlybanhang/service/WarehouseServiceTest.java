@@ -45,6 +45,9 @@ class WarehouseServiceTest {
     @Mock
     private WarehouseInventoryRepository inventoryRepository;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     @InjectMocks
     private WarehouseServiceImpl warehouseService;
 

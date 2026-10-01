@@ -28,6 +28,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final UnitConversionService unitConversionService;
     private final WarehouseVoucherRepository voucherRepository;
     private final WarehouseInventoryRepository inventoryRepository;
+    private final AuditLogService auditLogService;
 
     @Override
     @Transactional
@@ -131,6 +132,8 @@ public class WarehouseServiceImpl implements WarehouseService {
                             .baseQuantity(BigDecimal.ZERO)
                             .baseUnit(product.getUnit())
                             .build());
+            BigDecimal quantityBefore = inventory.getBaseQuantity() == null
+                    ? BigDecimal.ZERO : inventory.getBaseQuantity();
 
             if (type == WarehouseVoucherType.IMPORT) {
                 inventory.addBaseQuantity(baseQty);
@@ -151,6 +154,13 @@ public class WarehouseServiceImpl implements WarehouseService {
             }
 
             inventoryRepository.save(inventory);
+            auditLogService.logAction(
+                    "INVENTORY",
+                    warehouse.getCode() + ":" + product.getCode(),
+                    type.name(),
+                    quantityBefore.toPlainString() + " " + product.getUnit(),
+                    inventory.getBaseQuantity().toPlainString() + " " + product.getUnit(),
+                    username != null ? username : "system");
         }
 
         WarehouseVoucher savedVoucher = voucherRepository.save(voucher);

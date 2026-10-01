@@ -1,0 +1,645 @@
+/* product-groups.css — S2-06 Quản lý nhóm hàng nhiều cấp
+   Follows the same CSS variable system as dashboard.css & admin-users.css */
+
+/* ── Action bar ─────────────────────────────────────────── */
+
+.pg-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pg-search-wrap {
+  position: relative;
+  flex: 1;
+  max-width: 360px;
+}
+
+.pg-search-wrap svg {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-500);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.pg-search-wrap input {
+  width: 100%;
+  height: 40px;
+  padding: 0 11px 0 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-900);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.pg-search-wrap input:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--teal-soft);
+}
+
+/* ── Two-panel layout ───────────────────────────────────── */
+
+.pg-layout {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  min-height: 560px;
+  overflow: hidden;
+}
+
+/* ── Tree panel (left) ──────────────────────────────────── */
+
+.pg-tree-panel {
+  width: 340px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--line-light);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pg-tree {
+  flex: 1;
+  padding: 8px 0;
+}
+
+/* ── Tree nodes ─────────────────────────────────────────── */
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.12s;
+  gap: 4px;
+  min-height: 40px;
+  position: relative;
+}
+
+.tree-node:hover {
+  background: var(--line-light);
+}
+
+.tree-node--selected {
+  background: var(--teal-soft);
+}
+
+.tree-node--selected:hover {
+  background: rgba(47, 184, 138, 0.16);
+}
+
+/* Indent levels */
+.tree-node--level-0 { padding-left: 12px; }
+.tree-node--level-1 { padding-left: 28px; }
+.tree-node--level-2 { padding-left: 44px; }
+.tree-node--level-3 { padding-left: 60px; }
+.tree-node--level-4 { padding-left: 76px; }
+
+/* Hidden: node is collapsed under a parent */
+.tree-node--hidden {
+  display: none;
+}
+
+/* Highlight match during search */
+.tree-node--match .tree-node__name {
+  color: var(--teal-deep);
+  font-weight: 650;
+}
+
+/* ── Toggle button ──────────────────────────────────────── */
+
+.tree-node__toggle {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-500);
+  border-radius: 4px;
+  font-size: 10px;
+  transition: background 0.12s, transform 0.15s;
+  cursor: pointer;
+}
+
+.tree-node__toggle:hover {
+  background: var(--line);
+}
+
+.tree-node__toggle--leaf {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tree-node__toggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.15s;
+}
+
+.tree-node--collapsed .tree-node__toggle svg {
+  transform: rotate(-90deg);
+}
+
+/* ── Node name ──────────────────────────────────────────── */
+
+.tree-node__name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+/* ── Product count badge ────────────────────────────────── */
+
+.tree-node__count {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--ink-500);
+  background: var(--line-light);
+  border-radius: 20px;
+  padding: 2px 7px;
+  min-width: 20px;
+  text-align: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tree-node--selected .tree-node__count {
+  background: rgba(47, 184, 138, 0.18);
+  color: var(--teal-deep);
+}
+
+/* ── Hover action buttons ───────────────────────────────── */
+
+.tree-node__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tree-node:hover .tree-node__actions,
+.tree-node--selected .tree-node__actions {
+  opacity: 1;
+}
+
+.tree-node__btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--ink-500);
+  transition: background 0.12s, color 0.12s;
+}
+
+.tree-node__btn:hover {
+  background: var(--line);
+  color: var(--ink-900);
+}
+
+.tree-node__btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.tree-node__btn--danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.tree-node__btn--disabled {
+  opacity: 0.35;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+
+.pg-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-500);
+  font-size: 13px;
+  flex: 1;
+}
+
+.pg-empty svg {
+  opacity: 0.25;
+  color: var(--ink-400);
+}
+
+.pg-empty--detail {
+  flex: 1;
+  min-height: 400px;
+}
+
+/* ── Detail panel (right) ───────────────────────────────── */
+
+.pg-detail-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ── Detail header ──────────────────────────────────────── */
+
+.detail-header {
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--line-light);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detail-header__info {
+  min-width: 0;
+  flex: 1;
+}
+
+.detail-breadcrumb {
+  font-size: 11px;
+  color: var(--ink-500);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-breadcrumb span + span::before {
+  content: " › ";
+  color: var(--ink-400);
+}
+
+.detail-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink-900);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-header__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Detail stats ───────────────────────────────────────── */
+
+.detail-stats {
+  display: flex;
+  gap: 24px;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.detail-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-stat__label {
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--ink-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-stat__value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.detail-stat__value--teal {
+  color: var(--teal-deep);
+}
+
+/* ── Detail description ─────────────────────────────────── */
+
+.detail-description {
+  padding: 14px 24px;
+  font-size: 13px;
+  color: var(--ink-600);
+  line-height: 1.6;
+  border-bottom: 1px solid var(--line-light);
+  min-height: 44px;
+}
+
+.detail-description em {
+  font-style: italic;
+  color: var(--ink-400);
+}
+
+/* ── Tabs ───────────────────────────────────────────────── */
+
+.detail-tabs {
+  display: flex;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--line-light);
+}
+
+.detail-tab {
+  padding: 12px 0;
+  margin-right: 24px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-500);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.detail-tab--active {
+  color: var(--teal-deep);
+  border-bottom-color: var(--teal);
+}
+
+.detail-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+/* ── Product list in detail ─────────────────────────────── */
+
+.product-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-light);
+  gap: 12px;
+}
+
+.product-row:last-child {
+  border-bottom: none;
+}
+
+.product-row__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-row__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-row__code {
+  font-size: 11px;
+  color: var(--ink-500);
+  margin-top: 2px;
+}
+
+.product-row__btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--line-light);
+  color: var(--ink-700);
+  font-weight: 600;
+  transition: background 0.12s, color 0.12s;
+}
+
+.product-row__btn:hover {
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+}
+
+/* ── Sub-group list in detail ───────────────────────────── */
+
+.subgroup-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-light);
+  gap: 12px;
+  cursor: pointer;
+}
+
+.subgroup-row:last-child {
+  border-bottom: none;
+}
+
+.subgroup-row__icon {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+  flex-shrink: 0;
+}
+
+.subgroup-row__icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.subgroup-row__name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+.subgroup-row__count {
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+/* ── Level badge ────────────────────────────────────────── */
+
+.level-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 650;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+/* ── Modal extras ───────────────────────────────────────── */
+
+.modal__body textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-900);
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.modal__body textarea:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--teal-soft);
+}
+
+.modal__body select {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-900);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+  appearance: auto;
+}
+
+.modal__body select:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--teal-soft);
+}
+
+.modal__body label {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-700);
+  margin-bottom: 6px;
+}
+
+.modal__body small {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-500);
+  margin-top: 4px;
+}
+
+.modal-subtitle {
+  margin-top: 4px;
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.req {
+  color: var(--danger);
+}
+
+.form-message {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: #9c3333;
+  background: #faeeee;
+  font-size: 12px;
+}
+
+/* ── Products loading/empty in detail ───────────────────── */
+
+.detail-loading {
+  padding: 30px;
+  text-align: center;
+  color: var(--ink-500);
+  font-size: 13px;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .pg-layout {
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .pg-tree-panel {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--line-light);
+    max-height: 320px;
+  }
+
+  .detail-stats {
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .detail-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pg-action-bar {
+    flex-wrap: wrap;
+  }
+
+  .pg-search-wrap {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .detail-header {
+    padding: 16px;
+  }
+
+  .detail-stats {
+    padding: 12px 16px;
+  }
+
+  .detail-tab-content {
+    padding: 12px 16px;
+  }
+
+  .detail-tabs {
+    padding: 0 16px;
+  }
+
+  .detail-description {
+    padding: 12px 16px;
+  }
+}

@@ -99,19 +99,6 @@ const MenuConfig = (() => {
       ],
     },
     {
-      id: "unit-conversions",
-      label: "Đơn vị tính quy đổi",
-      icon: '<path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"/>',
-      href: "warehouse/units.html?tab=units",
-      roles: [
-        "ROLE_ADMIN",
-        "ROLE_WAREHOUSE_MANAGER",
-        "ROLE_WAREHOUSE_STAFF",
-        "ROLE_SALES_MANAGER",
-        "ROLE_VIEWER",
-      ],
-    },
-    {
       id: "finance",
       section: "Tài chính",
       label: "Công nợ",

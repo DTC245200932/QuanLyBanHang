@@ -533,7 +533,6 @@
   // ══════════════════════════════════════════════════
   const sidebar = $("sidebar");
   const nav = $("sidebar-nav");
-  const requestedWarehouseTab = new URLSearchParams(window.location.search).get("tab") || "units";
   const overlay = document.createElement("div");
   overlay.className = "sidebar-overlay";
   document.body.appendChild(overlay);
@@ -554,8 +553,7 @@
       ? `<div class="sidebar__section-label">${escapeHtml(item.section)}</div>` : "";
     if (item.section) lastSection = item.section;
     const resolvedHref = MenuConfig.resolveHref ? MenuConfig.resolveHref(item.href) : item.href;
-    const activeMenuId = requestedWarehouseTab === "units" ? "unit-conversions" : "import-export";
-    const isActive = item.id === activeMenuId;
+    const isActive = item.id === "import-export";
     return `${section}<a class="sidebar__link ${isActive ? "sidebar__link--active" : ""}"
       href="${resolvedHref}" data-page="${item.id}">
       <svg viewBox="0 0 24 24">${item.icon}</svg>
@@ -577,6 +575,9 @@
       }
     });
   }
+  $("btn-avatar")?.addEventListener("click", () => {
+    window.location.href = "../profile.html";
+  });
 
   const roleNames = (user.roles || []).map(MenuConfig.getRoleDisplayName);
   const scope = [...(user.warehouses || []), ...(user.territories || [])].map((item) => item.name);
@@ -611,10 +612,9 @@
   const tabs = document.querySelectorAll(".nav-tab");
   const panels = document.querySelectorAll(".tab-panel");
 
-  function updateWarehouseMenuState(tabId) {
-    const activeMenuId = tabId === "sku-units" ? "unit-conversions" : "import-export";
+  function updateWarehouseMenuState() {
     nav.querySelectorAll("[data-page]").forEach((link) => {
-      link.classList.toggle("sidebar__link--active", link.dataset.page === activeMenuId);
+      link.classList.toggle("sidebar__link--active", link.dataset.page === "import-export");
     });
   }
 
@@ -634,7 +634,7 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") { renderLedgerTable(); renderSandboxOptions(); }
     if (tabId === "inventory-report") renderInventoryTable();
-    updateWarehouseMenuState(tabId);
+    updateWarehouseMenuState();
     updateMetrics();
   }
 

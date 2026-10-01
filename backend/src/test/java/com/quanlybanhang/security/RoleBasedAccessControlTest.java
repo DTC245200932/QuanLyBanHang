@@ -78,6 +78,9 @@ class RoleBasedAccessControlTest {
     @MockBean
     private JwtUtils jwtUtils;
 
+    @MockBean
+    private com.quanlybanhang.service.WarehouseService warehouseService;
+
     @org.junit.jupiter.api.BeforeEach
     void setUp() throws Exception {
         org.mockito.Mockito.doAnswer(invocation -> {

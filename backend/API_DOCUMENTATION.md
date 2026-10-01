@@ -151,10 +151,52 @@ Hỗ trợ Quản lý kinh doanh xem và phân tích doanh số theo ngành hàn
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/products?categoryId={id}` | Đã đăng nhập | Danh sách sản phẩm (hỗ trợ lọc theo nhóm hàng) |
-| GET | `/products/{id}` | Đã đăng nhập | Xem chi tiết sản phẩm |
-| POST | `/products` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo sản phẩm gắn vào nhóm hàng |
+| GET | `/products/{id}` | Đã đăng nhập | Xem chi tiết sản phẩm kèm danh sách đơn vị quy đổi |
+| POST | `/products` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo sản phẩm gắn vào nhóm hàng (hỗ trợ khai báo unitConversions) |
 | PUT | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật thông tin sản phẩm |
 | DELETE | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa sản phẩm |
+
+## Đơn vị tính quy đổi của SKU & Nhập xuất kho theo thùng/lon (S2-07)
+
+Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang gọi hàng (thùng, lốc...), để nhập xuất theo thùng mà sổ sách tồn kho và đơn hàng vẫn ghi nhận chính xác theo số lượng đơn vị cơ sở (số lon).
+
+### Quy tắc nghiệp vụ cốt lõi:
+1. **Mỗi SKU khai báo được nhiều đơn vị**: 1 đơn vị cơ sở (`unit`, vd: "lon" với hệ số 1) và nhiều đơn vị quy đổi (vd: "lốc" hệ số 6, "thùng" hệ số 24). Hệ số quy đổi luôn > 0.
+2. **Đơn hàng và phiếu kho nhập theo đơn vị nào cũng quy về đơn vị cơ sở khi ghi sổ**:
+   - Khi nhập/xuất kho theo "thùng", hệ thống tính: `baseQuantity = quantity * conversionFactor` (vd: 10 thùng * 24 = 240 lon). Sổ sách tồn kho (`warehouse_inventories`) luôn lưu trữ và cộng/trừ theo đơn vị cơ sở.
+   - Khi tạo đơn hàng theo "thùng" hoặc "lốc", dòng đơn hàng lưu trữ số lượng quy về đơn vị cơ sở tương ứng.
+3. **Đổi hệ số quy đổi không làm sai lệch các giao dịch đã ghi trước đó**:
+   - Mọi dòng phiếu kho (`warehouse_voucher_items`) và dòng đơn hàng (`order_items`) đều **đóng băng** (snapshot) các giá trị `unit`, `conversionFactor`, `baseUnit`, `baseQuantity` tại thời điểm ghi sổ.
+   - Khi nhà sản xuất thay đổi quy cách đóng gói hoặc người dùng sửa hệ số quy đổi của SKU (vd: đổi thùng từ 24 lon thành 20 lon), toàn bộ phiếu kho, đơn hàng và số tồn kho đã ghi sổ trước đó **hoàn toàn không bị thay đổi hay sai lệch**. Giao dịch mới phát sinh sau đó sẽ áp dụng hệ số mới.
+
+### Danh sách API Đơn vị quy đổi (`/api/products/{productId}/unit-conversions`)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/products/{productId}/unit-conversions` | Đã đăng nhập | Xem danh sách các đơn vị tính của SKU (luôn có đơn vị cơ sở hệ số 1.0 và các đơn vị phụ) |
+| POST | `/products/{productId}/unit-conversions` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo đơn vị quy đổi mới (vd: "thùng" với hệ số 24) |
+| PUT | `/products/{productId}/unit-conversions/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật tên đơn vị, hệ số quy đổi |
+| DELETE | `/products/{productId}/unit-conversions/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa đơn vị quy đổi |
+
+### Danh sách API Kho & Phiếu kho (`/api/warehouse`)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| POST | `/warehouse/import` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu nhập kho (hỗ trợ nhập theo thùng/lốc, tự động quy về đơn vị cơ sở khi ghi sổ) |
+| POST | `/warehouse/export` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu xuất kho (quy về đơn vị cơ sở và kiểm tra tồn kho theo đơn vị cơ sở) |
+| POST | `/warehouse/adjust` | `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho |
+| GET | `/warehouse/inventory` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem tồn kho sổ sách theo đơn vị cơ sở (số lon) kèm bảng quy đổi tương đương theo thùng, lốc |
+| GET | `/warehouse/vouchers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách phiếu kho đã ghi sổ kèm thông tin đóng băng hệ số |
+| GET | `/warehouse/vouchers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Chi tiết phiếu kho |
+
+### Danh sách API Đơn hàng (`/api/orders`)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/orders` | Đã đăng nhập | Xem danh sách đơn hàng |
+| GET | `/orders/{id}` | Đã đăng nhập | Xem chi tiết đơn hàng (kèm số lượng theo đơn vị đặt và số lượng cơ sở đã đóng băng) |
+| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo và ghi sổ đơn hàng (tự động quy đổi về đơn vị cơ sở) |
+| PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng |
 
 ## Bảy vai trò
 

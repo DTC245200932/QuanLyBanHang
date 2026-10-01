@@ -30,6 +30,8 @@ public class ProductResponse {
     private String unit;
     private Boolean active;
 
+    private java.util.List<UnitConversionResponse> unitConversions;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

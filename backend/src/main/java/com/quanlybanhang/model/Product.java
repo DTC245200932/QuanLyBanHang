@@ -64,11 +64,34 @@ public class Product {
     private BigDecimal revenue = BigDecimal.ZERO;
 
     /**
-     * Đơn vị tính: chiếc, cái, hộp, kg...
+     * Đơn vị tính cơ sở: chiếc, cái, hộp, kg, lon...
      */
     @Column(length = 50)
     @Builder.Default
     private String unit = "cái";
+
+    /**
+     * Danh sách các đơn vị quy đổi của SKU (S2-07).
+     * Ví dụ: SKU có đơn vị cơ sở "lon", có thể thêm "lốc" (hệ số 6), "thùng" (hệ số 24).
+     */
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private java.util.List<UnitConversion> unitConversions = new java.util.ArrayList<>();
+
+    public void addUnitConversion(UnitConversion conversion) {
+        if (this.unitConversions == null) {
+            this.unitConversions = new java.util.ArrayList<>();
+        }
+        this.unitConversions.add(conversion);
+        conversion.setProduct(this);
+    }
+
+    public void removeUnitConversion(UnitConversion conversion) {
+        if (this.unitConversions != null) {
+            this.unitConversions.remove(conversion);
+            conversion.setProduct(null);
+        }
+    }
 
     @Column(nullable = false)
     @Builder.Default

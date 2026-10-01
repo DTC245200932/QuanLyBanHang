@@ -49,4 +49,10 @@ public class ProductRequest {
 
     @Builder.Default
     private Boolean active = true;
+
+    /**
+     * Danh sách đơn vị quy đổi khai báo kèm sản phẩm (S2-07).
+     * Ví dụ: lon (cơ sở), lốc (hệ số 6), thùng (hệ số 24).
+     */
+    private java.util.List<UnitConversionRequest> unitConversions;
 }

@@ -42,6 +42,23 @@ public class ProductServiceImpl implements ProductService {
                 .active(request.getActive() != null ? request.getActive() : true)
                 .build();
 
+        if (request.getUnitConversions() != null && !request.getUnitConversions().isEmpty()) {
+            for (com.quanlybanhang.dto.request.UnitConversionRequest ucReq : request.getUnitConversions()) {
+                if (ucReq.getUnitName() != null && !ucReq.getUnitName().isBlank() && ucReq.getConversionFactor() != null) {
+                    product.addUnitConversion(com.quanlybanhang.model.UnitConversion.builder()
+                            .product(product)
+                            .unitName(ucReq.getUnitName().trim())
+                            .conversionFactor(ucReq.getConversionFactor())
+                            .isBaseUnit(false)
+                            .price(ucReq.getPrice())
+                            .costPrice(ucReq.getCostPrice())
+                            .barcode(ucReq.getBarcode())
+                            .description(ucReq.getDescription())
+                            .build());
+                }
+            }
+        }
+
         Product saved = productRepository.save(product);
         return mapToResponse(saved);
     }
@@ -106,6 +123,28 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private ProductResponse mapToResponse(Product product) {
+        java.util.List<com.quanlybanhang.dto.response.UnitConversionResponse> conversions = null;
+        if (product.getUnitConversions() != null) {
+            conversions = product.getUnitConversions().stream()
+                    .map(uc -> com.quanlybanhang.dto.response.UnitConversionResponse.builder()
+                            .id(uc.getId())
+                            .productId(product.getId())
+                            .productCode(product.getCode())
+                            .productName(product.getName())
+                            .unitName(uc.getUnitName())
+                            .conversionFactor(uc.getConversionFactor())
+                            .baseUnit(product.getUnit())
+                            .isBaseUnit(uc.getIsBaseUnit() != null ? uc.getIsBaseUnit() : false)
+                            .price(uc.getPrice())
+                            .costPrice(uc.getCostPrice())
+                            .barcode(uc.getBarcode())
+                            .description(uc.getDescription())
+                            .createdAt(uc.getCreatedAt())
+                            .updatedAt(uc.getUpdatedAt())
+                            .build())
+                    .collect(Collectors.toList());
+        }
+
         return ProductResponse.builder()
                 .id(product.getId())
                 .code(product.getCode())
@@ -119,6 +158,7 @@ public class ProductServiceImpl implements ProductService {
                 .revenue(product.getRevenue())
                 .unit(product.getUnit())
                 .active(product.getActive())
+                .unitConversions(conversions)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();

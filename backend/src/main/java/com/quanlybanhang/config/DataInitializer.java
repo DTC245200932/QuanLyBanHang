@@ -42,6 +42,7 @@ public class DataInitializer implements CommandLineRunner {
     private final TerritoryRepository territoryRepository;
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
+    private final com.quanlybanhang.repository.UnitConversionRepository unitConversionRepository;
 
     @Value("${app.seed-demo-users:false}")
     private boolean seedDemoUsers;
@@ -272,6 +273,65 @@ public class DataInitializer implements CommandLineRunner {
                 .active(true)
                 .build());
 
-        logger.info("Đã khởi tạo cây nhóm hàng 3 cấp và các sản phẩm mẫu có doanh số cho S2-06");
+        // Khởi tạo sản phẩm đồ uống minh hoạ S2-07 (Đơn vị tính quy đổi: lon, lốc, thùng)
+        Category ngDoUong = categoryRepository.save(Category.builder()
+                .code("NG-DOUONG")
+                .name("Đồ uống & Giải khát")
+                .description("Bia, nước ngọt và đồ uống đóng lon/chai")
+                .level(1)
+                .parent(null)
+                .active(true)
+                .build());
+
+        Category pnBia = categoryRepository.save(Category.builder()
+                .code("PN-BIA")
+                .name("Bia các loại")
+                .description("Bia lon, bia chai các thương hiệu")
+                .level(2)
+                .parent(ngDoUong)
+                .active(true)
+                .build());
+
+        Category ncBiaLon = categoryRepository.save(Category.builder()
+                .code("NC-BIALON")
+                .name("Bia lon đóng thùng")
+                .description("Bia lon 330ml quy cách lốc và thùng")
+                .level(3)
+                .parent(pnBia)
+                .active(true)
+                .build());
+
+        Product biaHeineken = productRepository.save(Product.builder()
+                .code("SP-KEN330")
+                .name("Bia Heineken Sleek lon 330ml")
+                .category(ncBiaLon)
+                .price(new BigDecimal("19000"))
+                .costPrice(new BigDecimal("15000"))
+                .revenue(new BigDecimal("80000000"))
+                .unit("lon")
+                .active(true)
+                .build());
+
+        unitConversionRepository.save(com.quanlybanhang.model.UnitConversion.builder()
+                .product(biaHeineken)
+                .unitName("lốc")
+                .conversionFactor(new BigDecimal("6.0000"))
+                .isBaseUnit(false)
+                .price(new BigDecimal("112000"))
+                .costPrice(new BigDecimal("90000"))
+                .description("1 lốc = 6 lon")
+                .build());
+
+        unitConversionRepository.save(com.quanlybanhang.model.UnitConversion.builder()
+                .product(biaHeineken)
+                .unitName("thùng")
+                .conversionFactor(new BigDecimal("24.0000"))
+                .isBaseUnit(false)
+                .price(new BigDecimal("435000"))
+                .costPrice(new BigDecimal("355000"))
+                .description("1 thùng = 24 lon")
+                .build());
+
+        logger.info("Đã khởi tạo cây nhóm hàng 3 cấp và các sản phẩm mẫu có đơn vị tính quy đổi cho S2-07");
     }
 }

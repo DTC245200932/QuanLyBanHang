@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import com.quanlybanhang.service.AuditLogService;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
@@ -19,6 +21,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final AuditLogService auditLogService;
 
     @Override
     @Transactional
@@ -63,6 +66,22 @@ public class ProductServiceImpl implements ProductService {
         product.setName(request.getName().trim());
         product.setDescription(request.getDescription());
         product.setCategory(category);
+        
+        if (product.getPrice() != null && request.getPrice() != null && product.getPrice().compareTo(request.getPrice()) != 0) {
+            String username = "SYSTEM";
+            if (SecurityContextHolder.getContext().getAuthentication() != null) {
+                username = SecurityContextHolder.getContext().getAuthentication().getName();
+            }
+            auditLogService.logAction(
+                "PRICE",
+                product.getId().toString(),
+                "UPDATE",
+                product.getPrice().toString(),
+                request.getPrice().toString(),
+                username
+            );
+        }
+        
         product.setPrice(request.getPrice());
         product.setCostPrice(request.getCostPrice());
         product.setRevenue(request.getRevenue());

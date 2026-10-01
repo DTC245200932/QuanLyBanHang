@@ -9,12 +9,9 @@
  * - Tìm kiếm theo tên (highlight + hiện tổ tiên)
  *
  * API endpoints:
- *   GET    /product-groups               → { data: [...] }   (flat list)
- *   POST   /product-groups               → create
- *   PUT    /product-groups/:id           → update
- *   DELETE /product-groups/:id           → delete (409 nếu còn sản phẩm)
- *   GET    /product-groups/:id/products  → { data: [...] }
- *   POST   /products/:id/move-group      → { targetGroupId }
+ *   CRUD   /categories
+ *   GET    /products?categoryId=:id
+ *   PUT    /categories/products/:id/move?targetCategoryId=:categoryId
  */
 (() => {
   /* ── Auth guard ────────────────────────────────────────── */
@@ -401,7 +398,7 @@
     contentEl.innerHTML = '<div class="detail-loading">Đang tải sản phẩm…</div>';
 
     try {
-      const res    = await Auth.apiFetch(`/product-groups/${groupId}/products`);
+      const res    = await Auth.apiFetch(`/products?categoryId=${encodeURIComponent(groupId)}`);
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || 'Không tải được danh sách sản phẩm');
 
@@ -463,11 +460,14 @@
     $('tree-container').innerHTML = '<div class="pg-empty">Đang tải danh mục…</div>';
 
     try {
-      const res    = await Auth.apiFetch('/product-groups');
+      const res    = await Auth.apiFetch('/categories');
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || 'Không tải được dữ liệu');
 
-      state.flat = result.data || [];
+      state.flat = (result.data || []).map((group) => ({
+        ...group,
+        productCount: Number(group.directProductCount ?? group.totalProductCount ?? 0),
+      }));
       buildTree(state.flat);
       renderTree();
 
@@ -541,6 +541,7 @@
       $('group-modal-title').textContent = 'Sửa nhóm hàng';
       $('group-modal-sub').textContent   = 'Cập nhật thông tin nhóm hàng.';
       $('group-id').value                = group.id;
+      $('group-code').value              = group.code || '';
       $('group-name').value              = group.name;
       $('group-desc').value              = group.description || '';
       populateParentSelect(group.id);
@@ -549,6 +550,7 @@
       $('group-modal-title').textContent = 'Thêm nhóm hàng';
       $('group-modal-sub').textContent   = 'Tạo nhóm hàng mới trong danh mục.';
       $('group-id').value                = '';
+      $('group-code').value              = '';
       populateParentSelect(null);
       if (presetParentId != null) $('group-parent').value = presetParentId;
     }
@@ -566,13 +568,14 @@
     const id       = $('group-id').value;
     const parentId = $('group-parent').value ? Number($('group-parent').value) : null;
     const payload  = {
+      code:        $('group-code').value.trim().toUpperCase(),
       name:        $('group-name').value.trim(),
       parentId,
       description: $('group-desc').value.trim(),
     };
 
-    if (!payload.name) {
-      showFormError('group-form-message', 'Vui lòng nhập tên nhóm.');
+    if (!payload.code || !payload.name) {
+      showFormError('group-form-message', 'Vui lòng nhập mã và tên nhóm.');
       return;
     }
 
@@ -582,7 +585,7 @@
 
     try {
       const res    = await Auth.apiFetch(
-        id ? `/product-groups/${id}` : '/product-groups',
+        id ? `/categories/${id}` : '/categories',
         { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) },
       );
       const result = await res.json();
@@ -620,8 +623,8 @@
     if (!confirm(`Xoá nhóm «${node.name}»? Hành động này không thể hoàn tác.`)) return;
 
     try {
-      const res    = await Auth.apiFetch(`/product-groups/${id}`, { method: 'DELETE' });
-      if (res.status === 409) {
+      const res    = await Auth.apiFetch(`/categories/${id}`, { method: 'DELETE' });
+      if (res.status === 400 || res.status === 409) {
         showToast('Nhóm này còn sản phẩm, không thể xoá.', 'error');
         return;
       }
@@ -666,9 +669,8 @@
     btn.textContent = 'Đang chuyển…';
 
     try {
-      const res    = await Auth.apiFetch(`/products/${productId}/move-group`, {
-        method: 'POST',
-        body: JSON.stringify({ targetGroupId }),
+      const res    = await Auth.apiFetch(`/categories/products/${productId}/move?targetCategoryId=${encodeURIComponent(targetGroupId)}`, {
+        method: 'PUT',
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok || !result.success) throw new Error(result.message || 'Không chuyển được sản phẩm');

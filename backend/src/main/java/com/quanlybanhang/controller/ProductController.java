@@ -123,7 +123,7 @@ public class ProductController {
             Path targetLocation = imageStoragePath.resolve(newFileName);
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
 
-            String fileUrl = "/api/products/images/" + newFileName;
+            String fileUrl = "/products/images/" + newFileName;
             return ResponseEntity.ok(ApiResponse.success("Tải ảnh lên thành công", Map.of(
                     "imageUrl", fileUrl,
                     "fileName", newFileName

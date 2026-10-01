@@ -6,7 +6,9 @@ import com.quanlybanhang.config.SecurityConfig;
 import com.quanlybanhang.controller.AdminUserController;
 import com.quanlybanhang.controller.FinanceController;
 import com.quanlybanhang.controller.TestController;
+import com.quanlybanhang.controller.UserController;
 import com.quanlybanhang.controller.WarehouseController;
+import com.quanlybanhang.dto.response.UserProfileResponse;
 import com.quanlybanhang.service.AdminUserService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -56,6 +58,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         FinanceController.class,
         WarehouseController.class,
         AdminUserController.class,
+        UserController.class,
         TestController.class
 })
 @Import({SecurityConfig.class, RolePermissionConfig.class, RestAccessDeniedHandler.class, AuthEntryPointJwt.class, ObjectMapper.class})
@@ -77,6 +80,12 @@ class RoleBasedAccessControlTest {
 
     @MockBean
     private JwtUtils jwtUtils;
+
+    @MockBean
+    private com.quanlybanhang.service.WarehouseService warehouseService;
+
+    @MockBean
+    private com.quanlybanhang.service.UserService userService;
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() throws Exception {
@@ -250,6 +259,21 @@ class RoleBasedAccessControlTest {
     void warehouseManagerCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @DisplayName("[HỒ SƠ] Người dùng đã đăng nhập truy cập được hồ sơ cá nhân")
+    void authenticatedUserCanAccessOwnProfile() throws Exception {
+        org.mockito.Mockito.when(userService.getUserProfile("sales_user"))
+                .thenReturn(UserProfileResponse.builder()
+                        .username("sales_user")
+                        .fullName("Nhân viên kinh doanh")
+                        .roles(java.util.List.of("ROLE_SALES"))
+                        .build());
+
+        mockMvc.perform(get("/api/users/profile"))
+                .andExpect(status().isOk());
     }
 
     // ═══════════════════════════════════════════════════════════════

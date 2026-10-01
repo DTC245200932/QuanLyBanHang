@@ -7,7 +7,7 @@
       name="description"
       content="Quản lý đơn vị tính quy đổi và nhập xuất kho theo thùng/lốc/lon (S2-07) - SaleStock."
     />
-    <title>Đơn vị tính quy đổi & Nhập xuất kho | SaleStock</title>
+    <title>Nhập / Xuất kho | SaleStock</title>
     <link rel="icon" href="../assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="../css/dashboard.css" />
     <link rel="stylesheet" href="../css/warehouse-units.css" />
@@ -38,13 +38,10 @@
 
         <div class="sidebar__footer">
           <div class="sidebar__user" id="sidebar-user">
-            <div class="sidebar__avatar" id="user-avatar-fallback">K</div>
-            <img
-              id="user-avatar-image"
-              class="sidebar__avatar-image"
-              alt=""
-              hidden
-            />
+            <button class="sidebar__avatar" id="btn-avatar" type="button" title="Mở hồ sơ cá nhân" aria-label="Mở hồ sơ cá nhân">
+              <span id="user-avatar-fallback">K</span>
+              <img id="user-avatar-image" alt="" hidden />
+            </button>
             <div class="sidebar__user-info">
               <span class="sidebar__user-name" id="user-name">Thủ kho</span>
               <span class="sidebar__user-role" id="user-role">Kho Tân Bình</span>
@@ -284,9 +281,9 @@
               </div>
 
               <div class="toolbar-actions">
-                <button class="btn btn--secondary btn--sm" id="btn-reset-demo" title="Khôi phục dữ liệu demo mẫu ban đầu">
+                <button class="btn btn--secondary btn--sm" id="btn-reset-demo" title="Tải lại dữ liệu mới nhất từ máy chủ">
                   <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                  <span>Dữ liệu mẫu</span>
+                  <span>Tải lại dữ liệu</span>
                 </button>
                 <button class="btn btn--primary btn--sm" id="btn-open-create-unit-modal">
                   <svg viewBox="0 0 24 24" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

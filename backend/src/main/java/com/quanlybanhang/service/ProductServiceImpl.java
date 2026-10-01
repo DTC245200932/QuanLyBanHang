@@ -32,6 +32,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final AuditLogService auditLogService;
 
     @Override
     @Transactional
@@ -73,6 +74,23 @@ public class ProductServiceImpl implements ProductService {
                 .hasTransactions(hasTrans)
                 .build();
 
+        if (request.getUnitConversions() != null && !request.getUnitConversions().isEmpty()) {
+            for (com.quanlybanhang.dto.request.UnitConversionRequest ucReq : request.getUnitConversions()) {
+                if (ucReq.getUnitName() != null && !ucReq.getUnitName().isBlank() && ucReq.getConversionFactor() != null) {
+                    product.addUnitConversion(com.quanlybanhang.model.UnitConversion.builder()
+                            .product(product)
+                            .unitName(ucReq.getUnitName().trim())
+                            .conversionFactor(ucReq.getConversionFactor())
+                            .isBaseUnit(false)
+                            .price(ucReq.getPrice())
+                            .costPrice(canManageCostPrice ? ucReq.getCostPrice() : null)
+                            .barcode(ucReq.getBarcode())
+                            .description(ucReq.getDescription())
+                            .build());
+                }
+            }
+        }
+
         Product saved = productRepository.save(product);
         return mapToResponse(saved);
     }
@@ -102,6 +120,18 @@ public class ProductServiceImpl implements ProductService {
         product.setCategory(category);
 
         if (request.getPrice() != null) {
+            if (product.getPrice() == null || product.getPrice().compareTo(request.getPrice()) != 0) {
+                Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+                String username = authentication != null ? authentication.getName() : "SYSTEM";
+                auditLogService.logAction(
+                        "PRICE",
+                        product.getId().toString(),
+                        "UPDATE",
+                        product.getPrice() != null ? product.getPrice().toString() : null,
+                        request.getPrice().toString(),
+                        username
+                );
+            }
             product.setPrice(request.getPrice());
         }
 
@@ -218,6 +248,27 @@ public class ProductServiceImpl implements ProductService {
 
     private ProductResponse mapToResponse(Product product) {
         boolean canViewCostPrice = isSalesManager();
+        java.util.List<com.quanlybanhang.dto.response.UnitConversionResponse> conversions = null;
+        if (product.getUnitConversions() != null) {
+            conversions = product.getUnitConversions().stream()
+                    .map(uc -> com.quanlybanhang.dto.response.UnitConversionResponse.builder()
+                            .id(uc.getId())
+                            .productId(product.getId())
+                            .productCode(product.getCode())
+                            .productName(product.getName())
+                            .unitName(uc.getUnitName())
+                            .conversionFactor(uc.getConversionFactor())
+                            .baseUnit(product.getUnit())
+                            .isBaseUnit(uc.getIsBaseUnit() != null ? uc.getIsBaseUnit() : false)
+                            .price(uc.getPrice())
+                            .costPrice(canViewCostPrice ? uc.getCostPrice() : null)
+                            .barcode(uc.getBarcode())
+                            .description(uc.getDescription())
+                            .createdAt(uc.getCreatedAt())
+                            .updatedAt(uc.getUpdatedAt())
+                            .build())
+                    .collect(Collectors.toList());
+        }
         boolean hasTrans = product.hasTransactions();
 
         return ProductResponse.builder()
@@ -237,6 +288,7 @@ public class ProductServiceImpl implements ProductService {
                 .packingSpecification(product.getPackingSpecification())
                 .imageUrl(product.getImageUrl())
                 .active(product.getActive())
+                .unitConversions(conversions)
                 .status(Boolean.TRUE.equals(product.getActive()) ? "Đang kinh doanh" : "Ngừng kinh doanh")
                 .hasTransactions(hasTrans)
                 .canDelete(!hasTrans)

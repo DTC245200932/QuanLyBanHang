@@ -140,6 +140,10 @@
               <input id="product-unit" maxlength="50" placeholder="Cái, hộp, kg…" required />
             </label>
             <label class="form-field">
+              <span>Quy cách đóng gói</span>
+              <input id="product-packing" maxlength="255" placeholder="Ví dụ: Thùng 24 lon" />
+            </label>
+            <label class="form-field">
               <span>Giá bán</span>
               <input id="product-price" type="number" min="0" step="1000" value="0" required />
             </label>
@@ -154,6 +158,12 @@
                 <option value="true">Đang kinh doanh</option>
                 <option value="false">Ngừng kinh doanh</option>
               </select>
+            </label>
+            <label class="form-field">
+              <span>Ảnh sản phẩm</span>
+              <input id="product-image" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+              <input id="product-image-url" type="hidden" />
+              <small>JPG, PNG, WEBP hoặc GIF; tối đa 5 MB.</small>
             </label>
           </div>
 

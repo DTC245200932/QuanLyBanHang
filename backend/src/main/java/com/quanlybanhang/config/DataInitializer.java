@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.Set;
@@ -42,9 +43,16 @@ public class DataInitializer implements CommandLineRunner {
     private final TerritoryRepository territoryRepository;
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
+    private final com.quanlybanhang.repository.UnitConversionRepository unitConversionRepository;
 
     @Value("${app.seed-demo-users:false}")
     private boolean seedDemoUsers;
+
+    @Value("${app.bootstrap.admin-password:}")
+    private String bootstrapAdminPassword;
+
+    @Value("${app.demo-user.password:}")
+    private String demoUserPassword;
 
     @Override
     public void run(String... args) {
@@ -73,13 +81,18 @@ public class DataInitializer implements CommandLineRunner {
 
         // Tạo tài khoản admin mặc định nếu chưa có
         if (!userRepository.existsByUsername("admin")) {
+            if (!StringUtils.hasText(bootstrapAdminPassword)) {
+                throw new IllegalStateException(
+                        "Chưa cấu hình APP_BOOTSTRAP_ADMIN_PASSWORD để tạo tài khoản admin ban đầu");
+            }
+
             Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy role ADMIN"));
 
             User admin = User.builder()
                     .username("admin")
                     .email("admin@quanlybanhang.com")
-                    .password(passwordEncoder.encode("admin123"))
+                    .password(passwordEncoder.encode(bootstrapAdminPassword))
                     .fullName("Quản trị viên")
                     .phone("0900000000")
                     .active(true)
@@ -87,11 +100,15 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
 
             userRepository.save(admin);
-            logger.info("Đã tạo tài khoản admin mặc định (username: admin, password: admin123)");
+            logger.info("Đã tạo tài khoản admin ban đầu (username: admin)");
         }
 
         if (seedDemoUsers) {
-            createDemoUsers();
+            if (!StringUtils.hasText(demoUserPassword)) {
+                throw new IllegalStateException(
+                        "APP_DEMO_USER_PASSWORD là bắt buộc khi bật APP_SEED_DEMO_USERS");
+            }
+            createDemoUsers(demoUserPassword);
         }
     }
 
@@ -99,7 +116,7 @@ public class DataInitializer implements CommandLineRunner {
      * Tạo tài khoản minh hoạ khi chạy local với APP_SEED_DEMO_USERS=true.
      * Chế độ này mặc định tắt và không nên bật ở production.
      */
-    private void createDemoUsers() {
+    private void createDemoUsers(String password) {
         Warehouse demoWarehouse = warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
                 .findFirst()
                 .orElseGet(() -> warehouseRepository.save(
@@ -109,16 +126,16 @@ public class DataInitializer implements CommandLineRunner {
                 .orElseGet(() -> territoryRepository.save(
                         Territory.builder().code("DB-DEMO").name("Địa bàn Demo").build()));
 
-        createDemoUser("sales.manager", "SalesManager123", "Quản lý kinh doanh Demo",
+        createDemoUser("sales.manager", password, "Quản lý kinh doanh Demo",
                 "sales.manager@demo.local", ERole.ROLE_SALES_MANAGER, Set.of(), Set.of());
-        createDemoUser("sales.demo", "SalesDemo123", "Nhân viên kinh doanh Demo",
+        createDemoUser("sales.demo", password, "Nhân viên kinh doanh Demo",
                 "sales@demo.local", ERole.ROLE_SALES, Set.of(), Set.of(demoTerritory));
-        createDemoUser("warehouse.demo", "Warehouse123", "Thủ kho Demo",
+        createDemoUser("warehouse.demo", password, "Thủ kho Demo",
                 "warehouse@demo.local", ERole.ROLE_WAREHOUSE_STAFF,
                 Set.of(demoWarehouse), Set.of());
-        createDemoUser("accountant.demo", "Accountant123", "Kế toán Demo",
+        createDemoUser("accountant.demo", password, "Kế toán Demo",
                 "accountant@demo.local", ERole.ROLE_ACCOUNTANT, Set.of(), Set.of());
-        createDemoUser("viewer.demo", "ViewerDemo123", "Người xem Demo",
+        createDemoUser("viewer.demo", password, "Người xem Demo",
                 "viewer@demo.local", ERole.ROLE_VIEWER, Set.of(), Set.of());
     }
 
@@ -280,6 +297,65 @@ public class DataInitializer implements CommandLineRunner {
                 .active(true)
                 .build());
 
+        // Khởi tạo sản phẩm đồ uống minh hoạ S2-07 (Đơn vị tính quy đổi: lon, lốc, thùng)
+        Category ngDoUong = categoryRepository.save(Category.builder()
+                .code("NG-DOUONG")
+                .name("Đồ uống & Giải khát")
+                .description("Bia, nước ngọt và đồ uống đóng lon/chai")
+                .level(1)
+                .parent(null)
+                .active(true)
+                .build());
+
+        Category pnBia = categoryRepository.save(Category.builder()
+                .code("PN-BIA")
+                .name("Bia các loại")
+                .description("Bia lon, bia chai các thương hiệu")
+                .level(2)
+                .parent(ngDoUong)
+                .active(true)
+                .build());
+
+        Category ncBiaLon = categoryRepository.save(Category.builder()
+                .code("NC-BIALON")
+                .name("Bia lon đóng thùng")
+                .description("Bia lon 330ml quy cách lốc và thùng")
+                .level(3)
+                .parent(pnBia)
+                .active(true)
+                .build());
+
+        Product biaHeineken = productRepository.save(Product.builder()
+                .code("SP-KEN330")
+                .name("Bia Heineken Sleek lon 330ml")
+                .category(ncBiaLon)
+                .price(new BigDecimal("19000"))
+                .costPrice(new BigDecimal("15000"))
+                .revenue(new BigDecimal("80000000"))
+                .unit("lon")
+                .active(true)
+                .build());
+
+        unitConversionRepository.save(com.quanlybanhang.model.UnitConversion.builder()
+                .product(biaHeineken)
+                .unitName("lốc")
+                .conversionFactor(new BigDecimal("6.0000"))
+                .isBaseUnit(false)
+                .price(new BigDecimal("112000"))
+                .costPrice(new BigDecimal("90000"))
+                .description("1 lốc = 6 lon")
+                .build());
+
+        unitConversionRepository.save(com.quanlybanhang.model.UnitConversion.builder()
+                .product(biaHeineken)
+                .unitName("thùng")
+                .conversionFactor(new BigDecimal("24.0000"))
+                .isBaseUnit(false)
+                .price(new BigDecimal("435000"))
+                .costPrice(new BigDecimal("355000"))
+                .description("1 thùng = 24 lon")
+                .build());
+
         // Sản phẩm mới chưa phát sinh giao dịch (để kiểm thử chức năng xoá)
         productRepository.save(Product.builder()
                 .code("SP-TAI-NGHE-TEST")
@@ -294,6 +370,6 @@ public class DataInitializer implements CommandLineRunner {
                 .active(true)
                 .build());
 
-        logger.info("Đã khởi tạo cây nhóm hàng 3 cấp và các sản phẩm mẫu có doanh số cho S2-05 và S2-06");
+        logger.info("Đã khởi tạo dữ liệu mẫu cho S2-05, S2-06 và S2-07");
     }
 }

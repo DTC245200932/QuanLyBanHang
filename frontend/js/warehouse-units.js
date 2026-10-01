@@ -285,33 +285,112 @@
     products: [],
     receipts: [],
 
-    init() {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          this.products = parsed.products || INITIAL_PRODUCTS;
-          this.receipts = parsed.receipts || INITIAL_RECEIPTS;
-        } else {
-          this.resetToDemo();
+    async request(path, options) {
+      const response = await Auth.apiFetch(path, options);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Không thể tải dữ liệu từ máy chủ.");
+      }
+      return result.data;
+    },
+
+    async init() {
+      const [products, inventory, vouchers, orders, warehouses] = await Promise.all([
+        this.request("/products"),
+        this.request("/warehouse/inventory"),
+        this.request("/warehouse/vouchers"),
+        this.request("/orders"),
+        this.request("/warehouse/options"),
+      ]);
+
+      const conversions = await Promise.all((products || []).map((product) =>
+        this.request(`/products/${product.id}/unit-conversions`)));
+
+      this.products = (products || []).map((product, index) => {
+        const stock = (inventory || []).find((item) => item.productId === product.id);
+        return {
+          id: product.id,
+          sku: product.code,
+          name: product.name,
+          category: product.categoryName || "Chưa phân nhóm",
+          baseUnit: product.unit,
+          price: product.price,
+          costPrice: product.costPrice,
+          inventoryBaseQty: stock?.baseQuantity || 0,
+          units: (conversions[index] || []).map((unit) => ({
+            id: unit.id,
+            name: unit.unitName,
+            isBase: Boolean(unit.isBaseUnit),
+            conversionRate: Number(unit.conversionFactor),
+            barcode: unit.barcode || "",
+            note: unit.description || "",
+          })),
+          unitHistory: [],
+        };
+      });
+
+      const voucherRows = (vouchers || []).map((voucher) => ({
+        id: voucher.voucherCode,
+        backendId: voucher.id,
+        type: voucher.type,
+        date: voucher.recordedAt?.slice(0, 10) || "",
+        createdAt: voucher.recordedAt,
+        warehouse: voucher.warehouseName || voucher.warehouseCode || "—",
+        partner: "—",
+        createdBy: voucher.createdBy,
+        notes: voucher.note || "",
+        status: voucher.status,
+        items: (voucher.items || []).map((item) => ({
+          sku: item.productCode,
+          productName: item.productName,
+          inputUnit: item.unit,
+          inputQuantity: Number(item.quantity),
+          conversionRateSnapshot: Number(item.conversionFactor),
+          baseUnit: item.baseUnit,
+          baseQuantity: Number(item.baseQuantity),
+          notes: item.note || "",
+        })),
+      }));
+      const orderRows = (orders || []).map((order) => ({
+        id: order.orderCode,
+        backendId: order.id,
+        type: "ORDER",
+        date: (order.recordedAt || order.createdAt || "").slice(0, 10),
+        createdAt: order.recordedAt || order.createdAt,
+        warehouse: "Đơn hàng bán",
+        partner: order.customerName || "—",
+        createdBy: order.createdBy,
+        notes: order.note || "",
+        status: order.status,
+        items: (order.items || []).map((item) => ({
+          sku: item.productCode,
+          productName: item.productName,
+          inputUnit: item.unit,
+          inputQuantity: Number(item.quantity),
+          conversionRateSnapshot: Number(item.conversionFactor),
+          baseUnit: item.baseUnit,
+          baseQuantity: Number(item.baseQuantity),
+          notes: item.note || "",
+        })),
+      }));
+      this.receipts = [...voucherRows, ...orderRows].sort((a, b) =>
+        new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+      for (const id of ["active-warehouse-select", "receipt-warehouse"]) {
+        const select = $(id);
+        if (select && (warehouses || []).length) {
+          select.innerHTML = warehouses.map((warehouse) =>
+            `<option value="${warehouse.id}">${escapeHtml(warehouse.name)}</option>`).join("");
         }
-      } catch (e) {
-        console.warn("Lỗi đọc dữ liệu từ localStorage, khôi phục demo:", e);
-        this.resetToDemo();
       }
     },
 
     save() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        products: this.products,
-        receipts: this.receipts
-      }));
+      // Dữ liệu nghiệp vụ được lưu tại backend; trình duyệt không giữ bản sao.
     },
 
-    resetToDemo() {
-      this.products = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
-      this.receipts = JSON.parse(JSON.stringify(INITIAL_RECEIPTS));
-      this.save();
+    async resetToDemo() {
+      await this.init();
     },
 
     getProductBySku(sku) {
@@ -328,7 +407,7 @@
      * Sửa hoặc thêm đơn vị tính quy đổi cho SKU.
      * Quy tắc S2-07: Đổi hệ số KHÔNG làm đổi các receipts đã lưu!
      */
-    saveUnit(sku, { name, conversionRate, barcode, note }) {
+    async saveUnit(sku, { name, conversionRate, barcode, note }) {
       const prod = this.getProductBySku(sku);
       if (!prod) throw new Error("Không tìm thấy SKU: " + sku);
 
@@ -336,74 +415,48 @@
       const rate = Number(conversionRate);
       if (!rate || rate <= 0) throw new Error("Hệ số quy đổi phải lớn hơn 0.");
 
-      let unit = prod.units.find((u) => u.name.toLowerCase() === cleanName);
+      const unit = prod.units.find((u) => u.name.toLowerCase() === cleanName);
       const isNew = !unit;
       const oldRate = unit ? unit.conversionRate : rate;
-
-      if (unit) {
-        if (unit.isBase && rate !== 1) {
-          throw new Error("Đơn vị cơ sở luôn có hệ số bằng 1 so với chính nó.");
-        }
-        unit.conversionRate = rate;
-        unit.barcode = barcode || unit.barcode;
-        unit.note = note || unit.note;
-      } else {
-        unit = {
-          id: "u-" + Date.now(),
-          name: cleanName,
-          isBase: false,
-          conversionRate: rate,
-          barcode: barcode || "",
-          note: note || `1 ${cleanName} = ${rate} ${prod.baseUnit}`
-        };
-        prod.units.push(unit);
-      }
-
-      // Lưu lịch sử thay đổi hệ số để phục vụ audit trail
-      if (isNew || oldRate !== rate) {
-        prod.unitHistory.unshift({
-          id: "hist-" + Date.now(),
-          unitName: cleanName,
-          oldRate: oldRate,
-          newRate: rate,
-          changedAt: new Intl.DateTimeFormat("vi-VN", {
-            dateStyle: "short", timeStyle: "short"
-          }).format(new Date()),
-          changedBy: user.fullName || user.username || "Thủ kho",
-          reason: isNew
-            ? `Khai báo mới: 1 ${cleanName} = ${rate} ${prod.baseUnit}`
-            : `Đổi hệ số quy cách: ${oldRate} → ${rate} ${prod.baseUnit} (Không ảnh hưởng giao dịch cũ)`
-        });
-      }
-
-      this.save();
-      return { product: prod, unit, oldRate, newRate: rate, isNew };
+      if (unit?.isBase) throw new Error("Không thể sửa đơn vị cơ sở tại màn hình quy đổi.");
+      const payload = {
+        unitName: cleanName,
+        conversionFactor: rate,
+        barcode: barcode || "",
+        description: note || `1 ${cleanName} = ${rate} ${prod.baseUnit}`,
+      };
+      await this.request(
+        unit ? `/products/${prod.id}/unit-conversions/${unit.id}` : `/products/${prod.id}/unit-conversions`,
+        { method: unit ? "PUT" : "POST", body: JSON.stringify(payload) },
+      );
+      await this.init();
+      return { product: this.getProductBySku(sku), unit, oldRate, newRate: rate, isNew };
     },
 
     /**
      * Xóa đơn vị tính (chỉ cho phép nếu không phải đơn vị cơ sở).
      */
-    deleteUnit(sku, unitName) {
+    async deleteUnit(sku, unitName) {
       const prod = this.getProductBySku(sku);
       if (!prod) return;
       const unit = prod.units.find((u) => u.name.toLowerCase() === unitName.toLowerCase());
       if (!unit) return;
       if (unit.isBase) throw new Error("Không thể xóa đơn vị cơ sở lưu kho.");
 
-      prod.units = prod.units.filter((u) => u.name.toLowerCase() !== unitName.toLowerCase());
-      this.save();
+      await this.request(`/products/${prod.id}/unit-conversions/${unit.id}`, { method: "DELETE" });
+      await this.init();
     },
 
     /**
      * Lưu và ghi sổ phiếu kho / đơn hàng.
      * Quy tắc S2-07: Chốt snapshot tỷ lệ quy đổi tại thời điểm ghi sổ!
      */
-    recordReceipt(receiptData) {
+    async recordReceipt(receiptData) {
       if (!receiptData.items || !receiptData.items.length) {
         throw new Error("Vui lòng thêm ít nhất một mặt hàng.");
       }
 
-      const recordedItems = [];
+      const requestItems = [];
       for (const item of receiptData.items) {
         const prod = this.getProductBySku(item.sku);
         if (!prod) throw new Error(`SKU ${item.sku} không tồn tại.`);
@@ -414,45 +467,26 @@
         const inputQty = Number(item.inputQuantity);
         if (!inputQty || inputQty <= 0) throw new Error(`Số lượng mặt hàng ${prod.name} phải lớn hơn 0.`);
 
-        // SNAPSHOT QUY ĐỔI BẤT BIẾN
-        const conversionRateSnapshot = unit.conversionRate;
-        const baseQuantity = Math.round(inputQty * conversionRateSnapshot);
-
-        recordedItems.push({
-          sku: prod.sku,
-          productName: prod.name,
-          inputUnit: unit.name,
-          inputQuantity: inputQty,
-          conversionRateSnapshot: conversionRateSnapshot, // Chốt vĩnh viễn
-          baseUnit: prod.baseUnit,
-          baseQuantity: baseQuantity,
-          notes: item.notes || `${inputQty} ${unit.name} × ${conversionRateSnapshot} = ${baseQuantity} ${prod.baseUnit}`
-        });
-
-        // Cập nhật thẻ kho tức thời theo đơn vị cơ sở
-        if (receiptData.type === "IMPORT") {
-          prod.inventoryBaseQty += baseQuantity;
-        } else if (receiptData.type === "EXPORT" || receiptData.type === "ORDER") {
-          prod.inventoryBaseQty = Math.max(0, prod.inventoryBaseQty - baseQuantity);
-        }
+        requestItems.push({ productId: prod.id, productCode: prod.sku, unit: unit.name,
+          quantity: inputQty, note: item.notes || "" });
       }
-
-      const receiptRecord = {
-        id: receiptData.id || this.generateReceiptCode(receiptData.type),
-        type: receiptData.type,
-        date: receiptData.date || new Date().toISOString().slice(0, 10),
-        createdAt: new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date()),
-        warehouse: receiptData.warehouse || "Kho Tổng Tân Bình (HCM)",
-        partner: receiptData.partner || "Đối tác kinh doanh",
-        createdBy: user.fullName || user.username || "Thủ kho",
-        notes: receiptData.notes || "",
-        status: "RECORDED",
-        items: recordedItems
-      };
-
-      this.receipts.unshift(receiptRecord);
-      this.save();
-      return receiptRecord;
+      const code = receiptData.id || this.generateReceiptCode(receiptData.type);
+      if (receiptData.type === "ORDER") {
+        await this.request("/orders", { method: "POST", body: JSON.stringify({
+          orderCode: code, customerName: receiptData.partner || "Khách hàng",
+          note: receiptData.notes || "", items: requestItems,
+        }) });
+      } else {
+        await this.request(`/warehouse/${receiptData.type === "EXPORT" ? "export" : "import"}`, {
+          method: "POST",
+          body: JSON.stringify({ voucherCode: code,
+            warehouseId: receiptData.warehouseId || user.warehouses?.[0]?.id || null,
+            note: [receiptData.partner, receiptData.notes].filter(Boolean).join(" · "),
+            items: requestItems }),
+        });
+      }
+      await this.init();
+      return this.receipts.find((receipt) => receipt.id === code) || { id: code };
     },
 
     generateReceiptCode(type) {
@@ -494,9 +528,6 @@
     }
   };
 
-  // Khởi tạo kho dữ liệu
-  Store.init();
-
   // ══════════════════════════════════════════════════
   // 2. UI SHELL & NAVIGATION SETUP
   // ══════════════════════════════════════════════════
@@ -522,7 +553,7 @@
       ? `<div class="sidebar__section-label">${escapeHtml(item.section)}</div>` : "";
     if (item.section) lastSection = item.section;
     const resolvedHref = MenuConfig.resolveHref ? MenuConfig.resolveHref(item.href) : item.href;
-    const isActive = item.id === "unit-conversions" || item.id === "import-export";
+    const isActive = item.id === "import-export";
     return `${section}<a class="sidebar__link ${isActive ? "sidebar__link--active" : ""}"
       href="${resolvedHref}" data-page="${item.id}">
       <svg viewBox="0 0 24 24">${item.icon}</svg>
@@ -544,6 +575,9 @@
       }
     });
   }
+  $("btn-avatar")?.addEventListener("click", () => {
+    window.location.href = "../profile.html";
+  });
 
   const roleNames = (user.roles || []).map(MenuConfig.getRoleDisplayName);
   const scope = [...(user.warehouses || []), ...(user.territories || [])].map((item) => item.name);
@@ -578,6 +612,12 @@
   const tabs = document.querySelectorAll(".nav-tab");
   const panels = document.querySelectorAll(".tab-panel");
 
+  function updateWarehouseMenuState() {
+    nav.querySelectorAll("[data-page]").forEach((link) => {
+      link.classList.toggle("sidebar__link--active", link.dataset.page === "import-export");
+    });
+  }
+
   function switchTab(tabId) {
     tabs.forEach((tab) => {
       const active = tab.dataset.tab === tabId;
@@ -594,6 +634,7 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") { renderLedgerTable(); renderSandboxOptions(); }
     if (tabId === "inventory-report") renderInventoryTable();
+    updateWarehouseMenuState();
     updateMetrics();
   }
 
@@ -715,10 +756,10 @@
   $("sku-category-filter")?.addEventListener("change", renderSkuTable);
   $("sku-baseunit-filter")?.addEventListener("change", renderSkuTable);
 
-  $("btn-reset-demo")?.addEventListener("click", () => {
-    if (confirm("Khôi phục toàn bộ danh sách SKU, đơn vị quy đổi và các phiếu kho mẫu ban đầu?")) {
-      Store.resetToDemo();
-      showToast("Đã khôi phục dữ liệu mẫu thành công.");
+  $("btn-reset-demo")?.addEventListener("click", async () => {
+    if (confirm("Tải lại dữ liệu mới nhất từ máy chủ?")) {
+      await Store.resetToDemo();
+      showToast("Đã tải lại dữ liệu từ máy chủ.");
       renderSkuTable();
       updateMetrics();
     }
@@ -752,13 +793,20 @@
     lines: []
   };
 
+  function createDefaultReceiptLine(id = "line-1") {
+    const product = Store.products[0];
+    if (!product) return null;
+    const unit = product.units.find((item) => !item.isBase) || product.units[0];
+    if (!unit) return null;
+    return { id, sku: product.sku, inputUnit: unit.name, inputQuantity: 1, notes: "" };
+  }
+
   function prepareReceiptForm() {
     $("receipt-date").value = new Date().toISOString().slice(0, 10);
     $("receipt-code").value = Store.generateReceiptCode(receiptState.type);
     if (!receiptState.lines.length) {
-      receiptState.lines = [
-        { id: "line-1", sku: "HEIN-330", inputUnit: "thùng", inputQuantity: 10, notes: "" }
-      ];
+      const defaultLine = createDefaultReceiptLine();
+      receiptState.lines = defaultLine ? [defaultLine] : [];
     }
     renderLineItems();
   }
@@ -793,6 +841,11 @@
 
   function renderLineItems() {
     const tbody = $("line-items-body");
+    if (!Store.products.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Chưa có sản phẩm thật trong cơ sở dữ liệu.</td></tr>';
+      updateReceiptSummary();
+      return;
+    }
     tbody.innerHTML = receiptState.lines.map((line, index) => {
       const prod = Store.getProductBySku(line.sku) || Store.products[0];
       const validUnits = prod?.units || [];
@@ -929,6 +982,10 @@
   });
 
   $("btn-add-line-item")?.addEventListener("click", () => {
+    if (!Store.products.length) {
+      showToast("Chưa có sản phẩm để thêm vào phiếu.", "warning");
+      return;
+    }
     const randomSku = Store.products[receiptState.lines.length % Store.products.length];
     const defaultUnit = randomSku.units.find((u) => !u.isBase) || randomSku.units[0];
     receiptState.lines.push({
@@ -943,9 +1000,8 @@
 
   $("btn-reset-receipt")?.addEventListener("click", () => {
     if (confirm("Làm mới toàn bộ thông tin phiếu?")) {
-      receiptState.lines = [
-        { id: "line-1", sku: "HEIN-330", inputUnit: "thùng", inputQuantity: 10, notes: "" }
-      ];
+      const defaultLine = createDefaultReceiptLine();
+      receiptState.lines = defaultLine ? [defaultLine] : [];
       $("receipt-partner").value = "";
       $("receipt-notes").value = "";
       prepareReceiptForm();
@@ -953,19 +1009,21 @@
   });
 
   // Submit Receipt and Record into Stock Ledger with Frozen Snapshot
-  $("btn-save-receipt")?.addEventListener("click", () => {
+  $("btn-save-receipt")?.addEventListener("click", async () => {
     try {
       const code = $("receipt-code").value.trim() || Store.generateReceiptCode(receiptState.type);
       const date = $("receipt-date").value;
-      const warehouse = $("receipt-warehouse").value;
+      const warehouseId = Number($("receipt-warehouse").value) || null;
+      const warehouse = $("receipt-warehouse").selectedOptions[0]?.textContent || "";
       const partner = $("receipt-partner").value.trim();
       const notes = $("receipt-notes").value.trim();
 
-      const receiptRecord = Store.recordReceipt({
+      const receiptRecord = await Store.recordReceipt({
         id: code,
         type: receiptState.type,
         date: date,
         warehouse: warehouse,
+        warehouseId: warehouseId,
         partner: partner,
         notes: notes,
         items: receiptState.lines
@@ -974,9 +1032,8 @@
       showToast(`Đã ghi sổ thành công ${receiptRecord.id}! Hệ số snapshot đã được đóng băng.`, "success");
 
       // Reset form lines
-      receiptState.lines = [
-        { id: "line-1", sku: "HEIN-330", inputUnit: "thùng", inputQuantity: 10, notes: "" }
-      ];
+      const defaultLine = createDefaultReceiptLine();
+      receiptState.lines = defaultLine ? [defaultLine] : [];
       $("receipt-partner").value = "";
       $("receipt-notes").value = "";
       prepareReceiptForm();
@@ -1131,7 +1188,7 @@
     }
   });
 
-  $("btn-run-sandbox-test")?.addEventListener("click", () => {
+  $("btn-run-sandbox-test")?.addEventListener("click", async () => {
     const sku = $("sandbox-sku-select").value;
     const unitName = $("sandbox-unit-select").value;
     const newRate = Number($("sandbox-new-rate").value);
@@ -1146,7 +1203,7 @@
     const oldRate = unit.conversionRate;
 
     // 1. Thực hiện đổi hệ số trong cấu hình SKU
-    Store.saveUnit(sku, {
+    await Store.saveUnit(sku, {
       name: unitName,
       conversionRate: newRate,
       note: `Đổi hệ số quy cách kiểm chứng: ${oldRate} → ${newRate} ${prod.baseUnit}`
@@ -1427,7 +1484,7 @@
     });
   });
 
-  formUnit?.addEventListener("submit", (e) => {
+  formUnit?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const sku = $("unit-sku-select").value;
     const name = $("unit-name-input").value.trim();
@@ -1442,7 +1499,7 @@
     }
 
     try {
-      Store.saveUnit(sku, {
+      await Store.saveUnit(sku, {
         name: name,
         conversionRate: rate,
         barcode: barcode,
@@ -1596,7 +1653,14 @@
     window.print();
   });
 
-  // Initial render
-  renderSkuTable();
-  updateMetrics();
+  // Initial render from backend APIs.
+  Store.init().then(() => {
+    renderSkuTable();
+    updateMetrics();
+    prepareReceiptForm();
+    renderLedgerTable();
+    renderInventoryTable();
+  }).catch((error) => {
+    showToast(error.message || "Không tải được dữ liệu kho từ máy chủ.", "error");
+  });
 })();

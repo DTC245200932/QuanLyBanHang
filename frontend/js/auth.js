@@ -4,7 +4,7 @@
  * Tính năng:
  * - Auto-refresh token khi còn hoạt động
  * - Kiểm tra phiên hết hạn → redirect login
- * - Đăng xuất (gọi API + xoá localStorage)
+ * - Đăng xuất (gọi API + xoá phiên trình duyệt)
  * - API helper gắn token tự động
  */
 const Auth = (() => {
@@ -17,20 +17,22 @@ const Auth = (() => {
   const CHECK_INTERVAL_MS = 60 * 1000;
 
   let refreshTimer = null;
+  let refreshRequest = null;
+  let sessionExpiryHandled = false;
 
   // ── Token helpers ──
 
   function getAccessToken() {
-    return localStorage.getItem("accessToken");
+    return sessionStorage.getItem("accessToken");
   }
 
   function getRefreshToken() {
-    return localStorage.getItem("refreshToken");
+    return sessionStorage.getItem("refreshToken");
   }
 
   function getUser() {
     try {
-      return JSON.parse(localStorage.getItem("user"));
+      return JSON.parse(sessionStorage.getItem("user"));
     } catch {
       return null;
     }
@@ -41,9 +43,9 @@ const Auth = (() => {
   }
 
   function clearSession() {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("refreshToken");
+    sessionStorage.removeItem("user");
     stopAutoRefresh();
   }
 
@@ -71,6 +73,17 @@ const Auth = (() => {
   // ── Auto-refresh (S1-02) ──
 
   async function refreshAccessToken() {
+    if (refreshRequest) return refreshRequest;
+
+    refreshRequest = performTokenRefresh();
+    try {
+      return await refreshRequest;
+    } finally {
+      refreshRequest = null;
+    }
+  }
+
+  async function performTokenRefresh() {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
       handleSessionExpired();
@@ -86,8 +99,8 @@ const Auth = (() => {
 
       if (response.ok) {
         const data = await response.json();
-        localStorage.setItem("accessToken", data.accessToken);
-        localStorage.setItem(
+        sessionStorage.setItem("accessToken", data.accessToken);
+        sessionStorage.setItem(
           "user",
           JSON.stringify({
             id: data.id,
@@ -104,14 +117,20 @@ const Auth = (() => {
           }),
         );
         return true;
-      } else {
+      }
+
+      // Chỉ kết luận phiên hết hạn khi server từ chối refresh token.
+      if (response.status >= 400 && response.status < 500) {
         handleSessionExpired();
         return false;
       }
+
+      console.warn("Token refresh failed because the server is unavailable");
+      return null;
     } catch {
-      // Network error — don't logout, just retry later
+      // Lỗi mạng không đồng nghĩa phiên đã hết hạn; giữ phiên để thử lại sau.
       console.warn("Token refresh failed, will retry");
-      return false;
+      return null;
     }
   }
 
@@ -135,6 +154,8 @@ const Auth = (() => {
   // ── Session expiry (S1-02) ──
 
   function handleSessionExpired() {
+    if (sessionExpiryHandled) return;
+    sessionExpiryHandled = true;
     clearSession();
     // Store message to show on login page
     sessionStorage.setItem(
@@ -148,15 +169,16 @@ const Auth = (() => {
 
   async function logout() {
     const token = getAccessToken();
-    if (token) {
+    const refreshToken = getRefreshToken();
+    if (token || refreshToken) {
       try {
+        const headers = { "Content-Type": "application/json" };
+        if (token) headers.Authorization = `Bearer ${token}`;
+
         await fetch(`${API_BASE}/auth/logout`, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ refreshToken: getRefreshToken() }),
+          headers,
+          body: JSON.stringify({ refreshToken }),
         });
       } catch {
         // Ignore errors — still clear local session
@@ -177,6 +199,8 @@ const Auth = (() => {
       const refreshed = await refreshAccessToken();
       if (refreshed) {
         token = getAccessToken();
+      } else if (refreshed === false) {
+        throw new Error("Session expired");
       }
     }
 
@@ -195,8 +219,13 @@ const Auth = (() => {
       headers["Content-Type"] = "application/json";
     }
 
+    const requestUrl = url.startsWith("http")
+      ? url
+      : url.startsWith("/api/")
+        ? `${API_BASE.replace(/\/api$/, "")}${url}`
+        : `${API_BASE}${url}`;
     const response = await fetch(
-      url.startsWith("http") ? url : `${API_BASE}${url}`,
+      requestUrl,
       { ...options, headers },
     );
 
@@ -206,17 +235,18 @@ const Auth = (() => {
       if (refreshed) {
         const retryToken = getAccessToken();
         const retryResponse = await fetch(
-          url.startsWith("http") ? url : `${API_BASE}${url}`,
+          requestUrl,
           {
             ...options,
             headers: { ...headers, Authorization: `Bearer ${retryToken}` },
           },
         );
         return retryResponse;
-      } else {
-        handleSessionExpired();
+      } else if (refreshed === false) {
         throw new Error("Session expired");
       }
+
+      throw new Error("Không thể gia hạn phiên do mất kết nối máy chủ");
     }
 
     if (response.status === 403) {
@@ -259,10 +289,8 @@ const Auth = (() => {
 
     const token = getAccessToken();
     if (isTokenExpired(token)) {
-      // Try refresh
-      refreshAccessToken().then((success) => {
-        if (!success) handleSessionExpired();
-      });
+      // Refresh sẽ tự chuyển về đăng nhập nếu server xác nhận phiên đã hết hạn.
+      refreshAccessToken();
     }
 
     startAutoRefresh();

@@ -24,6 +24,13 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "profile",
+      label: "Hồ sơ cá nhân",
+      icon: '<circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/>',
+      href: "profile.html",
+      roles: ALL_ROLES,
+    },
+    {
       id: "orders",
       section: "Kinh doanh",
       label: "Đơn hàng",
@@ -89,20 +96,6 @@ const MenuConfig = (() => {
         "ROLE_ADMIN",
         "ROLE_WAREHOUSE_MANAGER",
         "ROLE_WAREHOUSE_STAFF",
-      ],
-    },
-    {
-      id: "unit-conversions",
-      label: "Đơn vị tính quy đổi",
-      icon: '<path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"/>',
-      href: "warehouse/units.html?tab=units",
-      roles: [
-        "ROLE_ADMIN",
-        "ROLE_WAREHOUSE_MANAGER",
-        "ROLE_WAREHOUSE_STAFF",
-        "ROLE_SALES_MANAGER",
-        "ROLE_ACCOUNTANT",
-        "ROLE_VIEWER",
       ],
     },
     {

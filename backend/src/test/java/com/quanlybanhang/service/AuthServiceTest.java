@@ -74,6 +74,19 @@ class AuthServiceTest {
     }
 
     @Test
+    void logoutStillRevokesRefreshTokenWhenAccessTokenHasExpired() {
+        when(jwtUtils.validateToken("expired-access-token")).thenReturn(false);
+        when(jwtUtils.validateToken("valid-refresh-token")).thenReturn(true);
+
+        authService.logout("expired-access-token", "valid-refresh-token");
+
+        verify(tokenBlacklistService, never())
+                .blacklistToken("expired-access-token", "LOGOUT");
+        verify(tokenBlacklistService)
+                .blacklistToken("valid-refresh-token", "LOGOUT");
+    }
+
+    @Test
     void accountLockedByAdminCannotLogin() {
         User user = User.builder().username("sales01").password("encoded").active(false).build();
         when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(user));

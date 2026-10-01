@@ -105,9 +105,9 @@
 
   // ── Token & user storage ──
   function saveAuthData(data) {
-    localStorage.setItem("accessToken", data.accessToken);
-    localStorage.setItem("refreshToken", data.refreshToken);
-    localStorage.setItem(
+    sessionStorage.setItem("accessToken", data.accessToken);
+    sessionStorage.setItem("refreshToken", data.refreshToken);
+    sessionStorage.setItem(
       "user",
       JSON.stringify({
         id: data.id,
@@ -139,17 +139,17 @@
 
   // ── Check if already logged in ──
   function checkExistingSession() {
-    const token = localStorage.getItem("accessToken");
-    const user = localStorage.getItem("user");
+    const token = sessionStorage.getItem("accessToken");
+    const user = sessionStorage.getItem("user");
     if (token && user) {
       try {
         const userData = JSON.parse(user);
         window.location.href = getRedirectUrl(userData.roles || []);
       } catch {
         // Invalid stored data, clear and stay on login
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
-        localStorage.removeItem("user");
+        sessionStorage.removeItem("accessToken");
+        sessionStorage.removeItem("refreshToken");
+        sessionStorage.removeItem("user");
       }
     }
   }

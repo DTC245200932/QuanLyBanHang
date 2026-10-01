@@ -76,9 +76,10 @@ public class SecurityConfig {
             // Phân quyền các endpoint
             .authorizeHttpRequests(auth -> auth
                 // ── Public: ai cũng truy cập được ──
-                .requestMatchers("/api/auth/login", "/api/auth/refresh",
+                .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
                         "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                 .requestMatchers("/api/auth/**").authenticated()
+                .requestMatchers("/api/users/**").authenticated()
                 .requestMatchers("/api/test/public").permitAll()
 
                 // ── Admin only: quản lý user, cấu hình hệ thống, ma trận phân quyền ──
@@ -91,6 +92,10 @@ public class SecurityConfig {
                 // ── Điều chỉnh kho: CHỈ ADMIN + WAREHOUSE_MANAGER (đảm bảo SALES và WAREHOUSE_STAFF không sửa được tồn kho!) ──
                 .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**").hasAnyRole(
                         "ADMIN", "WAREHOUSE_MANAGER")
+
+                // Dữ liệu tồn và chứng từ được phép xem bởi quản lý kinh doanh/người chỉ xem.
+                .requestMatchers("/api/warehouse/options", "/api/warehouse/inventory", "/api/warehouse/vouchers", "/api/warehouse/vouchers/**")
+                        .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "VIEWER")
 
                 // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
                 .requestMatchers("/api/warehouse/**").hasAnyRole(

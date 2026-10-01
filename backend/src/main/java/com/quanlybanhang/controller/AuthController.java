@@ -64,7 +64,8 @@ public class AuthController {
 
     /**
      * Đăng xuất — vô hiệu hoá token phía server (S1-02).
-     * Yêu cầu header: Authorization: Bearer <token>
+     * Nhận access token qua header (nếu còn) và refresh token qua body.
+     * Endpoint vẫn xử lý refresh token khi access token đã hết hạn.
      */
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse> logout(HttpServletRequest request,

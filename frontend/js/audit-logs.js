@@ -19,9 +19,6 @@
     return;
   }
 
-  // ── Khóa lưu trữ LocalStorage ──
-  const STORAGE_KEY = "salestock_audit_logs_v1";
-
   // ── Bộ nhãn tiếng Việt chuẩn ──
   const TYPE_CONFIG = {
     INVENTORY: {
@@ -435,27 +432,13 @@
       '"': "&quot;",
     }[c]));
 
-  // ── Khởi tạo dữ liệu từ LocalStorage hoặc API ──
+  // Nhật ký nghiệp vụ chỉ được đọc từ backend/database.
   function getStoredLogs() {
-    try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length) return parsed;
-      }
-    } catch {
-      // Bỏ qua lỗi cú pháp lưu trữ
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_LOGS));
-    return [...INITIAL_SAMPLE_LOGS];
+    return [];
   }
 
-  function saveLogsToStorage(logs) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-    } catch (e) {
-      console.warn("Không thể lưu localStorage:", e);
-    }
+  function saveLogsToStorage() {
+    // Không ghi nhật ký giả ở trình duyệt; backend là nguồn dữ liệu duy nhất.
   }
 
   // ── Nạp danh sách nhân sự từ API để đồng bộ với cơ sở dữ liệu thật ──
@@ -506,23 +489,47 @@
     }
   }
 
-  // ── Tải toàn bộ dữ liệu nhật ký (Thử gọi API trước, nếu chưa có thì dùng LocalStorage) ──
+  function normalizeApiLog(log) {
+    const actor = state.users.find((user) => user.username === log.username);
+    const beforeNumber = Number.parseFloat(String(log.oldValue || "").replace(/[^\d.-]/g, ""));
+    const afterNumber = Number.parseFloat(String(log.newValue || "").replace(/[^\d.-]/g, ""));
+    const delta = Number.isFinite(beforeNumber) && Number.isFinite(afterNumber) ? afterNumber - beforeNumber : null;
+    return {
+      id: String(log.id),
+      timestamp: log.createdAt,
+      targetType: log.entityType,
+      action: log.action,
+      targetCode: log.entityId,
+      targetName: log.entityId,
+      context: "Dữ liệu nghiệp vụ trên hệ thống",
+      actor: {
+        username: log.username,
+        fullName: actor?.fullName || log.username,
+        role: actor?.role || "ROLE_ADMIN",
+      },
+      valBefore: log.oldValue || "—",
+      valAfter: log.newValue || "—",
+      deltaText: delta == null ? "Đã thay đổi" : `${delta > 0 ? "+" : ""}${delta}`,
+      deltaType: delta == null || delta === 0 ? "neutral" : delta > 0 ? "positive" : "negative",
+      isDiscrepancy: log.entityType === "INVENTORY" && delta != null && delta < 0,
+      reason: "Ghi tự động từ thao tác nghiệp vụ đã xác thực.",
+      meta: {},
+    };
+  }
+
+  // ── Tải dữ liệu nhật ký thật từ backend ──
   async function loadLogs() {
     try {
-      const response = await Auth.apiFetch("/admin/audit-logs");
-      if (response.ok) {
-        const result = await response.json();
-        if (Array.isArray(result?.data)) {
-          state.logs = result.data;
-          applyFilters();
-          return;
-        }
+      const response = await Auth.apiFetch("/admin/audit-logs?size=100");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(result?.data)) {
+        throw new Error(result.message || "Không tải được nhật ký thao tác");
       }
-    } catch {
-      // Backend chưa có endpoint nhật ký S2-04, chuyển sang LocalStorage
+      state.logs = result.data.map(normalizeApiLog);
+    } catch (error) {
+      console.error(error);
+      state.logs = [];
     }
-
-    state.logs = getStoredLogs();
     applyFilters();
   }
 
@@ -1062,13 +1069,7 @@
 
   // ── Khôi phục dữ liệu mẫu ban đầu ──
   function resetSampleData() {
-    if (confirm("Khôi phục danh sách nhật ký về dữ liệu chuẩn ban đầu?")) {
-      localStorage.removeItem(STORAGE_KEY);
-      state.logs = getStoredLogs();
-      state.page = 0;
-      applyFilters();
-      showToast("Đã khôi phục dữ liệu nhật ký mẫu ban đầu.", "success");
-    }
+    loadLogs();
   }
 
   // ── Toast thông báo ──

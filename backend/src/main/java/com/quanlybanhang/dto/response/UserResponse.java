@@ -1,0 +1,27 @@
+package com.quanlybanhang.dto.response;
+
+import lombok.Builder;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+@Builder
+public class UserResponse {
+    private Long id;
+    private String username;
+    private String email;
+    private String fullName;
+    private String phone;
+    private String avatarUrl;
+    private String avatarThumbnailUrl;
+    private Boolean active;
+    private String lockReason;
+    private Boolean mustChangePassword;
+    private List<String> roles;
+    private List<NamedResourceResponse> warehouses;
+    private List<NamedResourceResponse> territories;
+    private long assignedDealerCount;
+    private LocalDateTime createdAt;
+}

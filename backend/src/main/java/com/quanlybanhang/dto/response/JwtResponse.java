@@ -25,5 +25,11 @@ public class JwtResponse {
     private String username;
     private String email;
     private String fullName;
+    private String avatarUrl;
+    private String avatarThumbnailUrl;
     private List<String> roles;
+    private List<String> permissions;
+    private List<NamedResourceResponse> warehouses;
+    private List<NamedResourceResponse> territories;
+    private Boolean mustChangePassword;
 }

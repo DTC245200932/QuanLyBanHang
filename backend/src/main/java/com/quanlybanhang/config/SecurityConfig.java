@@ -3,6 +3,7 @@ package com.quanlybanhang.config;
 import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
+import com.quanlybanhang.security.RestAccessDeniedHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +21,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Cấu hình Spring Security: JWT stateless, CORS, endpoint permissions.
+ * Cấu hình Spring Security: JWT stateless, CORS, phân quyền 7 vai trò.
+ *
+ * Nguyên tắc: mặc định TỪ CHỐI — chỉ endpoint được khai báo mới truy cập được.
+ * Chi tiết quyền trên từng API dùng @PreAuthorize ở controller.
  */
 @Configuration
 @EnableWebSecurity
@@ -31,6 +35,7 @@ public class SecurityConfig {
     private final UserDetailsServiceImpl userDetailsService;
     private final AuthEntryPointJwt unauthorizedHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestAccessDeniedHandler accessDeniedHandler;
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
@@ -56,9 +61,13 @@ public class SecurityConfig {
             // Tắt CSRF vì dùng JWT (stateless)
             .csrf(AbstractHttpConfigurer::disable)
 
+            // Bật CORS (cấu hình ở CorsConfig)
+            .cors(cors -> {})
+
             // Xử lý lỗi xác thực
             .exceptionHandling(exception ->
-                exception.authenticationEntryPoint(unauthorizedHandler))
+                exception.authenticationEntryPoint(unauthorizedHandler)
+                        .accessDeniedHandler(accessDeniedHandler))
 
             // Không tạo session - JWT stateless
             .sessionManagement(session ->
@@ -66,20 +75,59 @@ public class SecurityConfig {
 
             // Phân quyền các endpoint
             .authorizeHttpRequests(auth -> auth
-                // API auth: ai cũng truy cập được
-                .requestMatchers("/api/auth/**").permitAll()
-
-                // API test public
+                // ── Public: ai cũng truy cập được ──
+                .requestMatchers("/api/auth/login", "/api/auth/refresh",
+                        "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                .requestMatchers("/api/auth/**").authenticated()
                 .requestMatchers("/api/test/public").permitAll()
 
-                // API admin: chỉ ADMIN
+                // ── Admin only: quản lý user, cấu hình hệ thống, ma trận phân quyền ──
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
-                // API manager: ADMIN hoặc MANAGER
-                .requestMatchers("/api/manager/**").hasAnyRole("ADMIN", "MANAGER")
+                // ── Quản lý: ADMIN + SALES_MANAGER + WAREHOUSE_MANAGER ──
+                .requestMatchers("/api/manager/**").hasAnyRole(
+                        "ADMIN", "SALES_MANAGER", "WAREHOUSE_MANAGER")
 
-                // Tất cả request khác phải đăng nhập
-                .anyRequest().authenticated()
+                // ── Điều chỉnh kho: CHỈ ADMIN + WAREHOUSE_MANAGER (đảm bảo SALES và WAREHOUSE_STAFF không sửa được tồn kho!) ──
+                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**").hasAnyRole(
+                        "ADMIN", "WAREHOUSE_MANAGER")
+
+                // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
+                .requestMatchers("/api/warehouse/**").hasAnyRole(
+                        "ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF")
+
+                // ── Đơn hàng: mọi role trừ VIEWER có thể tạo/sửa, nhưng VIEWER có thể xem ──
+                // Chi tiết dùng @PreAuthorize trên từng method
+                .requestMatchers("/api/orders/**").authenticated()
+
+                // ── Sản phẩm & Nhóm hàng: mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
+                .requestMatchers("/api/products/**").authenticated()
+                .requestMatchers("/api/categories/**").authenticated()
+
+                // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
+                .requestMatchers("/api/customers/**").hasAnyRole(
+                        "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")
+
+                // ── Giá vốn & Biên lợi nhuận: CHỈ DUY NHẤT Quản lý kinh doanh (ROLE_SALES_MANAGER) ──
+                .requestMatchers("/api/finance/cost-price", "/api/finance/cost-price/**",
+                        "/api/finance/profit-margin", "/api/finance/profit-margin/**")
+                        .hasRole("SALES_MANAGER")
+
+                // ── Tài chính khác (công nợ, quản lý): ADMIN, SALES_MANAGER, ACCOUNTANT ──
+                .requestMatchers("/api/finance/**").hasAnyRole(
+                        "ADMIN", "SALES_MANAGER", "ACCOUNTANT")
+
+                // ── Báo cáo: mọi role đã đăng nhập ──
+                // Chi tiết loại báo cáo dùng @PreAuthorize
+                .requestMatchers("/api/reports/**").authenticated()
+
+                .requestMatchers("/api/test/**").authenticated()
+
+                // Cho phép /error để hiển thị đúng mã lỗi
+                .requestMatchers("/error").permitAll()
+
+                // Mọi chức năng khác đều kiểm quyền ở tầng server, mặc định là từ chối.
+                .anyRequest().denyAll()
             )
 
             .authenticationProvider(authenticationProvider())

@@ -8,6 +8,12 @@ import java.util.Set;
 
 /**
  * Entity User - lưu trữ thông tin tài khoản người dùng.
+ *
+ * Bao gồm:
+ * - Thông tin cơ bản: username, email, password, fullName, phone
+ * - Trạng thái: active, locked (khoá tạm do sai password)
+ * - Lockout: đếm số lần sai, thời gian khoá, lý do khoá
+ * - Reset password: token + expiry
  */
 @Entity
 @Table(name = "users",
@@ -41,9 +47,59 @@ public class User {
     @Column(length = 15)
     private String phone;
 
+    /** Tên file ảnh đại diện vuông đã xử lý; file vật lý nằm trong avatar storage. */
+    @Column(length = 160)
+    private String avatarFileName;
+
+    /** Tên file thumbnail của ảnh đại diện. */
+    @Column(length = 160)
+    private String avatarThumbnailFileName;
+
+    @Column(length = 20)
+    private String avatarContentType;
+
+    private LocalDateTime avatarUpdatedAt;
+
+    /**
+     * Tài khoản có đang hoạt động không.
+     * false = bị khoá bởi admin (S1-10).
+     */
     @Column(nullable = false)
     @Builder.Default
     private Boolean active = true;
+
+    // ── Lockout fields (S1-01) ──
+
+    /**
+     * Số lần đăng nhập sai liên tiếp. Reset về 0 khi đăng nhập đúng.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer failedLoginAttempts = 0;
+
+    /**
+     * Thời điểm hết khoá tạm (null = không bị khoá tạm).
+     * Khoá tạm 15 phút sau 5 lần sai liên tiếp.
+     */
+    private LocalDateTime lockTime;
+
+    /**
+     * Lý do bị khoá bởi admin (S1-10).
+     */
+    @Column(length = 500)
+    private String lockReason;
+
+    /** Tăng giá trị này để thu hồi đồng thời mọi access/refresh token đã phát hành. */
+    @Column(nullable = false)
+    @Builder.Default
+    private Long tokenVersion = 0L;
+
+    /** Tài khoản mới được cấp mật khẩu tạm và cần đổi ở lần đăng nhập đầu. */
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean mustChangePassword = false;
+
+    // ── Roles ──
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "user_roles",
@@ -52,11 +108,28 @@ public class User {
     @Builder.Default
     private Set<Role> roles = new HashSet<>();
 
-    // Token reset password
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "user_warehouses",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "warehouse_id"))
+    @Builder.Default
+    private Set<Warehouse> warehouses = new HashSet<>();
+
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "user_territories",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "territory_id"))
+    @Builder.Default
+    private Set<Territory> territories = new HashSet<>();
+
+    // ── Reset password ──
+
     @Column(length = 255)
     private String resetPasswordToken;
 
     private LocalDateTime resetPasswordExpiry;
+
+    // ── Timestamps ──
 
     @Column(nullable = false, updatable = false)
     @Builder.Default
@@ -67,5 +140,22 @@ public class User {
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+    }
+
+    // ── Helper methods ──
+
+    /**
+     * Kiểm tra tài khoản có đang bị khoá tạm (do sai password) không.
+     */
+    public boolean isTemporarilyLocked() {
+        return lockTime != null && lockTime.isAfter(LocalDateTime.now());
+    }
+
+    /**
+     * Kiểm tra tài khoản có thể đăng nhập được không.
+     * Không được nếu: bị admin khoá (active=false) HOẶC bị khoá tạm.
+     */
+    public boolean canLogin() {
+        return active && !isTemporarilyLocked();
     }
 }

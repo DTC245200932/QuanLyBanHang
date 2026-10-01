@@ -1,0 +1,23 @@
+:root { --navy:#071a2c; --ink:#182433; --muted:#617083; --line:#dce4eb; --surface:#f4f7fa; --teal:#2fb88a; --danger:#c84949; }
+* { box-sizing: border-box; }
+body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; color:var(--ink); background:var(--surface); font-family:"Aptos","Segoe UI",sans-serif; }
+.auth-card { width:min(100%,460px); padding:38px; background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:0 24px 60px rgba(7,26,44,.1); }
+.auth-brand { display:inline-flex; align-items:center; gap:9px; color:var(--navy); text-decoration:none; font-weight:700; }
+.auth-brand img { width:34px; height:34px; padding:6px; border-radius:9px; background:var(--navy); }
+h1 { margin:34px 0 10px; font:650 32px/1.15 "Bahnschrift","Segoe UI",sans-serif; letter-spacing:-.03em; }
+.lead { margin:0 0 28px; color:var(--muted); font-size:14px; line-height:1.6; }
+label { display:block; margin:0 0 7px; font-size:13px; font-weight:650; }
+input { width:100%; height:48px; margin-bottom:16px; padding:0 14px; border:1px solid var(--line); border-radius:10px; outline:none; font:inherit; }
+input:focus { border-color:var(--teal); box-shadow:0 0 0 4px rgba(47,184,138,.12); }
+button { width:100%; height:49px; margin-top:6px; border:0; border-radius:10px; color:#fff; background:var(--navy); font:650 14px/1 inherit; cursor:pointer; }
+button:disabled { opacity:.55; cursor:wait; }
+.back-link { display:block; margin-top:22px; color:var(--muted); text-align:center; font-size:13px; text-decoration:none; }
+.message { margin:18px 0 0; padding:12px 14px; border-radius:9px; font-size:13px; line-height:1.5; }
+.message--success { color:#176b50; background:#eaf8f3; }
+.message--error { color:#9c3333; background:#faeeee; }
+.error-code { margin:34px 0 4px; color:var(--teal); font:700 58px/1 "Bahnschrift",sans-serif; }
+.action-row { display:flex; gap:10px; margin-top:26px; }
+.action-row a { flex:1; padding:14px; border-radius:10px; text-align:center; text-decoration:none; font-size:14px; font-weight:650; }
+.action-primary { color:#fff; background:var(--navy); }
+.action-secondary { color:var(--ink); background:#edf2f5; }
+@media(max-width:520px){body{padding:0;background:#fff}.auth-card{min-height:100vh;padding:30px 20px;border:0;border-radius:0;box-shadow:none}.action-row{flex-direction:column}}

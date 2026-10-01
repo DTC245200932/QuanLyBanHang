@@ -10,6 +10,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Date;
 
 /**
@@ -40,7 +42,7 @@ public class JwtUtils {
      */
     public String generateAccessToken(Authentication authentication) {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-        return generateTokenFromUsername(userDetails.getUsername(), jwtExpirationMs);
+        return generateToken(userDetails.getUsername(), userDetails.getTokenVersion(), "access", jwtExpirationMs);
     }
 
     /**
@@ -48,23 +50,39 @@ public class JwtUtils {
      */
     public String generateRefreshToken(Authentication authentication) {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-        return generateTokenFromUsername(userDetails.getUsername(), refreshExpirationMs);
+        return generateToken(userDetails.getUsername(), userDetails.getTokenVersion(), "refresh", refreshExpirationMs);
     }
 
     /**
      * Tạo Access Token từ username (dùng cho refresh).
      */
-    public String generateAccessTokenFromUsername(String username) {
-        return generateTokenFromUsername(username, jwtExpirationMs);
+    public String generateAccessToken(String username, long tokenVersion) {
+        return generateToken(username, tokenVersion, "access", jwtExpirationMs);
     }
 
-    private String generateTokenFromUsername(String username, long expirationMs) {
+    private String generateToken(String username, long tokenVersion, String type, long expirationMs) {
         return Jwts.builder()
                 .subject(username)
+                .claim("ver", tokenVersion)
+                .claim("typ", type)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(getSigningKey())
                 .compact();
+    }
+
+    public long getTokenVersion(String token) {
+        Number version = getClaims(token).get("ver", Number.class);
+        return version == null ? -1L : version.longValue();
+    }
+
+    public String getTokenType(String token) {
+        return getClaims(token).get("typ", String.class);
+    }
+
+    private Claims getClaims(String token) {
+        return Jwts.parser().verifyWith(getSigningKey()).build()
+                .parseSignedClaims(token).getPayload();
     }
 
     /**
@@ -77,6 +95,28 @@ public class JwtUtils {
                 .parseSignedClaims(token)
                 .getPayload()
                 .getSubject();
+    }
+
+    /**
+     * Lấy thời điểm hết hạn từ JWT token.
+     */
+    public LocalDateTime getExpirationFromToken(String token) {
+        Date expiration = Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .getExpiration();
+        return expiration.toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+    }
+
+    /**
+     * Lấy thời gian hết hạn của access token (ms).
+     */
+    public long getAccessTokenExpirationMs() {
+        return jwtExpirationMs;
     }
 
     /**

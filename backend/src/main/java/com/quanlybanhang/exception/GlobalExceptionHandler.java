@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,20 +23,46 @@ public class GlobalExceptionHandler {
 
     /**
      * Xử lý lỗi đăng nhập sai mật khẩu/username.
+     * Luôn trả message chung — không tiết lộ tài khoản có tồn tại hay không.
      */
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("Tên đăng nhập hoặc mật khẩu không đúng"));
+                .body(ApiResponse.error(ex.getMessage()));
     }
 
     /**
-     * Xử lý tài khoản bị khóa.
+     * Xử lý khoá tạm do đăng nhập sai quá nhiều lần (S1-01).
+     * Trả về 423 Locked kèm thời gian còn lại.
+     */
+    @ExceptionHandler(AccountTemporarilyLockedException.class)
+    public ResponseEntity<ApiResponse> handleTemporaryLock(AccountTemporarilyLockedException ex) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("remainingMinutes", ex.getRemainingMinutes());
+        data.put("type", "TEMPORARY_LOCK");
+
+        return ResponseEntity.status(HttpStatus.LOCKED)  // 423
+                .body(ApiResponse.builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(data)
+                        .build());
+    }
+
+    /**
+     * Xử lý tài khoản bị khóa bởi admin (S1-10).
      */
     @ExceptionHandler(LockedException.class)
     public ResponseEntity<ApiResponse> handleLocked(LockedException ex) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", "ADMIN_LOCK");
+
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.error("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên."));
+                .body(ApiResponse.builder()
+                        .success(false)
+                        .message("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.")
+                        .data(data)
+                        .build());
     }
 
     /**
@@ -65,6 +92,40 @@ public class GlobalExceptionHandler {
                         .message("Dữ liệu không hợp lệ")
                         .data(errors)
                         .build());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ApiResponse.error("Ảnh đại diện không được vượt quá 2MB."));
+    }
+
+    /**
+     * Xử lý lỗi không thể xóa nhóm hàng khi còn sản phẩm (S2-06).
+     */
+    @ExceptionHandler(CategoryNotEmptyException.class)
+    public ResponseEntity<ApiResponse> handleCategoryNotEmpty(CategoryNotEmptyException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Xử lý lỗi không thể xóa sản phẩm đã phát sinh giao dịch (S2-05).
+     */
+    @ExceptionHandler(ProductHasTransactionsException.class)
+    public ResponseEntity<ApiResponse> handleProductHasTransactions(ProductHasTransactionsException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Xử lý lỗi không có quyền truy cập (@PreAuthorize hoặc AccessDeniedException).
+     * Trả về 403 Forbidden.
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("Bạn không có quyền thực hiện chức năng này"));
     }
 
     /**

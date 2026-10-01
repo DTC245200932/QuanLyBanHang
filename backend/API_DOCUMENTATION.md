@@ -1,268 +1,189 @@
-# 📋 API Documentation - Authentication Backend
+# SaleStock API — Sprint 1
 
-## Base URL
-```
-http://localhost:8080/api
-```
+Base URL: `http://localhost:8080/api`
 
-## 🔓 Endpoints Công Khai (Không cần đăng nhập)
+Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
 
----
+## Xác thực
 
-### 1. Đăng nhập
-```
-POST /api/auth/login
-```
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| POST | `/auth/login` | Công khai | Đăng nhập; khóa 15 phút ở lần sai thứ 5 |
+| POST | `/auth/refresh` | Công khai | Gia hạn access token bằng refresh token |
+| POST | `/auth/forgot-password` | Công khai | Gửi liên kết đặt lại có hạn 30 phút |
+| POST | `/auth/reset-password` | Công khai | Đặt lại mật khẩu; token dùng một lần |
+| POST | `/auth/logout` | Đã đăng nhập | Thu hồi access token và refresh token hiện tại |
+| POST | `/auth/change-password` | Đã đăng nhập | Đổi mật khẩu và thu hồi mọi phiên khác |
+| GET | `/auth/me` | Đã đăng nhập | Hồ sơ, vai trò và phạm vi làm việc hiện tại |
 
-**Request Body:**
+### Đăng nhập
+
 ```json
+POST /api/auth/login
 {
   "username": "admin",
   "password": "admin123"
 }
 ```
 
-**Response (200 OK):**
+Sai tên đăng nhập hoặc mật khẩu luôn trả `401` cùng thông báo `Tên đăng nhập hoặc mật khẩu không đúng`. Lần sai thứ 5 trả `423` với `data.type = TEMPORARY_LOCK`.
+
+Response thành công gồm `accessToken`, `refreshToken`, thông tin người dùng, `roles`, `permissions`, `warehouses`, `territories` và `mustChangePassword`.
+
+### Đăng xuất
+
 ```json
+POST /api/auth/logout
+Authorization: Bearer <access-token>
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
-  "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
-  "tokenType": "Bearer",
-  "id": 1,
-  "username": "admin",
-  "email": "admin@quanlybanhang.com",
-  "fullName": "Quản trị viên",
-  "roles": ["ROLE_ADMIN"]
+  "refreshToken": "<refresh-token>"
 }
 ```
 
-**Response (401 Unauthorized):**
+### Đổi mật khẩu
+
 ```json
+POST /api/auth/change-password
+Authorization: Bearer <access-token>
 {
-  "success": false,
-  "message": "Tên đăng nhập hoặc mật khẩu không đúng"
+  "currentPassword": "TempPass123",
+  "newPassword": "MatKhauMoi123"
 }
 ```
 
----
+Mật khẩu mới tối thiểu 8 ký tự, có chữ và số. `tokenVersion` của tài khoản được tăng nên mọi JWT cũ mất hiệu lực ngay phía server.
 
-### 2. Đăng ký
-```
-POST /api/auth/register
+## Quản trị tài khoản
+
+Tất cả endpoint dưới `/admin/**` yêu cầu `ROLE_ADMIN` và được kiểm tra tại server.
+
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| GET | `/admin/users` | Tìm kiếm, lọc và phân trang (mặc định 20) |
+| GET | `/admin/users/{id}` | Chi tiết tài khoản |
+| POST | `/admin/users` | Tạo tài khoản, sinh mật khẩu tạm và gửi email |
+| PUT | `/admin/users/{id}` | Sửa hồ sơ, nhiều vai trò, kho và địa bàn |
+| POST | `/admin/users/{id}/lock` | Khóa, thu hồi phiên và cảnh báo bàn giao đại lý |
+| POST | `/admin/users/{id}/unlock` | Mở khóa |
+| GET | `/admin/assignment-options` | Danh sách 7 vai trò, kho và địa bàn |
+| GET | `/admin/permissions` | Ma trận quyền của 7 vai trò |
+| PUT | `/admin/permissions/{role}` | Khai báo/cập nhật quyền cho vai trò (chặn gán giá vốn ngoài Sales Manager, chặn gán sửa tồn kho cho Sales) |
+| POST | `/admin/permissions/reset` | Khôi phục ma trận quyền 7 vai trò về mặc định ban đầu |
+
+### Tìm kiếm
+
+```text
+GET /api/admin/users?search=an&role=ROLE_SALES&active=true&page=0&size=20
 ```
 
-**Request Body:**
+`search` khớp tên, tài khoản hoặc số điện thoại. `size` tối đa 100.
+
+### Tạo/cập nhật
+
 ```json
 {
-  "username": "nhanvien1",
-  "email": "nv1@email.com",
-  "password": "123456",
-  "fullName": "Nguyen Van A",
+  "username": "nguyenvana",
+  "email": "a@company.vn",
+  "fullName": "Nguyễn Văn A",
   "phone": "0901234567",
-  "roles": ["ROLE_EMPLOYEE"]
+  "roles": ["ROLE_SALES", "ROLE_VIEWER"],
+  "warehouseIds": [],
+  "territoryIds": [1]
 }
 ```
 
-> **Lưu ý:** `roles` là optional. Nếu không truyền → mặc định `ROLE_EMPLOYEE`.
-> Các role hợp lệ: `ROLE_ADMIN`, `ROLE_MANAGER`, `ROLE_EMPLOYEE`
+Người có `ROLE_WAREHOUSE_MANAGER` hoặc `ROLE_WAREHOUSE_STAFF` bắt buộc có ít nhất một `warehouseId`. Quản trị viên không thể tự bỏ `ROLE_ADMIN` hoặc tự khóa tài khoản đang dùng.
 
-**Response (201 Created):**
+### Khóa tài khoản
+
 ```json
+POST /api/admin/users/15/lock
 {
-  "success": true,
-  "message": "Đăng ký tài khoản thành công"
+  "reason": "Nhân sự đã nghỉ việc"
 }
 ```
 
-**Response (400 Bad Request) - Username trùng:**
-```json
-{
-  "success": false,
-  "message": "Tên đăng nhập đã được sử dụng"
-}
-```
+Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý liên quan được đánh dấu `handoverRequired = true`.
 
-**Response (400 Bad Request) - Validation lỗi:**
-```json
-{
-  "success": false,
-  "message": "Dữ liệu không hợp lệ",
-  "data": {
-    "username": "Tên đăng nhập phải từ 3-50 ký tự",
-    "password": "Mật khẩu phải từ 6-100 ký tự"
-  }
-}
-```
+## Kho & Tồn kho
 
----
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| POST | `/warehouse/adjust` | `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho; Nhân viên kinh doanh và Thủ kho bị cấm |
+| POST | `/warehouse/import` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Nhập kho |
+| POST | `/warehouse/export` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xuất kho |
+| GET | `/warehouse/inventory` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem danh sách tồn kho |
 
-### 3. Refresh Token
-```
-POST /api/auth/refresh
-```
+## Tài chính (Bảo mật giá vốn & biên lợi nhuận)
 
-**Request Body:**
-```json
-{
-  "refreshToken": "eyJhbGciOiJIUzI1NiJ9..."
-}
-```
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/finance/cost-price` | `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm — chỉ Quản lý kinh doanh; Admin, Thủ kho, Sales, Kế toán đều bị từ chối |
+| GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
+| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng |
 
-**Response (200 OK):**
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiJ9...(token mới)",
-  "refreshToken": "eyJhbGciOiJIUzI1NiJ9...(giữ nguyên)",
-  "tokenType": "Bearer",
-  "id": 1,
-  "username": "admin",
-  "email": "admin@quanlybanhang.com",
-  "fullName": "Quản trị viên",
-  "roles": ["ROLE_ADMIN"]
-}
-```
+## Quản lý nhóm hàng nhiều cấp & Sản phẩm (S2-06)
 
----
+Hỗ trợ Quản lý kinh doanh xem và phân tích doanh số theo ngành hàng/phân nhóm nhiều cấp thay vì chỉ xem từng mã sản phẩm lẻ.
 
-### 4. Quên mật khẩu
-```
-POST /api/auth/forgot-password
-```
+### Quy tắc nghiệp vụ cốt lõi:
+1. **Cấu trúc cây tối thiểu 3 cấp**: Cấp 1 (Ngành hàng, `parent = null`, `level = 1`) -> Cấp 2 (Phân nhóm, `level = 2`) -> Cấp 3+ (Nhóm con / chi tiết, `level >= 3`). Tự động tính cấp bậc và chống vòng lặp chu trình (không thể chọn con cháu làm cha).
+2. **Chuyển sản phẩm giữa các nhóm**: Hỗ trợ chuyển một hoặc nhiều sản phẩm đồng thời sang nhóm đích.
+3. **Nhóm còn sản phẩm thì không xoá được**: Nếu nhóm hàng trực tiếp hoặc bất kỳ nhóm con nào của nó còn sản phẩm, thao tác xoá bị chặn và trả về lỗi `400 Bad Request` (`CategoryNotEmptyException`).
+4. **Xem doanh số theo ngành hàng**: Tự động tính tổng doanh số (`totalRevenue`) và tổng số lượng sản phẩm (`totalProductCount`) cộng dồn của toàn bộ cây con bên dưới.
 
-**Request Body:**
-```json
-{
-  "email": "user@email.com"
-}
-```
+### Danh sách API Nhóm hàng (`/api/categories`)
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "message": "Email đặt lại mật khẩu đã được gửi. Vui lòng kiểm tra hộp thư."
-}
-```
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/categories/tree` | Đã đăng nhập | Xem cấu trúc cây phân cấp kèm tổng hợp doanh số và số sản phẩm từng nhánh |
+| GET | `/categories` | Đã đăng nhập | Danh sách nhóm hàng dạng phẳng |
+| GET | `/categories/{id}` | Đã đăng nhập | Xem chi tiết nhóm hàng và cây con |
+| GET | `/categories/{id}/revenue` | Đã đăng nhập | Xem tổng hợp doanh số toàn nhánh của ngành hàng / nhóm hàng |
+| POST | `/categories` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo nhóm hàng mới (tự động gán `level = parent.level + 1`) |
+| PUT | `/categories/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật tên, mô tả, chuyển nhóm cha (ngăn ngừa chu trình) |
+| DELETE | `/categories/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa nhóm hàng (**Chặn nếu còn sản phẩm** -> 400 Bad Request) |
+| POST | `/categories/move-products` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Chuyển hàng loạt sản phẩm sang nhóm hàng đích |
+| PUT | `/categories/products/{productId}/move?targetCategoryId={id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Chuyển 1 sản phẩm sang nhóm hàng đích |
 
----
+### Danh sách API Quản lý danh mục sản phẩm (S2-05)
 
-### 5. Đặt lại mật khẩu
-```
-POST /api/auth/reset-password
-```
+Hỗ trợ Quản lý kinh doanh quản lý danh mục sản phẩm chuẩn hóa toàn công ty (gọi tên và mã SKU thống nhất).
 
-**Request Body:**
-```json
-{
-  "token": "uuid-token-tu-email",
-  "newPassword": "matkhaumoi123"
-}
-```
+#### Quy tắc nghiệp vụ cốt lõi:
+1. **Khai báo đầy đủ**: Mã SKU, tên sản phẩm, nhóm hàng, đơn vị tính cơ sở (cái, chai, hộp, kg...), quy cách đóng gói (Thùng 24 lon, Hộp 10 vỉ...), giá vốn, giá bán, ảnh sản phẩm, trạng thái.
+2. **Mã SKU là duy nhất**: Hệ thống ràng buộc duy nhất trên toàn cơ sở dữ liệu (`unique`) và kiểm tra khi tạo mới / cập nhật.
+3. **Giá vốn bảo mật**: CHỈ DUY NHẤT Quản lý kinh doanh (`ROLE_SALES_MANAGER`) xem và chỉnh sửa được giá vốn. Với các vai trò khác (kể cả Admin, Sales, Thủ kho, Kế toán), trường `costPrice` luôn trả về `null` và không thể sửa đổi giá vốn khi cập nhật.
+4. **Bảo vệ sản phẩm có giao dịch**: Sản phẩm đã phát sinh giao dịch bán hoặc nhập kho (`hasTransactions = true` hoặc `revenue > 0`) thì **KHÔNG ĐƯỢC PHÉP XOÁ**, chỉ có thể chuyển sang trạng thái **Ngừng kinh doanh** (`active = false`). Thao tác xoá sẽ trả về lỗi `400 Bad Request` (`ProductHasTransactionsException`).
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "message": "Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập lại."
-}
-```
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/products?categoryId={id}&search={q}&active={true/false}` | Đã đăng nhập | Danh sách sản phẩm (hỗ trợ lọc nhóm, tìm kiếm theo SKU/tên, trạng thái; giá vốn chỉ trả về cho Sales Manager) |
+| GET | `/products/{id}` | Đã đăng nhập | Xem chi tiết sản phẩm (giá vốn bảo mật) |
+| POST | `/products` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo sản phẩm mới (chỉ Sales Manager gán được giá vốn ban đầu) |
+| PUT | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật thông tin sản phẩm (chỉ Sales Manager sửa được giá vốn; vai trò khác giữ nguyên giá vốn cũ) |
+| PATCH | `/products/{id}/status?active={true/false}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Chuyển đổi trạng thái Đang kinh doanh / Ngừng kinh doanh |
+| DELETE | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa sản phẩm (**Chặn nếu đã phát sinh giao dịch** -> 400 Bad Request) |
+| POST | `/products/upload-image` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải ảnh sản phẩm lên server (hỗ trợ JPG, PNG, WEBP tối đa 5MB) |
+| GET | `/products/images/{fileName}` | Đã đăng nhập | Xem ảnh sản phẩm |
 
----
+## Bảy vai trò
 
-## 🔒 Endpoints Cần Đăng Nhập
+- `ROLE_ADMIN`: quản trị tài khoản và hệ thống; không mặc nhiên xem giá vốn.
+- `ROLE_SALES_MANAGER`: quản lý kinh doanh; vai trò duy nhất xem giá vốn và biên lợi nhuận.
+- `ROLE_WAREHOUSE_MANAGER`: quản lý, điều chỉnh và phê duyệt kho.
+- `ROLE_SALES`: tạo đơn, quản lý khách hàng và địa bàn; không sửa được tồn kho, không xem giá vốn.
+- `ROLE_WAREHOUSE_STAFF`: nhập/xuất tại kho được gán; không sửa điều chỉnh tồn kho, không xem giá vốn.
+- `ROLE_ACCOUNTANT`: công nợ và báo cáo tài chính, không xem giá vốn.
+- `ROLE_VIEWER`: chỉ xem báo cáo được phép.
 
-> **Header bắt buộc:** `Authorization: Bearer <accessToken>`
+Mọi chức năng đều kiểm quyền ở tầng server. Endpoint chưa được khai báo hoặc không đủ quyền bị từ chối mặc định (401 khi chưa đăng nhập, 403 khi thiếu quyền).
 
-### 6. Lấy thông tin user hiện tại
-```
-GET /api/test/user
-```
+## Chạy local
 
-**Response (200 OK):**
-```json
-{
-  "message": "Xin chào Quản trị viên",
-  "username": "admin",
-  "email": "admin@quanlybanhang.com"
-}
-```
+1. Tạo MySQL hoặc để ứng dụng tự tạo schema `quanlybanhang`.
+2. Cấu hình SMTP thật nếu cần nhận email kích hoạt/reset.
+3. Chạy `backend\\mvnw.cmd spring-boot:run`.
+4. Phục vụ thư mục repo qua HTTP, ví dụ cổng `5500`, rồi mở `/frontend/index.html`.
 
-### 7. Test quyền Manager
-```
-GET /api/test/manager
-```
-> Chỉ user có role `ROLE_MANAGER` hoặc `ROLE_ADMIN`
-
-### 8. Test quyền Admin
-```
-GET /api/test/admin
-```
-> Chỉ user có role `ROLE_ADMIN`
-
----
-
-## 🔑 Cách Frontend Sử Dụng
-
-### Lưu token sau khi đăng nhập:
-```javascript
-// Sau khi gọi API login thành công
-const response = await fetch('/api/auth/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ username: 'admin', password: 'admin123' })
-});
-const data = await response.json();
-
-// Lưu token
-localStorage.setItem('accessToken', data.accessToken);
-localStorage.setItem('refreshToken', data.refreshToken);
-localStorage.setItem('user', JSON.stringify({
-  id: data.id,
-  username: data.username,
-  email: data.email,
-  fullName: data.fullName,
-  roles: data.roles
-}));
-```
-
-### Gọi API có xác thực:
-```javascript
-const token = localStorage.getItem('accessToken');
-const response = await fetch('/api/test/user', {
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  }
-});
-```
-
-### Refresh token khi hết hạn:
-```javascript
-// Khi nhận 401 Unauthorized → gọi refresh
-const refreshToken = localStorage.getItem('refreshToken');
-const response = await fetch('/api/auth/refresh', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ refreshToken })
-});
-const data = await response.json();
-localStorage.setItem('accessToken', data.accessToken);
-```
-
----
-
-## 📊 Phân quyền (Roles)
-
-| Role | Quyền |
-|------|-------|
-| `ROLE_ADMIN` | Toàn quyền - quản lý hệ thống, user, sản phẩm, đơn hàng |
-| `ROLE_MANAGER` | Quản lý nhân viên, sản phẩm, đơn hàng |
-| `ROLE_EMPLOYEE` | Bán hàng, xem sản phẩm |
-
-## 🗄️ Tài khoản mặc định
-
-| Username | Password | Role |
-|----------|----------|------|
-| `admin` | `admin123` | ADMIN |
-
-> ⚠️ **Lưu ý:** Đổi mật khẩu admin sau khi triển khai!
+Tài khoản khởi tạo cho môi trường phát triển: `admin / admin123`. Hãy đổi ngay sau lần đăng nhập đầu tiên.

@@ -3,19 +3,30 @@ package com.quanlybanhang.controller;
 import com.quanlybanhang.dto.request.*;
 import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.dto.response.JwtResponse;
+import com.quanlybanhang.security.UserDetailsImpl;
 import com.quanlybanhang.service.AuthService;
+import com.quanlybanhang.service.AvatarService;
 import com.quanlybanhang.service.PasswordResetService;
+import com.quanlybanhang.service.AdminUserService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
 
 /**
  * Controller xử lý các API liên quan đến xác thực:
- * - POST /api/auth/login       → Đăng nhập
- * - POST /api/auth/register    → Đăng ký
- * - POST /api/auth/refresh     → Refresh token
+ * - POST /api/auth/login           → Đăng nhập
+ * - POST /api/auth/refresh         → Refresh token
+ * - POST /api/auth/logout          → Đăng xuất (S1-02)
+ * - POST /api/auth/change-password → Đổi mật khẩu (S1-04)
  * - POST /api/auth/forgot-password → Quên mật khẩu
  * - POST /api/auth/reset-password  → Đặt lại mật khẩu
  */
@@ -26,17 +37,11 @@ public class AuthController {
 
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
+    private final AdminUserService adminUserService;
+    private final AvatarService avatarService;
 
     /**
      * Đăng nhập.
-     *
-     * Request body:
-     * {
-     *   "username": "admin",
-     *   "password": "123456"
-     * }
-     *
-     * Response: JwtResponse (accessToken, refreshToken, user info, roles)
      */
     @PostMapping("/login")
     public ResponseEntity<JwtResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -45,34 +50,7 @@ public class AuthController {
     }
 
     /**
-     * Đăng ký tài khoản mới.
-     *
-     * Request body:
-     * {
-     *   "username": "nhanvien1",
-     *   "email": "nv1@email.com",
-     *   "password": "123456",
-     *   "fullName": "Nguyen Van A",
-     *   "phone": "0901234567",
-     *   "roles": ["ROLE_EMPLOYEE"]   // optional, mặc định ROLE_EMPLOYEE
-     * }
-     */
-    @PostMapping("/register")
-    public ResponseEntity<ApiResponse> register(@Valid @RequestBody RegisterRequest request) {
-        ApiResponse response = authService.register(request);
-        if (response.isSuccess()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        }
-        return ResponseEntity.badRequest().body(response);
-    }
-
-    /**
      * Refresh access token.
-     *
-     * Request body:
-     * {
-     *   "refreshToken": "eyJhbGciOi..."
-     * }
      */
     @PostMapping("/refresh")
     public ResponseEntity<JwtResponse> refreshToken(@RequestBody java.util.Map<String, String> request) {
@@ -85,12 +63,69 @@ public class AuthController {
     }
 
     /**
+     * Đăng xuất — vô hiệu hoá token phía server (S1-02).
+     * Yêu cầu header: Authorization: Bearer <token>
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse> logout(HttpServletRequest request,
+                                               @RequestBody(required = false) java.util.Map<String, String> body) {
+        String token = parseJwt(request);
+        String refreshToken = body == null ? null : body.get("refreshToken");
+        authService.logout(token, refreshToken);
+        return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công"));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse> me(Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success("Thông tin người dùng",
+                adminUserService.getByUsername(authentication.getName())));
+    }
+
+    @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse> updateAvatar(
+            @RequestPart("file") MultipartFile file,
+            Authentication authentication) {
+        var user = avatarService.updateAvatar(authentication.getName(), file);
+        Map<String, String> data = Map.of(
+                "avatarUrl", AvatarService.avatarUrl(user, false),
+                "avatarThumbnailUrl", AvatarService.avatarUrl(user, true));
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật ảnh đại diện", data));
+    }
+
+    @GetMapping("/users/{id}/avatar")
+    public ResponseEntity<byte[]> avatar(@PathVariable Long id,
+                                         @RequestParam(defaultValue = "false") boolean thumbnail) {
+        return avatarService.getAvatar(id, thumbnail)
+                .map(content -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.noCache())
+                        .contentType(MediaType.parseMediaType(content.contentType()))
+                        .body(content.bytes()))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Đổi mật khẩu khi đang đăng nhập (S1-04).
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+
+        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        String currentToken = parseJwt(httpRequest);
+
+        ApiResponse response = authService.changePassword(
+                userDetails.getUsername(), request, currentToken);
+
+        if (response.isSuccess()) {
+            return ResponseEntity.ok(response);
+        }
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    /**
      * Quên mật khẩu - gửi email reset.
-     *
-     * Request body:
-     * {
-     *   "email": "user@email.com"
-     * }
      */
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse> forgotPassword(
@@ -102,12 +137,6 @@ public class AuthController {
 
     /**
      * Đặt lại mật khẩu bằng token từ email.
-     *
-     * Request body:
-     * {
-     *   "token": "uuid-token-from-email",
-     *   "newPassword": "matkhaumoi123"
-     * }
      */
     @PostMapping("/reset-password")
     public ResponseEntity<ApiResponse> resetPassword(
@@ -115,5 +144,16 @@ public class AuthController {
         passwordResetService.resetPassword(request.getToken(), request.getNewPassword());
         return ResponseEntity.ok(
                 ApiResponse.success("Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập lại."));
+    }
+
+    /**
+     * Lấy JWT token từ header Authorization: Bearer <token>
+     */
+    private String parseJwt(HttpServletRequest request) {
+        String headerAuth = request.getHeader("Authorization");
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            return headerAuth.substring(7);
+        }
+        return null;
     }
 }

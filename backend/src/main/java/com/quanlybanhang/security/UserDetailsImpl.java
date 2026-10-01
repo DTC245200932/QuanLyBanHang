@@ -24,6 +24,7 @@ public class UserDetailsImpl implements UserDetails {
     private String password;
     private String fullName;
     private Boolean active;
+    private Long tokenVersion;
     private Collection<? extends GrantedAuthority> authorities;
 
     public static UserDetailsImpl build(User user) {
@@ -38,6 +39,7 @@ public class UserDetailsImpl implements UserDetails {
                 user.getPassword(),
                 user.getFullName(),
                 user.getActive(),
+                user.getTokenVersion(),
                 authorities
         );
     }

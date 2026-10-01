@@ -16,9 +16,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     Optional<Product> findByCode(String code);
 
+    Optional<Product> findByCodeIgnoreCase(String code);
+
     boolean existsByCode(String code);
 
+    boolean existsByCodeIgnoreCase(String code);
+
     boolean existsByCodeAndIdNot(String code, Long id);
+
+    boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
 
     List<Product> findByCategoryId(Long categoryId);
 

@@ -75,12 +75,26 @@ const MenuConfig = (() => {
       id: "import-export",
       label: "Nhập / Xuất kho",
       icon: '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
-      href: "#import-export",
+      href: "warehouse/units.html?tab=receipts",
       permission: "WAREHOUSE_IMPORT",
       roles: [
         "ROLE_ADMIN",
         "ROLE_WAREHOUSE_MANAGER",
         "ROLE_WAREHOUSE_STAFF",
+      ],
+    },
+    {
+      id: "unit-conversions",
+      label: "Đơn vị tính quy đổi",
+      icon: '<path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"/>',
+      href: "warehouse/units.html?tab=units",
+      roles: [
+        "ROLE_ADMIN",
+        "ROLE_WAREHOUSE_MANAGER",
+        "ROLE_WAREHOUSE_STAFF",
+        "ROLE_SALES_MANAGER",
+        "ROLE_ACCOUNTANT",
+        "ROLE_VIEWER",
       ],
     },
     {
@@ -132,6 +146,32 @@ const MenuConfig = (() => {
   }
 
   /**
+   * Chuẩn hóa đường dẫn href dựa vào vị trí thư mục của trang hiện tại.
+   */
+  function resolveHref(href) {
+    if (!href || href.startsWith("#") || href.startsWith("http")) return href;
+    const path = window.location.pathname;
+    const inWarehouse = path.includes("/warehouse/");
+    const inAdmin = path.includes("/admin/");
+
+    if (inWarehouse) {
+      if (href.startsWith("warehouse/")) {
+        return href.replace("warehouse/", "");
+      }
+      return `../${href}`;
+    }
+
+    if (inAdmin) {
+      if (href.startsWith("admin/")) {
+        return href.replace("admin/", "");
+      }
+      return `../${href}`;
+    }
+
+    return href;
+  }
+
+  /**
    * Lấy tên hiển thị cho role.
    */
   function getRoleDisplayName(role) {
@@ -147,5 +187,5 @@ const MenuConfig = (() => {
     return names[role] || role;
   }
 
-  return { getMenuForRoles, getMenuForUser, getRoleDisplayName, menuItems };
+  return { getMenuForRoles, getMenuForUser, getRoleDisplayName, resolveHref, menuItems };
 })();

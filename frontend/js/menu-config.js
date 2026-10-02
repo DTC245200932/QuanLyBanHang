@@ -125,6 +125,13 @@ const MenuConfig = (() => {
       roles: ["ROLE_ADMIN"],
       permission: "USER_VIEW",
     },
+    {
+      id: "audit-logs",
+      label: "Nhật ký thao tác",
+      icon: '<path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 2.13-5.82L3 8"/><path d="M12 7v5l3 2"/>',
+      href: "admin/audit-logs.html",
+      roles: ["ROLE_ADMIN"],
+    },
   ];
 
   /**

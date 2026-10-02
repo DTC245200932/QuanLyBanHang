@@ -179,6 +179,99 @@ Hỗ trợ Quản lý kinh doanh quản lý danh mục sản phẩm chuẩn hóa
 | DELETE | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa sản phẩm (**Chặn nếu đã phát sinh giao dịch** -> 400 Bad Request) |
 | POST | `/products/upload-image` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải ảnh sản phẩm lên server (hỗ trợ JPG, PNG, WEBP tối đa 5MB) |
 | GET | `/products/images/{fileName}` | Đã đăng nhập | Xem ảnh sản phẩm |
+| GET | `/products/import/template` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải tệp Excel mẫu (`.xlsx`) kèm dữ liệu mẫu, sheet nhóm hàng tra cứu và hướng dẫn |
+| POST | `/products/import/preview` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xem trước và kiểm tra lỗi từng dòng từ tệp Excel (`multipart/form-data`) hoặc JSON (`application/json`) |
+| POST | `/products/import` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Nhập danh mục sản phẩm hàng loạt từ Excel (`multipart/form-data`) hoặc JSON (`application/json`). SKU đã tồn tại thì cập nhật thay vì tạo mới |
+
+### Nhập danh mục sản phẩm hàng loạt từ Excel (S2-08)
+
+Hỗ trợ Quản lý kinh doanh đưa đến 5.000 mã hàng hiện có vào hệ thống một cách nhanh chóng, chính xác mà không phải gõ tay.
+
+#### Quy tắc nghiệp vụ cốt lõi:
+1. **Tải tệp mẫu chuẩn (.xlsx)**:
+   - Tệp gồm 3 sheet:
+     - Sheet 1: `Sản phẩm mẫu` với các cột chuẩn: `Mã SKU (*)`, `Tên sản phẩm (*)`, `Mã/Tên nhóm hàng (*)`, `Đơn vị tính cơ sở`, `Quy cách đóng gói`, `Giá bán`, `Giá vốn`, `Trạng thái`, `Mô tả`.
+     - Sheet 2: `Danh mục nhóm hàng` hiển thị toàn bộ mã và tên nhóm hàng hiện hành giúp người dùng dễ dàng sao chép.
+     - Sheet 3: `Hướng dẫn` quy định rõ nguyên tắc nhập liệu.
+2. **Xem trước & báo lỗi theo từng dòng**:
+   - Endpoint: `POST /api/products/import/preview` (hỗ trợ cả tệp Excel `multipart/form-data` hoặc JSON array `application/json`).
+   - Kiểm tra và báo lỗi chi tiết cho từng dòng:
+     - SKU trống hoặc vượt quá 50 ký tự.
+     - Tên sản phẩm trống hoặc vượt quá 255 ký tự.
+     - Nhóm hàng không tìm thấy (tra cứu thông minh theo ID, Mã nhóm hoặc Tên nhóm hàng).
+     - Trùng lặp mã SKU nội bộ trong cùng tệp tải lên (chỉ rõ dòng bị trùng).
+     - Giá bán hoặc giá vốn âm.
+     - Độ dài đơn vị tính, quy cách đóng gói, mô tả.
+   - Thống kê tổng hợp: `totalRows`, `validRows`, `invalidRows`, `createCount`, `updateCount`.
+3. **Cập nhật thay vì tạo mới khi SKU đã tồn tại**:
+   - Tự động đối chiếu mã SKU trong cơ sở dữ liệu (không phân biệt hoa thường).
+   - Trong bản xem trước:
+     - SKU đã có trong hệ thống: đánh dấu `action = "UPDATE"` và `isUpdate = true`, kèm `existingProductId`.
+     - SKU mới: đánh dấu `action = "CREATE"` và `isUpdate = false`.
+   - Khi thực hiện nhập (`POST /api/products/import`):
+     - Dòng `UPDATE`: cập nhật tên, nhóm hàng, đơn vị, quy cách, giá bán, giá vốn (nếu có quyền), trạng thái, mô tả cho sản phẩm hiện có. Tự động ghi nhật ký kiểm toán (Audit Log) nếu giá bán thay đổi.
+     - Dòng `CREATE`: tạo mới sản phẩm với trạng thái ban đầu `revenue = 0`, `hasTransactions = false`.
+4. **Bảo mật giá vốn**:
+   - CHỈ Quản lý kinh doanh (`ROLE_SALES_MANAGER` hoặc quyền `FINANCE_VIEW_COST_PRICE`) mới được xem và sửa giá vốn khi nhập từ Excel.
+   - Nếu người dùng khác (ví dụ Quản trị viên không có quyền giá vốn) tải tệp có cột giá vốn: trường giá vốn sẽ được bỏ qua, giữ nguyên giá vốn hiện tại của SKU để đảm bảo tuyệt đối bí mật kinh doanh.
+5. **Hiệu năng xử lý 5.000 mã hàng**:
+   - Cơ chế truy vấn theo lô (`chunk` 500 SKU) và lưu hàng loạt (`saveAll`), tránh tình trạng N+1 query và không nghẽn cơ sở dữ liệu.
+
+#### Cấu trúc Response kiểm tra / nhập (`ProductImportResponse`):
+```json
+{
+  "success": true,
+  "message": "Kết quả kiểm tra tệp nhập sản phẩm",
+  "data": {
+    "totalRows": 2,
+    "validRows": 2,
+    "invalidRows": 0,
+    "createCount": 1,
+    "updateCount": 1,
+    "importedRows": 0,
+    "rows": [
+      {
+        "rowNumber": 2,
+        "sku": "HEIN-330",
+        "name": "Bia Heineken lon 330ml",
+        "category": "BEV-BEER",
+        "resolvedCategoryId": 1,
+        "resolvedCategoryName": "Bia các loại",
+        "unit": "lon",
+        "packingSpecification": "Thùng 24 lon",
+        "price": 18000,
+        "costPrice": 14500,
+        "active": true,
+        "description": "Bia cao cấp",
+        "action": "UPDATE",
+        "isUpdate": true,
+        "existingProductId": 5,
+        "valid": true,
+        "errors": []
+      },
+      {
+        "rowNumber": 3,
+        "sku": "NEW-PROD-01",
+        "name": "Sản phẩm mới 01",
+        "category": "BEV-WATER",
+        "resolvedCategoryId": 2,
+        "resolvedCategoryName": "Nước giải khát",
+        "unit": "chai",
+        "packingSpecification": "Lốc 6 chai",
+        "price": 10000,
+        "costPrice": 7500,
+        "active": true,
+        "description": "Sản phẩm mới",
+        "action": "CREATE",
+        "isUpdate": false,
+        "existingProductId": null,
+        "valid": true,
+        "errors": []
+      }
+    ]
+  }
+}
+```
 
 ## Đơn vị tính quy đổi của SKU & Nhập xuất kho theo thùng/lon (S2-07)
 

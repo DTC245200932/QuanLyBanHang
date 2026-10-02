@@ -1,7 +1,9 @@
 package com.quanlybanhang.controller;
 
+import com.quanlybanhang.dto.request.ProductImportRowRequest;
 import com.quanlybanhang.dto.request.ProductRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
+import com.quanlybanhang.dto.response.ProductImportResponse;
 import com.quanlybanhang.dto.response.ProductResponse;
 import com.quanlybanhang.service.ProductService;
 import jakarta.validation.Valid;
@@ -87,6 +89,64 @@ public class ProductController {
     public ApiResponse deleteProduct(@PathVariable Long id) {
         productService.delete(id);
         return ApiResponse.success("Xóa sản phẩm thành công", null);
+    }
+
+    /**
+     * Tải tệp Excel mẫu để nhập danh mục sản phẩm hàng loạt (S2-08).
+     */
+    @GetMapping("/import/template")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ResponseEntity<byte[]> downloadImportTemplate() {
+        byte[] excelBytes = productService.generateImportTemplate();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"mau_nhap_san_pham.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(excelBytes);
+    }
+
+    /**
+     * Xem trước và kiểm tra lỗi theo từng dòng từ tệp Excel tải lên (S2-08).
+     * SKU đã tồn tại trong hệ thống được đánh dấu rõ action = "UPDATE", isUpdate = true.
+     */
+    @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse previewImportFile(@RequestParam("file") MultipartFile file) {
+        ProductImportResponse result = productService.previewImport(file);
+        return ApiResponse.success("Kết quả kiểm tra tệp nhập sản phẩm", result);
+    }
+
+    /**
+     * Xem trước và kiểm tra lỗi theo từng dòng từ dữ liệu JSON (S2-08).
+     */
+    @PostMapping(value = "/import/preview", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse previewImportJson(@RequestBody List<ProductImportRowRequest> rows) {
+        ProductImportResponse result = productService.previewImport(rows);
+        return ApiResponse.success("Kết quả kiểm tra dữ liệu nhập sản phẩm", result);
+    }
+
+    /**
+     * Nhập danh mục sản phẩm hàng loạt từ tệp Excel vào cơ sở dữ liệu (S2-08).
+     * SKU đã tồn tại thì cập nhật thay vì tạo mới.
+     */
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse importProductsFile(@RequestParam("file") MultipartFile file) {
+        ProductImportResponse result = productService.importProducts(file);
+        return ApiResponse.success("Đã nhập thành công " + result.getImportedRows() + "/" + result.getTotalRows()
+                + " sản phẩm (" + result.getCreateCount() + " tạo mới, " + result.getUpdateCount() + " cập nhật)", result);
+    }
+
+    /**
+     * Nhập danh mục sản phẩm hàng loạt từ mảng JSON vào cơ sở dữ liệu (S2-08).
+     * SKU đã tồn tại thì cập nhật thay vì tạo mới.
+     */
+    @PostMapping(value = "/import", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse importProductsJson(@RequestBody List<ProductImportRowRequest> rows) {
+        ProductImportResponse result = productService.importProducts(rows);
+        return ApiResponse.success("Đã nhập thành công " + result.getImportedRows() + "/" + result.getTotalRows()
+                + " sản phẩm (" + result.getCreateCount() + " tạo mới, " + result.getUpdateCount() + " cập nhật)", result);
     }
 
     /**

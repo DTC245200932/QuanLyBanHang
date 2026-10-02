@@ -39,4 +39,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      */
     @Query("SELECT SUM(p.revenue) FROM Product p WHERE p.category.id IN :categoryIds")
     BigDecimal sumRevenueByCategoryIds(@Param("categoryIds") Collection<Long> categoryIds);
+
+    /**
+     * Tìm danh sách sản phẩm theo danh sách mã SKU (không phân biệt chữ hoa/thường).
+     */
+    @Query("SELECT p FROM Product p WHERE UPPER(p.code) IN :codes")
+    List<Product> findByCodeUpperIn(@Param("codes") Collection<String> codes);
 }

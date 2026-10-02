@@ -87,6 +87,18 @@ const MenuConfig = (() => {
       ],
     },
     {
+      id: "product-units",
+      label: "Đơn vị tính",
+      icon: '<path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>',
+      href: "product-units.html",
+      permission: "WAREHOUSE_VIEW",
+      roles: [
+        "ROLE_ADMIN",
+        "ROLE_WAREHOUSE_MANAGER",
+        "ROLE_WAREHOUSE_STAFF",
+      ],
+    },
+    {
       id: "import-export",
       label: "Nhập / Xuất kho",
       icon: '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',

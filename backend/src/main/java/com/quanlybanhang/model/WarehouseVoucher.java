@@ -38,6 +38,10 @@ public class WarehouseVoucher {
     @JoinColumn(name = "warehouse_id", nullable = false)
     private Warehouse warehouse;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "supplier_id")
+    private Supplier supplier;
+
     @Column(length = 30)
     @Builder.Default
     private String status = "RECORDED";

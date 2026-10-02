@@ -72,6 +72,13 @@ const MenuConfig = (() => {
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_VIEWER"],
     },
     {
+      id: "price-lists",
+      label: "Bảng giá",
+      icon: '<path d="M20 12V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14l4-3 4 3 4-3 4 3v-7"/><path d="M8 8h8M8 12h5"/>',
+      href: "price-lists.html",
+      roles: ["ROLE_SALES_MANAGER"],
+    },
+    {
       id: "warehouse",
       section: "Kho hàng",
       label: "Tồn kho",
@@ -84,6 +91,18 @@ const MenuConfig = (() => {
         "ROLE_WAREHOUSE_STAFF",
         "ROLE_SALES_MANAGER",
         "ROLE_VIEWER",
+      ],
+    },
+    {
+      id: "product-units",
+      label: "Đơn vị tính",
+      icon: '<path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>',
+      href: "product-units.html",
+      permission: "WAREHOUSE_VIEW",
+      roles: [
+        "ROLE_ADMIN",
+        "ROLE_WAREHOUSE_MANAGER",
+        "ROLE_WAREHOUSE_STAFF",
       ],
     },
     {
@@ -124,6 +143,13 @@ const MenuConfig = (() => {
       href: "admin/users.html",
       roles: ["ROLE_ADMIN"],
       permission: "USER_VIEW",
+    },
+    {
+      id: "audit-logs",
+      label: "Nhật ký thao tác",
+      icon: '<path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 2.13-5.82L3 8"/><path d="M12 7v5l3 2"/>',
+      href: "admin/audit-logs.html",
+      roles: ["ROLE_ADMIN"],
     },
   ];
 

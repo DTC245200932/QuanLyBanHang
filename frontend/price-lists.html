@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Khai báo bảng giá theo nhóm khách hàng và thời gian hiệu lực trong SaleStock."
+    />
+    <title>Bảng giá | SaleStock</title>
+    <link rel="icon" href="assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/dashboard.css" />
+    <link rel="stylesheet" href="css/price-lists.css" />
+  </head>
+  <body>
+    <div class="price-shell">
+      <header class="price-topbar">
+        <a class="price-brand" href="dashboard.html">
+          <img src="assets/brand-mark.svg" alt="" />
+          <span>SaleStock</span>
+        </a>
+        <a class="price-back" href="dashboard.html">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+          Về tổng quan
+        </a>
+      </header>
+
+      <main class="price-main">
+        <section class="price-heading" aria-labelledby="price-title">
+          <div>
+            <p>Chính sách bán hàng</p>
+            <h1 id="price-title">Bảng giá theo nhóm khách hàng</h1>
+            <span>
+              Quản lý giá dành cho đại lý cấp 1, đại lý cấp 2 và khách lẻ theo từng
+              khoảng thời gian hiệu lực.
+            </span>
+          </div>
+          <button class="btn btn--primary" id="create-price-list" type="button" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Tạo bảng giá
+          </button>
+        </section>
+
+        <section class="integration-note" aria-label="Trạng thái tích hợp backend">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" />
+          </svg>
+          <div>
+            <strong>Frontend S2-10 đang chờ API bảng giá.</strong>
+            <span>
+              Danh mục sản phẩm được lấy từ server thật. Bảng giá tạo trên trang chỉ là bản
+              nháp trong phiên và sẽ mất khi tải lại trang.
+            </span>
+          </div>
+        </section>
+
+        <section class="price-policy" aria-label="Quy tắc bảng giá">
+          <div>
+            <span class="price-policy__mark">01</span>
+            <p><strong>Nhiều bảng giá song song</strong><span>Theo từng nhóm khách hàng.</span></p>
+          </div>
+          <div>
+            <span class="price-policy__mark">02</span>
+            <p><strong>Có thời gian hiệu lực</strong><span>Ngày bắt đầu và ngày kết thúc rõ ràng.</span></p>
+          </div>
+          <div>
+            <span class="price-policy__mark">03</span>
+            <p><strong>Giá dưới sàn cần duyệt</strong><span>Tự động cảnh báo ngay trên từng SKU.</span></p>
+          </div>
+          <div>
+            <span class="price-policy__mark">04</span>
+            <p><strong>Không sửa bản đã dùng</strong><span>Chỉ tạo phiên bản kế tiếp.</span></p>
+          </div>
+        </section>
+
+        <div class="price-overview" aria-live="polite">
+          <p><strong id="price-list-count">0</strong><span>Bảng giá trong phiên</span></p>
+          <p><strong id="active-price-list-count">0</strong><span>Đang hiệu lực</span></p>
+          <p><strong id="approval-price-list-count">0</strong><span>Có dòng cần duyệt</span></p>
+          <p class="price-overview__catalog"><strong id="catalog-product-count">—</strong><span>Sản phẩm đang kinh doanh</span></p>
+        </div>
+
+        <form class="price-filters" id="price-filters">
+          <label class="price-filter price-filter--search">
+            <span>Tìm bảng giá</span>
+            <div class="price-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+              </svg>
+              <input id="price-search" type="search" placeholder="Tên hoặc mã bảng giá" />
+            </div>
+          </label>
+          <label class="price-filter">
+            <span>Nhóm khách hàng</span>
+            <select id="customer-group-filter">
+              <option value="">Tất cả nhóm</option>
+              <option value="DEALER_LEVEL_1">Đại lý cấp 1</option>
+              <option value="DEALER_LEVEL_2">Đại lý cấp 2</option>
+              <option value="RETAIL">Khách lẻ</option>
+            </select>
+          </label>
+          <label class="price-filter">
+            <span>Hiệu lực</span>
+            <select id="price-status-filter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="active">Đang hiệu lực</option>
+              <option value="upcoming">Sắp hiệu lực</option>
+              <option value="expired">Đã hết hiệu lực</option>
+            </select>
+          </label>
+          <button class="btn btn--secondary" id="clear-price-filters" type="button">Đặt lại</button>
+        </form>
+
+        <section class="price-panel">
+          <div class="price-panel__header">
+            <div>
+              <h2>Danh sách bảng giá</h2>
+              <p id="price-result-summary">Chưa có bảng giá trong phiên làm việc này.</p>
+            </div>
+            <span class="session-badge">Bản nháp phiên</span>
+          </div>
+          <div class="price-table-wrap">
+            <table class="price-table">
+              <thead>
+                <tr>
+                  <th>Bảng giá</th>
+                  <th>Nhóm khách hàng</th>
+                  <th>Thời gian hiệu lực</th>
+                  <th>Dòng giá</th>
+                  <th>Trạng thái</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="price-lists-body">
+                <tr>
+                  <td class="price-empty" colspan="6">
+                    <strong>Chưa có bảng giá</strong>
+                    <span>Chọn “Tạo bảng giá” để soạn bản nháp đầu tiên.</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-overlay" id="price-list-modal" hidden>
+      <div class="modal price-modal" role="dialog" aria-modal="true" aria-labelledby="price-modal-title">
+        <div class="modal__header price-modal__header">
+          <div>
+            <h2 id="price-modal-title">Tạo bảng giá</h2>
+            <p id="price-modal-subtitle">Khai báo phạm vi áp dụng và giá cho từng SKU.</p>
+          </div>
+          <button class="modal__close" data-close-price-modal type="button" aria-label="Đóng">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <form class="modal__body price-form" id="price-list-form" novalidate>
+          <input id="price-list-id" type="hidden" />
+          <input id="price-list-version" type="hidden" value="1" />
+
+          <div class="price-form__grid">
+            <label class="form-field price-form__name">
+              <span>Tên bảng giá</span>
+              <input id="price-list-name" maxlength="150" placeholder="Ví dụ: Giá đại lý miền Nam quý IV" required />
+            </label>
+            <label class="form-field">
+              <span>Nhóm khách hàng</span>
+              <select id="price-customer-group" required>
+                <option value="">Chọn nhóm áp dụng</option>
+                <option value="DEALER_LEVEL_1">Đại lý cấp 1</option>
+                <option value="DEALER_LEVEL_2">Đại lý cấp 2</option>
+                <option value="RETAIL">Khách lẻ</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span>Ngày bắt đầu</span>
+              <input id="price-start-date" type="date" required />
+            </label>
+            <label class="form-field">
+              <span>Ngày kết thúc</span>
+              <input id="price-end-date" type="date" required />
+            </label>
+            <label class="form-field price-form__description">
+              <span>Ghi chú</span>
+              <textarea id="price-list-description" rows="2" maxlength="500" placeholder="Phạm vi hoặc điều kiện áp dụng"></textarea>
+            </label>
+          </div>
+
+          <div class="version-rule">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18" /></svg>
+            <span>Bảng giá đã phát sinh đơn sẽ bị khoá chỉnh sửa; thay đổi phải tạo thành phiên bản mới.</span>
+          </div>
+
+          <section class="price-line-editor" aria-labelledby="price-lines-title">
+            <div class="price-line-editor__header">
+              <div>
+                <h3 id="price-lines-title">Giá theo sản phẩm</h3>
+                <p><span id="selected-line-count">0</span> SKU được áp dụng</p>
+              </div>
+              <label class="line-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+                <input id="line-product-search" type="search" placeholder="Tìm SKU hoặc tên" />
+              </label>
+            </div>
+            <div class="price-lines-wrap">
+              <table class="price-lines-table">
+                <thead>
+                  <tr>
+                    <th class="line-check"><input id="select-all-lines" type="checkbox" aria-label="Chọn tất cả sản phẩm" /></th>
+                    <th>Sản phẩm</th>
+                    <th>Giá hiện tại</th>
+                    <th>Giá bán áp dụng</th>
+                    <th>Giá sàn</th>
+                    <th>Kiểm soát</th>
+                  </tr>
+                </thead>
+                <tbody id="price-lines-body">
+                  <tr><td class="price-empty" colspan="6">Đang tải danh mục sản phẩm…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="price-form__message" id="price-form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <p>Dữ liệu chỉ tồn tại trong phiên trình duyệt hiện tại.</p>
+            <button class="btn btn--secondary" data-close-price-modal type="button">Huỷ</button>
+            <button class="btn btn--primary" id="save-price-list" type="submit">Lưu bản nháp</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+    <script src="js/auth.js"></script>
+    <script src="js/price-lists.js"></script>
+  </body>
+</html>

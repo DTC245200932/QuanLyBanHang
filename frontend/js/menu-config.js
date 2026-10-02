@@ -72,6 +72,13 @@ const MenuConfig = (() => {
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_VIEWER"],
     },
     {
+      id: "price-lists",
+      label: "Bảng giá",
+      icon: '<path d="M20 12V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14l4-3 4 3 4-3 4 3v-7"/><path d="M8 8h8M8 12h5"/>',
+      href: "price-lists.html",
+      roles: ["ROLE_SALES_MANAGER"],
+    },
+    {
       id: "warehouse",
       section: "Kho hàng",
       label: "Tồn kho",

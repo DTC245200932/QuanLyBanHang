@@ -109,6 +109,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/products/**").authenticated()
                 .requestMatchers("/api/categories/**").authenticated()
 
+                // ── Bảng giá (S2-10): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
+                .requestMatchers("/api/price-lists/**").authenticated()
+
                 // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
                 .requestMatchers("/api/customers/**").hasAnyRole(
                         "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")

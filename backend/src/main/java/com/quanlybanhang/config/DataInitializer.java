@@ -44,6 +44,8 @@ public class DataInitializer implements CommandLineRunner {
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
     private final com.quanlybanhang.repository.UnitConversionRepository unitConversionRepository;
+    private final com.quanlybanhang.repository.PriceListRepository priceListRepository;
+    private final com.quanlybanhang.repository.DealerRepository dealerRepository;
 
     @Value("${app.seed-demo-users:false}")
     private boolean seedDemoUsers;
@@ -77,6 +79,11 @@ public class DataInitializer implements CommandLineRunner {
         // Khởi tạo cây nhóm hàng nhiều cấp và sản phẩm mẫu (S2-06)
         if (categoryRepository.count() == 0) {
             seedCategoriesAndProducts();
+        }
+
+        // Khởi tạo bảng giá theo nhóm khách hàng (S2-10)
+        if (priceListRepository.count() == 0) {
+            seedPriceLists();
         }
 
         // Tạo tài khoản admin mặc định nếu chưa có
@@ -371,5 +378,156 @@ public class DataInitializer implements CommandLineRunner {
                 .build());
 
         logger.info("Đã khởi tạo dữ liệu mẫu cho S2-05, S2-06 và S2-07");
+    }
+
+    /**
+     * Khởi tạo bảng giá theo nhóm khách hàng (S2-10):
+     * - Bảng giá Đại lý cấp 1 (chiết khấu cao nhất)
+     * - Bảng giá Đại lý cấp 2
+     * - Bảng giá Khách lẻ niêm yết
+     */
+    private void seedPriceLists() {
+        if (dealerRepository.count() == 0) {
+            dealerRepository.save(com.quanlybanhang.model.Dealer.builder()
+                    .name("Đại lý Cấp 1 Minh Phát")
+                    .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_1)
+                    .handoverRequired(false)
+                    .build());
+            dealerRepository.save(com.quanlybanhang.model.Dealer.builder()
+                    .name("Đại lý Cấp 2 Tân Bình")
+                    .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_2)
+                    .handoverRequired(false)
+                    .build());
+        }
+
+        Product heineken = productRepository.findByCode("SP-KEN330").orElse(null);
+        Product ip15 = productRepository.findByCode("SP-IP15PM").orElse(null);
+        Product taiNghe = productRepository.findByCode("SP-TAI-NGHE-TEST").orElse(null);
+
+        java.time.LocalDate now = java.time.LocalDate.now();
+        java.time.LocalDate startOfYear = now.withDayOfYear(1);
+        java.time.LocalDate endOfYear = now.withDayOfYear(now.lengthOfYear());
+
+        // 1. Bảng giá Đại lý cấp 1 (S2-10)
+        com.quanlybanhang.model.PriceList bgDl1 = com.quanlybanhang.model.PriceList.builder()
+                .code("BG-DLC1-" + now.getYear())
+                .name("Bảng giá Đại lý cấp 1 năm " + now.getYear())
+                .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_1)
+                .startDate(startOfYear)
+                .endDate(endOfYear)
+                .version(1)
+                .active(true)
+                .hasOrders(false)
+                .description("Bảng giá ưu đãi dành cho hệ thống Đại lý cấp 1 toàn quốc")
+                .createdBy("admin")
+                .build();
+
+        if (heineken != null) {
+            bgDl1.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(heineken)
+                    .sellingPrice(new BigDecimal("16500"))
+                    .floorPrice(new BigDecimal("15500"))
+                    .note("Giá đại lý cấp 1")
+                    .build());
+        }
+        if (ip15 != null) {
+            bgDl1.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(ip15)
+                    .sellingPrice(new BigDecimal("26000000"))
+                    .floorPrice(new BigDecimal("24500000"))
+                    .note("Giá đại lý cấp 1")
+                    .build());
+        }
+        if (taiNghe != null) {
+            bgDl1.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(taiNghe)
+                    .sellingPrice(new BigDecimal("700000"))
+                    .floorPrice(new BigDecimal("550000"))
+                    .note("Giá đại lý cấp 1")
+                    .build());
+        }
+        priceListRepository.save(bgDl1);
+
+        // 2. Bảng giá Đại lý cấp 2 (S2-10)
+        com.quanlybanhang.model.PriceList bgDl2 = com.quanlybanhang.model.PriceList.builder()
+                .code("BG-DLC2-" + now.getYear())
+                .name("Bảng giá Đại lý cấp 2 năm " + now.getYear())
+                .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_2)
+                .startDate(startOfYear)
+                .endDate(endOfYear)
+                .version(1)
+                .active(true)
+                .hasOrders(false)
+                .description("Bảng giá phân phối cho Đại lý cấp 2 khu vực")
+                .createdBy("admin")
+                .build();
+
+        if (heineken != null) {
+            bgDl2.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(heineken)
+                    .sellingPrice(new BigDecimal("17500"))
+                    .floorPrice(new BigDecimal("16500"))
+                    .note("Giá đại lý cấp 2")
+                    .build());
+        }
+        if (ip15 != null) {
+            bgDl2.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(ip15)
+                    .sellingPrice(new BigDecimal("27500000"))
+                    .floorPrice(new BigDecimal("25500000"))
+                    .note("Giá đại lý cấp 2")
+                    .build());
+        }
+        if (taiNghe != null) {
+            bgDl2.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(taiNghe)
+                    .sellingPrice(new BigDecimal("750000"))
+                    .floorPrice(new BigDecimal("600000"))
+                    .note("Giá đại lý cấp 2")
+                    .build());
+        }
+        priceListRepository.save(bgDl2);
+
+        // 3. Bảng giá Khách lẻ (S2-10)
+        com.quanlybanhang.model.PriceList bgKhachLe = com.quanlybanhang.model.PriceList.builder()
+                .code("BG-KHACHLE-" + now.getYear())
+                .name("Bảng giá Bán lẻ niêm yết năm " + now.getYear())
+                .customerGroup(com.quanlybanhang.model.CustomerGroup.KHACH_LE)
+                .startDate(startOfYear)
+                .endDate(endOfYear)
+                .version(1)
+                .active(true)
+                .hasOrders(false)
+                .description("Bảng giá bán lẻ niêm yết chính thức")
+                .createdBy("admin")
+                .build();
+
+        if (heineken != null) {
+            bgKhachLe.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(heineken)
+                    .sellingPrice(new BigDecimal("19000"))
+                    .floorPrice(new BigDecimal("18000"))
+                    .note("Giá bán lẻ")
+                    .build());
+        }
+        if (ip15 != null) {
+            bgKhachLe.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(ip15)
+                    .sellingPrice(new BigDecimal("29990000"))
+                    .floorPrice(new BigDecimal("28000000"))
+                    .note("Giá bán lẻ")
+                    .build());
+        }
+        if (taiNghe != null) {
+            bgKhachLe.addItem(com.quanlybanhang.model.PriceListItem.builder()
+                    .product(taiNghe)
+                    .sellingPrice(new BigDecimal("850000"))
+                    .floorPrice(new BigDecimal("750000"))
+                    .note("Giá bán lẻ")
+                    .build());
+        }
+        priceListRepository.save(bgKhachLe);
+
+        logger.info("Đã khởi tạo 3 bảng giá song song mẫu cho S2-10 (Đại lý cấp 1, cấp 2, Khách lẻ)");
     }
 }

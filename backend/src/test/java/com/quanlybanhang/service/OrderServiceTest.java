@@ -5,6 +5,7 @@ import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.model.Order;
 import com.quanlybanhang.model.Product;
+import com.quanlybanhang.repository.DealerRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +36,12 @@ class OrderServiceTest {
 
     @Mock
     private UnitConversionService unitConversionService;
+
+    @Mock
+    private DealerRepository dealerRepository;
+
+    @Mock
+    private com.quanlybanhang.repository.PriceListRepository priceListRepository;
 
     @Mock
     private AuditLogService auditLogService;

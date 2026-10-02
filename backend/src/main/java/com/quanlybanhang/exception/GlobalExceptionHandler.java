@@ -119,6 +119,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Xử lý lỗi bảng giá đã phát sinh đơn hàng không được sửa/xóa (S2-10).
+     */
+    @ExceptionHandler(PriceListLockedException.class)
+    public ResponseEntity<ApiResponse> handlePriceListLocked(PriceListLockedException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
      * Xử lý lỗi không có quyền truy cập (@PreAuthorize hoặc AccessDeniedException).
      * Trả về 403 Forbidden.
      */

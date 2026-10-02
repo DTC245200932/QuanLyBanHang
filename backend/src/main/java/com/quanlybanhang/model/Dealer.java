@@ -26,4 +26,12 @@ public class Dealer {
     @Column(nullable = false)
     @Builder.Default
     private Boolean handoverRequired = false;
+
+    /**
+     * Nhóm khách hàng của đại lý (mặc định là Đại lý cấp 1 - DAI_LY_CAP_1).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "customer_group", length = 30)
+    @Builder.Default
+    private CustomerGroup customerGroup = CustomerGroup.DAI_LY_CAP_1;
 }

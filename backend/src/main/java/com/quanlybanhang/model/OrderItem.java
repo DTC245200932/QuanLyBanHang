@@ -69,6 +69,19 @@ public class OrderItem {
     @Builder.Default
     private BigDecimal price = BigDecimal.ZERO;
 
+    /**
+     * Giá sàn theo đơn vị đặt hàng tại thời điểm tạo đơn (S2-10).
+     */
+    @Column(name = "floor_price", precision = 15, scale = 2)
+    private BigDecimal floorPrice;
+
+    /**
+     * Đánh dấu dòng sản phẩm này bán dưới giá sàn.
+     */
+    @Column(name = "below_floor_price", nullable = false)
+    @Builder.Default
+    private Boolean belowFloorPrice = false;
+
     @Column(name = "total_amount", precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal totalAmount = BigDecimal.ZERO;

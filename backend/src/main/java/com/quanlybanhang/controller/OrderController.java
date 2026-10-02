@@ -55,4 +55,29 @@ public class OrderController {
         OrderResponse response = orderService.cancelOrder(id, username);
         return ApiResponse.success("Hủy đơn hàng thành công", response);
     }
+
+    /**
+     * Quản lý kinh doanh phê duyệt đơn hàng bán dưới giá sàn (S2-10).
+     */
+    @PutMapping("/{id}/approve")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse approveOrder(@PathVariable Long id, Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        OrderResponse response = orderService.approveOrder(id, username);
+        return ApiResponse.success("Phê duyệt đơn hàng thành công", response);
+    }
+
+    /**
+     * Quản lý kinh doanh từ chối đơn hàng bán dưới giá sàn (S2-10).
+     */
+    @PutMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse rejectOrder(
+            @PathVariable Long id,
+            @RequestParam(required = false) String reason,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        OrderResponse response = orderService.rejectOrder(id, reason, username);
+        return ApiResponse.success("Từ chối đơn hàng thành công", response);
+    }
 }

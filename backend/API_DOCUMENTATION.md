@@ -218,9 +218,72 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/orders` | Đã đăng nhập | Xem danh sách đơn hàng |
-| GET | `/orders/{id}` | Đã đăng nhập | Xem chi tiết đơn hàng (kèm số lượng theo đơn vị đặt và số lượng cơ sở đã đóng băng) |
-| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo và ghi sổ đơn hàng (tự động quy đổi về đơn vị cơ sở) |
+| GET | `/orders/{id}` | Đã đăng nhập | Xem chi tiết đơn hàng (kèm thông tin bảng giá, giá sàn và trạng thái phê duyệt) |
+| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng (tự động áp bảng giá theo nhóm khách hàng; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng |
+| PUT | `/orders/{id}/approve` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng bán dưới giá sàn (chuyển trạng thái sang `RECORDED`) |
+| PUT | `/orders/{id}/reject?reason={ly_do}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng bán dưới giá sàn (chuyển trạng thái sang `REJECTED`) |
+
+## Khai báo Bảng giá theo nhóm khách hàng & Thời gian hiệu lực (S2-10)
+
+Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng và thời gian hiệu lực, để đại lý cấp 1 và cấp 2 tự động nhận đúng giá của mình.
+
+### Quy tắc nghiệp vụ cốt lõi:
+1. **Nhiều bảng giá song song**: Hệ thống hỗ trợ đồng thời nhiều bảng giá cho từng phân khúc khách hàng: Đại lý cấp 1 (`DAI_LY_CAP_1`), Đại lý cấp 2 (`DAI_LY_CAP_2`), Khách lẻ (`KHACH_LE`).
+2. **Hiệu lực theo thời gian**: Mỗi bảng giá bắt buộc có ngày bắt đầu (`startDate`) và ngày kết thúc (`endDate`). Tại một thời điểm, hệ thống tự động tìm bảng giá có hiệu lực mới nhất theo nhóm khách hàng (`startDate <= ngày <= endDate`).
+3. **Giá bán & Giá sàn**: Mỗi dòng giá khai báo giá bán (`sellingPrice`) và giá sàn (`floorPrice` <= `sellingPrice`).
+   - Nếu nhân viên bán dưới giá sàn (hoặc quy đổi theo đơn vị tính thùng/lốc mà đơn giá < giá sàn quy đổi): Đơn hàng **không được ghi nhận ngay** mà chuyển sang trạng thái **`PENDING_APPROVAL` (Chờ duyệt)** và gán cờ `requiresApproval = true`.
+   - **Chỉ Quản lý kinh doanh (`ROLE_SALES_MANAGER`)** hoặc Admin mới có quyền phê duyệt (`/api/orders/{id}/approve`) hoặc từ chối (`/api/orders/{id}/reject`).
+4. **Bảo vệ bảng giá đã phát sinh đơn**:
+   - Khi bảng giá đã được dùng để tạo bất kỳ đơn hàng nào (`hasOrders = true` hoặc đã có liên kết đơn hàng trong cơ sở dữ liệu), hệ thống **nghiêm cấm sửa hoặc xóa** bảng giá này (trả lỗi `400 Bad Request` kèm ngoại lệ `PriceListLockedException`).
+   - Người dùng bắt buộc phải dùng tính năng **Tạo phiên bản mới** (`POST /api/price-lists/{id}/new-version`). Phiên bản mới sẽ tự động tăng số version (v2, v3...), sao chép danh sách sản phẩm và cho phép điều chỉnh giá bán/giá sàn cũng như thời gian hiệu lực mới.
+5. **Đại lý tự động nhận đúng giá**: Khi tạo đơn hàng có gắn `dealerId` hoặc `customerGroup`, nếu không nhập giá bán, hệ thống tự động tra cứu bảng giá hiệu lực tương ứng và áp dụng đúng đơn giá (tự động nhân hệ số quy đổi nếu đặt theo thùng/lốc).
+
+### Danh sách API Bảng giá (`/api/price-lists`)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/price-lists?customerGroup={cg}&active={true/false}&keyword={q}` | Đã đăng nhập | Xem danh sách các bảng giá (hỗ trợ lọc theo nhóm khách hàng, trạng thái, tìm kiếm mã/tên) |
+| GET | `/price-lists/{id}` | Đã đăng nhập | Xem chi tiết bảng giá kèm toàn bộ danh sách dòng giá (sản phẩm, giá bán, giá sàn) |
+| GET | `/price-lists/customer-groups` | Đã đăng nhập | Danh sách các nhóm khách hàng (Đại lý cấp 1, Đại lý cấp 2, Khách lẻ) |
+| GET | `/price-lists/effective?customerGroup={cg}&date={yyyy-MM-dd}` | Đã đăng nhập | Tìm bảng giá đang có hiệu lực cho nhóm khách hàng tại thời điểm chỉ định |
+| POST | `/price-lists` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo bảng giá mới (bắt buộc mã, tên, nhóm khách hàng, ngày bắt đầu/kết thúc, danh sách dòng giá) |
+| PUT | `/price-lists/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sửa thông tin bảng giá (**Chặn nếu bảng giá đã phát sinh đơn hàng** -> 400 Bad Request) |
+| DELETE | `/price-lists/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa bảng giá (**Chặn nếu bảng giá đã phát sinh đơn hàng** -> 400 Bad Request) |
+| POST | `/price-lists/{id}/new-version` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo phiên bản mới kế thừa từ bảng giá cũ (tăng version, sao chép sản phẩm, reset trạng thái phát sinh đơn) |
+
+#### Ví dụ Request tạo bảng giá (`POST /api/price-lists`):
+```json
+{
+  "code": "BG-DLC1-2026",
+  "name": "Bảng giá Đại lý cấp 1 năm 2026",
+  "customerGroup": "DAI_LY_CAP_1",
+  "startDate": "2026-01-01",
+  "endDate": "2026-12-31",
+  "active": true,
+  "description": "Bảng giá ưu đãi dành cho hệ thống Đại lý cấp 1",
+  "items": [
+    {
+      "productId": 10,
+      "sellingPrice": 16500,
+      "floorPrice": 15500,
+      "note": "Giá áp dụng theo lon"
+    }
+  ]
+}
+```
+
+#### Ví dụ Request tạo phiên bản mới (`POST /api/price-lists/{id}/new-version`):
+```json
+{
+  "newCode": "BG-DLC1-2026-V2",
+  "newName": "Bảng giá Đại lý cấp 1 năm 2026 (v2)",
+  "startDate": "2026-06-01",
+  "endDate": "2026-12-31",
+  "description": "Điều chỉnh giá bán do biến động chi phí nguyên vật liệu"
+}
+```
+*(Nếu `items` để trống, hệ thống tự động kế thừa toàn bộ danh sách dòng giá của phiên bản tiền nhiệm).*
 
 ## Bảy vai trò
 

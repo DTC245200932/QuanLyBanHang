@@ -432,6 +432,41 @@
       '"': "&quot;",
     }[c]));
 
+  function releaseAvatarImages(root) {
+    root?.querySelectorAll(".actor-avatar img[data-object-url]").forEach((image) => {
+      URL.revokeObjectURL(image.dataset.objectUrl);
+      delete image.dataset.objectUrl;
+    });
+  }
+
+  async function hydrateAvatarImages(root) {
+    const avatars = [...(root?.querySelectorAll(".actor-avatar[data-avatar-url]") || [])];
+    await Promise.all(avatars.map(async (avatar) => {
+      const image = avatar.querySelector("img");
+      const fallback = avatar.querySelector("span");
+      const loaded = await Auth.setProtectedImage(image, avatar.dataset.avatarUrl);
+      if (!avatar.isConnected || !root.contains(avatar)) {
+        if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
+        return;
+      }
+      if (loaded) {
+        image.hidden = false;
+        fallback.hidden = true;
+      }
+    }));
+  }
+
+  function actorAvatarMarkup(actor, extraClass = "") {
+    const initial = (actor?.fullName || actor?.username || "U").trim().charAt(0).toUpperCase();
+    const avatarAttribute = actor?.avatarThumbnailUrl
+      ? ` data-avatar-url="${escapeHtml(actor.avatarThumbnailUrl)}"`
+      : "";
+    return `<span class="actor-avatar${extraClass ? ` ${extraClass}` : ""}"${avatarAttribute}>
+      <span>${escapeHtml(initial)}</span>
+      <img alt="" hidden>
+    </span>`;
+  }
+
   // Nhật ký nghiệp vụ chỉ được đọc từ backend/database.
   function getStoredLogs() {
     return [];
@@ -444,24 +479,34 @@
   // ── Nạp danh sách nhân sự từ API để đồng bộ với cơ sở dữ liệu thật ──
   async function loadUsersList() {
     try {
-      const response = await Auth.apiFetch("/admin/users?page=0&size=100");
-      if (response.ok) {
-        const result = await response.json();
-        const apiUsers = result?.data?.content || [];
-        if (apiUsers.length) {
-          const userMap = new Map();
-          apiUsers.forEach((u) => {
-            userMap.set(u.username, {
-              username: u.username,
-              fullName: u.fullName || u.username,
-              role: u.roles?.[0] || "ROLE_SALES",
-            });
-          });
-          SYSTEM_USERS.forEach((su) => {
-            if (!userMap.has(su.username)) userMap.set(su.username, su);
-          });
-          state.users = Array.from(userMap.values());
+      const apiUsers = [];
+      let page = 0;
+      let totalPages = 1;
+      while (page < totalPages) {
+        const response = await Auth.apiFetch(`/admin/users?page=${page}&size=100`);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.success === false) {
+          throw new Error(result.message || "Không tải được danh sách người dùng");
         }
+        apiUsers.push(...(result?.data?.content || []));
+        totalPages = Math.max(Number(result?.data?.totalPages) || 1, 1);
+        page += 1;
+      }
+
+      if (apiUsers.length) {
+        const userMap = new Map();
+        apiUsers.forEach((u) => {
+          userMap.set(u.username, {
+            username: u.username,
+            fullName: u.fullName || u.username,
+            role: u.roles?.[0] || "ROLE_SALES",
+            avatarThumbnailUrl: u.avatarThumbnailUrl || null,
+          });
+        });
+        SYSTEM_USERS.forEach((su) => {
+          if (!userMap.has(su.username)) userMap.set(su.username, su);
+        });
+        state.users = Array.from(userMap.values());
       }
     } catch {
       // Giữ danh sách mẫu dự phòng
@@ -506,6 +551,7 @@
         username: log.username,
         fullName: actor?.fullName || log.username,
         role: actor?.role || "ROLE_ADMIN",
+        avatarThumbnailUrl: actor?.avatarThumbnailUrl || null,
       },
       valBefore: log.oldValue || "—",
       valAfter: log.newValue || "—",
@@ -636,6 +682,7 @@
   function renderTable() {
     const tbody = $("audit-table-body");
     const total = state.filteredLogs.length;
+    releaseAvatarImages(tbody);
 
     if (!total) {
       tbody.innerHTML = `
@@ -672,10 +719,6 @@
           badgeClass: "entity-tag--INVENTORY",
           icon: "",
         };
-        const initial = (item.actor?.fullName || item.actor?.username || "U")
-          .trim()
-          .charAt(0)
-          .toUpperCase();
         const roleLabel = ROLE_NAMES[item.actor?.role] || item.actor?.role || "Nhân sự";
 
         let deltaBadgeClass = "diff-delta--neutral";
@@ -705,7 +748,7 @@
             <!-- 2. Người thực hiện -->
             <td>
               <div class="actor-badge">
-                <span class="actor-avatar">${escapeHtml(initial)}</span>
+                ${actorAvatarMarkup(item.actor)}
                 <div class="actor-info">
                   <span class="actor-name" title="${escapeHtml(item.actor?.fullName)}">${escapeHtml(item.actor?.fullName)}</span>
                   <span class="actor-sub">${escapeHtml(item.actor?.username)} · ${escapeHtml(roleLabel)}</span>
@@ -757,6 +800,8 @@
         `;
       })
       .join("");
+
+    hydrateAvatarImages(tbody);
 
     // Cập nhật phân trang
     $("audit-pagination-summary").textContent = `Hiển thị ${startIdx + 1} - ${endIdx} trong tổng số ${total} bản ghi`;
@@ -822,14 +867,19 @@
 
     comparisonHtml += `</tbody></table>`;
 
-    $("audit-detail-body").innerHTML = `
+    const detailBody = $("audit-detail-body");
+    releaseAvatarImages(detailBody);
+    detailBody.innerHTML = `
       <div class="audit-detail-grid">
         <div class="detail-block">
           <div class="detail-block__label">Người thực hiện thao tác</div>
-          <div class="detail-block__content">
-            <strong style="font-size:14px;">${escapeHtml(log.actor?.fullName)}</strong>
-            <div style="font-size:12px;color:var(--ink-600);margin-top:2px;">Tài khoản: <code>${escapeHtml(log.actor?.username)}</code> · ${escapeHtml(roleLabel)}</div>
-            <div style="font-size:11.5px;color:var(--ink-500);margin-top:4px;">IP: ${escapeHtml(log.actor?.ip || "192.168.1.1")} · Thiết bị: ${escapeHtml(log.actor?.device || "Trình duyệt chuẩn")}</div>
+          <div class="detail-block__content detail-actor">
+            ${actorAvatarMarkup(log.actor, "actor-avatar--detail")}
+            <div>
+              <strong style="font-size:14px;">${escapeHtml(log.actor?.fullName)}</strong>
+              <div style="font-size:12px;color:var(--ink-600);margin-top:2px;">Tài khoản: <code>${escapeHtml(log.actor?.username)}</code> · ${escapeHtml(roleLabel)}</div>
+              <div style="font-size:11.5px;color:var(--ink-500);margin-top:4px;">IP: ${escapeHtml(log.actor?.ip || "192.168.1.1")} · Thiết bị: ${escapeHtml(log.actor?.device || "Trình duyệt chuẩn")}</div>
+            </div>
           </div>
         </div>
 
@@ -871,6 +921,8 @@
         <span style="color:var(--teal-deep);font-weight:700;">✓ Toàn vẹn</span>
       </div>
     `;
+
+    hydrateAvatarImages(detailBody);
 
     $("modal-audit-detail").hidden = false;
   }

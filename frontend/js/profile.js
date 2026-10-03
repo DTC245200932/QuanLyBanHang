@@ -2,6 +2,9 @@
   if (!Auth.requireLogin()) return;
   const $ = (id) => document.getElementById(id);
   const roleName = (role) => MenuConfig.getRoleDisplayName(role);
+  const allowedAvatarTypes = new Set(["image/jpeg", "image/png"]);
+  const maxAvatarSize = 2 * 1024 * 1024;
+  let currentProfile = null;
 
   function showMessage(message, error = false) {
     const element = $("profile-message");
@@ -14,12 +17,49 @@
     return items?.length ? items.map((item) => item.name).join(", ") : "Không áp dụng";
   }
 
+  function showAvatarMessage(message = "", error = false) {
+    const element = $("profile-avatar-message");
+    element.textContent = message;
+    element.className = `profile-avatar-message${error ? " profile-avatar-message--error" : ""}`;
+    element.hidden = !message;
+  }
+
+  function validateAvatarFile(file) {
+    if (!file) return "Vui lòng chọn ảnh đại diện.";
+    if (!allowedAvatarTypes.has(file.type)) return "Chỉ chấp nhận ảnh JPG, JPEG hoặc PNG.";
+    if (file.size > maxAvatarSize) return "Ảnh đại diện không được vượt quá 2MB.";
+    return "";
+  }
+
+  async function renderProfileAvatar(profile = currentProfile) {
+    const image = $("profile-avatar-image");
+    const fallback = $("profile-avatar-fallback");
+    const cachedUser = Auth.getUser() || {};
+    const displayName = profile?.fullName || profile?.username || cachedUser.fullName || cachedUser.username || "U";
+    const avatarUrl = cachedUser.avatarUrl || cachedUser.avatarThumbnailUrl;
+
+    fallback.textContent = displayName.trim().charAt(0).toUpperCase();
+    image.alt = `Ảnh đại diện của ${displayName}`;
+    image.hidden = true;
+    fallback.hidden = false;
+    if (!avatarUrl && image.dataset.objectUrl) {
+      URL.revokeObjectURL(image.dataset.objectUrl);
+      delete image.dataset.objectUrl;
+      image.removeAttribute("src");
+    }
+    if (avatarUrl && await Auth.setProtectedImage(image, avatarUrl)) {
+      image.hidden = false;
+      fallback.hidden = true;
+    }
+  }
+
   async function loadProfile() {
     const response = await Auth.apiFetch("/users/profile");
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.success) throw new Error(result.message || "Không tải được hồ sơ.");
     const profile = result.data;
-    $("profile-avatar").textContent = (profile.fullName || profile.username || "U").trim().charAt(0).toUpperCase();
+    currentProfile = profile;
+    await renderProfileAvatar(profile);
     $("profile-account").textContent = `${profile.fullName || profile.username} · ${profile.email}`;
     $("profile-username").value = profile.username || "";
     $("profile-email").value = profile.email || "";
@@ -29,6 +69,53 @@
     $("profile-warehouses").textContent = names(profile.warehouses);
     $("profile-territories").textContent = names(profile.territories);
   }
+
+  $("profile-avatar-change").addEventListener("click", () => {
+    showAvatarMessage();
+    $("profile-avatar-file").click();
+  });
+
+  $("profile-avatar-file").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    const validationMessage = validateAvatarFile(file);
+    if (validationMessage) {
+      showAvatarMessage(validationMessage, true);
+      event.target.value = "";
+      return;
+    }
+
+    const button = $("profile-avatar-change");
+    button.disabled = true;
+    button.textContent = "Đang cập nhật…";
+    showAvatarMessage();
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await Auth.apiFetch("/auth/avatar", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Không thể tải ảnh đại diện lên.");
+      }
+
+      const cachedUser = Auth.getUser() || {};
+      sessionStorage.setItem("user", JSON.stringify({
+        ...cachedUser,
+        avatarUrl: result.data.avatarUrl,
+        avatarThumbnailUrl: result.data.avatarThumbnailUrl,
+      }));
+      await renderProfileAvatar();
+      showAvatarMessage(result.message || "Đã cập nhật ảnh đại diện.");
+    } catch (error) {
+      showAvatarMessage(error.message || "Không thể tải ảnh đại diện lên.", true);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Đổi ảnh đại diện";
+      event.target.value = "";
+    }
+  });
 
   $("profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();

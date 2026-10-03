@@ -24,6 +24,7 @@ import org.springframework.web.context.WebApplicationContext;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -86,6 +87,12 @@ class RoleBasedAccessControlTest {
 
     @MockBean
     private com.quanlybanhang.service.UserService userService;
+
+    @MockBean
+    private com.quanlybanhang.repository.DealerRepository dealerRepository;
+
+    @MockBean
+    private com.quanlybanhang.service.AuditLogService auditLogService;
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() throws Exception {
@@ -217,6 +224,34 @@ class RoleBasedAccessControlTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"productId\": 1, \"delta\": 10}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_manager", roles = {"SALES_MANAGER"})
+    @DisplayName("[ROLE_SALES_MANAGER] Quản lý kinh doanh chỉ xem, không được đổi hạn mức công nợ")
+    void salesManagerCannotUpdateDebtLimit() throws Exception {
+        mockMvc.perform(put("/api/finance/debt/1/limit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"debtLimit\": 50000000}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "accountant", roles = {"ACCOUNTANT"})
+    @DisplayName("[ROLE_ACCOUNTANT] Kế toán được cập nhật hạn mức công nợ")
+    void accountantCanUpdateDebtLimit() throws Exception {
+        com.quanlybanhang.model.Dealer dealer = com.quanlybanhang.model.Dealer.builder()
+                .id(1L)
+                .name("Đại lý Hà Nội")
+                .debtLimit(java.math.BigDecimal.ZERO)
+                .build();
+        org.mockito.Mockito.when(dealerRepository.findById(1L))
+                .thenReturn(java.util.Optional.of(dealer));
+
+        mockMvc.perform(put("/api/finance/debt/1/limit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"debtLimit\": 50000000}"))
+                .andExpect(status().isOk());
     }
 
     // ═══════════════════════════════════════════════════════════════

@@ -41,12 +41,6 @@
             </svg>
             Xuất Excel
           </button>
-          <button class="btn btn--secondary" id="btn-reset-data" type="button" title="Khôi phục danh sách nhật ký mẫu ban đầu">
-            Khôi phục mẫu
-          </button>
-          <button class="btn btn--primary" id="btn-create-log" type="button" hidden aria-hidden="true">
-            + Ghi nhận thao tác mới
-          </button>
         </div>
       </section>
 
@@ -224,80 +218,6 @@
         <button type="button" class="btn btn--secondary" data-close-detail>Đóng</button>
         <button type="button" class="btn btn--primary" id="btn-print-audit">In biên bản đối soát</button>
       </div>
-    </div>
-  </div>
-
-  <!-- ── Modal: Ghi nhận thao tác mới (Simulator & Live Recording) ── -->
-  <div class="modal-overlay" id="modal-create-log" hidden>
-    <div class="modal modal--wide" role="dialog" aria-labelledby="create-log-title">
-      <div class="modal__header">
-        <div>
-          <h2 id="create-log-title">Ghi nhận thao tác mới vào nhật ký</h2>
-          <p>Thực hiện ghi lại biến động tồn kho, giá, hạn mức công nợ hoặc hoá đơn theo thời gian thực.</p>
-        </div>
-        <button class="modal__close" data-close-create aria-label="Đóng">×</button>
-      </div>
-
-      <form class="modal__body" id="form-create-log">
-        <div class="form-grid">
-          <label class="form-field">
-            <span>Người thực hiện</span>
-            <select id="new-log-user" required>
-              <!-- Filled by JS -->
-            </select>
-          </label>
-
-          <label class="form-field">
-            <span>Loại đối tượng</span>
-            <select id="new-log-type" required>
-              <option value="INVENTORY">Tồn kho</option>
-              <option value="PRICE">Giá bán</option>
-              <option value="DEBT_LIMIT">Hạn mức công nợ</option>
-              <option value="INVOICE">Hoá đơn</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="form-grid" style="margin-top:12px;">
-          <label class="form-field">
-            <span>Tên thao tác</span>
-            <input id="new-log-action" required placeholder="VD: Điều chỉnh tồn kho kiểm kê">
-          </label>
-
-          <label class="form-field">
-            <span>Mã & Tên đối tượng</span>
-            <input id="new-log-target-name" required placeholder="VD: SP001 - Cà phê Robusta (Kho Tân Bình)">
-          </label>
-        </div>
-
-        <fieldset style="margin:14px 0;padding:12px;border:1px solid var(--line-light);border-radius:8px;">
-          <legend style="padding:0 6px;font-size:12.5px;font-weight:700;">So sánh giá trị trước và sau</legend>
-          <div class="form-grid">
-            <label class="form-field">
-              <span>Giá trị TRƯỚC thao tác</span>
-              <input id="new-log-val-before" required placeholder="VD: 120 bao hoặc 50.000.000 đ">
-            </label>
-
-            <label class="form-field">
-              <span>Giá trị SAU thao tác</span>
-              <input id="new-log-val-after" required placeholder="VD: 95 bao hoặc 100.000.000 đ">
-            </label>
-          </div>
-          <div style="margin-top:8px;font-size:12px;color:var(--ink-600);">
-            <strong>Chênh lệch dự kiến:</strong> <span id="new-log-delta-preview" style="font-weight:700;color:var(--ink-900);">Tự động tính toán</span>
-          </div>
-        </fieldset>
-
-        <label class="form-field" style="margin-top:8px;">
-          <span>Lý do / Căn cứ giải trình</span>
-          <textarea id="new-log-reason" required rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:13px;" placeholder="VD: Kiểm kê định kỳ ngày 30/09, phát hiện rách bao bì và ẩm mốc 25 bao tại ô kệ B-12..."></textarea>
-        </label>
-
-        <div class="modal__actions" style="margin-top:16px;">
-          <button type="button" class="btn btn--secondary" data-close-create>Huỷ</button>
-          <button type="submit" class="btn btn--primary" id="btn-save-new-log">Lưu vào nhật ký</button>
-        </div>
-      </form>
     </div>
   </div>
 

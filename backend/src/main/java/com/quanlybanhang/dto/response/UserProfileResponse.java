@@ -13,6 +13,8 @@ public class UserProfileResponse {
     private String email;
     private String fullName;
     private String phone;
+    private String avatarUrl;
+    private String avatarThumbnailUrl;
     private List<String> roles;
     private List<NamedResourceResponse> warehouses;
     private List<NamedResourceResponse> territories;

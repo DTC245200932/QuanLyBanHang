@@ -36,7 +36,10 @@
     const fallback = $("profile-avatar-fallback");
     const cachedUser = Auth.getUser() || {};
     const displayName = profile?.fullName || profile?.username || cachedUser.fullName || cachedUser.username || "U";
-    const avatarUrl = cachedUser.avatarUrl || cachedUser.avatarThumbnailUrl;
+    const avatarUrl = profile?.avatarUrl
+      || profile?.avatarThumbnailUrl
+      || cachedUser.avatarUrl
+      || cachedUser.avatarThumbnailUrl;
 
     fallback.textContent = displayName.trim().charAt(0).toUpperCase();
     image.alt = `Ảnh đại diện của ${displayName}`;
@@ -59,6 +62,12 @@
     if (!response.ok || !result.success) throw new Error(result.message || "Không tải được hồ sơ.");
     const profile = result.data;
     currentProfile = profile;
+    const cachedUser = Auth.getUser() || {};
+    sessionStorage.setItem("user", JSON.stringify({
+      ...cachedUser,
+      avatarUrl: profile.avatarUrl || null,
+      avatarThumbnailUrl: profile.avatarThumbnailUrl || null,
+    }));
     await renderProfileAvatar(profile);
     $("profile-account").textContent = `${profile.fullName || profile.username} · ${profile.email}`;
     $("profile-username").value = profile.username || "";
@@ -106,7 +115,12 @@
         avatarUrl: result.data.avatarUrl,
         avatarThumbnailUrl: result.data.avatarThumbnailUrl,
       }));
-      await renderProfileAvatar();
+      currentProfile = {
+        ...currentProfile,
+        avatarUrl: result.data.avatarUrl,
+        avatarThumbnailUrl: result.data.avatarThumbnailUrl,
+      };
+      await renderProfileAvatar(currentProfile);
       showAvatarMessage(result.message || "Đã cập nhật ảnh đại diện.");
     } catch (error) {
       showAvatarMessage(error.message || "Không thể tải ảnh đại diện lên.", true);

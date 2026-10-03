@@ -36,10 +36,11 @@
     const fallback = $("profile-avatar-fallback");
     const cachedUser = Auth.getUser() || {};
     const displayName = profile?.fullName || profile?.username || cachedUser.fullName || cachedUser.username || "U";
-    const avatarUrl = profile?.avatarUrl
-      || profile?.avatarThumbnailUrl
-      || cachedUser.avatarUrl
-      || cachedUser.avatarThumbnailUrl;
+    const profileHasAvatarData = profile
+      && (Object.hasOwn(profile, "avatarUrl") || Object.hasOwn(profile, "avatarThumbnailUrl"));
+    const avatarUrl = profileHasAvatarData
+      ? profile.avatarUrl || profile.avatarThumbnailUrl
+      : cachedUser.avatarUrl || cachedUser.avatarThumbnailUrl;
 
     fallback.textContent = displayName.trim().charAt(0).toUpperCase();
     image.alt = `Ảnh đại diện của ${displayName}`;
@@ -60,14 +61,31 @@
     const response = await Auth.apiFetch("/users/profile");
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.success) throw new Error(result.message || "Không tải được hồ sơ.");
-    const profile = result.data;
+    let profile = result.data;
+    const profileResponseHasAvatar = Object.hasOwn(profile, "avatarUrl")
+      || Object.hasOwn(profile, "avatarThumbnailUrl");
+    if (!profileResponseHasAvatar) {
+      const meResponse = await Auth.apiFetch("/auth/me");
+      const meResult = await meResponse.json().catch(() => ({}));
+      if (meResponse.ok && meResult.success && meResult.data) {
+        profile = {
+          ...profile,
+          avatarUrl: meResult.data.avatarUrl || null,
+          avatarThumbnailUrl: meResult.data.avatarThumbnailUrl || null,
+        };
+      }
+    }
     currentProfile = profile;
     const cachedUser = Auth.getUser() || {};
-    sessionStorage.setItem("user", JSON.stringify({
-      ...cachedUser,
-      avatarUrl: profile.avatarUrl || null,
-      avatarThumbnailUrl: profile.avatarThumbnailUrl || null,
-    }));
+    const profileHasAvatarData = Object.hasOwn(profile, "avatarUrl")
+      || Object.hasOwn(profile, "avatarThumbnailUrl");
+    if (profileHasAvatarData) {
+      sessionStorage.setItem("user", JSON.stringify({
+        ...cachedUser,
+        avatarUrl: profile.avatarUrl || null,
+        avatarThumbnailUrl: profile.avatarThumbnailUrl || null,
+      }));
+    }
     await renderProfileAvatar(profile);
     $("profile-account").textContent = `${profile.fullName || profile.username} · ${profile.email}`;
     $("profile-username").value = profile.username || "";

@@ -134,6 +134,15 @@ Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` v
 | GET | `/finance/cost-price` | `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm — chỉ Quản lý kinh doanh; Admin, Thủ kho, Sales, Kế toán đều bị từ chối |
 | GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
 | GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng |
+| PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ADMIN`, `ROLE_ACCOUNTANT` | Cập nhật hạn mức công nợ đại lý; tự động ghi nhật ký giá trị trước/sau |
+
+Body cập nhật hạn mức công nợ:
+
+```json
+{
+  "debtLimit": 50000000
+}
+```
 
 ## Quản lý nhóm hàng nhiều cấp & Sản phẩm (S2-06)
 

@@ -14,7 +14,6 @@
 .price-back,
 .price-heading,
 .price-heading .btn,
-.integration-note,
 .price-policy > div,
 .price-policy p,
 .price-overview,
@@ -75,29 +74,6 @@
 
 .price-heading .btn { flex: 0 0 auto; gap: 7px; }
 .price-heading .btn svg { width: 17px; height: 17px; }
-
-.integration-note {
-  align-items: flex-start;
-  gap: 11px;
-  margin-bottom: 16px;
-  padding: 13px 15px;
-  border-left: 3px solid var(--blue);
-  background: var(--blue-soft);
-  color: var(--ink-700);
-}
-
-.integration-note svg {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  margin-top: 1px;
-  color: var(--blue);
-}
-
-.integration-note strong,
-.integration-note span { display: block; }
-.integration-note strong { margin-bottom: 3px; font-size: 0.8125rem; }
-.integration-note span { font-size: 0.75rem; line-height: 1.45; }
 
 .price-policy {
   display: grid;
@@ -241,8 +217,8 @@
 .session-badge {
   padding: 5px 8px;
   border-radius: 999px;
-  background: var(--amber-soft);
-  color: #986119;
+  background: var(--teal-soft);
+  color: var(--teal-deep);
   font-size: 0.6875rem;
   font-weight: 700;
   white-space: nowrap;
@@ -303,8 +279,10 @@
 .price-status--upcoming { color: var(--blue); }
 .price-status--upcoming::before { background: var(--blue); }
 .price-status--expired { color: var(--ink-500); }
+.price-status--inactive { color: var(--danger); }
+.price-status--inactive::before { background: var(--danger); }
 
-.price-actions { justify-content: flex-end; }
+.price-actions { justify-content: flex-end; flex-wrap: wrap; gap: 5px; min-width: 190px; }
 .price-action {
   padding: 7px 10px;
   border: 0;
@@ -318,6 +296,9 @@
   cursor: pointer;
 }
 .price-action:hover { background: var(--teal-soft); color: var(--teal-deep); }
+.price-action--danger { color: var(--danger); }
+.price-action--danger:hover { background: var(--danger-soft); color: var(--danger); }
+.price-action:disabled { opacity: 0.6; cursor: wait; }
 
 .approval-badge { margin-top: 5px; background: var(--amber-soft); color: #986119; }
 .price-empty { padding: 54px 20px !important; color: var(--ink-500) !important; text-align: center !important; }
@@ -342,7 +323,7 @@
 .price-form { overflow-y: auto; }
 .price-form__grid {
   display: grid;
-  grid-template-columns: minmax(260px, 2fr) minmax(180px, 1fr) minmax(155px, 1fr) minmax(155px, 1fr);
+  grid-template-columns: minmax(170px, 0.8fr) minmax(260px, 1.5fr) minmax(180px, 1fr);
   gap: 14px;
 }
 .price-form__description { grid-column: 1 / -1; }
@@ -436,7 +417,7 @@
   .price-filter--search { grid-column: 1 / -1; }
   .price-filters .btn { width: 100%; }
   .price-form__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .price-form__name { grid-column: 1 / -1; }
+  .price-form__name { grid-column: auto; }
 }
 
 @media (max-width: 640px) {
@@ -457,6 +438,7 @@
   .price-table td:nth-child(4) { display: none; }
   .price-panel__header { align-items: flex-start; }
   .price-form__grid { grid-template-columns: 1fr; }
+  .price-form__code,
   .price-form__name,
   .price-form__description { grid-column: auto; }
   .price-line-editor__header { align-items: stretch; flex-direction: column; }

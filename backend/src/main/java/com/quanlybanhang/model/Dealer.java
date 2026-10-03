@@ -3,6 +3,8 @@ package com.quanlybanhang.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 /** Đại lý được giao cho nhân viên kinh doanh; dùng để theo dõi nhu cầu bàn giao. */
 @Entity
 @Table(name = "dealers")
@@ -26,6 +28,11 @@ public class Dealer {
     @Column(nullable = false)
     @Builder.Default
     private Boolean handoverRequired = false;
+
+    /** Hạn mức công nợ tối đa được cấp cho đại lý. */
+    @Column(name = "debt_limit", nullable = false, precision = 19, scale = 2)
+    @Builder.Default
+    private BigDecimal debtLimit = BigDecimal.ZERO;
 
     /**
      * Nhóm khách hàng của đại lý (mặc định là Đại lý cấp 1 - DAI_LY_CAP_1).

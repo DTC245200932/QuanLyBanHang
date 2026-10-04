@@ -24,6 +24,9 @@ public class SupplierController {
             @RequestParam(required = false, defaultValue = "") String keyword,
             @RequestParam(required = false, defaultValue = "0") int page,
             @RequestParam(required = false, defaultValue = "10") int size) {
+        if (page < 0 || size < 1 || size > 200) {
+            throw new IllegalArgumentException("Trang phải không âm; số dòng mỗi trang phải từ 1 đến 200");
+        }
         Page<SupplierResponse> suppliers = supplierService.getAllSuppliers(keyword, PageRequest.of(page, size));
         return ApiResponse.success("Lấy danh sách nhà cung cấp thành công", suppliers);
     }
@@ -49,6 +52,13 @@ public class SupplierController {
             @Valid @RequestBody SupplierRequest request) {
         SupplierResponse supplier = supplierService.updateSupplier(id, request);
         return ApiResponse.success("Cập nhật nhà cung cấp thành công", supplier);
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse updateStatus(@PathVariable Long id, @RequestParam boolean active) {
+        return ApiResponse.success(active ? "Đã khôi phục giao dịch" : "Đã ngừng giao dịch",
+                supplierService.updateStatus(id, active));
     }
 
     @DeleteMapping("/{id}")

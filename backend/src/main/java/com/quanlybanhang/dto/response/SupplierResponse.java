@@ -11,6 +11,10 @@ public class SupplierResponse {
     private String name;
     private String taxCode;
     private String contactPerson;
+    private String contactPhone;
+    private String email;
+    private String address;
+    private String notes;
     private String paymentTerms;
     private Boolean active;
 }

@@ -8,20 +8,25 @@
  * - Khôi phục giao dịch (ACTIVE ↔ INACTIVE)
  * - Phân trang phía client
  *
- * API endpoints (expected):
- *   GET    /suppliers                → { data: [...], total: N }
+ * API endpoints:
+ *   GET    /suppliers?page=0&size=200 → { success, data: { content, last } }
  *   POST   /suppliers                → create
  *   PUT    /suppliers/:id            → update
- *   PATCH  /suppliers/:id/status     → { status: "ACTIVE"|"INACTIVE" }
+ *   PATCH  /suppliers/:id/status?active=true|false
  */
 (() => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
 
-  const CAN_MANAGE = Auth.hasPermission('SUPPLIER_MANAGE');
+  if (!Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF', 'ROLE_VIEWER')) {
+    location.href = Auth.getErrorPageUrl ? Auth.getErrorPageUrl(403) : 'error.html?status=403';
+    return;
+  }
+  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF');
 
   /* ── DOM helpers ────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
+  $('btn-add-supplier').hidden = !CAN_MANAGE;
   const escHtml = (v) =>
     String(v ?? '').replace(/[&<>'"]/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c],
@@ -138,7 +143,7 @@
         (sup.name || '').toLowerCase().includes(q) ||
         (sup.code || '').toLowerCase().includes(q) ||
         (sup.taxCode || '').toLowerCase().includes(q);
-      const matchStatus = !s || sup.status === s;
+      const matchStatus = !s || Boolean(sup.active) === (s === 'ACTIVE');
       return matchSearch && matchStatus;
     });
 
@@ -170,8 +175,8 @@
     }
 
     tbody.innerHTML = slice.map((sup) => {
-      const isActive = sup.status === 'ACTIVE';
-      const payLabel = PAYMENT_LABELS[sup.paymentTerms] ?? '';
+      const isActive = Boolean(sup.active);
+      const payLabel = PAYMENT_LABELS[sup.paymentTerms] ?? sup.paymentTerms ?? '';
 
       const statusBadge = isActive
         ? `<span class="status-badge status-badge--active"><span class="status-badge__dot"></span>Đang giao dịch</span>`
@@ -188,7 +193,7 @@
             </button>
             ${isActive
               ? `<button class="sup-action-btn sup-action-btn--warn" data-action="deactivate" data-id="${sup.id}"
-                  title="${sup.hasImportReceipts ? 'Ngưng giao dịch (đã có phiếu nhập)' : 'Ngưng giao dịch'}">
+                  title="Ngưng giao dịch">
                   <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                 </button>`
               : `<button class="sup-action-btn sup-action-btn--success" data-action="activate" data-id="${sup.id}" title="Khôi phục giao dịch">
@@ -205,7 +210,7 @@
           </td>
           <td>${escHtml(sup.taxCode || '—')}</td>
           <td>
-            <div class="sup-contact">${escHtml(sup.contactName || '—')}</div>
+            <div class="sup-contact">${escHtml(sup.contactPerson || '—')}</div>
             ${sup.contactPhone ? `<div class="sup-contact-phone">${escHtml(sup.contactPhone)}</div>` : ''}
           </td>
           <td>${payBadge}</td>
@@ -275,11 +280,20 @@
     $('sup-tbody').innerHTML = `<tr class="sup-loading-row"><td colspan="7"><div class="sup-loading">Đang tải dữ liệu…</div></td></tr>`;
 
     try {
-      const res    = await Auth.apiFetch('/suppliers');
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.message || 'Không tải được dữ liệu');
-
-      state.all = result.data || [];
+      const suppliers = [];
+      let page = 0;
+      let last = false;
+      do {
+        const res = await Auth.apiFetch(`/suppliers?page=${page}&size=200`);
+        const result = await res.json();
+        if (!res.ok || !result.success || !Array.isArray(result.data?.content)) {
+          throw new Error(result.message || 'Không tải được dữ liệu');
+        }
+        suppliers.push(...result.data.content);
+        last = result.data.last !== false;
+        page++;
+      } while (!last);
+      state.all = suppliers;
       applyFilter();
     } catch (e) {
       $('sup-tbody').innerHTML = `
@@ -308,10 +322,14 @@
       $('sup-code').disabled         = true; // Mã không thay đổi sau khi tạo
       $('sup-name').value            = sup.name ?? '';
       $('sup-tax').value             = sup.taxCode ?? '';
-      $('sup-contact-name').value    = sup.contactName ?? '';
+      $('sup-contact-name').value    = sup.contactPerson ?? '';
       $('sup-contact-phone').value   = sup.contactPhone ?? '';
       $('sup-email').value           = sup.email ?? '';
-      $('sup-payment-terms').value   = sup.paymentTerms ?? '';
+      const terms = $('sup-payment-terms');
+      if (sup.paymentTerms && ![...terms.options].some(option => option.value === sup.paymentTerms)) {
+        terms.add(new Option(sup.paymentTerms, sup.paymentTerms));
+      }
+      terms.value = sup.paymentTerms ?? '';
       $('sup-address').value         = sup.address ?? '';
       $('sup-notes').value           = sup.notes ?? '';
     } else {
@@ -338,7 +356,7 @@
       code:         $('sup-code').value.trim(),
       name:         $('sup-name').value.trim(),
       taxCode:      $('sup-tax').value.trim() || null,
-      contactName:  $('sup-contact-name').value.trim() || null,
+      contactPerson: $('sup-contact-name').value.trim() || null,
       contactPhone: $('sup-contact-phone').value.trim() || null,
       email:        $('sup-email').value.trim() || null,
       paymentTerms: $('sup-payment-terms').value || null,
@@ -390,7 +408,7 @@
 
     const isDeactivate = targetStatus === 'INACTIVE';
     $('status-modal-title').textContent = isDeactivate ? 'Ngưng giao dịch' : 'Khôi phục giao dịch';
-    $('status-modal-sub').textContent   = escHtml(sup.name);
+    $('status-modal-sub').textContent   = sup.name;
     $('status-modal-body').textContent  = isDeactivate
       ? `Nhà cung cấp «${sup.name}» sẽ bị ngưng giao dịch. Các phiếu nhập kho hiện có sẽ không bị ảnh hưởng. Bạn có thể khôi phục bất kỳ lúc nào.`
       : `Khôi phục giao dịch với nhà cung cấp «${sup.name}». Nhà cung cấp sẽ trở lại trạng thái đang giao dịch.`;
@@ -421,9 +439,8 @@
     btn.textContent = 'Đang xử lý…';
 
     try {
-      const res    = await Auth.apiFetch(`/suppliers/${supId}/status`, {
+      const res    = await Auth.apiFetch(`/suppliers/${supId}/status?active=${targetStatus === 'ACTIVE'}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: targetStatus }),
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok || !result.success) throw new Error(result.message || 'Không thay đổi được trạng thái');

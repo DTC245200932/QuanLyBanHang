@@ -14,4 +14,14 @@ public interface OrderService {
     OrderResponse getOrderById(Long id);
 
     OrderResponse cancelOrder(Long id, String username);
+
+    /**
+     * Quản lý kinh doanh duyệt đơn hàng có dòng bán dưới giá sàn (S2-10).
+     */
+    OrderResponse approveOrder(Long id, String username);
+
+    /**
+     * Quản lý kinh doanh từ chối đơn hàng có dòng bán dưới giá sàn (S2-10).
+     */
+    OrderResponse rejectOrder(Long id, String reason, String username);
 }

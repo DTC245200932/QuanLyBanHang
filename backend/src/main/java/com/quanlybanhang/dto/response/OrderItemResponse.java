@@ -42,6 +42,8 @@ public class OrderItemResponse {
     private BigDecimal baseQuantity;
 
     private BigDecimal price;
+    private BigDecimal floorPrice;
+    private Boolean belowFloorPrice;
     private BigDecimal totalAmount;
     private String note;
 }

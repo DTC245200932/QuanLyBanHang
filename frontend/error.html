@@ -1,2 +1,84 @@
-<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Không thể mở trang | SaleStock</title><link rel="stylesheet" href="css/auth-pages.css"></head>
-<body><main class="auth-card"><a class="auth-brand" href="dashboard.html"><img src="assets/brand-mark.svg" alt=""><span>SaleStock</span></a><p class="error-code" id="error-code">403</p><h1 id="error-title">Bạn chưa có quyền vào đây</h1><p class="lead" id="error-message">Hãy quay lại phần công việc được giao hoặc liên hệ quản trị viên nếu bạn cần thêm quyền.</p><div class="action-row"><a class="action-primary" href="dashboard.html">Về trang tổng quan</a><a class="action-secondary" href="javascript:history.back()">Quay lại</a></div></main><script>const p=new URLSearchParams(location.search),s=p.get('status')||'403';document.getElementById('error-code').textContent=s;if(s==='404'){document.getElementById('error-title').textContent='Không tìm thấy trang';document.getElementById('error-message').textContent='Địa chỉ có thể đã thay đổi. Hãy về trang tổng quan để tiếp tục.'}else{const m=sessionStorage.getItem('errorMessage');if(m){document.getElementById('error-message').textContent=m;sessionStorage.removeItem('errorMessage')}}</script></body></html>
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Thông báo lỗi của hệ thống SaleStock." />
+    <title>Không thể mở trang | SaleStock</title>
+    <link rel="icon" href="assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/auth-pages.css" />
+  </head>
+  <body class="error-page">
+    <main class="auth-card error-card" aria-labelledby="error-title">
+      <a class="auth-brand" href="dashboard.html" aria-label="SaleStock - Về Dashboard">
+        <img src="assets/brand-mark.svg" alt="" />
+        <span>SaleStock</span>
+      </a>
+
+      <div class="error-visual" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M12 8v5" />
+          <path d="M12 17.01l.01-.011" />
+          <path d="M10.3 3.5 2.7 17a2 2 0 0 0 1.74 3h15.12a2 2 0 0 0 1.74-3L13.7 3.5a2 2 0 0 0-3.4 0Z" />
+        </svg>
+      </div>
+
+      <p class="error-label">Mã lỗi</p>
+      <p class="error-code" id="error-code">—</p>
+      <h1 id="error-title">Không thể hoàn tất yêu cầu</h1>
+      <p class="lead" id="error-message">
+        Đã xảy ra lỗi không xác định. Vui lòng thử lại hoặc trở về Dashboard.
+      </p>
+
+      <div class="action-row">
+        <a class="action-primary" href="dashboard.html">Về Dashboard</a>
+        <button class="action-secondary" id="back-button" type="button">Quay lại</button>
+      </div>
+    </main>
+
+    <script>
+      (() => {
+        const errorContent = {
+          403: {
+            title: "Không có quyền truy cập",
+            message: "Tài khoản của bạn không có quyền sử dụng chức năng này.",
+          },
+          404: {
+            title: "Không tìm thấy trang",
+            message: "Trang bạn đang tìm kiếm không tồn tại hoặc đã được di chuyển.",
+          },
+          500: {
+            title: "Đã xảy ra lỗi",
+            message: "Hệ thống gặp sự cố khi xử lý yêu cầu. Vui lòng thử lại sau.",
+          },
+        };
+
+        const requestedStatus = new URLSearchParams(window.location.search)
+          .get("status")
+          ?.trim();
+        const isValidStatus = /^\d{3}$/.test(requestedStatus || "");
+        const status = isValidStatus ? requestedStatus : "";
+        const content = errorContent[status] || {
+          title: "Không thể hoàn tất yêu cầu",
+          message: "Đã xảy ra lỗi không xác định. Vui lòng thử lại hoặc trở về Dashboard.",
+        };
+
+        document.getElementById("error-code").textContent = status || "Lỗi";
+        document.getElementById("error-title").textContent = content.title;
+        document.getElementById("error-message").textContent = content.message;
+        document.title = `${content.title} | SaleStock`;
+
+        // Xóa thông báo cũ do luồng 403 trước đây lưu lại, tránh ảnh hưởng lần mở sau.
+        sessionStorage.removeItem("errorMessage");
+
+        document.getElementById("back-button").addEventListener("click", () => {
+          if (window.history.length > 1) {
+            window.history.back();
+            return;
+          }
+          window.location.href = "dashboard.html";
+        });
+      })();
+    </script>
+  </body>
+</html>

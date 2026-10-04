@@ -1,6 +1,9 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.ProductImportRowRequest;
 import com.quanlybanhang.dto.request.ProductRequest;
+import com.quanlybanhang.dto.response.ProductImportResponse;
+import com.quanlybanhang.dto.response.ProductImportRowResponse;
 import com.quanlybanhang.dto.response.ProductResponse;
 import com.quanlybanhang.exception.ProductHasTransactionsException;
 import com.quanlybanhang.model.Category;
@@ -40,6 +43,9 @@ class ProductServiceTest {
 
     @Mock
     private AuditLogService auditLogService;
+
+    @Mock
+    private ProductExcelService productExcelService;
 
     @InjectMocks
     private ProductServiceImpl productService;
@@ -290,6 +296,192 @@ class ProductServiceTest {
         List<ProductResponse> searchList = productService.getAll(10L, "samsung", null);
         assertThat(searchList).hasSize(1);
         assertThat(searchList.get(0).getCode()).isEqualTo("SP-S24");
+    }
+
+    @Test
+    @DisplayName("S2-08: Tải tệp Excel mẫu thành công")
+    void generateImportTemplate_Success() {
+        Category cat = Category.builder().id(1L).code("BEV").name("Đồ uống").build();
+        when(categoryRepository.findAllByOrderByLevelAscNameAsc()).thenReturn(List.of(cat));
+        when(productExcelService.generateTemplate(List.of(cat))).thenReturn(new byte[]{1, 2, 3});
+
+        byte[] result = productService.generateImportTemplate();
+
+        assertThat(result).isNotNull().isEqualTo(new byte[]{1, 2, 3});
+        verify(productExcelService).generateTemplate(List.of(cat));
+    }
+
+    @Test
+    @DisplayName("S2-08: Xem trước phát hiện lỗi từng dòng (SKU trống, Tên trống, Nhóm hàng không tồn tại, SKU trùng trong tệp)")
+    void previewImport_DetectsRowErrors() {
+        Category cat = Category.builder().id(1L).code("BEV").name("Đồ uống").build();
+        when(categoryRepository.findAll()).thenReturn(List.of(cat));
+        when(productRepository.findByCodeUpperIn(anyCollection())).thenReturn(List.of());
+
+        List<ProductImportRowRequest> rows = List.of(
+                ProductImportRowRequest.builder().rowNumber(2).sku("").name("SP 1").category("BEV").build(),
+                ProductImportRowRequest.builder().rowNumber(3).sku("SP02").name("").category("BEV").build(),
+                ProductImportRowRequest.builder().rowNumber(4).sku("SP03").name("SP 3").category("UNKNOWN_CAT").build(),
+                ProductImportRowRequest.builder().rowNumber(5).sku("SP04").name("SP 4").category("BEV").price(new BigDecimal("-100")).build(),
+                ProductImportRowRequest.builder().rowNumber(6).sku("SP05").name("SP 5").category("BEV").build(),
+                ProductImportRowRequest.builder().rowNumber(7).sku("SP05").name("SP 5 trùng").category("BEV").build()
+        );
+
+        ProductImportResponse response = productService.previewImport(rows);
+
+        assertThat(response.getTotalRows()).isEqualTo(6);
+        assertThat(response.getValidRows()).isEqualTo(1); // Chỉ dòng 6 hợp lệ
+        assertThat(response.getInvalidRows()).isEqualTo(5);
+
+        // Dòng 2: thiếu SKU
+        assertThat(response.getRows().get(0).isValid()).isFalse();
+        assertThat(response.getRows().get(0).getErrors()).anyMatch(e -> e.contains("Mã SKU không được để trống"));
+
+        // Dòng 3: thiếu Tên
+        assertThat(response.getRows().get(1).isValid()).isFalse();
+        assertThat(response.getRows().get(1).getErrors()).anyMatch(e -> e.contains("Tên sản phẩm không được để trống"));
+
+        // Dòng 4: sai Nhóm hàng
+        assertThat(response.getRows().get(2).isValid()).isFalse();
+        assertThat(response.getRows().get(2).getErrors()).anyMatch(e -> e.contains("Không tìm thấy nhóm hàng"));
+
+        // Dòng 5: giá bán âm
+        assertThat(response.getRows().get(3).isValid()).isFalse();
+        assertThat(response.getRows().get(3).getErrors()).anyMatch(e -> e.contains("Giá bán không được âm"));
+
+        // Dòng 7: trùng SKU với dòng 6
+        assertThat(response.getRows().get(5).isValid()).isFalse();
+        assertThat(response.getRows().get(5).getErrors()).anyMatch(e -> e.contains("trùng lặp với dòng 6"));
+    }
+
+    @Test
+    @DisplayName("S2-08: Xem trước đánh dấu rõ UPDATE khi SKU đã tồn tại và CREATE khi SKU chưa tồn tại")
+    void previewImport_MarksUpdateAndCreateAccurately() {
+        Category cat = Category.builder().id(1L).code("BEV").name("Đồ uống").build();
+        Product existing = Product.builder().id(100L).code("SP-EXIST").name("Sản phẩm cũ").category(cat).build();
+
+        when(categoryRepository.findAll()).thenReturn(List.of(cat));
+        when(productRepository.findByCodeUpperIn(anyCollection())).thenReturn(List.of(existing));
+
+        List<ProductImportRowRequest> rows = List.of(
+                ProductImportRowRequest.builder().rowNumber(2).sku("SP-EXIST").name("Cập nhật SP cũ").category("BEV").build(),
+                ProductImportRowRequest.builder().rowNumber(3).sku("SP-NEW").name("Tạo SP mới").category("BEV").build()
+        );
+
+        ProductImportResponse response = productService.previewImport(rows);
+
+        assertThat(response.getTotalRows()).isEqualTo(2);
+        assertThat(response.getValidRows()).isEqualTo(2);
+        assertThat(response.getUpdateCount()).isEqualTo(1);
+        assertThat(response.getCreateCount()).isEqualTo(1);
+
+        // Dòng 1: tồn tại -> action = "UPDATE", isUpdate = true
+        ProductImportRowResponse r1 = response.getRows().get(0);
+        assertThat(r1.isUpdate()).isTrue();
+        assertThat(r1.getAction()).isEqualTo("UPDATE");
+        assertThat(r1.getExistingProductId()).isEqualTo(100L);
+
+        // Dòng 2: mới -> action = "CREATE", isUpdate = false
+        ProductImportRowResponse r2 = response.getRows().get(1);
+        assertThat(r2.isUpdate()).isFalse();
+        assertThat(r2.getAction()).isEqualTo("CREATE");
+        assertThat(r2.getExistingProductId()).isNull();
+    }
+
+    @Test
+    @DisplayName("S2-08: Nhập hàng loạt - cập nhật sản phẩm tồn tại và tạo mới sản phẩm chưa có")
+    void importProducts_UpdatesExistingAndCreatesNew_Success() {
+        mockSalesManagerAuth();
+
+        Category cat = Category.builder().id(1L).code("BEV").name("Đồ uống").build();
+        Product existing = Product.builder()
+                .id(100L)
+                .code("SP-EXIST")
+                .name("Tên cũ")
+                .category(cat)
+                .price(new BigDecimal("10000"))
+                .costPrice(new BigDecimal("8000"))
+                .active(true)
+                .build();
+
+        when(categoryRepository.findAll()).thenReturn(List.of(cat));
+        when(productRepository.findByCodeUpperIn(anyCollection())).thenReturn(List.of(existing));
+        when(productRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ProductImportRowRequest> rows = List.of(
+                ProductImportRowRequest.builder()
+                        .rowNumber(2)
+                        .sku("SP-EXIST")
+                        .name("Tên mới sau cập nhật")
+                        .category("BEV")
+                        .price(new BigDecimal("12000"))
+                        .costPrice(new BigDecimal("9000"))
+                        .unit("lon")
+                        .build(),
+                ProductImportRowRequest.builder()
+                        .rowNumber(3)
+                        .sku("SP-NEW")
+                        .name("Sản phẩm mới toanh")
+                        .category("BEV")
+                        .price(new BigDecimal("20000"))
+                        .costPrice(new BigDecimal("15000"))
+                        .unit("chai")
+                        .build()
+        );
+
+        ProductImportResponse result = productService.importProducts(rows);
+
+        assertThat(result.getImportedRows()).isEqualTo(2);
+        assertThat(result.getUpdateCount()).isEqualTo(1);
+        assertThat(result.getCreateCount()).isEqualTo(1);
+
+        // Kiểm tra audit log thay đổi giá bán cho sản phẩm cũ
+        verify(auditLogService).logAction(eq("PRICE"), eq("100"), eq("UPDATE"), eq("10000"), eq("12000"), any());
+
+        // Kiểm tra sản phẩm cũ đã được cập nhật giá trị
+        assertThat(existing.getName()).isEqualTo("Tên mới sau cập nhật");
+        assertThat(existing.getPrice()).isEqualTo(new BigDecimal("12000"));
+        assertThat(existing.getCostPrice()).isEqualTo(new BigDecimal("9000"));
+        assertThat(existing.getUnit()).isEqualTo("lon");
+
+        verify(productRepository).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("S2-08: Bảo mật giá vốn - Nhân viên không phải Quản lý kinh doanh không sửa được giá vốn khi nhập")
+    void importProducts_PreservesCostPriceForNonSalesManager() {
+        mockSalesStaffAuth(); // Vai trò ROLE_SALES
+
+        Category cat = Category.builder().id(1L).code("BEV").name("Đồ uống").build();
+        Product existing = Product.builder()
+                .id(100L)
+                .code("SP-EXIST")
+                .name("Sản phẩm cũ")
+                .category(cat)
+                .price(new BigDecimal("10000"))
+                .costPrice(new BigDecimal("8000")) // Giá vốn gốc
+                .active(true)
+                .build();
+
+        when(categoryRepository.findAll()).thenReturn(List.of(cat));
+        when(productRepository.findByCodeUpperIn(anyCollection())).thenReturn(List.of(existing));
+        when(productRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ProductImportRowRequest> rows = List.of(
+                ProductImportRowRequest.builder()
+                        .rowNumber(2)
+                        .sku("SP-EXIST")
+                        .name("Sản phẩm sửa tên")
+                        .category("BEV")
+                        .costPrice(new BigDecimal("99999")) // Thử sửa giá vốn
+                        .build()
+        );
+
+        ProductImportResponse result = productService.importProducts(rows);
+
+        assertThat(result.getImportedRows()).isEqualTo(1);
+        // Giá vốn gốc 8000 PHẢI ĐƯỢC GIỮ NGUYÊN, không bị đổi thành 99999
+        assertThat(existing.getCostPrice()).isEqualTo(new BigDecimal("8000"));
     }
 }
 

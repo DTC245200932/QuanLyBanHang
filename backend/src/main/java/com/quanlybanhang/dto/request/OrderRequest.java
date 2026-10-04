@@ -17,6 +17,22 @@ public class OrderRequest {
 
     private String customerName;
 
+    /**
+     * Nhóm khách hàng (DAI_LY_CAP_1, DAI_LY_CAP_2, KHACH_LE).
+     * Dùng để tự động áp bảng giá tương ứng (S2-10).
+     */
+    private com.quanlybanhang.model.CustomerGroup customerGroup;
+
+    /**
+     * ID đại lý (nếu đặt cho đại lý cụ thể, hệ thống tự lấy customerGroup của đại lý đó).
+     */
+    private Long dealerId;
+
+    /**
+     * Chỉ định rõ ID bảng giá (nếu không truyền, hệ thống tự động tìm bảng giá hiệu lực).
+     */
+    private Long priceListId;
+
     private String note;
 
     @NotEmpty(message = "Đơn hàng phải có ít nhất 1 sản phẩm")

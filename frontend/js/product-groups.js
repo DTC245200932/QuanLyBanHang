@@ -5,10 +5,12 @@
  * - Hiển thị cây nhóm hàng nhiều cấp (tối thiểu 3 cấp)
  * - Thêm / sửa / xoá nhóm (nhóm còn sản phẩm không xoá được)
  * - Chọn nhóm → xem chi tiết + danh sách sản phẩm
+ * - Hiển thị doanh số trực tiếp và tổng doanh số toàn nhánh
  * - Chuyển sản phẩm giữa các nhóm
  * - Tìm kiếm theo tên (highlight + hiện tổ tiên)
  *
  * API endpoints:
+ *   GET    /categories/tree
  *   CRUD   /categories
  *   GET    /products?categoryId=:id
  *   PUT    /categories/products/:id/move?targetCategoryId=:categoryId
@@ -25,6 +27,11 @@
     String(v ?? '').replace(/[&<>'"]/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c],
     );
+  const formatCurrency = (value) => new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
 
   /* ── State ─────────────────────────────────────────────── */
   const state = {
@@ -97,6 +104,17 @@
 
     state.nodeMap = map;
     state.roots   = roots;
+  }
+
+  function flattenCategoryTree(nodes, parentId = null) {
+    return (nodes || []).flatMap((node) => {
+      const { children = [], ...category } = node;
+      const normalized = {
+        ...category,
+        parentId: category.parentId ?? parentId,
+      };
+      return [normalized, ...flattenCategoryTree(children, node.id)];
+    });
   }
 
   /* ── Render tree ───────────────────────────────────────── */
@@ -345,6 +363,14 @@
           <span class="detail-stat__label">Nhóm con</span>
           <span class="detail-stat__value">${node.children.length}</span>
         </div>
+        <div class="detail-stat detail-stat--revenue">
+          <span class="detail-stat__label">Doanh số trực tiếp</span>
+          <span class="detail-stat__value detail-stat__value--currency">${formatCurrency(node.directRevenue)}</span>
+        </div>
+        <div class="detail-stat detail-stat--revenue detail-stat--revenue-total">
+          <span class="detail-stat__label">Tổng doanh số toàn nhánh</span>
+          <span class="detail-stat__value detail-stat__value--currency detail-stat__value--teal">${formatCurrency(node.totalRevenue)}</span>
+        </div>
       </div>
       <div class="detail-description">
         ${node.description ? escapeHtml(node.description) : '<em>Chưa có mô tả</em>'}
@@ -460,13 +486,16 @@
     $('tree-container').innerHTML = '<div class="pg-empty">Đang tải danh mục…</div>';
 
     try {
-      const res    = await Auth.apiFetch('/categories');
+      const res    = await Auth.apiFetch('/categories/tree');
       const result = await res.json();
-      if (!res.ok) throw new Error(result.message || 'Không tải được dữ liệu');
+      if (!res.ok || !result.success) throw new Error(result.message || 'Không tải được dữ liệu');
 
-      state.flat = (result.data || []).map((group) => ({
+      state.flat = flattenCategoryTree(result.data).map((group) => ({
         ...group,
-        productCount: Number(group.directProductCount ?? group.totalProductCount ?? 0),
+        productCount: Number(group.directProductCount ?? 0),
+        totalProductCount: Number(group.totalProductCount ?? group.directProductCount ?? 0),
+        directRevenue: Number(group.directRevenue ?? 0),
+        totalRevenue: Number(group.totalRevenue ?? group.directRevenue ?? 0),
       }));
       buildTree(state.flat);
       renderTree();

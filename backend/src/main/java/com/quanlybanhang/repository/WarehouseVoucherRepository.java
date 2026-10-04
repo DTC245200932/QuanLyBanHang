@@ -20,4 +20,6 @@ public interface WarehouseVoucherRepository extends JpaRepository<WarehouseVouch
     List<WarehouseVoucher> findByTypeOrderByRecordedAtDesc(WarehouseVoucherType type);
 
     List<WarehouseVoucher> findAllByOrderByRecordedAtDesc();
+
+    boolean existsBySupplierId(Long supplierId);
 }

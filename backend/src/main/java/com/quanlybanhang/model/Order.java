@@ -34,9 +34,37 @@ public class Order {
     @Column(name = "customer_name", length = 255)
     private String customerName;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "customer_group", length = 30)
+    private CustomerGroup customerGroup;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dealer_id")
+    private Dealer dealer;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "price_list_id")
+    private PriceList priceList;
+
     @Column(length = 30)
     @Builder.Default
     private String status = "RECORDED";
+
+    /**
+     * Đánh dấu đơn hàng có dòng sản phẩm bán dưới giá sàn cần qua duyệt (S2-10).
+     */
+    @Column(name = "requires_approval", nullable = false)
+    @Builder.Default
+    private Boolean requiresApproval = false;
+
+    @Column(name = "approval_reason", length = 1000)
+    private String approvalReason;
+
+    @Column(name = "approved_by", length = 100)
+    private String approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
 
     @Column(name = "total_amount", precision = 15, scale = 2)
     @Builder.Default

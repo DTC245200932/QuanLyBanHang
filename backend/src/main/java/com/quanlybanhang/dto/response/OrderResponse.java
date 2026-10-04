@@ -16,7 +16,15 @@ public class OrderResponse {
     private Long id;
     private String orderCode;
     private String customerName;
+    private com.quanlybanhang.model.CustomerGroup customerGroup;
+    private Long dealerId;
+    private Long priceListId;
+    private String priceListCode;
     private String status;
+    private Boolean requiresApproval;
+    private String approvalReason;
+    private String approvedBy;
+    private LocalDateTime approvedAt;
     private BigDecimal totalAmount;
     private String note;
     private String createdBy;

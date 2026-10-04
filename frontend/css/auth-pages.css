@@ -17,7 +17,22 @@ button:disabled { opacity:.55; cursor:wait; }
 .message--error { color:#9c3333; background:#faeeee; }
 .error-code { margin:34px 0 4px; color:var(--teal); font:700 58px/1 "Bahnschrift",sans-serif; }
 .action-row { display:flex; gap:10px; margin-top:26px; }
-.action-row a { flex:1; padding:14px; border-radius:10px; text-align:center; text-decoration:none; font-size:14px; font-weight:650; }
+.action-row a, .action-row button { flex:1; min-height:48px; margin:0; padding:14px; border:0; border-radius:10px; text-align:center; text-decoration:none; font:650 14px/1.35 inherit; cursor:pointer; }
 .action-primary { color:#fff; background:var(--navy); }
 .action-secondary { color:var(--ink); background:#edf2f5; }
+.action-primary:hover { background:#12324e; }
+.action-secondary:hover { background:#e2e9ee; }
+.action-primary:focus-visible, .action-secondary:focus-visible, .auth-brand:focus-visible { outline:3px solid rgba(47,184,138,.28); outline-offset:3px; }
+
+.error-page { overflow:hidden; background:linear-gradient(145deg,#f8fafc 0%,#edf3f6 100%); }
+.error-page::before, .error-page::after { content:""; position:fixed; z-index:-1; border-radius:50%; pointer-events:none; }
+.error-page::before { width:340px; height:340px; top:-170px; right:-100px; background:rgba(47,184,138,.1); }
+.error-page::after { width:280px; height:280px; bottom:-170px; left:-80px; border:54px solid rgba(7,26,44,.045); }
+.error-card { position:relative; width:min(100%,520px); padding:38px 42px 42px; }
+.error-visual { position:absolute; top:32px; right:38px; width:48px; height:48px; display:grid; place-items:center; border-radius:14px; color:var(--teal); background:rgba(47,184,138,.1); }
+.error-visual svg { width:25px; height:25px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.error-label { margin:44px 0 5px; color:var(--muted); font-size:12px; font-weight:650; }
+.error-card .error-code { margin:0 0 22px; font-size:68px; letter-spacing:-.04em; }
+.error-card h1 { margin:0 0 12px; }
+.error-card .lead { max-width:420px; margin-bottom:0; font-size:15px; }
 @media(max-width:520px){body{padding:0;background:#fff}.auth-card{min-height:100vh;padding:30px 20px;border:0;border-radius:0;box-shadow:none}.action-row{flex-direction:column}}

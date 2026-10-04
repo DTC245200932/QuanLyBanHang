@@ -23,6 +23,7 @@
 
   /* ── Helpers ───────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
+  $('add-root-group').hidden = !CAN_MANAGE;
   const escapeHtml = (v) =>
     String(v ?? '').replace(/[&<>'"]/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c],
@@ -174,7 +175,6 @@
     });
 
     applySearchFilter();
-    applyExpandState();
   }
 
   function renderNodes(nodes, html) {
@@ -214,7 +214,7 @@
               data-id="${node.id}" data-level="${node.level}" data-parent="${node.parentId ?? ''}">
            ${toggleHtml}
            <span class="tree-node__name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span>
-           <span class="tree-node__count" title="${node.productCount} sản phẩm">${node.productCount}</span>
+           <span class="tree-node__count" title="${node.totalProductCount} sản phẩm trong toàn nhánh">${node.totalProductCount}</span>
            ${actionsHtml}
          </div>`,
       );
@@ -232,7 +232,7 @@
     } else {
       state.expanded.add(id);
     }
-    applyExpandState();
+    applySearchFilter();
   }
 
   function applyExpandState() {
@@ -247,6 +247,11 @@
 
       // Collapse styling
       if (hasChildren) {
+        const toggle = el.querySelector('button.tree-node__toggle');
+        if (toggle) {
+          toggle.title = state.expanded.has(id) ? 'Thu gọn' : 'Mở rộng';
+          toggle.setAttribute('aria-expanded', String(state.expanded.has(id)));
+        }
         if (state.expanded.has(id)) {
           el.classList.remove('tree-node--collapsed');
         } else {
@@ -302,17 +307,18 @@
       }
     });
 
+    applyExpandState();
     container.querySelectorAll('.tree-node').forEach((el) => {
       const id = Number(el.dataset.id);
       const visible = visibleIds.has(id);
       el.classList.toggle('tree-node--hidden', !visible);
       el.classList.toggle('tree-node--match', matchIds.has(id));
-      if (visible) el.classList.remove('tree-node--collapsed');
     });
   }
 
   /* ── Select node ───────────────────────────────────────── */
   function selectNode(id) {
+    if (!state.nodeMap[id]) return;
     state.selectedId = id;
 
     // Update selected style
@@ -320,11 +326,13 @@
       el.classList.toggle('tree-node--selected', Number(el.dataset.id) === id);
     });
 
-    // Auto-expand if needed
-    if (!state.expanded.has(id)) {
-      state.expanded.add(id);
-      applyExpandState();
+    // Keep the selection visible, including newly created children.
+    let selectedNode = state.nodeMap[id];
+    while (selectedNode) {
+      state.expanded.add(selectedNode.id);
+      selectedNode = selectedNode.parentId != null ? state.nodeMap[selectedNode.parentId] : null;
     }
+    applySearchFilter();
 
     renderDetail(id);
   }
@@ -428,6 +436,9 @@
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || 'Không tải được danh sách sản phẩm');
 
+      if (state.selectedId !== groupId || !contentEl.isConnected
+        || $('detail-panel').querySelector('.detail-tab--active')?.dataset.tab !== 'products') return;
+
       const products = result.data || [];
       state.products = products;
 
@@ -452,6 +463,8 @@
         });
       });
     } catch (e) {
+      if (state.selectedId !== groupId || !contentEl.isConnected
+        || $('detail-panel').querySelector('.detail-tab--active')?.dataset.tab !== 'products') return;
       contentEl.innerHTML = `<div class="pg-empty"><p>${escapeHtml(e.message)}</p></div>`;
     }
   }
@@ -502,7 +515,7 @@
 
       // Re-select current node if still exists
       if (state.selectedId && state.nodeMap[state.selectedId]) {
-        renderDetail(state.selectedId);
+        selectNode(state.selectedId);
       } else if (state.selectedId) {
         // Node was deleted — clear detail
         state.selectedId = null;
@@ -544,12 +557,13 @@
 
     function addOptions(nodes, depth) {
       nodes.forEach((node) => {
-        if (node.id === excludeGroupId) return;
-        const prefix = '\u00A0\u00A0\u00A0\u00A0'.repeat(depth);
-        const opt    = document.createElement('option');
-        opt.value       = node.id;
-        opt.textContent = `${prefix}${node.name}`;
-        sel.appendChild(opt);
+        if (node.id !== excludeGroupId) {
+          const prefix = '\u00A0\u00A0\u00A0\u00A0'.repeat(depth);
+          const opt    = document.createElement('option');
+          opt.value       = node.id;
+          opt.textContent = `${prefix}${node.name}`;
+          sel.appendChild(opt);
+        }
         if (node.children.length) addOptions(node.children, depth + 1);
       });
     }
@@ -707,7 +721,6 @@
       closeMoveModal();
       showToast('Đã chuyển sản phẩm sang nhóm mới.', 'success');
       await loadTree();
-      if (state.selectedId) renderDetail(state.selectedId);
     } catch (err) {
       showFormError('move-form-message', err.message || 'Lỗi không xác định');
     } finally {

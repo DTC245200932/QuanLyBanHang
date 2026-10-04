@@ -3,36 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nhật ký thao tác & Đối soát kiểm kê | SaleStock</title>
-  <link rel="icon" href="../assets/brand-mark.svg">
-  <link rel="stylesheet" href="../css/dashboard.css">
-  <link rel="stylesheet" href="../css/admin-users.css">
-  <link rel="stylesheet" href="../css/audit-logs.css">
+  <title>Nhật ký thao tác | SaleStock</title>
+  <link rel="icon" href="/assets/brand-mark.svg">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/admin-users.css">
+  <link rel="stylesheet" href="/css/audit-logs.css">
 </head>
 <body>
   <div class="admin-shell">
     <!-- ── Topbar ── -->
     <header class="admin-topbar">
       <div class="admin-topbar__left">
-        <a class="admin-brand" href="../dashboard.html">
-          <img src="../assets/brand-mark.svg" alt="SaleStock Logo">
+        <a class="admin-brand" href="/dashboard">
+          <img src="/assets/brand-mark.svg" alt="SaleStock Logo">
           <span>SaleStock</span>
         </a>
         <nav class="admin-nav" aria-label="Quản trị">
-          <a class="admin-nav__link" href="users.html">Tài khoản nhân sự</a>
-          <a class="admin-nav__link admin-nav__link--active" href="audit-logs.html">Nhật ký thao tác</a>
+          <a class="admin-nav__link" href="/admin/users">Tài khoản nhân sự</a>
+          <a class="admin-nav__link admin-nav__link--active" href="/admin/audit-logs">Nhật ký thao tác</a>
         </nav>
       </div>
-      <a class="back-dashboard" href="../dashboard.html">Về tổng quan</a>
+      <a class="back-dashboard" href="/dashboard">Về tổng quan</a>
     </header>
 
     <main class="admin-main">
       <!-- ── Heading & Actions ── -->
       <section class="admin-heading">
         <div>
-          <p>Quản trị hệ thống · S2-04</p>
-          <h1>Nhật ký thao tác & Đối soát</h1>
-          <span>Ghi lại mọi thao tác trên tồn kho, giá, hạn mức công nợ và hoá đơn; đối soát ai đã điều chỉnh tồn khi cuối tháng kiểm kê bị lệch.</span>
+
+          <h1>Nhật ký thao tác</h1>
+          <span>Tra cứu thay đổi theo người thực hiện, loại đối tượng và thời gian.</span>
         </div>
         <div class="admin-heading__actions">
           <button class="btn btn--secondary" id="btn-export-excel" type="button" title="Xuất dữ liệu đang hiển thị ra tệp Excel">
@@ -54,18 +54,18 @@
             </div>
           </div>
           <div class="audit-kpi-card__value" id="kpi-total-logs">0</div>
-          <div class="audit-kpi-card__desc">Toàn bộ thay đổi đã được ghi vết</div>
+          <div class="audit-kpi-card__desc">Tồn kho, giá, công nợ và chứng từ</div>
         </article>
 
         <article class="audit-kpi-card">
           <div class="audit-kpi-card__header">
-            <span class="audit-kpi-card__title">Điều chỉnh tồn kho</span>
+            <span class="audit-kpi-card__title">Thao tác tồn kho</span>
             <div class="audit-kpi-card__icon audit-kpi-card__icon--teal">
               <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
             </div>
           </div>
           <div class="audit-kpi-card__value" id="kpi-inventory-count">0</div>
-          <div class="audit-kpi-card__desc" id="kpi-inventory-desc">Bao gồm nhập, xuất & kiểm kê</div>
+          <div class="audit-kpi-card__desc" id="kpi-inventory-desc">Nhập, xuất và điều chỉnh</div>
         </article>
 
         <article class="audit-kpi-card">
@@ -81,31 +81,16 @@
 
         <article class="audit-kpi-card">
           <div class="audit-kpi-card__header">
-            <span class="audit-kpi-card__title">Lệch kiểm kê cần chú ý</span>
+            <span class="audit-kpi-card__title">Điều chỉnh giảm</span>
             <div class="audit-kpi-card__icon audit-kpi-card__icon--danger">
               <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             </div>
           </div>
           <div class="audit-kpi-card__value" id="kpi-discrepancy-count" style="color:var(--danger);">0</div>
-          <div class="audit-kpi-card__desc">Tồn kho bị điều chỉnh giảm cuối kỳ</div>
+          <div class="audit-kpi-card__desc">Giảm số lượng tồn sau điều chỉnh</div>
         </article>
       </section>
 
-      <!-- ── Discrepancy Highlight Banner (Cuối tháng kiểm kê bị lệch) ── -->
-      <section class="audit-alert-strip" id="discrepancy-banner">
-        <div class="audit-alert-strip__content">
-          <svg class="audit-alert-strip__icon" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <div class="audit-alert-strip__text">
-            <strong>Đối soát kiểm kê kỳ cuối tháng</strong>
-            <p>Hệ thống ghi nhận các đợt điều chỉnh giảm số lượng tồn kho do kiểm kê thực tế bị lệch so với sổ sách kế toán. Bấm để truy xuất ngay người thực hiện và lý do giải trình.</p>
-          </div>
-        </div>
-        <button type="button" class="audit-alert-strip__btn" id="btn-quick-discrepancy">
-          Truy vết lệch kiểm kê
-        </button>
-      </section>
 
       <!-- ── Filter & Search Section ── -->
       <section class="audit-filters-container">
@@ -123,6 +108,7 @@
               <option value="">Tất cả loại đối tượng</option>
               <option value="INVENTORY">Tồn kho</option>
               <option value="PRICE">Giá bán</option>
+              <option value="PRICELIST">Bảng giá</option>
               <option value="DEBT_LIMIT">Hạn mức công nợ</option>
               <option value="INVOICE">Hoá đơn</option>
             </select>
@@ -153,14 +139,14 @@
         <div class="quick-filter-bar">
           <span class="quick-filter-label">Chọn nhanh:</span>
           <button type="button" class="filter-chip filter-chip--active" data-preset="all">Tất cả</button>
-          <button type="button" class="filter-chip filter-chip--highlight" data-preset="discrepancy">⚠ Lệch tồn kho kiểm kê</button>
+          <button type="button" class="filter-chip filter-chip--highlight" data-preset="discrepancy">Điều chỉnh giảm</button>
           <button type="button" class="filter-chip" data-preset="type-inventory">Tồn kho</button>
           <button type="button" class="filter-chip" data-preset="type-debt">Hạn mức & Công nợ</button>
           <button type="button" class="filter-chip" data-preset="type-price">Giá bán</button>
           <button type="button" class="filter-chip" data-preset="type-invoice">Hoá đơn</button>
           <button type="button" class="filter-chip" data-preset="today">Hôm nay</button>
           <button type="button" class="filter-chip" data-preset="last7days">7 ngày qua</button>
-          <button type="button" class="filter-chip" data-preset="thismonth">Tháng này (Kiểm kê)</button>
+          <button type="button" class="filter-chip" data-preset="thismonth">Tháng này</button>
         </div>
       </section>
 
@@ -175,7 +161,6 @@
                 <th style="width: 170px;">Loại & Thao tác</th>
                 <th style="min-width: 180px;">Đối tượng tác động</th>
                 <th style="min-width: 250px;">Giá trị trước ➔ Sau</th>
-                <th style="min-width: 190px;">Lý do / Căn cứ</th>
                 <th style="width: 90px; text-align: right;">Chi tiết</th>
               </tr>
             </thead>
@@ -225,10 +210,10 @@
   <div id="audit-toast-container"></div>
 
   <!-- Scripts -->
-  <script src="../js/auth.js"></script>
-  <script src="../js/menu-config.js"></script>
-  <script src="../js/vendor/xlsx.full.min.js"></script>
-  <script src="../js/audit-logs.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/menu-config.js"></script>
+  <script src="/js/vendor/xlsx.full.min.js"></script>
+  <script src="/js/audit-logs.js"></script>
 </body>
 </html>
 

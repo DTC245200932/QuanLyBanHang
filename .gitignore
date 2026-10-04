@@ -6,6 +6,8 @@ target/
 out/
 
 # Frontend dependencies and generated bundles
+__pycache__/
+*.py[cod]
 node_modules/
 frontend/dist/
 frontend/build/

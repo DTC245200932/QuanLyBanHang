@@ -315,6 +315,10 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | GET | `/warehouse/vouchers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách phiếu kho đã ghi sổ kèm thông tin đóng băng hệ số |
 | GET | `/warehouse/vouchers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Chi tiết phiếu kho |
 
+`GET /warehouse/inventory?warehouseId={id}` chỉ đọc tồn đã ghi nhận. Kho chưa có
+tồn trả danh sách rỗng; endpoint không tạo tồn mặc định hoặc ghi dữ liệu khi đọc.
+Frontend chọn kho từ `/warehouse/options` và hiển thị 0 cho SKU chưa có bản ghi tồn.
+
 ### Danh sách API Danh mục nhà cung cấp (S2-09)
 
 Hỗ trợ Nhân viên kho quản lý danh mục nhà cung cấp, để phiếu nhập kho luôn gắn đúng nguồn hàng nhằm truy nguyên khi có lô lỗi.
@@ -428,7 +432,10 @@ Mọi chức năng đều kiểm quyền ở tầng server. Endpoint chưa đư�
 1. Tạo MySQL hoặc để ứng dụng tự tạo schema `quanlybanhang`.
 2. Cấu hình SMTP thật nếu cần nhận email kích hoạt/reset.
 3. Chạy `backend\\mvnw.cmd spring-boot:run`.
-4. Phục vụ thư mục repo qua HTTP, ví dụ cổng `5500`, rồi mở `/frontend/index.html`.
+4. Chạy `python serve_frontend.py` hoặc `.\run_frontend.ps1` từ thư mục repo,
+   rồi mở `http://localhost:5500/login`. Trang chủ là `/dashboard`, các trang quản trị
+   là `/admin/users` và `/admin/audit-logs`. Các đường dẫn cũ được chuyển hướng.
+   Link kích hoạt mặc định dùng `/login`; link đặt lại mật khẩu dùng `/reset-password?token=...`.
 
 Tài khoản khởi tạo cho môi trường phát triển là `admin`; mật khẩu lấy từ
 `APP_BOOTSTRAP_ADMIN_PASSWORD`. Hãy đổi ngay sau lần đăng nhập đầu tiên.

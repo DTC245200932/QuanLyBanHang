@@ -7,12 +7,13 @@
 
   if (!Auth.requireLogin()) return;
   if (!Auth.hasRole("ROLE_ADMIN")) {
-    location.href = "../error.html?status=403";
+    location.href = "/error?status=403";
     return;
   }
 
   const TYPE_CONFIG = {
     INVENTORY: { label: "Tồn kho", badgeClass: "entity-tag--INVENTORY" },
+    PRICELIST: { label: "Bảng giá", badgeClass: "entity-tag--PRICE" },
     PRICE: { label: "Giá bán", badgeClass: "entity-tag--PRICE" },
     DEBT_LIMIT: { label: "Hạn mức công nợ", badgeClass: "entity-tag--DEBT_LIMIT" },
     INVOICE: { label: "Hoá đơn", badgeClass: "entity-tag--INVOICE" },
@@ -35,6 +36,11 @@
     IMPORT: "Nhập kho",
     EXPORT: "Xuất kho",
     ADJUST: "Điều chỉnh",
+    ADJUSTMENT: "Điều chỉnh",
+    CANCEL: "Hủy",
+    APPROVE: "Duyệt",
+    REJECT: "Từ chối",
+    NEW_VERSION: "Tạo phiên bản",
   };
 
   const state = {
@@ -95,6 +101,7 @@
   }
 
   function roleLabel(role) {
+    if (!role) return "";
     const normalized = normalizeRole(role);
     return ROLE_NAMES[normalized] || normalized;
   }
@@ -173,19 +180,18 @@
       action: ACTION_NAMES[log.action] || log.action,
       targetCode: String(log.entityId ?? "—"),
       targetName: targetName(log.entityType, log.entityId),
-      context: "Dữ liệu nghiệp vụ trên hệ thống",
       actor: {
         username: log.username,
         fullName: actor?.fullName || log.username,
-        role: actor?.role || "ROLE_VIEWER",
+        role: actor?.role || null,
         avatarThumbnailUrl: actor?.avatarThumbnailUrl || null,
       },
       valBefore: log.oldValue ?? "—",
       valAfter: log.newValue ?? "—",
       deltaText: delta === null ? "Đã thay đổi" : `${delta > 0 ? "+" : ""}${delta}`,
       deltaType: delta === null || delta === 0 ? "neutral" : delta > 0 ? "positive" : "negative",
-      isDiscrepancy: log.entityType === "INVENTORY" && delta !== null && delta < 0,
-      reason: "Ghi tự động từ thao tác nghiệp vụ đã xác thực.",
+      isDiscrepancy: log.entityType === "INVENTORY"
+        && ["ADJUST", "ADJUSTMENT"].includes(log.action) && delta !== null && delta < 0,
     };
   }
 
@@ -255,7 +261,7 @@
     $("kpi-inventory-count").textContent = inventoryLogs.length;
     $("kpi-debt-count").textContent = state.logs.filter((log) => log.targetType === "DEBT_LIMIT").length;
     $("kpi-discrepancy-count").textContent = discrepancyLogs.length;
-    $("kpi-inventory-desc").textContent = `${discrepancyLogs.length} lần lệch kiểm kê âm`;
+    $("kpi-inventory-desc").textContent = `${discrepancyLogs.length} lần điều chỉnh giảm`;
   }
 
   function applyFilters() {
@@ -281,7 +287,6 @@
         log.targetCode,
         log.targetName,
         log.action,
-        log.reason,
         log.actor.fullName,
         log.actor.username,
       ].some((value) => String(value ?? "").toLocaleLowerCase("vi").includes(keyword)));
@@ -322,16 +327,16 @@
     releaseAvatarImages(tbody);
 
     if (state.loading) {
-      tbody.innerHTML = '<tr><td colspan="7" class="audit-load-state"><span class="audit-loading-dot" aria-hidden="true"></span><strong>Đang tải nhật ký thao tác…</strong></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="audit-load-state"><span class="audit-loading-dot" aria-hidden="true"></span><strong>Đang tải nhật ký thao tác…</strong></td></tr>';
       setPaginationEmpty("Đang tải dữ liệu…");
       return;
     }
     if (state.loadError) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" class="audit-load-state audit-load-state--error">
+          <td colspan="6" class="audit-load-state audit-load-state--error">
             <strong>${escapeHtml(state.loadError)}</strong>
-            <span>Dữ liệu cũ không được dùng thay thế khi API gặp lỗi.</span>
+            <span>Kiểm tra kết nối và bấm thử tải lại.</span>
             <button type="button" class="audit-retry-button" data-action="retry">Thử tải lại</button>
           </td>
         </tr>`;
@@ -343,7 +348,7 @@
     if (!total) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" class="audit-load-state">
+          <td colspan="6" class="audit-load-state">
             <strong>Không tìm thấy bản ghi nhật ký phù hợp</strong>
             <span>Thay đổi tiêu chí lọc hoặc bấm “Đặt lại”.</span>
           </td>
@@ -359,16 +364,15 @@
       const type = TYPE_CONFIG[log.targetType] || { label: log.targetType, badgeClass: "" };
       const deltaClass = `diff-delta--${log.deltaType}`;
       const deltaPrefix = log.deltaType === "negative" ? "↓ " : log.deltaType === "positive" ? "↑ " : "";
-      const discrepancy = log.isDiscrepancy ? '<div class="discrepancy-flag">⚠ Lệch tồn kiểm kê</div>' : "";
+      const discrepancy = log.isDiscrepancy ? '<div class="discrepancy-flag">⚠ Điều chỉnh giảm</div>' : "";
 
       return `
         <tr data-log-id="${escapeHtml(log.id)}">
           <td class="audit-time-cell"><span class="audit-time-exact">${escapeHtml(time.formatted)}</span><span class="audit-time-rel">${escapeHtml(time.rel)}</span></td>
-          <td><div class="actor-badge">${actorAvatarMarkup(log.actor)}<div class="actor-info"><span class="actor-name">${escapeHtml(log.actor.fullName)}</span><span class="actor-sub">${escapeHtml(log.actor.username)} · ${escapeHtml(roleLabel(log.actor.role))}</span></div></div></td>
+          <td><div class="actor-badge">${actorAvatarMarkup(log.actor)}<div class="actor-info"><span class="actor-name">${escapeHtml(log.actor.fullName)}</span><span class="actor-sub">${escapeHtml(log.actor.username)}${log.actor.role ? ` · ${escapeHtml(roleLabel(log.actor.role))}` : ""}</span></div></div></td>
           <td><span class="entity-tag ${escapeHtml(type.badgeClass)}">${escapeHtml(type.label)}</span><span class="action-title">${escapeHtml(log.action)}</span></td>
-          <td class="target-cell"><span class="target-code">${escapeHtml(log.targetCode)}</span><span class="target-name">${escapeHtml(log.targetName)}</span><span class="target-context">${escapeHtml(log.context)}</span></td>
+          <td class="target-cell"><span class="target-code">${escapeHtml(log.targetCode)}</span><span class="target-name">${escapeHtml(log.targetName)}</span></td>
           <td class="diff-cell"><div class="diff-box"><span class="diff-val diff-val--before">${escapeHtml(log.valBefore)}</span><span class="diff-arrow">➔</span><span class="diff-val diff-val--after">${escapeHtml(log.valAfter)}</span></div><div style="margin-top:5px"><span class="diff-delta ${deltaClass}">${deltaPrefix}${escapeHtml(log.deltaText)}</span></div>${discrepancy}</td>
-          <td class="reason-cell"><div class="reason-text">${escapeHtml(log.reason)}</div></td>
           <td style="text-align:right"><button class="btn-view-detail" type="button" data-action="view" data-id="${escapeHtml(log.id)}">Xem</button></td>
         </tr>`;
     }).join("");
@@ -394,12 +398,12 @@
     $("audit-detail-subtitle").textContent = `Mã bản ghi: #${log.id}`;
     detailBody.innerHTML = `
       <div class="audit-detail-grid">
-        <div class="detail-block"><div class="detail-block__label">Người thực hiện</div><div class="detail-block__content detail-actor">${actorAvatarMarkup(log.actor, "actor-avatar--detail")}<div><strong>${escapeHtml(log.actor.fullName)}</strong><div>${escapeHtml(log.actor.username)} · ${escapeHtml(roleLabel(log.actor.role))}</div></div></div></div>
+        <div class="detail-block"><div class="detail-block__label">Người thực hiện</div><div class="detail-block__content detail-actor">${actorAvatarMarkup(log.actor, "actor-avatar--detail")}<div><strong>${escapeHtml(log.actor.fullName)}</strong><div>${escapeHtml(log.actor.username)}${log.actor.role ? ` · ${escapeHtml(roleLabel(log.actor.role))}` : ""}</div></div></div></div>
         <div class="detail-block"><div class="detail-block__label">Thời điểm & phân hệ</div><div class="detail-block__content"><strong>${escapeHtml(time.formatted)}</strong><div style="margin-top:5px"><span class="entity-tag ${escapeHtml(type.badgeClass)}">${escapeHtml(type.label)}</span></div></div></div>
       </div>
       <div class="detail-block"><div class="detail-block__label">Đối tượng chịu tác động</div><div class="detail-block__content"><span class="target-code">${escapeHtml(log.targetCode)}</span> <strong>${escapeHtml(log.targetName)}</strong></div></div>
       <table class="diff-comparison-table"><thead><tr><th>Chỉ tiêu</th><th>Giá trị trước</th><th>Giá trị sau</th><th>Chênh lệch</th></tr></thead><tbody><tr><td>Dữ liệu ghi nhận</td><td>${escapeHtml(log.valBefore)}</td><td>${escapeHtml(log.valAfter)}</td><td><strong>${escapeHtml(log.deltaText)}</strong></td></tr></tbody></table>
-      <div class="detail-block"><div class="detail-block__label">Nguồn ghi nhận</div><div class="detail-block__content">${escapeHtml(log.reason)}</div></div>`;
+      `;
     hydrateAvatarImages(detailBody);
     $("modal-audit-detail").hidden = false;
   }
@@ -513,7 +517,7 @@
     document.querySelectorAll(".filter-chip").forEach((chip) => {
       chip.addEventListener("click", () => handlePresetClick(chip.dataset.preset));
     });
-    $("btn-quick-discrepancy").addEventListener("click", () => {
+    $("btn-quick-discrepancy")?.addEventListener("click", () => {
       handlePresetClick("discrepancy");
       $("audit-filters-form").scrollIntoView({ behavior: "smooth", block: "start" });
     });

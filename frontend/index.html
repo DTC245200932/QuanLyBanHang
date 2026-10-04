@@ -8,105 +8,36 @@
       content="Đăng nhập hệ thống quản lý bán hàng và kho."
     />
     <title>Đăng nhập | Quản lý bán hàng & kho</title>
-    <link rel="icon" href="assets/brand-mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="css/login.css" />
+    <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/login.css" />
   </head>
   <body>
     <main class="login-shell">
       <section class="brand-panel" aria-labelledby="brand-title">
         <div class="brand-heading">
-          <a class="brand" href="./" aria-label="Trang đăng nhập">
+          <a class="brand" href="/" aria-label="Trang đăng nhập">
             <span class="brand-mark" aria-hidden="true">
-              <img src="assets/brand-mark.svg" alt="" />
+              <img src="/assets/brand-mark.svg" alt="" />
             </span>
             <span class="brand-name">SaleStock</span>
           </a>
 
           <div class="brand-copy">
-            <p class="brand-kicker">Bán đúng nhịp. Kho đúng số.</p>
-            <h1 id="brand-title">Một nơi để theo dõi bán hàng và tồn kho.</h1>
-            <p class="brand-description">
-              Kiểm soát hoạt động bán hàng, hàng hóa và tồn kho trong một giao diện
-              rõ ràng, nhất quán cho đội ngũ vận hành.
-            </p>
+            <h1 id="brand-title">Quản lý bán hàng và kho</h1>
+            <p class="brand-description">Đăng nhập để làm việc với hàng hóa, kho và tài khoản nhân sự.</p>
           </div>
         </div>
 
-        <div class="operations-visual" aria-hidden="true">
-          <div class="operations-topline">
-            <span>Hoạt động hôm nay</span>
-            <span class="status-pill"><i></i> Đang đồng bộ</span>
-          </div>
-
-          <div class="visual-grid">
-            <div class="warehouse-card">
-              <div class="warehouse-head">
-                <div>
-                  <span class="mini-label">Kho trung tâm</span>
-                  <strong>2.486</strong>
-                  <small>sản phẩm khả dụng</small>
-                </div>
-                <span class="warehouse-icon">
-                  <svg viewBox="0 0 24 24" role="img" aria-label="Kho hàng">
-                    <path d="M3 9.5 12 4l9 5.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5Z" />
-                    <path d="M8 21v-7h8v7M8 11h8" />
-                  </svg>
-                </span>
-              </div>
-
-              <div class="shelf shelf-one">
-                <span></span><span></span><span></span><span></span>
-              </div>
-              <div class="shelf shelf-two">
-                <span></span><span></span><span></span><span></span>
-              </div>
-              <div class="warehouse-footer">
-                <span>Nhập hàng</span>
-                <span class="flow-line"><i></i></span>
-                <span>Xuất bán</span>
-              </div>
-            </div>
-
-            <div class="sales-stack">
-              <div class="sales-card">
-                <span class="mini-label">Đơn đã xử lý</span>
-                <strong>128</strong>
-                <div class="bar-chart">
-                  <i style="--h: 42%"></i>
-                  <i style="--h: 62%"></i>
-                  <i style="--h: 54%"></i>
-                  <i style="--h: 84%"></i>
-                  <i style="--h: 72%"></i>
-                  <i style="--h: 96%"></i>
-                </div>
-              </div>
-
-              <div class="inventory-card">
-                <div class="inventory-copy">
-                  <span class="inventory-dot"></span>
-                  <div>
-                    <strong>Tồn kho ổn định</strong>
-                    <small>12 mặt hàng cần theo dõi</small>
-                  </div>
-                </div>
-                <span class="inventory-arrow">↗</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <p class="brand-footnote">Hệ thống quản lý bán hàng và kho</p>
       </section>
 
       <section class="form-panel" aria-labelledby="login-title">
         <div class="form-wrap">
           <div class="mobile-brand">
-            <img src="assets/brand-mark.svg" alt="" />
+            <img src="/assets/brand-mark.svg" alt="" />
             <span>SaleStock</span>
           </div>
 
           <header class="form-header">
-            <p>Chào mừng quay lại</p>
             <h2 id="login-title">Đăng nhập hệ thống</h2>
             <span>Sử dụng tài khoản được cấp để tiếp tục làm việc.</span>
           </header>
@@ -174,7 +105,7 @@
                 </span>
                 <span>Ghi nhớ đăng nhập</span>
               </label>
-              <a class="account-help" href="forgot-password.html">Quên mật khẩu?</a>
+              <a class="account-help" href="/forgot-password">Quên mật khẩu?</a>
             </div>
 
             <button class="submit-button" type="submit">
@@ -187,12 +118,12 @@
 
           <footer class="form-footer">
             <span class="secure-dot"></span>
-            Phiên đăng nhập được bảo vệ trong hệ thống nội bộ.
+            Liên hệ quản trị viên nếu bạn chưa được cấp tài khoản.
           </footer>
         </div>
       </section>
     </main>
 
-    <script src="js/login.js"></script>
+    <script src="/js/login.js"></script>
   </body>
 </html>

@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Thông báo lỗi của hệ thống SaleStock." />
     <title>Không thể mở trang | SaleStock</title>
-    <link rel="icon" href="assets/brand-mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="css/auth-pages.css" />
+    <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/auth-pages.css" />
   </head>
   <body class="error-page">
     <main class="auth-card error-card" aria-labelledby="error-title">
-      <a class="auth-brand" href="dashboard.html" aria-label="SaleStock - Về Dashboard">
-        <img src="assets/brand-mark.svg" alt="" />
+      <a class="auth-brand" href="/dashboard" aria-label="SaleStock - Về tổng quan">
+        <img src="/assets/brand-mark.svg" alt="" />
         <span>SaleStock</span>
       </a>
 
@@ -27,11 +27,11 @@
       <p class="error-code" id="error-code">—</p>
       <h1 id="error-title">Không thể hoàn tất yêu cầu</h1>
       <p class="lead" id="error-message">
-        Đã xảy ra lỗi không xác định. Vui lòng thử lại hoặc trở về Dashboard.
+        Đã xảy ra lỗi không xác định. Vui lòng thử lại hoặc trở về trang tổng quan.
       </p>
 
       <div class="action-row">
-        <a class="action-primary" href="dashboard.html">Về Dashboard</a>
+        <a class="action-primary" href="/dashboard">Về tổng quan</a>
         <button class="action-secondary" id="back-button" type="button">Quay lại</button>
       </div>
     </main>
@@ -53,14 +53,14 @@
           },
         };
 
-        const requestedStatus = new URLSearchParams(window.location.search)
-          .get("status")
-          ?.trim();
+        const requestedStatus = document.documentElement.dataset.serverStatus
+          || new URLSearchParams(window.location.search).get("status")?.trim()
+          || "404";
         const isValidStatus = /^\d{3}$/.test(requestedStatus || "");
         const status = isValidStatus ? requestedStatus : "";
         const content = errorContent[status] || {
           title: "Không thể hoàn tất yêu cầu",
-          message: "Đã xảy ra lỗi không xác định. Vui lòng thử lại hoặc trở về Dashboard.",
+          message: "Đã xảy ra lỗi không xác định. Vui lòng thử lại hoặc trở về trang tổng quan.",
         };
 
         document.getElementById("error-code").textContent = status || "Lỗi";
@@ -76,7 +76,7 @@
             window.history.back();
             return;
           }
-          window.location.href = "dashboard.html";
+          window.location.href = "/dashboard";
         });
       })();
     </script>

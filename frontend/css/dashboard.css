@@ -65,6 +65,23 @@ a { text-decoration: none; color: inherit; }
   min-height: 100vh;
 }
 
+.main-area { min-width: 0; }
+
+.dashboard-work { margin-top: 28px; }
+.dashboard-work h2 { font-size: 1.125rem; margin-bottom: 12px; }
+.work-list { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.work-link { display: flex; align-items: center; gap: 18px; padding: 20px 22px; }
+.work-link + .work-link { border-top: 1px solid var(--line-light); }
+.work-link:hover { background: var(--teal-soft); }
+.work-link:focus-visible { outline: 3px solid var(--teal); outline-offset: -3px; }
+.work-link__icon { color: var(--teal-deep); flex: 0 0 24px; }
+.work-link__icon svg { width: 24px; height: 24px; }
+.work-link__text { display: grid; gap: 5px; min-width: 0; }
+.work-link__title { font-size: 1rem; font-weight: 600; }
+.work-link__description { color: var(--ink-600); font-size: .875rem; line-height: 1.5; }
+.work-link__open { margin-left: auto; font-size: .875rem; color: var(--teal-deep); flex-shrink: 0; }
+@media (max-width: 480px) { .work-link { gap: 12px; padding: 18px 14px; } }
+
 /* ═══════════════════════════════════
    SIDEBAR
    ═══════════════════════════════════ */

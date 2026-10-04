@@ -15,7 +15,7 @@ public class AccountMailService {
     private static final Logger logger = LoggerFactory.getLogger(AccountMailService.class);
     private final JavaMailSender mailSender;
 
-    @Value("${app.login.frontend-url:http://localhost:5500/frontend/index.html}")
+    @Value("${app.login.frontend-url:http://localhost:5500/login}")
     private String loginUrl;
 
     @Value("${spring.mail.username:}")

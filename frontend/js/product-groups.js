@@ -19,7 +19,7 @@
   /* ── Auth guard ────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
 
-  const CAN_MANAGE = Auth.hasPermission('PRODUCT_GROUP_MANAGE');
+  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
 
   /* ── Helpers ───────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);

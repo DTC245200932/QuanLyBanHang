@@ -109,7 +109,7 @@
         ? escapeHtml(product.packingSpecification)
         : '<span class="product-backend-note">Chưa có dữ liệu quy cách</span>';
       const costCell = canManage
-        ? `<td class="cost-column"><span class="product-price">${product.costPrice == null ? "—" : formatCurrency(product.costPrice)}</span>${product.costPrice == null ? '<span class="product-detail">API chưa trả giá vốn</span>' : ""}</td>`
+        ? `<td class="cost-column"><span class="product-price">${product.costPrice == null ? "—" : formatCurrency(product.costPrice)}</span>${product.costPrice == null ? '<span class="product-detail">Chưa có giá vốn</span>' : ""}</td>`
         : "";
       const actions = canManage
         ? `<button class="product-edit" type="button" data-edit-product="${product.id}">Sửa</button>
@@ -198,7 +198,7 @@
     $("product-active").value = String(product?.active !== false);
     $("product-image-url").value = product?.imageUrl || "";
     costHelp.textContent = product && product.costPrice == null
-      ? "Backend chưa trả giá vốn hiện tại; cần nhập lại để cập nhật an toàn."
+      ? "Nhập giá vốn hiện tại để lưu sản phẩm."
       : "Chỉ Quản lý kinh doanh được xem và cập nhật.";
     modal.hidden = false;
     $("product-code").focus();

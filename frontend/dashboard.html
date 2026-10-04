@@ -8,16 +8,16 @@
       content="Bảng điều khiển hệ thống quản lý bán hàng và kho SaleStock."
     />
     <title>Tổng quan | SaleStock</title>
-    <link rel="icon" href="assets/brand-mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="css/dashboard.css" />
+    <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
   </head>
   <body>
     <div class="app-shell">
       <!-- ── Sidebar ── -->
       <aside class="sidebar" id="sidebar">
         <div class="sidebar__header">
-          <a class="sidebar__brand" href="dashboard.html">
-            <img src="assets/brand-mark.svg" alt="" class="sidebar__logo" />
+          <a class="sidebar__brand" href="/dashboard">
+            <img src="/assets/brand-mark.svg" alt="" class="sidebar__logo" />
             <span class="sidebar__brand-name">SaleStock</span>
           </a>
           <button
@@ -82,7 +82,7 @@
           </div>
 
           <div class="topbar__actions">
-            <a class="topbar__btn topbar__btn--icon" href="profile.html" title="Hồ sơ cá nhân" aria-label="Hồ sơ cá nhân">
+            <a class="topbar__btn topbar__btn--icon" href="/profile" title="Hồ sơ cá nhân" aria-label="Hồ sơ cá nhân">
               <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>
             </a>
             <button
@@ -114,27 +114,14 @@
           <div class="welcome-card" id="welcome-card">
             <div class="welcome-card__text">
               <h1 id="welcome-greeting">Chào mừng quay lại</h1>
-              <p id="welcome-subtitle">
-                Hệ thống quản lý bán hàng và kho đang hoạt động bình thường.
-              </p>
             </div>
             <div class="welcome-card__time" id="current-time"></div>
           </div>
 
-          <div class="stats-grid" id="stats-grid">
-            <!-- Stats cards rendered by JS based on role -->
-          </div>
-
-          <div class="content-placeholder" id="content-placeholder">
-            <svg viewBox="0 0 24 24" width="48" height="48">
-              <path
-                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
-              />
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-              <line x1="12" y1="22.08" x2="12" y2="12" />
-            </svg>
-            <p>Chọn một mục từ menu bên trái để bắt đầu làm việc.</p>
-          </div>
+          <section class="dashboard-work" aria-labelledby="work-title">
+            <h2 id="work-title">Công việc</h2>
+            <div class="work-list" id="work-list"></div>
+          </section>
         </main>
       </div>
     </div>
@@ -239,8 +226,8 @@
       </div>
     </div>
 
-    <script src="js/auth.js"></script>
-    <script src="js/menu-config.js"></script>
-    <script src="js/dashboard.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/menu-config.js"></script>
+    <script src="/js/dashboard.js"></script>
   </body>
 </html>

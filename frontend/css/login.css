@@ -48,7 +48,7 @@ label {
 
 .login-shell {
   width: min(1380px, calc(100% - 48px));
-  min-height: min(860px, calc(100vh - 48px));
+  min-height: min(640px, calc(100vh - 48px));
   margin: 24px auto;
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
@@ -61,11 +61,11 @@ label {
 
 .brand-panel {
   position: relative;
-  min-height: 812px;
+  min-height: 560px;
   padding: 50px clamp(42px, 5vw, 76px) 38px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   overflow: hidden;
   color: var(--white);
   background:

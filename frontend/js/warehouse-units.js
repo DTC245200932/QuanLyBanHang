@@ -10,280 +10,26 @@
 (() => {
   if (!Auth.requireLogin()) return;
 
-  const user = Auth.getUser() || { username: "warehouse.staff", fullName: "Nhân viên kho" };
+  const user = Auth.getUser() || {};
+  const canManageUnits = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_SALES_MANAGER");
+  const canRecordVouchers = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF");
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (v) => String(v ?? "").replace(/[&<>'"]/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
   })[c]);
   const formatNumber = (num) => new Intl.NumberFormat("vi-VN").format(Number(num) || 0);
+  const statusLabel = (status) => ({
+    RECORDED: "Đã ghi sổ", PENDING_APPROVAL: "Chờ duyệt",
+    CANCELLED: "Đã hủy", REJECTED: "Đã từ chối",
+  })[status] || status || "—";
 
   // ══════════════════════════════════════════════════
-  // 1. DATA STORE (PERSISTENT & DEMO SEED DATA)
+  // Data from the API
   // ══════════════════════════════════════════════════
-  const STORAGE_KEY = "salestock_unit_conversions_v2";
-
-  const INITIAL_PRODUCTS = [
-    {
-      id: "prod-1",
-      sku: "HEIN-330",
-      name: "Bia Heineken Sleek 330ml",
-      category: "Bia & Rượu",
-      baseUnit: "lon",
-      price: 21000,
-      costPrice: 17500,
-      inventoryBaseQty: 1480,
-      units: [
-        { id: "u-1", name: "lon", isBase: true, conversionRate: 1, barcode: "893456789001", note: "Đơn vị cơ sở lưu kho" },
-        { id: "u-2", name: "lốc", isBase: false, conversionRate: 6, barcode: "893456789002", note: "1 lốc = 6 lon" },
-        { id: "u-3", name: "thùng", isBase: false, conversionRate: 24, barcode: "893456789003", note: "1 thùng = 24 lon (4 lốc)" },
-        { id: "u-4", name: "két", isBase: false, conversionRate: 24, barcode: "893456789004", note: "1 két nhựa = 24 lon" }
-      ],
-      unitHistory: [
-        { id: "h-1", unitName: "thùng", oldRate: 24, newRate: 24, changedAt: "2026-09-15 08:30", changedBy: "Thủ kho", reason: "Khai báo quy cách chuẩn ban đầu (1 thùng = 24 lon)" }
-      ]
-    },
-    {
-      id: "prod-2",
-      sku: "COCA-320",
-      name: "Nước ngọt Coca-Cola Sleek 320ml",
-      category: "Nước giải khát",
-      baseUnit: "lon",
-      price: 11000,
-      costPrice: 8500,
-      inventoryBaseQty: 2400,
-      units: [
-        { id: "u-5", name: "lon", isBase: true, conversionRate: 1, barcode: "893456789005", note: "Đơn vị cơ sở lưu kho" },
-        { id: "u-6", name: "lốc", isBase: false, conversionRate: 6, barcode: "893456789006", note: "1 lốc = 6 lon" },
-        { id: "u-7", name: "thùng", isBase: false, conversionRate: 24, barcode: "893456789007", note: "1 thùng = 24 lon chuẩn" },
-        { id: "u-8", name: "thùng 30", isBase: false, conversionRate: 30, barcode: "893456789008", note: "1 thùng = 30 lon (Quy cách Tết)" }
-      ],
-      unitHistory: [
-        { id: "h-2", unitName: "thùng", oldRate: 24, newRate: 24, changedAt: "2026-09-15 08:30", changedBy: "Thủ kho", reason: "Khai báo quy cách chuẩn ban đầu" }
-      ]
-    },
-    {
-      id: "prod-3",
-      sku: "TIGER-330",
-      name: "Bia Tiger Crystal 330ml",
-      category: "Bia & Rượu",
-      baseUnit: "lon",
-      price: 20000,
-      costPrice: 16800,
-      inventoryBaseQty: 960,
-      units: [
-        { id: "u-9", name: "lon", isBase: true, conversionRate: 1, barcode: "893456789009", note: "Đơn vị cơ sở lưu kho" },
-        { id: "u-10", name: "lốc", isBase: false, conversionRate: 6, barcode: "893456789010", note: "1 lốc = 6 lon" },
-        { id: "u-11", name: "thùng", isBase: false, conversionRate: 24, barcode: "893456789011", note: "1 thùng = 24 lon" }
-      ],
-      unitHistory: []
-    },
-    {
-      id: "prod-4",
-      sku: "ONTHO-380",
-      name: "Sữa đặc có đường Ông Thọ đỏ 380g",
-      category: "Sữa & Bơ",
-      baseUnit: "lon",
-      price: 26000,
-      costPrice: 22000,
-      inventoryBaseQty: 576,
-      units: [
-        { id: "u-12", name: "lon", isBase: true, conversionRate: 1, barcode: "893456789012", note: "Đơn vị cơ sở lưu kho" },
-        { id: "u-13", name: "lốc", isBase: false, conversionRate: 4, barcode: "893456789013", note: "1 lốc = 4 lon" },
-        { id: "u-14", name: "thùng", isBase: false, conversionRate: 48, barcode: "893456789014", note: "1 thùng = 48 lon (12 lốc)" }
-      ],
-      unitHistory: []
-    },
-    {
-      id: "prod-5",
-      sku: "REDBULL-250",
-      name: "Nước tăng lực Red Bull 250ml",
-      category: "Nước giải khát",
-      baseUnit: "lon",
-      price: 13500,
-      costPrice: 11000,
-      inventoryBaseQty: 720,
-      units: [
-        { id: "u-15", name: "lon", isBase: true, conversionRate: 1, barcode: "893456789015", note: "Đơn vị cơ sở lưu kho" },
-        { id: "u-16", name: "lốc", isBase: false, conversionRate: 6, barcode: "893456789016", note: "1 lốc = 6 lon" },
-        { id: "u-17", name: "thùng", isBase: false, conversionRate: 24, barcode: "893456789017", note: "1 thùng = 24 lon" }
-      ],
-      unitHistory: []
-    },
-    {
-      id: "prod-6",
-      sku: "SIMPLY-1L",
-      name: "Dầu ăn Simply nguyên chất 1L",
-      category: "Gia vị & Dầu ăn",
-      baseUnit: "chai",
-      price: 58000,
-      costPrice: 49000,
-      inventoryBaseQty: 360,
-      units: [
-        { id: "u-18", name: "chai", isBase: true, conversionRate: 1, barcode: "893456789018", note: "Đơn vị cơ sở lưu kho" },
-        { id: "u-19", name: "thùng", isBase: false, conversionRate: 12, barcode: "893456789019", note: "1 thùng = 12 chai" }
-      ],
-      unitHistory: []
-    },
-    {
-      id: "prod-7",
-      sku: "HAOHAO-75",
-      name: "Mì ăn liền Hảo Hảo tôm chua cay 75g",
-      category: "Mì ăn liền",
-      baseUnit: "gói",
-      price: 4500,
-      costPrice: 3800,
-      inventoryBaseQty: 1800,
-      units: [
-        { id: "u-20", name: "gói", isBase: true, conversionRate: 1, barcode: "893456789020", note: "Đơn vị cơ sở lưu kho" },
-        { id: "u-21", name: "lốc", isBase: false, conversionRate: 5, barcode: "893456789021", note: "1 lốc = 5 gói" },
-        { id: "u-22", name: "thùng", isBase: false, conversionRate: 30, barcode: "893456789022", note: "1 thùng = 30 gói" }
-      ],
-      unitHistory: []
-    }
-  ];
-
-  const INITIAL_RECEIPTS = [
-    {
-      id: "PNK-202609-001",
-      type: "IMPORT",
-      date: "2026-09-20",
-      createdAt: "2026-09-20 09:15",
-      warehouse: "Kho Tổng Tân Bình (HCM)",
-      partner: "Nhà máy Bia Heineken Việt Nam",
-      createdBy: "Nguyễn Văn Kho (Thủ kho)",
-      notes: "Nhập hàng theo thùng định kỳ đợt 1 tháng 9",
-      status: "RECORDED",
-      items: [
-        {
-          sku: "HEIN-330",
-          productName: "Bia Heineken Sleek 330ml",
-          inputUnit: "thùng",
-          inputQuantity: 10,
-          conversionRateSnapshot: 24, // Snapshot cố định
-          baseUnit: "lon",
-          baseQuantity: 240, // 10 * 24 = 240 lon
-          notes: "Nhập 10 thùng quy đổi ghi sổ 240 lon"
-        },
-        {
-          sku: "TIGER-330",
-          productName: "Bia Tiger Crystal 330ml",
-          inputUnit: "thùng",
-          inputQuantity: 15,
-          conversionRateSnapshot: 24,
-          baseUnit: "lon",
-          baseQuantity: 360,
-          notes: "Nhập 15 thùng quy đổi ghi sổ 360 lon"
-        }
-      ]
-    },
-    {
-      id: "PNK-202609-002",
-      type: "IMPORT",
-      date: "2026-09-22",
-      createdAt: "2026-09-22 14:00",
-      warehouse: "Kho Tổng Tân Bình (HCM)",
-      partner: "Công ty Nước Giải Khát Coca-Cola",
-      createdBy: "Nguyễn Văn Kho (Thủ kho)",
-      notes: "Nhập thùng 24 lon quy cách chuẩn",
-      status: "RECORDED",
-      items: [
-        {
-          sku: "COCA-320",
-          productName: "Nước ngọt Coca-Cola Sleek 320ml",
-          inputUnit: "thùng",
-          inputQuantity: 20,
-          conversionRateSnapshot: 24,
-          baseUnit: "lon",
-          baseQuantity: 480,
-          notes: "Nhập 20 thùng quy đổi ghi sổ 480 lon"
-        }
-      ]
-    },
-    {
-      id: "PXK-202609-003",
-      type: "EXPORT",
-      date: "2026-09-25",
-      createdAt: "2026-09-25 10:30",
-      warehouse: "Kho Tổng Tân Bình (HCM)",
-      partner: "Kho Trung Chuyển Cầu Giấy (HN)",
-      createdBy: "Nguyễn Văn Kho (Thủ kho)",
-      notes: "Điều phối chuyển kho liên tỉnh",
-      status: "RECORDED",
-      items: [
-        {
-          sku: "HEIN-330",
-          productName: "Bia Heineken Sleek 330ml",
-          inputUnit: "thùng",
-          inputQuantity: 5,
-          conversionRateSnapshot: 24,
-          baseUnit: "lon",
-          baseQuantity: 120,
-          notes: "Xuất 5 thùng quy đổi trừ sổ kho 120 lon"
-        }
-      ]
-    },
-    {
-      id: "DH-202609-004",
-      type: "ORDER",
-      date: "2026-09-27",
-      createdAt: "2026-09-27 16:45",
-      warehouse: "Kho Tổng Tân Bình (HCM)",
-      partner: "Đại lý Cấp 1 Phương Nam",
-      createdBy: "Trần Thị Bán Hàng",
-      notes: "Đơn hàng bán sỉ theo thùng và lốc",
-      status: "RECORDED",
-      items: [
-        {
-          sku: "HEIN-330",
-          productName: "Bia Heineken Sleek 330ml",
-          inputUnit: "thùng",
-          inputQuantity: 2,
-          conversionRateSnapshot: 24,
-          baseUnit: "lon",
-          baseQuantity: 48,
-          notes: "Bán 2 thùng = 48 lon"
-        },
-        {
-          sku: "HEIN-330",
-          productName: "Bia Heineken Sleek 330ml",
-          inputUnit: "lốc",
-          inputQuantity: 3,
-          conversionRateSnapshot: 6,
-          baseUnit: "lon",
-          baseQuantity: 18,
-          notes: "Bán 3 lốc = 18 lon"
-        }
-      ]
-    },
-    {
-      id: "PNK-202609-005",
-      type: "IMPORT",
-      date: "2026-09-29",
-      createdAt: "2026-09-29 11:20",
-      warehouse: "Kho Tổng Tân Bình (HCM)",
-      partner: "Công ty Cổ phần Sữa Vinamilk",
-      createdBy: "Nguyễn Văn Kho (Thủ kho)",
-      notes: "Nhập sữa đặc theo kiện thùng lớn",
-      status: "RECORDED",
-      items: [
-        {
-          sku: "ONTHO-380",
-          productName: "Sữa đặc có đường Ông Thọ đỏ 380g",
-          inputUnit: "thùng",
-          inputQuantity: 10,
-          conversionRateSnapshot: 48,
-          baseUnit: "lon",
-          baseQuantity: 480,
-          notes: "Nhập 10 thùng quy đổi ghi sổ 480 lon"
-        }
-      ]
-    }
-  ];
-
-  // Store Controller
   const Store = {
     products: [],
     receipts: [],
+    loaded: false,
 
     async request(path, options) {
       const response = await Auth.apiFetch(path, options);
@@ -295,12 +41,26 @@
     },
 
     async init() {
-      const [products, inventory, vouchers, orders, warehouses] = await Promise.all([
+      this.loaded = false;
+      const warehouses = await this.request("/warehouse/options");
+      const currentWarehouse = $("active-warehouse-select")?.value;
+      const preferredWarehouse = warehouses.find(warehouse => String(warehouse.id) === currentWarehouse)
+        || warehouses.find(warehouse => user.warehouses?.some(scope => scope.id === warehouse.id))
+        || warehouses[0];
+      if (!preferredWarehouse) throw new Error("Chưa có kho đang hoạt động. Vui lòng liên hệ quản trị viên.");
+      for (const id of ["active-warehouse-select", "receipt-warehouse"]) {
+        const select = $(id);
+        if (select) {
+          select.innerHTML = warehouses.map(warehouse =>
+            `<option value="${warehouse.id}">${escapeHtml(warehouse.name)}</option>`).join("");
+          select.value = String(preferredWarehouse.id);
+        }
+      }
+      const [products, inventory, vouchers, orders] = await Promise.all([
         this.request("/products"),
-        this.request("/warehouse/inventory"),
-        this.request("/warehouse/vouchers"),
+        this.request(`/warehouse/inventory?warehouseId=${preferredWarehouse.id}`),
+        this.request(`/warehouse/vouchers?warehouseId=${preferredWarehouse.id}`),
         this.request("/orders"),
-        this.request("/warehouse/options"),
       ]);
 
       const conversions = await Promise.all((products || []).map((product) =>
@@ -325,7 +85,6 @@
             barcode: unit.barcode || "",
             note: unit.description || "",
           })),
-          unitHistory: [],
         };
       });
 
@@ -376,13 +135,20 @@
       this.receipts = [...voucherRows, ...orderRows].sort((a, b) =>
         new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-      for (const id of ["active-warehouse-select", "receipt-warehouse"]) {
+      for (const [id, field, label] of [
+        ["sku-category-filter", "category", "Tất cả nhóm hàng"],
+        ["sku-baseunit-filter", "baseUnit", "Tất cả đơn vị cơ sở"],
+      ]) {
         const select = $(id);
-        if (select && (warehouses || []).length) {
-          select.innerHTML = warehouses.map((warehouse) =>
-            `<option value="${warehouse.id}">${escapeHtml(warehouse.name)}</option>`).join("");
+        if (select) {
+          const current = select.value;
+          const values = [...new Set(this.products.map(product => product[field]).filter(Boolean))].sort();
+          select.innerHTML = `<option value="">${label}</option>` + values.map(value =>
+            `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+          if (values.includes(current)) select.value = current;
         }
       }
+      this.loaded = true;
     },
 
     save() {
@@ -580,12 +346,12 @@
     });
   }
   $("btn-avatar")?.addEventListener("click", () => {
-    window.location.href = "../profile.html";
+    window.location.href = "/profile";
   });
 
   const roleNames = (user.roles || []).map(MenuConfig.getRoleDisplayName);
   const scope = [...(user.warehouses || []), ...(user.territories || [])].map((item) => item.name);
-  $("user-role").textContent = [roleNames.join(", "), scope.join(", ")].filter(Boolean).join(" · ") || "Kho Tân Bình";
+  $("user-role").textContent = [roleNames.join(", "), scope.join(", ")].filter(Boolean).join(" · ") || "—";
 
   document.querySelectorAll("#btn-logout, #btn-logout-topbar").forEach((btn) => btn.addEventListener("click", Auth.logout));
 
@@ -617,7 +383,7 @@
   const panels = document.querySelectorAll(".tab-panel");
 
   function updateWarehouseMenuState(tabId) {
-    const activeMenuId = tabId === "sku-units" ? "product-units" : "import-export";
+    const activeMenuId = tabId === "sku-units" ? "product-units" : tabId === "inventory-report" ? "warehouse" : "import-export";
     nav.querySelectorAll("[data-page]").forEach((link) => {
       link.classList.toggle("sidebar__link--active", link.dataset.page === activeMenuId);
     });
@@ -637,7 +403,7 @@
 
     if (tabId === "sku-units") renderSkuTable();
     if (tabId === "create-receipt") prepareReceiptForm();
-    if (tabId === "ledger-audit") { renderLedgerTable(); renderSandboxOptions(); }
+    if (tabId === "ledger-audit") renderLedgerTable();
     if (tabId === "inventory-report") renderInventoryTable();
     updateWarehouseMenuState(tabId);
     const tabParam = {
@@ -658,24 +424,19 @@
     tab.addEventListener("click", () => switchTab(tab.dataset.tab));
   });
 
-  // Check URL params for initial tab (e.g. ?tab=receipts)
-  if (initialTabParam === "receipts") switchTab("create-receipt");
-  else if (initialTabParam === "ledger") switchTab("ledger-audit");
-  else if (initialTabParam === "inventory") switchTab("inventory-report");
-  else switchTab("sku-units");
+  $("btn-quick-new-receipt").hidden = !canRecordVouchers;
+  $("tab-create-receipt").hidden = !canRecordVouchers;
+  $("btn-open-create-unit-modal").hidden = !canManageUnits;
 
   $("btn-quick-new-receipt")?.addEventListener("click", () => switchTab("create-receipt"));
-  $("btn-verify-integrity")?.addEventListener("click", () => {
-    switchTab("ledger-audit");
-    $("sandbox-sku-select")?.scrollIntoView({ behavior: "smooth", block: "center" });
-  });
 
   // ══════════════════════════════════════════════════
   // 5. UPDATE METRICS STRIP
   // ══════════════════════════════════════════════════
   function updateMetrics() {
+    if (!Store.loaded) return;
     $("metric-sku-count").textContent = Store.products.length;
-    const totalUnits = Store.products.reduce((acc, p) => acc + p.units.length, 0);
+    const totalUnits = Store.products.reduce((acc, p) => acc + p.units.filter((unit) => !unit.isBase).length, 0);
     $("metric-unit-count").textContent = `${totalUnits} đơn vị`;
     $("metric-ledger-count").textContent = `${Store.receipts.length} chứng từ`;
   }
@@ -756,14 +517,12 @@
               <button class="action-btn" data-action="edit-unit" data-sku="${p.sku}" title="Sửa hệ số quy đổi">
                 Sửa hệ số
               </button>
-              <button class="action-btn" data-action="history-unit" data-sku="${p.sku}" title="Xem lịch sử thay đổi hệ số">
-                Lịch sử (${p.unitHistory?.length || 0})
-              </button>
             </div>
           </td>
         </tr>
       `;
     }).join("");
+    tbody.querySelectorAll("[data-action]").forEach(button => { button.hidden = !canManageUnits; });
   }
 
   $("sku-search-input")?.addEventListener("input", renderSkuTable);
@@ -796,7 +555,6 @@
         openUnitModal(sku, convertedUnits[0]);
       }
     }
-    if (action === "history-unit") openHistoryModal(sku);
   });
 
   // ══════════════════════════════════════════════════
@@ -1043,7 +801,7 @@
         items: receiptState.lines
       });
 
-      showToast(`Đã ghi sổ thành công ${receiptRecord.id}! Hệ số snapshot đã được đóng băng.`, "success");
+      showToast(`Đã ghi sổ phiếu ${receiptRecord.id}.`, "success");
 
       // Reset form lines
       const defaultLine = createDefaultReceiptLine();
@@ -1132,13 +890,10 @@
               <span class="user-meta">${escapeHtml(r.createdBy)}</span>
             </td>
             <td rowspan="${r.items.length}">
-              <span class="badge badge--pill badge--snapshot" title="Dữ liệu sổ cái bất biến">
-                <svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Đã chốt
-              </span>
+              <span class="badge badge--pill">${escapeHtml(statusLabel(r.status))}</span>
             </td>
             <td rowspan="${r.items.length}" class="th-actions">
-              <button class="action-btn" data-view-receipt="${r.id}" title="Xem chi tiết phiếu và chứng nhận snapshot">
+              <button class="action-btn" data-view-receipt="${r.id}" title="Xem chi tiết phiếu">
                 Chi tiết
               </button>
             </td>
@@ -1159,149 +914,7 @@
   });
 
   // ══════════════════════════════════════════════════
-  // 9. S2-07 INTERACTIVE SNAPSHOT SANDBOX (TAB 3)
-  // ══════════════════════════════════════════════════
-  function renderSandboxOptions() {
-    const skuSelect = $("sandbox-sku-select");
-    if (!skuSelect) return;
-
-    skuSelect.innerHTML = Store.products.map((p) => `
-      <option value="${p.sku}">${p.sku} · ${p.name} (Đơn vị cơ sở: ${p.baseUnit})</option>
-    `).join("");
-
-    updateSandboxUnits();
-  }
-
-  function updateSandboxUnits() {
-    const sku = $("sandbox-sku-select").value;
-    const prod = Store.getProductBySku(sku);
-    const unitSelect = $("sandbox-unit-select");
-    if (!prod || !unitSelect) return;
-
-    const bulkUnits = prod.units.filter((u) => !u.isBase);
-    unitSelect.innerHTML = bulkUnits.map((u) => `
-      <option value="${u.name}" data-rate="${u.conversionRate}">
-        ${u.name} (Hệ số hiện tại: ${u.conversionRate} ${prod.baseUnit})
-      </option>
-    `).join("");
-
-    const currentRate = bulkUnits[0]?.conversionRate || 24;
-    $("sandbox-new-rate").value = currentRate === 24 ? 20 : 24;
-    $("sandbox-rate-suffix").textContent = `${prod.baseUnit} / ${bulkUnits[0]?.name || "đơn vị"}`;
-  }
-
-  $("sandbox-sku-select")?.addEventListener("change", updateSandboxUnits);
-  $("sandbox-unit-select")?.addEventListener("change", () => {
-    const sku = $("sandbox-sku-select").value;
-    const prod = Store.getProductBySku(sku);
-    const unitName = $("sandbox-unit-select").value;
-    const unit = Store.getUnit(sku, unitName);
-    if (unit && prod) {
-      $("sandbox-rate-suffix").textContent = `${prod.baseUnit} / ${unit.name}`;
-      $("sandbox-new-rate").value = unit.conversionRate === 24 ? 20 : (unit.conversionRate === 20 ? 24 : unit.conversionRate + 2);
-    }
-  });
-
-  $("btn-run-sandbox-test")?.addEventListener("click", async () => {
-    const sku = $("sandbox-sku-select").value;
-    const unitName = $("sandbox-unit-select").value;
-    const newRate = Number($("sandbox-new-rate").value);
-    const prod = Store.getProductBySku(sku);
-    const unit = Store.getUnit(sku, unitName);
-
-    if (!newRate || newRate <= 0) {
-      showToast("Vui lòng nhập hệ số quy đổi mới hợp lệ.", "warning");
-      return;
-    }
-
-    const oldRate = unit.conversionRate;
-
-    // 1. Thực hiện đổi hệ số trong cấu hình SKU
-    await Store.saveUnit(sku, {
-      name: unitName,
-      conversionRate: newRate,
-      note: `Đổi hệ số quy cách kiểm chứng: ${oldRate} → ${newRate} ${prod.baseUnit}`
-    });
-
-    // 2. Tìm các giao dịch trong quá khứ có sử dụng đơn vị này của SKU này
-    const pastTransactions = [];
-    Store.receipts.forEach((r) => {
-      r.items.forEach((item) => {
-        if (item.sku === sku && item.inputUnit.toLowerCase() === unitName.toLowerCase()) {
-          pastTransactions.push({ receiptId: r.id, date: r.date, item });
-        }
-      });
-    });
-
-    // 3. Render Kết quả Kiểm chứng toàn vẹn (Live Verification Report)
-    const resultsBox = $("sandbox-results-box");
-    resultsBox.hidden = false;
-
-    const samplePast = pastTransactions[0] || {
-      receiptId: "PNK-202609-001",
-      date: "20/09/2026",
-      item: { inputQuantity: 10, conversionRateSnapshot: oldRate, baseQuantity: 10 * oldRate }
-    };
-
-    const pastQty = samplePast.item.inputQuantity;
-    const pastSnapshot = samplePast.item.conversionRateSnapshot;
-    const pastRecordedBase = samplePast.item.baseQuantity;
-
-    // Giả lập giao dịch mới với cùng số lượng theo hệ số mới
-    const futureExpectedBase = pastQty * newRate;
-
-    resultsBox.innerHTML = `
-      <div class="verification-status-banner">
-        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
-        <span>
-          CHỨNG THỰC BẢO TOÀN THÀNH CÔNG: Đã đổi hệ số "${escapeHtml(unitName)}" từ <strong>${oldRate}</strong> thành <strong>${newRate} ${prod.baseUnit}</strong>.
-          Toàn bộ ${pastTransactions.length} giao dịch quá khứ giữ nguyên 100% snapshot!
-        </span>
-      </div>
-
-      <div class="comparison-grid">
-        <div class="comparison-card comparison-card--past">
-          <span class="comparison-card__tag">🔒 GIAO DỊCH QUÁ KHỨ (BẢO LƯU NGUYÊN VẸN)</span>
-          <h4>Phiếu ${escapeHtml(samplePast.receiptId)} (Lập ngày ${escapeHtml(samplePast.date)})</h4>
-          <p>
-            Chứng từ nhập: <strong>${pastQty} ${escapeHtml(unitName)}</strong>.<br>
-            Hệ số Snapshot lúc ghi sổ: <strong>× ${pastSnapshot} ${prod.baseUnit}</strong>.<br>
-            Số lượng cơ sở trong sổ cái:
-          </p>
-          <span class="formula-highlight text-emerald">
-            ${pastQty} ${escapeHtml(unitName)} × ${pastSnapshot} = ${formatNumber(pastRecordedBase)} ${prod.baseUnit} (KHÔNG ĐỔI)
-          </span>
-          <p style="margin-top:8px; font-size:0.75rem; color:#6b21a8">
-            ✔ Xác nhận: Số lon đã ghi sổ hoàn toàn không bị đổi theo hệ số mới ${newRate}.
-          </p>
-        </div>
-
-        <div class="comparison-card comparison-card--future">
-          <span class="comparison-card__tag">⚡ GIAO DỊCH MỚI (ÁP DỤNG HỆ SỐ MỚI)</span>
-          <h4>Giao dịch lập từ thời điểm này</h4>
-          <p>
-            Nếu nhập cùng: <strong>${pastQty} ${escapeHtml(unitName)}</strong>.<br>
-            Hệ số quy đổi mới áp dụng: <strong>× ${newRate} ${prod.baseUnit}</strong>.<br>
-            Số lượng cơ sở ghi sổ mới:
-          </p>
-          <span class="formula-highlight" style="color:#1d4ed8">
-            ${pastQty} ${escapeHtml(unitName)} × ${newRate} = ${formatNumber(futureExpectedBase)} ${prod.baseUnit} (Tính theo hệ số mới)
-          </span>
-          <p style="margin-top:8px; font-size:0.75rem; color:#1e40af">
-            ✔ Đúng nghiệp vụ: Hàng đóng gói mới áp dụng hệ số ${newRate} đúng theo quy cách mới.
-          </p>
-        </div>
-      </div>
-    `;
-
-    renderLedgerTable();
-    renderSkuTable();
-    updateMetrics();
-    showToast(`Đã đối soát toàn vẹn! Hệ số mới: 1 ${unitName} = ${newRate} ${prod.baseUnit}.`);
-  });
-
-  // ══════════════════════════════════════════════════
-  // 10. PANEL 4: DUAL-UNIT INVENTORY REPORT (TAB 4)
+  // Inventory report
   // ══════════════════════════════════════════════════
   function renderInventoryTable() {
     const search = $("inv-search-input").value.trim().toLowerCase();
@@ -1351,6 +964,7 @@
         </tr>
       `;
     }).join("");
+    tbody.querySelectorAll("[data-action=quick-import]").forEach(button => { button.hidden = !canRecordVouchers; });
   }
 
   $("inv-search-input")?.addEventListener("input", renderInventoryTable);
@@ -1407,7 +1021,7 @@
           "Tên sản phẩm": item.productName,
           "Đơn vị gọi hàng": item.inputUnit,
           "Số lượng gọi hàng": item.inputQuantity,
-          "Hệ số Snapshot chốt sổ": item.conversionRateSnapshot,
+          "Hệ số ghi sổ": item.conversionRateSnapshot,
           "Đơn vị cơ sở": item.baseUnit,
           "Số lượng cơ sở ghi sổ": item.baseQuantity,
           "Người lập": r.createdBy
@@ -1416,9 +1030,9 @@
     });
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "SoCaiKhoSnapshot");
-    XLSX.writeFile(workbook, "So_Cai_Kho_Snapshot_S207.xlsx");
-    showToast("Đã xuất file Excel sổ cái giao dịch bảo toàn!");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "SoCaiKho");
+    XLSX.writeFile(workbook, "so-cai-kho.xlsx");
+    showToast("Đã xuất sổ cái kho.");
   });
 
   // ══════════════════════════════════════════════════
@@ -1533,44 +1147,6 @@
   // ══════════════════════════════════════════════════
   // 12. MODAL 2: RATE HISTORY AUDIT
   // ══════════════════════════════════════════════════
-  const modalHistory = $("modal-unit-history");
-
-  function openHistoryModal(sku) {
-    const prod = Store.getProductBySku(sku);
-    if (!prod) return;
-
-    $("history-sku-subtitle").textContent = `${prod.sku} · ${prod.name} (Đơn vị cơ sở: ${prod.baseUnit})`;
-    const tbody = $("history-table-body");
-    const history = prod.unitHistory || [];
-
-    if (!history.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="empty">Chưa có lịch sử điều chỉnh hệ số cho SKU này.</td></tr>`;
-    } else {
-      tbody.innerHTML = history.map((h) => `
-        <tr>
-          <td><span class="user-meta" style="color:var(--navy-900); font-weight:600">${escapeHtml(h.changedAt)}</span></td>
-          <td><strong>${escapeHtml(h.unitName)}</strong></td>
-          <td>
-            <span class="snapshot-rate-badge">
-              ${h.oldRate} → ${h.newRate} ${prod.baseUnit}
-            </span>
-          </td>
-          <td><span style="font-size:0.8125rem">${escapeHtml(h.changedBy)}</span></td>
-          <td><span style="font-size:0.8125rem; color:var(--ink-700)">${escapeHtml(h.reason || "Cập nhật")}</span></td>
-        </tr>
-      `).join("");
-    }
-
-    modalHistory.hidden = false;
-  }
-
-  document.querySelectorAll("[data-close-history-modal]").forEach((btn) => {
-    btn.addEventListener("click", () => { modalHistory.hidden = true; });
-  });
-
-  // ══════════════════════════════════════════════════
-  // 13. MODAL 3: RECEIPT DETAIL VIEW & SEAL
-  // ══════════════════════════════════════════════════
   const modalReceipt = $("modal-receipt-detail");
 
   function openReceiptDetailModal(receiptId) {
@@ -1621,7 +1197,7 @@
         </div>
         <div class="meta-item">
           <span>Trạng thái:</span>
-          <strong style="color:var(--color-emerald-deep)">✔ Đã ghi sổ kho</strong>
+          <strong>${escapeHtml(statusLabel(r.status))}</strong>
         </div>
         <div class="meta-item">
           <span>Ghi chú:</span>
@@ -1636,7 +1212,7 @@
               <th style="width: 40px">#</th>
               <th>Mặt hàng / SKU</th>
               <th>Đơn vị chứng từ</th>
-              <th>Hệ số Snapshot</th>
+              <th>Hệ số ghi sổ</th>
               <th>Số lượng cơ sở ghi sổ</th>
               <th>Ghi chú</th>
             </tr>
@@ -1647,13 +1223,6 @@
         </table>
       </div>
 
-      <div class="snapshot-cert-seal">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
-        <div>
-          <strong>Chứng nhận Bảo toàn Snapshot (S2-07):</strong>
-          <p>Phiếu này đã được ghi vào sổ cái với hệ số quy đổi đóng băng tại thời điểm lập. Bất kỳ thay đổi hệ số nào trong tương lai đối với các SKU trên đều không làm sai lệch số lượng cơ sở của phiếu này.</p>
-        </div>
-      </div>
     `;
 
     modalReceipt.hidden = false;
@@ -1665,6 +1234,20 @@
 
   $("btn-print-receipt")?.addEventListener("click", () => {
     window.print();
+  });
+
+  const requestedTab = {
+    receipts: "create-receipt", ledger: "ledger-audit", inventory: "inventory-report",
+  }[initialTabParam] || "sku-units";
+  switchTab(requestedTab);
+
+  $("active-warehouse-select").addEventListener("change", async () => {
+    try {
+      await Store.init();
+      switchTab(document.querySelector(".nav-tab--active")?.dataset.tab || requestedTab);
+    } catch (error) {
+      showToast(error.message || "Không tải được dữ liệu kho.", "error");
+    }
   });
 
   // Initial render from backend APIs.

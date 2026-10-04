@@ -41,19 +41,6 @@
           </button>
         </section>
 
-        <section class="integration-note" aria-label="Trạng thái tích hợp backend">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" />
-          </svg>
-          <div>
-            <strong>Frontend S2-10 đang chờ API bảng giá.</strong>
-            <span>
-              Danh mục sản phẩm được lấy từ server thật. Bảng giá tạo trên trang chỉ là bản
-              nháp trong phiên và sẽ mất khi tải lại trang.
-            </span>
-          </div>
-        </section>
-
         <section class="price-policy" aria-label="Quy tắc bảng giá">
           <div>
             <span class="price-policy__mark">01</span>
@@ -74,7 +61,7 @@
         </section>
 
         <div class="price-overview" aria-live="polite">
-          <p><strong id="price-list-count">0</strong><span>Bảng giá trong phiên</span></p>
+          <p><strong id="price-list-count">0</strong><span>Bảng giá đã lưu</span></p>
           <p><strong id="active-price-list-count">0</strong><span>Đang hiệu lực</span></p>
           <p><strong id="approval-price-list-count">0</strong><span>Có dòng cần duyệt</span></p>
           <p class="price-overview__catalog"><strong id="catalog-product-count">—</strong><span>Sản phẩm đang kinh doanh</span></p>
@@ -94,9 +81,9 @@
             <span>Nhóm khách hàng</span>
             <select id="customer-group-filter">
               <option value="">Tất cả nhóm</option>
-              <option value="DEALER_LEVEL_1">Đại lý cấp 1</option>
-              <option value="DEALER_LEVEL_2">Đại lý cấp 2</option>
-              <option value="RETAIL">Khách lẻ</option>
+              <option value="DAI_LY_CAP_1">Đại lý cấp 1</option>
+              <option value="DAI_LY_CAP_2">Đại lý cấp 2</option>
+              <option value="KHACH_LE">Khách lẻ</option>
             </select>
           </label>
           <label class="price-filter">
@@ -106,6 +93,7 @@
               <option value="active">Đang hiệu lực</option>
               <option value="upcoming">Sắp hiệu lực</option>
               <option value="expired">Đã hết hiệu lực</option>
+              <option value="inactive">Ngừng áp dụng</option>
             </select>
           </label>
           <button class="btn btn--secondary" id="clear-price-filters" type="button">Đặt lại</button>
@@ -115,9 +103,9 @@
           <div class="price-panel__header">
             <div>
               <h2>Danh sách bảng giá</h2>
-              <p id="price-result-summary">Chưa có bảng giá trong phiên làm việc này.</p>
+              <p id="price-result-summary">Đang tải dữ liệu bảng giá…</p>
             </div>
-            <span class="session-badge">Bản nháp phiên</span>
+            <span class="session-badge">Dữ liệu hệ thống</span>
           </div>
           <div class="price-table-wrap">
             <table class="price-table">
@@ -134,8 +122,8 @@
               <tbody id="price-lists-body">
                 <tr>
                   <td class="price-empty" colspan="6">
-                    <strong>Chưa có bảng giá</strong>
-                    <span>Chọn “Tạo bảng giá” để soạn bản nháp đầu tiên.</span>
+                    <strong>Đang tải bảng giá</strong>
+                    <span>Vui lòng chờ dữ liệu từ hệ thống.</span>
                   </td>
                 </tr>
               </tbody>
@@ -162,6 +150,10 @@
           <input id="price-list-version" type="hidden" value="1" />
 
           <div class="price-form__grid">
+            <label class="form-field price-form__code">
+              <span>Mã bảng giá</span>
+              <input id="price-list-code" maxlength="100" placeholder="Ví dụ: BG-DLC1-2026" required />
+            </label>
             <label class="form-field price-form__name">
               <span>Tên bảng giá</span>
               <input id="price-list-name" maxlength="150" placeholder="Ví dụ: Giá đại lý miền Nam quý IV" required />
@@ -170,9 +162,9 @@
               <span>Nhóm khách hàng</span>
               <select id="price-customer-group" required>
                 <option value="">Chọn nhóm áp dụng</option>
-                <option value="DEALER_LEVEL_1">Đại lý cấp 1</option>
-                <option value="DEALER_LEVEL_2">Đại lý cấp 2</option>
-                <option value="RETAIL">Khách lẻ</option>
+                <option value="DAI_LY_CAP_1">Đại lý cấp 1</option>
+                <option value="DAI_LY_CAP_2">Đại lý cấp 2</option>
+                <option value="KHACH_LE">Khách lẻ</option>
               </select>
             </label>
             <label class="form-field">
@@ -226,9 +218,9 @@
 
           <div class="price-form__message" id="price-form-message" role="alert" hidden></div>
           <div class="modal__actions">
-            <p>Dữ liệu chỉ tồn tại trong phiên trình duyệt hiện tại.</p>
+            <p>Thay đổi được lưu trực tiếp vào hệ thống.</p>
             <button class="btn btn--secondary" data-close-price-modal type="button">Huỷ</button>
-            <button class="btn btn--primary" id="save-price-list" type="submit">Lưu bản nháp</button>
+            <button class="btn btn--primary" id="save-price-list" type="submit">Lưu bảng giá</button>
           </div>
         </form>
       </div>

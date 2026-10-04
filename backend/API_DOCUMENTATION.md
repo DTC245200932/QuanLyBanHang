@@ -325,7 +325,18 @@ Hỗ trợ Nhân viên kho quản lý danh mục nhà cung cấp, để phiếu 
 | GET | `/suppliers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem chi tiết nhà cung cấp |
 | POST | `/suppliers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Tạo mới nhà cung cấp |
 | PUT | `/suppliers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Cập nhật thông tin nhà cung cấp |
+| PATCH | `/suppliers/{id}/status?active=false` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Ngừng giao dịch; dùng `active=true` để khôi phục, giữ nguyên thông tin và phiếu kho |
 | DELETE | `/suppliers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xóa nhà cung cấp (Chặn và trả lỗi nếu đã có phiếu kho, chỉ cho phép ngừng giao dịch `active=false`) |
+
+`GET /suppliers` nhận `keyword`, `page` (bắt đầu từ 0) và `size` (1–200, mặc định 10).
+Kết quả là `{"success":true,"data":{"content":[...],"totalElements":0,"totalPages":0,"last":true}}`.
+Frontend đọc `data.content` và tải các trang trước khi tìm kiếm/lọc trạng thái.
+
+`POST` và `PUT` nhận `code` (tối đa 30 ký tự), `name` (120), `taxCode` (30),
+`contactPerson` (120), `contactPhone` (số di động Việt Nam), `email` (150),
+`paymentTerms` (200), `address` (300), `notes` (1000) và `active` (boolean).
+Các trường liên hệ, địa chỉ và ghi chú được lưu trong bảng `suppliers` và trả lại trong response.
+Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ dùng `contactPerson`.
 
 
 ### Danh sách API Đơn hàng (`/api/orders`)

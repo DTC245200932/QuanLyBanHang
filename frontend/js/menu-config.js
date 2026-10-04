@@ -94,6 +94,18 @@ const MenuConfig = (() => {
       ],
     },
     {
+      id: "suppliers",
+      label: "Nhà cung cấp",
+      icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+      href: "suppliers.html",
+      roles: [
+        "ROLE_ADMIN",
+        "ROLE_WAREHOUSE_MANAGER",
+        "ROLE_WAREHOUSE_STAFF",
+        "ROLE_VIEWER",
+      ],
+    },
+    {
       id: "product-units",
       label: "Đơn vị tính",
       icon: '<path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>',

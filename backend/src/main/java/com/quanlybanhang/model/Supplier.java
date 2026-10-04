@@ -30,6 +30,18 @@ public class Supplier {
     @Column(name = "contact_person", length = 120)
     private String contactPerson;
 
+    @Column(name = "contact_phone", length = 20)
+    private String contactPhone;
+
+    @Column(length = 150)
+    private String email;
+
+    @Column(length = 300)
+    private String address;
+
+    @Column(length = 1000)
+    private String notes;
+
     @Column(name = "payment_terms", length = 200)
     private String paymentTerms;
 

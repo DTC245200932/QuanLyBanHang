@@ -108,6 +108,7 @@ public class SecurityConfig {
                 // ── Sản phẩm & Nhóm hàng: mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
                 .requestMatchers("/api/products/**").authenticated()
                 .requestMatchers("/api/categories/**").authenticated()
+                .requestMatchers("/api/suppliers/**").authenticated()
 
                 // ── Bảng giá (S2-10): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
                 .requestMatchers("/api/price-lists/**").authenticated()

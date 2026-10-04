@@ -48,6 +48,10 @@ public class SupplierServiceImpl implements SupplierService {
                 .name(request.getName())
                 .taxCode(request.getTaxCode())
                 .contactPerson(request.getContactPerson())
+                .contactPhone(request.getContactPhone())
+                .email(request.getEmail())
+                .address(request.getAddress())
+                .notes(request.getNotes())
                 .paymentTerms(request.getPaymentTerms())
                 .active(request.getActive() != null ? request.getActive() : true)
                 .build();
@@ -70,6 +74,10 @@ public class SupplierServiceImpl implements SupplierService {
         supplier.setName(request.getName());
         supplier.setTaxCode(request.getTaxCode());
         supplier.setContactPerson(request.getContactPerson());
+        supplier.setContactPhone(request.getContactPhone());
+        supplier.setEmail(request.getEmail());
+        supplier.setAddress(request.getAddress());
+        supplier.setNotes(request.getNotes());
         supplier.setPaymentTerms(request.getPaymentTerms());
         
         if (request.getActive() != null) {
@@ -78,6 +86,15 @@ public class SupplierServiceImpl implements SupplierService {
 
         supplier = supplierRepository.save(supplier);
         return mapToResponse(supplier);
+    }
+
+    @Override
+    @Transactional
+    public SupplierResponse updateStatus(Long id, boolean active) {
+        Supplier supplier = supplierRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhà cung cấp"));
+        supplier.setActive(active);
+        return mapToResponse(supplierRepository.save(supplier));
     }
 
     @Override
@@ -100,6 +117,10 @@ public class SupplierServiceImpl implements SupplierService {
                 .name(supplier.getName())
                 .taxCode(supplier.getTaxCode())
                 .contactPerson(supplier.getContactPerson())
+                .contactPhone(supplier.getContactPhone())
+                .email(supplier.getEmail())
+                .address(supplier.getAddress())
+                .notes(supplier.getNotes())
                 .paymentTerms(supplier.getPaymentTerms())
                 .active(supplier.getActive())
                 .build();

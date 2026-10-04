@@ -59,6 +59,41 @@
   }[char]));
   const normalizeRole = (role) => role && role.startsWith("ROLE_") ? role : `ROLE_${role || "VIEWER"}`;
 
+  function releaseAvatarImages(root) {
+    root?.querySelectorAll(".actor-avatar img[data-object-url]").forEach((image) => {
+      URL.revokeObjectURL(image.dataset.objectUrl);
+      delete image.dataset.objectUrl;
+    });
+  }
+
+  async function hydrateAvatarImages(root) {
+    const avatars = [...(root?.querySelectorAll(".actor-avatar[data-avatar-url]") || [])];
+    await Promise.all(avatars.map(async (avatar) => {
+      const image = avatar.querySelector("img");
+      const fallback = avatar.querySelector("span");
+      const loaded = await Auth.setProtectedImage(image, avatar.dataset.avatarUrl);
+      if (!avatar.isConnected || !root.contains(avatar)) {
+        if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
+        return;
+      }
+      if (loaded) {
+        image.hidden = false;
+        fallback.hidden = true;
+      }
+    }));
+  }
+
+  function actorAvatarMarkup(actor, extraClass = "") {
+    const initial = (actor?.fullName || actor?.username || "U").trim().charAt(0).toUpperCase();
+    const avatarAttribute = actor?.avatarThumbnailUrl
+      ? ` data-avatar-url="${escapeHtml(actor.avatarThumbnailUrl)}"`
+      : "";
+    return `<span class="actor-avatar${extraClass ? ` ${extraClass}` : ""}"${avatarAttribute}>
+      <span>${escapeHtml(initial)}</span>
+      <img alt="" hidden>
+    </span>`;
+  }
+
   function roleLabel(role) {
     const normalized = normalizeRole(role);
     return ROLE_NAMES[normalized] || normalized;
@@ -84,16 +119,26 @@
 
   async function loadUsersList() {
     try {
-      const response = await Auth.apiFetch("/admin/users?page=0&size=100");
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.message || "Không tải được danh sách người dùng");
+      const apiUsers = [];
+      let page = 0;
+      let totalPages = 1;
+      while (page < totalPages) {
+        const response = await Auth.apiFetch(`/admin/users?page=${page}&size=100`);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.success === false) {
+          throw new Error(result.message || "Không tải được danh sách người dùng");
+        }
+        apiUsers.push(...(result?.data?.content || []));
+        totalPages = Math.max(Number(result?.data?.totalPages) || 1, 1);
+        page += 1;
+      }
 
-      const users = result?.data?.content;
-      state.users = Array.isArray(users) ? users.map((user) => ({
+      state.users = apiUsers.map((user) => ({
         username: user.username,
         fullName: user.fullName || user.username,
         role: normalizeRole(user.roles?.[0]),
-      })) : [];
+        avatarThumbnailUrl: user.avatarThumbnailUrl || null,
+      }));
     } catch (error) {
       console.warn("Không tải được danh sách người dùng cho bộ lọc", error);
       state.users = [];
@@ -133,6 +178,7 @@
         username: log.username,
         fullName: actor?.fullName || log.username,
         role: actor?.role || "ROLE_VIEWER",
+        avatarThumbnailUrl: actor?.avatarThumbnailUrl || null,
       },
       valBefore: log.oldValue ?? "—",
       valAfter: log.newValue ?? "—",
@@ -273,6 +319,8 @@
 
   function renderTable() {
     const tbody = $("audit-table-body");
+    releaseAvatarImages(tbody);
+
     if (state.loading) {
       tbody.innerHTML = '<tr><td colspan="7" class="audit-load-state"><span class="audit-loading-dot" aria-hidden="true"></span><strong>Đang tải nhật ký thao tác…</strong></td></tr>';
       setPaginationEmpty("Đang tải dữ liệu…");
@@ -309,7 +357,6 @@
     tbody.innerHTML = state.filteredLogs.slice(start, end).map((log) => {
       const time = formatDateTime(log.timestamp);
       const type = TYPE_CONFIG[log.targetType] || { label: log.targetType, badgeClass: "" };
-      const initial = (log.actor.fullName || log.actor.username || "N").trim().charAt(0).toUpperCase();
       const deltaClass = `diff-delta--${log.deltaType}`;
       const deltaPrefix = log.deltaType === "negative" ? "↓ " : log.deltaType === "positive" ? "↑ " : "";
       const discrepancy = log.isDiscrepancy ? '<div class="discrepancy-flag">⚠ Lệch tồn kiểm kê</div>' : "";
@@ -317,7 +364,7 @@
       return `
         <tr data-log-id="${escapeHtml(log.id)}">
           <td class="audit-time-cell"><span class="audit-time-exact">${escapeHtml(time.formatted)}</span><span class="audit-time-rel">${escapeHtml(time.rel)}</span></td>
-          <td><div class="actor-badge"><span class="actor-avatar">${escapeHtml(initial)}</span><div class="actor-info"><span class="actor-name">${escapeHtml(log.actor.fullName)}</span><span class="actor-sub">${escapeHtml(log.actor.username)} · ${escapeHtml(roleLabel(log.actor.role))}</span></div></div></td>
+          <td><div class="actor-badge">${actorAvatarMarkup(log.actor)}<div class="actor-info"><span class="actor-name">${escapeHtml(log.actor.fullName)}</span><span class="actor-sub">${escapeHtml(log.actor.username)} · ${escapeHtml(roleLabel(log.actor.role))}</span></div></div></td>
           <td><span class="entity-tag ${escapeHtml(type.badgeClass)}">${escapeHtml(type.label)}</span><span class="action-title">${escapeHtml(log.action)}</span></td>
           <td class="target-cell"><span class="target-code">${escapeHtml(log.targetCode)}</span><span class="target-name">${escapeHtml(log.targetName)}</span><span class="target-context">${escapeHtml(log.context)}</span></td>
           <td class="diff-cell"><div class="diff-box"><span class="diff-val diff-val--before">${escapeHtml(log.valBefore)}</span><span class="diff-arrow">➔</span><span class="diff-val diff-val--after">${escapeHtml(log.valAfter)}</span></div><div style="margin-top:5px"><span class="diff-delta ${deltaClass}">${deltaPrefix}${escapeHtml(log.deltaText)}</span></div>${discrepancy}</td>
@@ -326,6 +373,7 @@
         </tr>`;
     }).join("");
 
+    hydrateAvatarImages(tbody);
     $("audit-pagination-summary").textContent = `Hiển thị ${start + 1} - ${end} trong tổng số ${total} bản ghi`;
     $("audit-page-indicator").textContent = `Trang ${state.page + 1} / ${state.totalPages}`;
     $("btn-page-first").disabled = state.page === 0;
@@ -341,20 +389,24 @@
     const type = TYPE_CONFIG[log.targetType] || { label: log.targetType, badgeClass: "" };
 
     $("audit-detail-title").textContent = `Chi tiết thao tác: ${log.action}`;
+    const detailBody = $("audit-detail-body");
+    releaseAvatarImages(detailBody);
     $("audit-detail-subtitle").textContent = `Mã bản ghi: #${log.id}`;
-    $("audit-detail-body").innerHTML = `
+    detailBody.innerHTML = `
       <div class="audit-detail-grid">
-        <div class="detail-block"><div class="detail-block__label">Người thực hiện</div><div class="detail-block__content"><strong>${escapeHtml(log.actor.fullName)}</strong><div>${escapeHtml(log.actor.username)} · ${escapeHtml(roleLabel(log.actor.role))}</div></div></div>
+        <div class="detail-block"><div class="detail-block__label">Người thực hiện</div><div class="detail-block__content detail-actor">${actorAvatarMarkup(log.actor, "actor-avatar--detail")}<div><strong>${escapeHtml(log.actor.fullName)}</strong><div>${escapeHtml(log.actor.username)} · ${escapeHtml(roleLabel(log.actor.role))}</div></div></div></div>
         <div class="detail-block"><div class="detail-block__label">Thời điểm & phân hệ</div><div class="detail-block__content"><strong>${escapeHtml(time.formatted)}</strong><div style="margin-top:5px"><span class="entity-tag ${escapeHtml(type.badgeClass)}">${escapeHtml(type.label)}</span></div></div></div>
       </div>
       <div class="detail-block"><div class="detail-block__label">Đối tượng chịu tác động</div><div class="detail-block__content"><span class="target-code">${escapeHtml(log.targetCode)}</span> <strong>${escapeHtml(log.targetName)}</strong></div></div>
       <table class="diff-comparison-table"><thead><tr><th>Chỉ tiêu</th><th>Giá trị trước</th><th>Giá trị sau</th><th>Chênh lệch</th></tr></thead><tbody><tr><td>Dữ liệu ghi nhận</td><td>${escapeHtml(log.valBefore)}</td><td>${escapeHtml(log.valAfter)}</td><td><strong>${escapeHtml(log.deltaText)}</strong></td></tr></tbody></table>
       <div class="detail-block"><div class="detail-block__label">Nguồn ghi nhận</div><div class="detail-block__content">${escapeHtml(log.reason)}</div></div>`;
+    hydrateAvatarImages(detailBody);
     $("modal-audit-detail").hidden = false;
   }
 
   function closeDetailModal() {
     $("modal-audit-detail").hidden = true;
+    releaseAvatarImages($("audit-detail-body"));
   }
 
   function exportToExcel() {

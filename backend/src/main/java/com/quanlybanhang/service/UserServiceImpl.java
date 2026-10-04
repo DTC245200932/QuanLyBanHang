@@ -29,6 +29,8 @@ public class UserServiceImpl implements UserService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .phone(user.getPhone())
+                .avatarUrl(AvatarService.avatarUrl(user, false))
+                .avatarThumbnailUrl(AvatarService.avatarUrl(user, true))
                 .roles(user.getRoles().stream()
                         .map(role -> role.getName().name())
                         .collect(Collectors.toList()))

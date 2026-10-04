@@ -134,6 +134,15 @@ Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` v
 | GET | `/finance/cost-price` | `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm — chỉ Quản lý kinh doanh; Admin, Thủ kho, Sales, Kế toán đều bị từ chối |
 | GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
 | GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng |
+| PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ADMIN`, `ROLE_ACCOUNTANT` | Cập nhật hạn mức công nợ đại lý; tự động ghi nhật ký giá trị trước/sau |
+
+Body cập nhật hạn mức công nợ:
+
+```json
+{
+  "debtLimit": 50000000
+}
+```
 
 ## Quản lý nhóm hàng nhiều cấp & Sản phẩm (S2-06)
 
@@ -179,6 +188,99 @@ Hỗ trợ Quản lý kinh doanh quản lý danh mục sản phẩm chuẩn hóa
 | DELETE | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa sản phẩm (**Chặn nếu đã phát sinh giao dịch** -> 400 Bad Request) |
 | POST | `/products/upload-image` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải ảnh sản phẩm lên server (hỗ trợ JPG, PNG, WEBP tối đa 5MB) |
 | GET | `/products/images/{fileName}` | Đã đăng nhập | Xem ảnh sản phẩm |
+| GET | `/products/import/template` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải tệp Excel mẫu (`.xlsx`) kèm dữ liệu mẫu, sheet nhóm hàng tra cứu và hướng dẫn |
+| POST | `/products/import/preview` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xem trước và kiểm tra lỗi từng dòng từ tệp Excel (`multipart/form-data`) hoặc JSON (`application/json`) |
+| POST | `/products/import` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Nhập danh mục sản phẩm hàng loạt từ Excel (`multipart/form-data`) hoặc JSON (`application/json`). SKU đã tồn tại thì cập nhật thay vì tạo mới |
+
+### Nhập danh mục sản phẩm hàng loạt từ Excel (S2-08)
+
+Hỗ trợ Quản lý kinh doanh đưa đến 5.000 mã hàng hiện có vào hệ thống một cách nhanh chóng, chính xác mà không phải gõ tay.
+
+#### Quy tắc nghiệp vụ cốt lõi:
+1. **Tải tệp mẫu chuẩn (.xlsx)**:
+   - Tệp gồm 3 sheet:
+     - Sheet 1: `Sản phẩm mẫu` với các cột chuẩn: `Mã SKU (*)`, `Tên sản phẩm (*)`, `Mã/Tên nhóm hàng (*)`, `Đơn vị tính cơ sở`, `Quy cách đóng gói`, `Giá bán`, `Giá vốn`, `Trạng thái`, `Mô tả`.
+     - Sheet 2: `Danh mục nhóm hàng` hiển thị toàn bộ mã và tên nhóm hàng hiện hành giúp người dùng dễ dàng sao chép.
+     - Sheet 3: `Hướng dẫn` quy định rõ nguyên tắc nhập liệu.
+2. **Xem trước & báo lỗi theo từng dòng**:
+   - Endpoint: `POST /api/products/import/preview` (hỗ trợ cả tệp Excel `multipart/form-data` hoặc JSON array `application/json`).
+   - Kiểm tra và báo lỗi chi tiết cho từng dòng:
+     - SKU trống hoặc vượt quá 50 ký tự.
+     - Tên sản phẩm trống hoặc vượt quá 255 ký tự.
+     - Nhóm hàng không tìm thấy (tra cứu thông minh theo ID, Mã nhóm hoặc Tên nhóm hàng).
+     - Trùng lặp mã SKU nội bộ trong cùng tệp tải lên (chỉ rõ dòng bị trùng).
+     - Giá bán hoặc giá vốn âm.
+     - Độ dài đơn vị tính, quy cách đóng gói, mô tả.
+   - Thống kê tổng hợp: `totalRows`, `validRows`, `invalidRows`, `createCount`, `updateCount`.
+3. **Cập nhật thay vì tạo mới khi SKU đã tồn tại**:
+   - Tự động đối chiếu mã SKU trong cơ sở dữ liệu (không phân biệt hoa thường).
+   - Trong bản xem trước:
+     - SKU đã có trong hệ thống: đánh dấu `action = "UPDATE"` và `isUpdate = true`, kèm `existingProductId`.
+     - SKU mới: đánh dấu `action = "CREATE"` và `isUpdate = false`.
+   - Khi thực hiện nhập (`POST /api/products/import`):
+     - Dòng `UPDATE`: cập nhật tên, nhóm hàng, đơn vị, quy cách, giá bán, giá vốn (nếu có quyền), trạng thái, mô tả cho sản phẩm hiện có. Tự động ghi nhật ký kiểm toán (Audit Log) nếu giá bán thay đổi.
+     - Dòng `CREATE`: tạo mới sản phẩm với trạng thái ban đầu `revenue = 0`, `hasTransactions = false`.
+4. **Bảo mật giá vốn**:
+   - CHỈ Quản lý kinh doanh (`ROLE_SALES_MANAGER` hoặc quyền `FINANCE_VIEW_COST_PRICE`) mới được xem và sửa giá vốn khi nhập từ Excel.
+   - Nếu người dùng khác (ví dụ Quản trị viên không có quyền giá vốn) tải tệp có cột giá vốn: trường giá vốn sẽ được bỏ qua, giữ nguyên giá vốn hiện tại của SKU để đảm bảo tuyệt đối bí mật kinh doanh.
+5. **Hiệu năng xử lý 5.000 mã hàng**:
+   - Cơ chế truy vấn theo lô (`chunk` 500 SKU) và lưu hàng loạt (`saveAll`), tránh tình trạng N+1 query và không nghẽn cơ sở dữ liệu.
+
+#### Cấu trúc Response kiểm tra / nhập (`ProductImportResponse`):
+```json
+{
+  "success": true,
+  "message": "Kết quả kiểm tra tệp nhập sản phẩm",
+  "data": {
+    "totalRows": 2,
+    "validRows": 2,
+    "invalidRows": 0,
+    "createCount": 1,
+    "updateCount": 1,
+    "importedRows": 0,
+    "rows": [
+      {
+        "rowNumber": 2,
+        "sku": "HEIN-330",
+        "name": "Bia Heineken lon 330ml",
+        "category": "BEV-BEER",
+        "resolvedCategoryId": 1,
+        "resolvedCategoryName": "Bia các loại",
+        "unit": "lon",
+        "packingSpecification": "Thùng 24 lon",
+        "price": 18000,
+        "costPrice": 14500,
+        "active": true,
+        "description": "Bia cao cấp",
+        "action": "UPDATE",
+        "isUpdate": true,
+        "existingProductId": 5,
+        "valid": true,
+        "errors": []
+      },
+      {
+        "rowNumber": 3,
+        "sku": "NEW-PROD-01",
+        "name": "Sản phẩm mới 01",
+        "category": "BEV-WATER",
+        "resolvedCategoryId": 2,
+        "resolvedCategoryName": "Nước giải khát",
+        "unit": "chai",
+        "packingSpecification": "Lốc 6 chai",
+        "price": 10000,
+        "costPrice": 7500,
+        "active": true,
+        "description": "Sản phẩm mới",
+        "action": "CREATE",
+        "isUpdate": false,
+        "existingProductId": null,
+        "valid": true,
+        "errors": []
+      }
+    ]
+  }
+}
+```
 
 ## Đơn vị tính quy đổi của SKU & Nhập xuất kho theo thùng/lon (S2-07)
 
@@ -213,14 +315,101 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | GET | `/warehouse/vouchers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách phiếu kho đã ghi sổ kèm thông tin đóng băng hệ số |
 | GET | `/warehouse/vouchers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Chi tiết phiếu kho |
 
+### Danh sách API Danh mục nhà cung cấp (S2-09)
+
+Hỗ trợ Nhân viên kho quản lý danh mục nhà cung cấp, để phiếu nhập kho luôn gắn đúng nguồn hàng nhằm truy nguyên khi có lô lỗi.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/suppliers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Lấy danh sách nhà cung cấp (phân trang, tìm kiếm) |
+| GET | `/suppliers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem chi tiết nhà cung cấp |
+| POST | `/suppliers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Tạo mới nhà cung cấp |
+| PUT | `/suppliers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Cập nhật thông tin nhà cung cấp |
+| PATCH | `/suppliers/{id}/status?active=false` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Ngừng giao dịch; dùng `active=true` để khôi phục, giữ nguyên thông tin và phiếu kho |
+| DELETE | `/suppliers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xóa nhà cung cấp (Chặn và trả lỗi nếu đã có phiếu kho, chỉ cho phép ngừng giao dịch `active=false`) |
+
+`GET /suppliers` nhận `keyword`, `page` (bắt đầu từ 0) và `size` (1–200, mặc định 10).
+Kết quả là `{"success":true,"data":{"content":[...],"totalElements":0,"totalPages":0,"last":true}}`.
+Frontend đọc `data.content` và tải các trang trước khi tìm kiếm/lọc trạng thái.
+
+`POST` và `PUT` nhận `code` (tối đa 30 ký tự), `name` (120), `taxCode` (30),
+`contactPerson` (120), `contactPhone` (số di động Việt Nam), `email` (150),
+`paymentTerms` (200), `address` (300), `notes` (1000) và `active` (boolean).
+Các trường liên hệ, địa chỉ và ghi chú được lưu trong bảng `suppliers` và trả lại trong response.
+Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ dùng `contactPerson`.
+
+
 ### Danh sách API Đơn hàng (`/api/orders`)
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/orders` | Đã đăng nhập | Xem danh sách đơn hàng |
-| GET | `/orders/{id}` | Đã đăng nhập | Xem chi tiết đơn hàng (kèm số lượng theo đơn vị đặt và số lượng cơ sở đã đóng băng) |
-| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo và ghi sổ đơn hàng (tự động quy đổi về đơn vị cơ sở) |
+| GET | `/orders/{id}` | Đã đăng nhập | Xem chi tiết đơn hàng (kèm thông tin bảng giá, giá sàn và trạng thái phê duyệt) |
+| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng (tự động áp bảng giá theo nhóm khách hàng; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng |
+| PUT | `/orders/{id}/approve` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng bán dưới giá sàn (chuyển trạng thái sang `RECORDED`) |
+| PUT | `/orders/{id}/reject?reason={ly_do}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng bán dưới giá sàn (chuyển trạng thái sang `REJECTED`) |
+
+## Khai báo Bảng giá theo nhóm khách hàng & Thời gian hiệu lực (S2-10)
+
+Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng và thời gian hiệu lực, để đại lý cấp 1 và cấp 2 tự động nhận đúng giá của mình.
+
+### Quy tắc nghiệp vụ cốt lõi:
+1. **Nhiều bảng giá song song**: Hệ thống hỗ trợ đồng thời nhiều bảng giá cho từng phân khúc khách hàng: Đại lý cấp 1 (`DAI_LY_CAP_1`), Đại lý cấp 2 (`DAI_LY_CAP_2`), Khách lẻ (`KHACH_LE`).
+2. **Hiệu lực theo thời gian**: Mỗi bảng giá bắt buộc có ngày bắt đầu (`startDate`) và ngày kết thúc (`endDate`). Tại một thời điểm, hệ thống tự động tìm bảng giá có hiệu lực mới nhất theo nhóm khách hàng (`startDate <= ngày <= endDate`).
+3. **Giá bán & Giá sàn**: Mỗi dòng giá khai báo giá bán (`sellingPrice`) và giá sàn (`floorPrice` <= `sellingPrice`).
+   - Nếu nhân viên bán dưới giá sàn (hoặc quy đổi theo đơn vị tính thùng/lốc mà đơn giá < giá sàn quy đổi): Đơn hàng **không được ghi nhận ngay** mà chuyển sang trạng thái **`PENDING_APPROVAL` (Chờ duyệt)** và gán cờ `requiresApproval = true`.
+   - **Chỉ Quản lý kinh doanh (`ROLE_SALES_MANAGER`)** hoặc Admin mới có quyền phê duyệt (`/api/orders/{id}/approve`) hoặc từ chối (`/api/orders/{id}/reject`).
+4. **Bảo vệ bảng giá đã phát sinh đơn**:
+   - Khi bảng giá đã được dùng để tạo bất kỳ đơn hàng nào (`hasOrders = true` hoặc đã có liên kết đơn hàng trong cơ sở dữ liệu), hệ thống **nghiêm cấm sửa hoặc xóa** bảng giá này (trả lỗi `400 Bad Request` kèm ngoại lệ `PriceListLockedException`).
+   - Người dùng bắt buộc phải dùng tính năng **Tạo phiên bản mới** (`POST /api/price-lists/{id}/new-version`). Phiên bản mới sẽ tự động tăng số version (v2, v3...), sao chép danh sách sản phẩm và cho phép điều chỉnh giá bán/giá sàn cũng như thời gian hiệu lực mới.
+5. **Đại lý tự động nhận đúng giá**: Khi tạo đơn hàng có gắn `dealerId` hoặc `customerGroup`, nếu không nhập giá bán, hệ thống tự động tra cứu bảng giá hiệu lực tương ứng và áp dụng đúng đơn giá (tự động nhân hệ số quy đổi nếu đặt theo thùng/lốc).
+
+### Danh sách API Bảng giá (`/api/price-lists`)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/price-lists?customerGroup={cg}&active={true/false}&keyword={q}` | Đã đăng nhập | Xem danh sách các bảng giá (hỗ trợ lọc theo nhóm khách hàng, trạng thái, tìm kiếm mã/tên) |
+| GET | `/price-lists/{id}` | Đã đăng nhập | Xem chi tiết bảng giá kèm toàn bộ danh sách dòng giá (sản phẩm, giá bán, giá sàn) |
+| GET | `/price-lists/customer-groups` | Đã đăng nhập | Danh sách các nhóm khách hàng (Đại lý cấp 1, Đại lý cấp 2, Khách lẻ) |
+| GET | `/price-lists/effective?customerGroup={cg}&date={yyyy-MM-dd}` | Đã đăng nhập | Tìm bảng giá đang có hiệu lực cho nhóm khách hàng tại thời điểm chỉ định |
+| POST | `/price-lists` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo bảng giá mới (bắt buộc mã, tên, nhóm khách hàng, ngày bắt đầu/kết thúc, danh sách dòng giá) |
+| PUT | `/price-lists/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sửa thông tin bảng giá (**Chặn nếu bảng giá đã phát sinh đơn hàng** -> 400 Bad Request) |
+| DELETE | `/price-lists/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa bảng giá (**Chặn nếu bảng giá đã phát sinh đơn hàng** -> 400 Bad Request) |
+| POST | `/price-lists/{id}/new-version` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo phiên bản mới kế thừa từ bảng giá cũ (tăng version, sao chép sản phẩm, reset trạng thái phát sinh đơn) |
+
+#### Ví dụ Request tạo bảng giá (`POST /api/price-lists`):
+```json
+{
+  "code": "BG-DLC1-2026",
+  "name": "Bảng giá Đại lý cấp 1 năm 2026",
+  "customerGroup": "DAI_LY_CAP_1",
+  "startDate": "2026-01-01",
+  "endDate": "2026-12-31",
+  "active": true,
+  "description": "Bảng giá ưu đãi dành cho hệ thống Đại lý cấp 1",
+  "items": [
+    {
+      "productId": 10,
+      "sellingPrice": 16500,
+      "floorPrice": 15500,
+      "note": "Giá áp dụng theo lon"
+    }
+  ]
+}
+```
+
+#### Ví dụ Request tạo phiên bản mới (`POST /api/price-lists/{id}/new-version`):
+```json
+{
+  "newCode": "BG-DLC1-2026-V2",
+  "newName": "Bảng giá Đại lý cấp 1 năm 2026 (v2)",
+  "startDate": "2026-06-01",
+  "endDate": "2026-12-31",
+  "description": "Điều chỉnh giá bán do biến động chi phí nguyên vật liệu"
+}
+```
+*(Nếu `items` để trống, hệ thống tự động kế thừa toàn bộ danh sách dòng giá của phiên bản tiền nhiệm).*
 
 ## Bảy vai trò
 

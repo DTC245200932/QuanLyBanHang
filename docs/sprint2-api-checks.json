@@ -1,0 +1,284 @@
+{
+  "prefix": "AUDIT-73542EA",
+  "checks": [
+    {
+      "name": "supplier-anonymous-denied",
+      "passed": true,
+      "evidence": {
+        "http": 401
+      }
+    },
+    {
+      "name": "profile-invalid-phone",
+      "passed": true,
+      "evidence": {
+        "http": 400
+      }
+    },
+    {
+      "name": "profile-update-and-scope-protected",
+      "passed": true,
+      "evidence": {
+        "roles": [
+          "ROLE_WAREHOUSE_STAFF"
+        ]
+      }
+    },
+    {
+      "name": "supplier-fields-persist",
+      "passed": true,
+      "evidence": {
+        "id": 68,
+        "fields": [
+          "contactPerson",
+          "contactPhone",
+          "email",
+          "address",
+          "notes"
+        ]
+      }
+    },
+    {
+      "name": "supplier-pagination",
+      "passed": true,
+      "evidence": {
+        "total": 86,
+        "page1Rows": 10
+      }
+    },
+    {
+      "name": "supplier-deactivate-persists",
+      "passed": true,
+      "evidence": {
+        "id": 68,
+        "active": false
+      }
+    },
+    {
+      "name": "supplier-viewer-write-denied",
+      "passed": true,
+      "evidence": {
+        "http": 403
+      }
+    },
+    {
+      "name": "category-three-levels",
+      "passed": true,
+      "evidence": {
+        "leafId": 23,
+        "level": 3
+      }
+    },
+    {
+      "name": "sku-unique",
+      "passed": true,
+      "evidence": {
+        "http": 400
+      }
+    },
+    {
+      "name": "cost-price-role-protection",
+      "passed": true,
+      "evidence": {
+        "warehouseCost": null,
+        "adminCost": null,
+        "managerCost": 6000
+      }
+    },
+    {
+      "name": "category-with-product-delete-denied",
+      "passed": true,
+      "evidence": {
+        "http": 400
+      }
+    },
+    {
+      "name": "warehouse-base-quantity",
+      "passed": true,
+      "evidence": {
+        "baseQuantity": 120.0
+      }
+    },
+    {
+      "name": "supplier-voucher-link",
+      "passed": false,
+      "evidence": {
+        "requestedSupplierId": 68,
+        "responseSupplierId": null
+      }
+    },
+    {
+      "name": "supplier-with-import-delete-denied",
+      "passed": false,
+      "evidence": {
+        "http": 200
+      }
+    },
+    {
+      "name": "automatic-group-price-and-unit",
+      "passed": true,
+      "evidence": {
+        "priceListId": 9,
+        "price": 216000.0,
+        "baseQuantity": 48.0
+      }
+    },
+    {
+      "name": "below-floor-requires-approval",
+      "passed": true,
+      "evidence": {
+        "status": "PENDING_APPROVAL"
+      }
+    },
+    {
+      "name": "sales-cannot-approve-below-floor",
+      "passed": true,
+      "evidence": {
+        "http": 403
+      }
+    },
+    {
+      "name": "manager-can-approve-below-floor",
+      "passed": true,
+      "evidence": {
+        "status": "RECORDED"
+      }
+    },
+    {
+      "name": "used-price-list-locked",
+      "passed": true,
+      "evidence": {
+        "http": 400
+      }
+    },
+    {
+      "name": "price-list-new-version",
+      "passed": true,
+      "evidence": {
+        "version": 2,
+        "parent": 9
+      }
+    },
+    {
+      "name": "historical-unit-snapshots-preserved",
+      "passed": true,
+      "evidence": {
+        "oldFactor": 24,
+        "newFactor": 30,
+        "oldVoucherBase": 120,
+        "oldOrderBase": 48
+      }
+    },
+    {
+      "name": "transacted-product-delete-flag",
+      "passed": false,
+      "evidence": {
+        "hasTransactions": false,
+        "canDelete": true
+      }
+    },
+    {
+      "name": "product-revenue-follows-orders",
+      "passed": false,
+      "evidence": {
+        "revenue": 0.0,
+        "orderTotal": 432000.0
+      }
+    },
+    {
+      "name": "product-import-preview-upsert",
+      "passed": true,
+      "evidence": {
+        "createCount": 1,
+        "updateCount": 1,
+        "invalidRows": 1
+      }
+    },
+    {
+      "name": "product-import-valid-rows",
+      "passed": true,
+      "evidence": {
+        "importedRows": 2
+      }
+    },
+    {
+      "name": "product-template-download",
+      "passed": true,
+      "evidence": {
+        "http": 200,
+        "bytes": 7031
+      }
+    },
+    {
+      "name": "user-import-preview-per-row",
+      "passed": true,
+      "evidence": {
+        "validRows": 1,
+        "invalidRows": 1
+      }
+    },
+    {
+      "name": "user-import-no-ghost-account-on-mail-error",
+      "passed": false,
+      "evidence": {
+        "importedRows": 0,
+        "accountsStillCreated": 1
+      }
+    },
+    {
+      "name": "unused-price-list-items-editable",
+      "passed": false,
+      "evidence": {
+        "http": 400,
+        "duplicateConstraint": true
+      }
+    },
+    {
+      "name": "audit-logs-backend-connected",
+      "passed": true,
+      "evidence": {
+        "rows": 27
+      }
+    },
+    {
+      "name": "audit-price-list-before-after-values",
+      "passed": false,
+      "evidence": {
+        "oldValue": null,
+        "newValue": "Cập nhật bảng giá"
+      }
+    },
+    {
+      "name": "generated-product-template-round-trip",
+      "passed": false,
+      "evidence": {
+        "validRows": 0,
+        "invalidRows": 3,
+        "firstRowErrors": [
+          "Không tìm thấy nhóm hàng: ''"
+        ]
+      }
+    },
+    {
+      "name": "excel-invalid-price-rejected-per-row",
+      "passed": false,
+      "evidence": {
+        "rowValid": true,
+        "parsedPrice": 0,
+        "errors": []
+      }
+    },
+    {
+      "name": "explicit-price-list-validity-and-group-checked",
+      "passed": false,
+      "evidence": {
+        "http": 201,
+        "priceListActive": false,
+        "priceListEnd": "2025-12-31",
+        "listGroup": "DAI_LY_CAP_2",
+        "orderGroup": "KHACH_LE",
+        "orderStatus": "RECORDED"
+      }
+    }
+  ]
+}

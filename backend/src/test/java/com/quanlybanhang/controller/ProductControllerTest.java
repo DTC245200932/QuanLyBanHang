@@ -2,9 +2,13 @@ package com.quanlybanhang.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.quanlybanhang.config.SecurityConfig;
+import com.quanlybanhang.dto.request.ProductImportRowRequest;
 import com.quanlybanhang.dto.request.ProductRequest;
+import com.quanlybanhang.dto.response.ProductImportResponse;
+import com.quanlybanhang.dto.response.ProductImportRowResponse;
 import com.quanlybanhang.dto.response.ProductResponse;
 import com.quanlybanhang.exception.GlobalExceptionHandler;
+import org.springframework.mock.web.MockMultipartFile;
 import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.JwtUtils;
@@ -182,5 +186,112 @@ class ProductControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.active").value(false))
                 .andExpect(jsonPath("$.data.status").value("Ngừng kinh doanh"));
+    }
+
+    @Test
+    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @DisplayName("S2-08: GET /api/products/import/template tải tệp Excel mẫu thành công -> 200 OK")
+    void downloadTemplate_SalesManager_Success() throws Exception {
+        byte[] mockBytes = new byte[]{10, 20, 30};
+        when(productService.generateImportTemplate()).thenReturn(mockBytes);
+
+        mockMvc.perform(get("/api/products/import/template"))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    String disposition = result.getResponse().getHeader("Content-Disposition");
+                    org.assertj.core.api.Assertions.assertThat(disposition).contains("attachment; filename=\"mau_nhap_san_pham.xlsx\"");
+                });
+    }
+
+    @Test
+    @WithMockUser(username = "sales.emp", roles = "SALES")
+    @DisplayName("S2-08: GET /api/products/import/template bị chặn với vai trò SALES -> 403 Forbidden")
+    void downloadTemplate_SalesRole_Returns403() throws Exception {
+        mockMvc.perform(get("/api/products/import/template"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @DisplayName("S2-08: POST /api/products/import/preview xem trước từ file tải lên thành công -> 200 OK")
+    void previewImportFile_SalesManager_Success() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "test.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new byte[]{1, 2, 3});
+
+        ProductImportResponse mockResponse = ProductImportResponse.builder()
+                .totalRows(2)
+                .validRows(2)
+                .invalidRows(0)
+                .createCount(1)
+                .updateCount(1)
+                .rows(List.of(
+                        ProductImportRowResponse.builder()
+                                .rowNumber(2)
+                                .sku("HEIN-330")
+                                .action("UPDATE")
+                                .isUpdate(true)
+                                .valid(true)
+                                .build(),
+                        ProductImportRowResponse.builder()
+                                .rowNumber(3)
+                                .sku("NEW-SKU")
+                                .action("CREATE")
+                                .isUpdate(false)
+                                .valid(true)
+                                .build()
+                ))
+                .build();
+
+        when(productService.previewImport(any(org.springframework.web.multipart.MultipartFile.class))).thenReturn(mockResponse);
+
+        mockMvc.perform(multipart("/api/products/import/preview").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.totalRows").value(2))
+                .andExpect(jsonPath("$.data.validRows").value(2))
+                .andExpect(jsonPath("$.data.updateCount").value(1))
+                .andExpect(jsonPath("$.data.createCount").value(1))
+                .andExpect(jsonPath("$.data.rows[0].sku").value("HEIN-330"))
+                .andExpect(jsonPath("$.data.rows[0].action").value("UPDATE"))
+                .andExpect(jsonPath("$.data.rows[0].update").value(true))
+                .andExpect(jsonPath("$.data.rows[1].action").value("CREATE"))
+                .andExpect(jsonPath("$.data.rows[1].update").value(false));
+    }
+
+    @Test
+    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @DisplayName("S2-08: POST /api/products/import nhập danh mục sản phẩm hàng loạt từ JSON -> 200 OK")
+    void importProductsJson_SalesManager_Success() throws Exception {
+        List<ProductImportRowRequest> rows = List.of(
+                ProductImportRowRequest.builder().sku("HEIN-330").name("Bia Heineken").category("BEV").build()
+        );
+
+        ProductImportResponse mockResponse = ProductImportResponse.builder()
+                .totalRows(1)
+                .validRows(1)
+                .importedRows(1)
+                .updateCount(1)
+                .createCount(0)
+                .build();
+
+        when(productService.importProducts(org.mockito.ArgumentMatchers.<List<ProductImportRowRequest>>any())).thenReturn(mockResponse);
+
+        mockMvc.perform(post("/api/products/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(rows)))
+                .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.importedRows").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "sales.emp", roles = "SALES")
+    @DisplayName("S2-08: POST /api/products/import bị chặn đối với vai trò SALES -> 403 Forbidden")
+    void importProducts_SalesRole_Returns403() throws Exception {
+        mockMvc.perform(post("/api/products/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isForbidden());
     }
 }

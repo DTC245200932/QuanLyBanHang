@@ -1,6 +1,10 @@
 /* suppliers.css — S2-09 Quản lý danh mục nhà cung cấp
    Follows the same CSS variable system as dashboard.css */
 
+.main-area {
+  min-width: 0;
+}
+
 /* ── Page heading ───────────────────────────────────────── */
 
 .sup-heading {

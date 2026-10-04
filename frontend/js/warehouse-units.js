@@ -533,6 +533,10 @@
   // ══════════════════════════════════════════════════
   const sidebar = $("sidebar");
   const nav = $("sidebar-nav");
+  const initialTabParam = new URLSearchParams(window.location.search).get("tab");
+  const initialMenuId = ["receipts", "ledger", "inventory"].includes(initialTabParam)
+    ? "import-export"
+    : "product-units";
   const overlay = document.createElement("div");
   overlay.className = "sidebar-overlay";
   document.body.appendChild(overlay);
@@ -553,7 +557,7 @@
       ? `<div class="sidebar__section-label">${escapeHtml(item.section)}</div>` : "";
     if (item.section) lastSection = item.section;
     const resolvedHref = MenuConfig.resolveHref ? MenuConfig.resolveHref(item.href) : item.href;
-    const isActive = item.id === "import-export";
+    const isActive = item.id === initialMenuId;
     return `${section}<a class="sidebar__link ${isActive ? "sidebar__link--active" : ""}"
       href="${resolvedHref}" data-page="${item.id}">
       <svg viewBox="0 0 24 24">${item.icon}</svg>
@@ -612,9 +616,10 @@
   const tabs = document.querySelectorAll(".nav-tab");
   const panels = document.querySelectorAll(".tab-panel");
 
-  function updateWarehouseMenuState() {
+  function updateWarehouseMenuState(tabId) {
+    const activeMenuId = tabId === "sku-units" ? "product-units" : "import-export";
     nav.querySelectorAll("[data-page]").forEach((link) => {
-      link.classList.toggle("sidebar__link--active", link.dataset.page === "import-export");
+      link.classList.toggle("sidebar__link--active", link.dataset.page === activeMenuId);
     });
   }
 
@@ -634,7 +639,18 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") { renderLedgerTable(); renderSandboxOptions(); }
     if (tabId === "inventory-report") renderInventoryTable();
-    updateWarehouseMenuState();
+    updateWarehouseMenuState(tabId);
+    const tabParam = {
+      "sku-units": "units",
+      "create-receipt": "receipts",
+      "ledger-audit": "ledger",
+      "inventory-report": "inventory",
+    }[tabId];
+    if (tabParam) {
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set("tab", tabParam);
+      window.history.replaceState(null, "", currentUrl);
+    }
     updateMetrics();
   }
 
@@ -643,8 +659,6 @@
   });
 
   // Check URL params for initial tab (e.g. ?tab=receipts)
-  const urlParams = new URLSearchParams(window.location.search);
-  const initialTabParam = urlParams.get("tab");
   if (initialTabParam === "receipts") switchTab("create-receipt");
   else if (initialTabParam === "ledger") switchTab("ledger-audit");
   else if (initialTabParam === "inventory") switchTab("inventory-report");

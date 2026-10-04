@@ -51,6 +51,7 @@ controller, DTO, service, entity, repository, security và các test liên quan.
    DTO/entity/response, kiểm tra email/điện thoại và giới hạn độ dài.
 7. Cập nhật `backend/API_DOCUMENTATION.md`, thêm test supplier cho quyền truy cập,
    dữ liệu form, trạng thái và quy tắc cấm xóa supplier có chứng từ.
+8. Sửa flex layout để bảng NCC cuộn trong khung, không kéo tràn toàn trang.
 
 Những sửa này làm màn hình nhà cung cấp chạy được; liên kết nhà cung cấp với phiếu
 nhập vẫn là việc cần hoàn thiện theo S2-09.
@@ -155,6 +156,10 @@ nhập vẫn là việc cần hoàn thiện theo S2-09.
 Các phép ghi dùng database kiểm thử riêng và dữ liệu giả. Chưa kiểm tra SMTP thật,
 production, nhập 5.000 SKU, hay toàn bộ hành vi đồng thời/nhiều người dùng.
 Các kết quả “đạt” chỉ áp dụng cho AC và tình huống nêu trong báo cáo.
+
+Theo quy định lưu trữ trong `SKILL_backend.md`, còn một điểm cần xử lý ở nền xác thực:
+`auth.js`, `login.js` và `profile.js` vẫn lưu token/hồ sơ cache trong `sessionStorage`.
+Việc lưu phiên và thông tin người dùng cần được đối chiếu lại với yêu cầu của repo.
 
 ## Thứ tự hoàn thiện đề xuất
 

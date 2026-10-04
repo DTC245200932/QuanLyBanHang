@@ -111,7 +111,7 @@ Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý l
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/users/profile` | Đã đăng nhập | Xem hồ sơ, vai trò, kho và địa bàn hiện tại |
+| GET | `/users/profile` | Đã đăng nhập | Xem hồ sơ, vai trò, kho, địa bàn và URL ảnh đại diện/thumbnail hiện tại |
 | PUT | `/users/profile` | Đã đăng nhập | Chỉ cập nhật họ tên và số điện thoại Việt Nam |
 
 ## Kho & Tồn kho

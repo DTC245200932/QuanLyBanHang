@@ -128,13 +128,13 @@
   // ── Role-based redirect (S1-01) ──
   function getRedirectUrl(roles) {
     // Admin → admin dashboard
-    if (roles.includes("ROLE_ADMIN")) return "dashboard.html";
+    if (roles.includes("ROLE_ADMIN")) return "/dashboard";
     // Sales Manager → sales overview
-    if (roles.includes("ROLE_SALES_MANAGER")) return "dashboard.html";
+    if (roles.includes("ROLE_SALES_MANAGER")) return "/dashboard";
     // Warehouse Manager → warehouse overview
-    if (roles.includes("ROLE_WAREHOUSE_MANAGER")) return "dashboard.html";
+    if (roles.includes("ROLE_WAREHOUSE_MANAGER")) return "/dashboard";
     // All other roles → general dashboard
-    return "dashboard.html";
+    return "/dashboard";
   }
 
   // ── Check if already logged in ──

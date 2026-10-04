@@ -314,13 +314,11 @@ const Auth = (() => {
   }
 
   function getErrorPageUrl(status) {
-    const inSubdir = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/warehouse/");
-    return `${inSubdir ? "../" : ""}error.html?status=${status}`;
+    return `/error?status=${status}`;
   }
 
   function getLoginPageUrl() {
-    const inSubdir = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/warehouse/");
-    return inSubdir ? "../index.html" : "index.html";
+    return "/login";
   }
 
   // ── Public API ──

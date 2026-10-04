@@ -187,30 +187,6 @@ public class WarehouseServiceImpl implements WarehouseService {
             list = inventoryRepository.findAll();
         }
 
-        // Nếu cơ sở dữ liệu chưa có bản ghi tồn kho nào, tự động nạp từ các sản phẩm hiện có
-        if (list.isEmpty()) {
-            Warehouse defaultWarehouse = warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
-                    .findFirst()
-                    .orElse(null);
-            if (defaultWarehouse != null) {
-                List<Product> products = productRepository.findAll();
-                for (Product p : products) {
-                    WarehouseInventory inv = WarehouseInventory.builder()
-                            .warehouse(defaultWarehouse)
-                            .product(p)
-                            .baseQuantity(new BigDecimal("100.0000"))
-                            .baseUnit(p.getUnit())
-                            .build();
-                    inventoryRepository.save(inv);
-                }
-                if (warehouseId != null) {
-                    list = inventoryRepository.findByWarehouseId(warehouseId);
-                } else {
-                    list = inventoryRepository.findAll();
-                }
-            }
-        }
-
         return list.stream().map(this::mapToInventoryResponse).collect(Collectors.toList());
     }
 

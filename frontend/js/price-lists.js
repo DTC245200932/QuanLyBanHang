@@ -1,7 +1,7 @@
 (() => {
   if (!Auth.requireLogin()) return;
   if (!Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN")) {
-    window.location.href = "error.html?status=403";
+    window.location.href = "/error?status=403";
     return;
   }
 

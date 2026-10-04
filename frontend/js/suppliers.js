@@ -19,7 +19,7 @@
   if (!Auth.requireLogin()) return;
 
   if (!Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF', 'ROLE_VIEWER')) {
-    location.href = Auth.getErrorPageUrl ? Auth.getErrorPageUrl(403) : 'error.html?status=403';
+    location.href = Auth.getErrorPageUrl ? Auth.getErrorPageUrl(403) : '/error?status=403';
     return;
   }
   const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF');

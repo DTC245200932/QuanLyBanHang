@@ -55,21 +55,30 @@
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
   }).format(new Date());
 
-  const statsByRole = {
-    ROLE_ADMIN: [["Tài khoản", "Quản trị", "7 vai trò nghiệp vụ", "teal"], ["Phân quyền", "Mặc định từ chối", "Kiểm tra tại server", "blue"]],
-    ROLE_SALES_MANAGER: [["Kinh doanh", "Đơn hàng", "Theo dõi đội ngũ", "teal"], ["Hiệu quả", "Giá vốn", "Biên lợi nhuận", "blue"]],
-    ROLE_WAREHOUSE_MANAGER: [["Kho phụ trách", String((user.warehouses || []).length), "Phê duyệt nhập / xuất", "teal"]],
-    ROLE_WAREHOUSE_STAFF: [["Kho làm việc", String((user.warehouses || []).length), "Nhập và xuất hàng", "teal"]],
-    ROLE_SALES: [["Địa bàn", String((user.territories || []).length), "Đơn hàng và khách hàng", "teal"]],
-    ROLE_ACCOUNTANT: [["Kế toán", "Công nợ", "Báo cáo tài chính", "blue"]],
-    ROLE_VIEWER: [["Quyền truy cập", "Chỉ xem", "Không thay đổi dữ liệu", "amber"]],
+  const workDescriptions = {
+    users: "Tạo tài khoản, gán vai trò và quản lý nhân sự.",
+    "audit-logs": "Tra cứu thay đổi tồn kho, giá và hạn mức công nợ.",
+    products: "Tra cứu mã hàng, đơn vị tính và quy cách đóng gói.",
+    "product-groups": "Tra cứu nhóm hàng và sản phẩm trong từng nhóm.",
+    "price-lists": "Khai báo giá bán theo nhóm khách hàng và ngày hiệu lực.",
+    suppliers: "Tra cứu thông tin liên hệ và điều khoản thanh toán.",
+    "product-units": "Khai báo hệ số quy đổi lon, lốc và thùng theo từng mã hàng.",
+    "import-export": "Lập phiếu nhập, xuất và tra cứu chứng từ kho.",
+    warehouse: "Xem số lượng tồn và quy đổi theo đơn vị đóng gói.",
+    profile: "Cập nhật họ tên, số điện thoại và ảnh đại diện.",
   };
-  const stats = [...new Map((user.roles || []).flatMap((role) => statsByRole[role] || []).map((s) => [s[0], s])).values()];
-  document.getElementById("stats-grid").innerHTML = stats.map(([label, value, sub, color]) => `
-    <article class="stat-card"><div class="stat-card__icon stat-card__icon--${color}">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg></div>
-      <div class="stat-card__label">${escapeHtml(label)}</div><div class="stat-card__value">${escapeHtml(value)}</div>
-      <div class="stat-card__sub">${escapeHtml(sub)}</div></article>`).join("");
+  const workOrder = ["users", "audit-logs", "price-lists", "products", "product-groups",
+    "import-export", "warehouse", "product-units", "suppliers", "profile"];
+  const availableWork = MenuConfig.getMenuForUser(user);
+  const work = workOrder.map((id) => availableWork.find((item) => item.id === id))
+    .filter(Boolean).slice(0, 5);
+  document.getElementById("work-list").innerHTML = work.map((item) => `
+    <a class="work-link" href="${escapeHtml(item.href)}">
+      <span class="work-link__icon"><svg viewBox="0 0 24 24" aria-hidden="true">${item.icon}</svg></span>
+      <span class="work-link__text"><span class="work-link__title">${escapeHtml(item.label)}</span>
+        <span class="work-link__description">${escapeHtml(workDescriptions[item.id] || "")}</span></span>
+      <span class="work-link__open">Mở</span>
+    </a>`).join("");
 
   function showToast(message, type = "error") {
     let container = document.getElementById("toast-container");
@@ -219,7 +228,7 @@
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Không đổi được mật khẩu");
       showToast(result.message, "success");
-      setTimeout(() => { Auth.clearSession(); window.location.href = "index.html"; }, 1100);
+      setTimeout(() => { Auth.clearSession(); window.location.href = "/login"; }, 1100);
     } catch (error) { showToast(error.message); }
     finally { button.disabled = false; }
   });
@@ -229,12 +238,4 @@
     setModal(true);
   }
 
-  nav.querySelectorAll('a[href^="#"]').forEach((link) => link.addEventListener("click", (event) => {
-    event.preventDefault();
-    nav.querySelectorAll(".sidebar__link").forEach((item) => item.classList.remove("sidebar__link--active"));
-    link.classList.add("sidebar__link--active");
-    document.getElementById("page-title").textContent = link.textContent.trim();
-    document.getElementById("content-placeholder").querySelector("p").textContent = "Chức năng này sẽ được triển khai ở sprint nghiệp vụ tiếp theo.";
-    openSidebar(false);
-  }));
 })();

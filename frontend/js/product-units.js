@@ -4,5 +4,5 @@
  */
 (() => {
   "use strict";
-  window.location.replace("warehouse/units.html?tab=units");
+  window.location.replace("/warehouse/units?tab=units");
 })();

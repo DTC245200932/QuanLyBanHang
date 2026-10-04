@@ -184,6 +184,24 @@ class WarehouseServiceTest {
     }
 
     @Test
+    @DisplayName("Kho chưa có tồn: đọc dữ liệu không tự tạo số lượng tồn giả")
+    void getInventory_EmptyWarehouseNeverCreatesStock() {
+        when(inventoryRepository.findByWarehouseId(1L)).thenReturn(List.of());
+        assertThat(warehouseService.getInventory(1L)).isEmpty();
+        verify(inventoryRepository, never()).save(any());
+        verifyNoInteractions(productRepository, warehouseRepository);
+    }
+
+    @Test
+    @DisplayName("Toàn hệ thống chưa có tồn: không tạo tồn mặc định cho sản phẩm")
+    void getInventory_EmptySystemNeverCreatesStock() {
+        when(inventoryRepository.findAll()).thenReturn(List.of());
+        assertThat(warehouseService.getInventory(null)).isEmpty();
+        verify(inventoryRepository, never()).save(any());
+        verifyNoInteractions(productRepository, warehouseRepository);
+    }
+
+    @Test
     @DisplayName("Xem tồn kho: hiển thị số lon thực tế và quy đổi tương đương theo thùng, lốc")
     void getInventory_ShowsBaseQuantityAndConvertedViews() {
         WarehouseInventory inventory = WarehouseInventory.builder()

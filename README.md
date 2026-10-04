@@ -13,7 +13,7 @@ Cài sẵn:
 
 - Java Development Kit 17 trở lên.
 - MySQL 8.
-- Python 3 để phục vụ frontend. Có thể dùng một HTTP server khác nếu muốn.
+- Python 3.9 trở lên để phục vụ frontend. Có thể dùng một HTTP server khác nếu muốn.
 
 Kiểm tra nhanh trong PowerShell:
 
@@ -81,16 +81,19 @@ Giữ backend hoạt động. Mở một cửa sổ PowerShell khác tại thư 
 
 ```powershell
 cd D:\GitHub\QuanLyBanHang
-python -m http.server 5500
+python serve_frontend.py
 ```
 
 Sau đó mở:
 
 ```text
-http://localhost:5500/frontend/index.html
+http://localhost:5500/login
 ```
 
-Không mở trực tiếp `frontend/index.html` bằng địa chỉ `file://`; frontend cần chạy qua HTTP để gọi API và xử lý CORS đúng cách.
+Có thể chạy `.\run_frontend.ps1` từ PowerShell. Mở `/dashboard`, `/products`,
+`/profile`, `/admin/users`, `/admin/audit-logs` hoặc `/warehouse/units`.
+Các đường dẫn cũ `/frontend/*.html` tự chuyển sang đường dẫn mới.
+Server chỉ phục vụ thư mục frontend; không mở trang bằng `file://`.
 
 ## 5. Tài khoản đăng nhập
 
@@ -211,11 +214,20 @@ Nếu chưa cấu hình hai biến trên, hệ thống không thể gửi email 
 Các URL frontend trong email mặc định dùng cổng `5500`:
 
 ```text
-http://localhost:5500/frontend/index.html
-http://localhost:5500/frontend/reset-password.html
+http://localhost:5500/login
+http://localhost:5500/reset-password
 ```
 
 ## 8. Chạy kiểm thử
+
+Kiểm tra đường dẫn frontend và menu theo vai trò từ thư mục repo:
+
+```powershell
+python -m unittest discover -s tests -p test_frontend_server.py
+node --test tests/menu-config.test.cjs
+```
+
+Xem các đường dẫn trang trong [docs/FRONTEND_ROUTES.md](docs/FRONTEND_ROUTES.md).
 
 ```powershell
 cd D:\GitHub\QuanLyBanHang\backend

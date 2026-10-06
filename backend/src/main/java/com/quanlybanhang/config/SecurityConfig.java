@@ -113,6 +113,9 @@ public class SecurityConfig {
                 // ── Bảng giá (S2-10): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
                 .requestMatchers("/api/price-lists/**").authenticated()
 
+                // ── Chính sách chiết khấu theo sản lượng (S3-01): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
+                .requestMatchers("/api/volume-discounts/**").authenticated()
+
                 // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
                 .requestMatchers("/api/customers/**").hasAnyRole(
                         "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")

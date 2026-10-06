@@ -30,6 +30,20 @@ public class OrderServiceImpl implements OrderService {
     private final PriceListRepository priceListRepository;
     private final UnitConversionService unitConversionService;
     private final AuditLogService auditLogService;
+    private final VolumeDiscountPolicyService volumeDiscountPolicyService;
+
+    private record ItemPreData(
+            Product product,
+            String unit,
+            BigDecimal quantity,
+            BigDecimal conversionFactor,
+            BigDecimal baseQuantity,
+            BigDecimal price,
+            BigDecimal floorPrice,
+            boolean isBelowFloor,
+            BigDecimal subtotal,
+            String note
+    ) {}
 
     @Override
     @Transactional
@@ -102,11 +116,13 @@ public class OrderServiceImpl implements OrderService {
                 .items(new ArrayList<>())
                 .build();
 
-        BigDecimal grandTotal = BigDecimal.ZERO;
         boolean orderRequiresApproval = false;
         List<String> belowFloorReasons = new ArrayList<>();
+        List<VolumeDiscountPolicyService.OrderItemDiscountInput> discountInputs = new ArrayList<>();
+        List<ItemPreData> preDataList = new ArrayList<>();
 
-        for (OrderItemRequest itemReq : request.getItems()) {
+        for (int i = 0; i < request.getItems().size(); i++) {
+            OrderItemRequest itemReq = request.getItems().get(i);
             Product product = resolveProduct(itemReq);
 
             String inputUnit = itemReq.getUnit();
@@ -158,31 +174,85 @@ public class OrderServiceImpl implements OrderService {
                         product.getName(), price.toPlainString(), unitFloorPrice.toPlainString(), inputUnit));
             }
 
-            BigDecimal totalAmount = price.multiply(qty);
-            grandTotal = grandTotal.add(totalAmount);
+            BigDecimal subtotalAmount = price.multiply(qty);
 
-            // ĐÓNG BĂNG thông tin đơn vị, hệ số, giá sàn và số lượng cơ sở vào dòng đơn hàng
-            OrderItem item = OrderItem.builder()
-                    .order(order)
+            discountInputs.add(VolumeDiscountPolicyService.OrderItemDiscountInput.builder()
+                    .index(i)
                     .product(product)
                     .unit(inputUnit)
                     .quantity(qty)
                     .conversionFactor(factor)
-                    .baseUnit(product.getUnit())
                     .baseQuantity(baseQty)
+                    .baseUnit(product.getUnit())
                     .price(price)
-                    .floorPrice(unitFloorPrice)
-                    .belowFloorPrice(isBelowFloor)
-                    .totalAmount(totalAmount)
-                    .note(itemReq.getNote())
+                    .subtotalAmount(subtotalAmount)
+                    .build());
+
+            preDataList.add(new ItemPreData(product, inputUnit, qty, factor, baseQty, price, unitFloorPrice, isBelowFloor, subtotalAmount, itemReq.getNote()));
+        }
+
+        // 4. Áp dụng chính sách chiết khấu theo sản lượng (S3-01)
+        VolumeDiscountPolicyService.OrderDiscountSummary discountSummary = null;
+        if (volumeDiscountPolicyService != null) {
+            discountSummary = volumeDiscountPolicyService.calculateOrderDiscount(discountInputs, customerGroup, LocalDate.now());
+        }
+
+        BigDecimal grandSubtotal = BigDecimal.ZERO;
+        BigDecimal grandDiscount = BigDecimal.ZERO;
+
+        for (int i = 0; i < preDataList.size(); i++) {
+            ItemPreData d = preDataList.get(i);
+            BigDecimal discountAmount = BigDecimal.ZERO;
+            BigDecimal discountPercent = null;
+            Long appliedPolicyId = null;
+            String appliedPolicyCode = null;
+            String appliedPolicyName = null;
+
+            if (discountSummary != null && discountSummary.getItemResults() != null) {
+                VolumeDiscountPolicyService.ItemDiscountResult res = discountSummary.getItemResults().get(i);
+                if (res != null) {
+                    discountAmount = res.getDiscountAmount() != null ? res.getDiscountAmount() : BigDecimal.ZERO;
+                    discountPercent = res.getDiscountPercent();
+                    appliedPolicyId = res.getAppliedPolicyId();
+                    appliedPolicyCode = res.getAppliedPolicyCode();
+                    appliedPolicyName = res.getAppliedPolicyName();
+                }
+            }
+
+            BigDecimal lineTotal = d.subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
+            grandSubtotal = grandSubtotal.add(d.subtotal);
+            grandDiscount = grandDiscount.add(discountAmount);
+
+            // ĐÓNG BĂNG thông tin đơn vị, hệ số, giá sàn, số lượng cơ sở và chiết khấu vào dòng đơn hàng
+            OrderItem item = OrderItem.builder()
+                    .order(order)
+                    .product(d.product)
+                    .unit(d.unit)
+                    .quantity(d.quantity)
+                    .conversionFactor(d.conversionFactor)
+                    .baseUnit(d.product.getUnit())
+                    .baseQuantity(d.baseQuantity)
+                    .price(d.price)
+                    .floorPrice(d.floorPrice)
+                    .belowFloorPrice(d.isBelowFloor)
+                    .subtotalAmount(d.subtotal)
+                    .discountAmount(discountAmount)
+                    .discountPercent(discountPercent)
+                    .appliedPolicyId(appliedPolicyId)
+                    .appliedPolicyCode(appliedPolicyCode)
+                    .appliedPolicyName(appliedPolicyName)
+                    .totalAmount(lineTotal)
+                    .note(d.note)
                     .build();
 
             order.addItem(item);
         }
 
-        order.setTotalAmount(grandTotal);
+        order.setSubtotalAmount(grandSubtotal);
+        order.setDiscountAmount(grandDiscount);
+        order.setTotalAmount(grandSubtotal.subtract(grandDiscount).max(BigDecimal.ZERO));
 
-        // 4. Nếu có sản phẩm bán dưới giá sàn -> đơn hàng chuyển sang trạng thái CHỜ DUYỆT (PENDING_APPROVAL)
+        // 5. Nếu có sản phẩm bán dưới giá sàn -> đơn hàng chuyển sang trạng thái CHỜ DUYỆT (PENDING_APPROVAL)
         if (orderRequiresApproval) {
             order.setStatus("PENDING_APPROVAL");
             order.setRequiresApproval(true);
@@ -302,6 +372,8 @@ public class OrderServiceImpl implements OrderService {
                 .approvalReason(order.getApprovalReason())
                 .approvedBy(order.getApprovedBy())
                 .approvedAt(order.getApprovedAt())
+                .subtotalAmount(order.getSubtotalAmount() != null ? order.getSubtotalAmount() : order.getTotalAmount())
+                .discountAmount(order.getDiscountAmount() != null ? order.getDiscountAmount() : BigDecimal.ZERO)
                 .totalAmount(order.getTotalAmount())
                 .note(order.getNote())
                 .createdBy(order.getCreatedBy())
@@ -325,6 +397,12 @@ public class OrderServiceImpl implements OrderService {
                 .price(item.getPrice())
                 .floorPrice(item.getFloorPrice())
                 .belowFloorPrice(item.getBelowFloorPrice())
+                .subtotalAmount(item.getSubtotalAmount() != null ? item.getSubtotalAmount() : item.getTotalAmount())
+                .discountAmount(item.getDiscountAmount() != null ? item.getDiscountAmount() : BigDecimal.ZERO)
+                .discountPercent(item.getDiscountPercent())
+                .appliedPolicyId(item.getAppliedPolicyId())
+                .appliedPolicyCode(item.getAppliedPolicyCode())
+                .appliedPolicyName(item.getAppliedPolicyName())
                 .totalAmount(item.getTotalAmount())
                 .note(item.getNote())
                 .build();

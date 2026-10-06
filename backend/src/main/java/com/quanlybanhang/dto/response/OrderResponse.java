@@ -25,6 +25,8 @@ public class OrderResponse {
     private String approvalReason;
     private String approvedBy;
     private LocalDateTime approvedAt;
+    private BigDecimal subtotalAmount;
+    private BigDecimal discountAmount;
     private BigDecimal totalAmount;
     private String note;
     private String createdBy;

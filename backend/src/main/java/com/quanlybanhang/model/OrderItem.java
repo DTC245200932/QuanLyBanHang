@@ -82,6 +82,47 @@ public class OrderItem {
     @Builder.Default
     private Boolean belowFloorPrice = false;
 
+    /**
+     * Thành tiền trước chiết khấu (price * quantity).
+     */
+    @Column(name = "subtotal_amount", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal subtotalAmount = BigDecimal.ZERO;
+
+    /**
+     * Tiền chiết khấu sản lượng được hưởng (S3-01).
+     */
+    @Column(name = "discount_amount", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
+    /**
+     * Tỷ lệ chiết khấu (%) tương đương.
+     */
+    @Column(name = "discount_percent", precision = 7, scale = 2)
+    private BigDecimal discountPercent;
+
+    /**
+     * ID chính sách chiết khấu áp dụng (S3-01).
+     */
+    @Column(name = "applied_policy_id")
+    private Long appliedPolicyId;
+
+    /**
+     * Mã chính sách chiết khấu áp dụng.
+     */
+    @Column(name = "applied_policy_code", length = 50)
+    private String appliedPolicyCode;
+
+    /**
+     * Tên chính sách chiết khấu áp dụng.
+     */
+    @Column(name = "applied_policy_name", length = 255)
+    private String appliedPolicyName;
+
+    /**
+     * Thành tiền sau chiết khấu (subtotalAmount - discountAmount).
+     */
     @Column(name = "total_amount", precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal totalAmount = BigDecimal.ZERO;

@@ -44,6 +44,29 @@ public class OrderItemResponse {
     private BigDecimal price;
     private BigDecimal floorPrice;
     private Boolean belowFloorPrice;
+
+    /**
+     * Thành tiền trước chiết khấu (S3-01).
+     */
+    private BigDecimal subtotalAmount;
+
+    /**
+     * Tiền chiết khấu sản lượng (S3-01).
+     */
+    private BigDecimal discountAmount;
+
+    /**
+     * Tỷ lệ chiết khấu (%) tương đương.
+     */
+    private BigDecimal discountPercent;
+
+    /**
+     * ID và thông tin chính sách chiết khấu áp dụng (S3-01).
+     */
+    private Long appliedPolicyId;
+    private String appliedPolicyCode;
+    private String appliedPolicyName;
+
     private BigDecimal totalAmount;
     private String note;
 }

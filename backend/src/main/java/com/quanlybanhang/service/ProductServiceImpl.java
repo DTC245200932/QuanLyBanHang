@@ -9,8 +9,11 @@ import com.quanlybanhang.exception.ProductHasTransactionsException;
 import com.quanlybanhang.model.Category;
 import com.quanlybanhang.model.Permission;
 import com.quanlybanhang.model.Product;
+import com.quanlybanhang.model.ProductPriceHistory;
 import com.quanlybanhang.repository.CategoryRepository;
+import com.quanlybanhang.repository.ProductPriceHistoryRepository;
 import com.quanlybanhang.repository.ProductRepository;
+import com.quanlybanhang.dto.response.ProductPriceHistoryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -39,6 +42,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final ProductPriceHistoryRepository productPriceHistoryRepository;
     private final AuditLogService auditLogService;
     private final ProductExcelService productExcelService;
 
@@ -131,6 +135,15 @@ public class ProductServiceImpl implements ProductService {
             if (product.getPrice() == null || product.getPrice().compareTo(request.getPrice()) != 0) {
                 Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
                 String username = authentication != null ? authentication.getName() : "SYSTEM";
+                
+                ProductPriceHistory history = ProductPriceHistory.builder()
+                        .product(product)
+                        .oldPrice(product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO)
+                        .newPrice(request.getPrice())
+                        .modifiedBy(username)
+                        .build();
+                productPriceHistoryRepository.save(history);
+
                 auditLogService.logAction(
                         "PRICE",
                         product.getId().toString(),
@@ -480,6 +493,14 @@ public class ProductServiceImpl implements ProductService {
                     }
                     if (row.getPrice() != null) {
                         if (existing.getPrice() == null || existing.getPrice().compareTo(row.getPrice()) != 0) {
+                            ProductPriceHistory history = ProductPriceHistory.builder()
+                                    .product(existing)
+                                    .oldPrice(existing.getPrice() != null ? existing.getPrice() : BigDecimal.ZERO)
+                                    .newPrice(row.getPrice())
+                                    .modifiedBy(username)
+                                    .build();
+                            productPriceHistoryRepository.save(history);
+
                             auditLogService.logAction(
                                     "PRICE",
                                     existing.getId().toString(),
@@ -595,6 +616,25 @@ public class ProductServiceImpl implements ProductService {
                 "ROLE_SALES_MANAGER".equals(a.getAuthority()) ||
                 Permission.FINANCE_VIEW_COST_PRICE.name().equals(a.getAuthority())
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductPriceHistoryResponse> getPriceHistory(Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + productId));
+        
+        return productPriceHistoryRepository.findByProductIdOrderByAppliedAtDesc(productId)
+                .stream()
+                .map(h -> ProductPriceHistoryResponse.builder()
+                        .id(h.getId())
+                        .productId(product.getId())
+                        .oldPrice(h.getOldPrice())
+                        .newPrice(h.getNewPrice())
+                        .modifiedBy(h.getModifiedBy())
+                        .appliedAt(h.getAppliedAt())
+                        .build())
+                .collect(Collectors.toList());
     }
 
     private ProductResponse mapToResponse(Product product) {

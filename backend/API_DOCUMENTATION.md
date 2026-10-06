@@ -182,6 +182,7 @@ Hỗ trợ Quản lý kinh doanh quản lý danh mục sản phẩm chuẩn hóa
 |---|---|---|---|
 | GET | `/products?categoryId={id}&search={q}&active={true/false}` | Đã đăng nhập | Danh sách sản phẩm (hỗ trợ lọc nhóm, tìm kiếm theo SKU/tên, trạng thái; giá vốn chỉ trả về cho Sales Manager) |
 | GET | `/products/{id}` | Đã đăng nhập | Xem chi tiết sản phẩm kèm danh sách đơn vị quy đổi (giá vốn bảo mật) |
+| GET | `/products/{id}/price-history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xem lịch sử thay đổi giá của một sản phẩm (giá cũ, giá mới, người sửa, thời điểm) |
 | POST | `/products` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo sản phẩm mới, có thể khai báo `unitConversions` (chỉ Sales Manager gán được giá vốn ban đầu) |
 | PUT | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật thông tin sản phẩm (chỉ Sales Manager sửa được giá vốn; vai trò khác giữ nguyên giá vốn cũ) |
 | PATCH | `/products/{id}/status?active={true/false}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Chuyển đổi trạng thái Đang kinh doanh / Ngừng kinh doanh |

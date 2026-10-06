@@ -6,6 +6,8 @@ import com.quanlybanhang.dto.response.ProductImportResponse;
 import com.quanlybanhang.dto.response.ProductResponse;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.quanlybanhang.dto.response.ProductPriceHistoryResponse;
+
 import java.util.List;
 
 public interface ProductService {
@@ -21,6 +23,8 @@ public interface ProductService {
     List<ProductResponse> getAll(Long categoryId);
 
     List<ProductResponse> getAll(Long categoryId, String search, Boolean active);
+
+    List<ProductPriceHistoryResponse> getPriceHistory(Long productId);
 
     void delete(Long id);
 

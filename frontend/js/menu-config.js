@@ -55,6 +55,13 @@ const MenuConfig = (() => {
       roles: ["ROLE_SALES_MANAGER"],
     },
     {
+      id: "discount-policies",
+      label: "Chiết khấu sản lượng",
+      icon: '<path d="M9 14l2 2 4-4"/><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7"/><circle cx="18" cy="18" r="4"/><path d="M15 18h6M18 15v6"/>',
+      href: "/discount-policies",
+      roles: ["ROLE_SALES_MANAGER"],
+    },
+    {
       id: "warehouse",
       section: "Kho hàng",
       label: "Tồn kho",

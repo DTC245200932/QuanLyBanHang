@@ -2,6 +2,7 @@
   if (!Auth.requireLogin()) return;
 
   const canManage = Auth.hasRole("ROLE_SALES_MANAGER");
+  const canViewPriceHistory = canManage || Auth.hasRole("ROLE_ADMIN");
   const state = {
     products: [],
     categories: [],
@@ -116,6 +117,9 @@
            <button class="product-edit" type="button" data-toggle-product="${product.id}">${active ? "Ngừng bán" : "Kích hoạt"}</button>
            ${product.canDelete ? `<button class="product-edit" type="button" data-delete-product="${product.id}">Xoá</button>` : ""}`
         : "";
+      const historyAction = canViewPriceHistory
+        ? `<button class="product-edit product-history-button" type="button" data-price-history="${escapeHtml(product.id)}" aria-label="${escapeHtml(`Xem lịch sử giá của ${product.code}`)}">Lịch sử giá</button>`
+        : "";
       return `
         <tr>
           <td>
@@ -138,7 +142,7 @@
           <td><span class="product-price">${formatCurrency(product.price)}</span></td>
           ${costCell}
           <td><span class="product-status ${active ? "" : "product-status--inactive"}">${active ? "Đang kinh doanh" : "Ngừng kinh doanh"}</span></td>
-          <td><div class="product-actions">${actions}</div></td>
+          <td><div class="product-actions">${historyAction}${actions}</div></td>
         </tr>`;
     }).join("");
     document.querySelectorAll("img[data-protected-src]").forEach((image) => {
@@ -294,6 +298,12 @@
     button.addEventListener("click", closeProductModal);
   });
   $("products-body").addEventListener("click", (event) => {
+    const historyButton = event.target.closest("[data-price-history]");
+    if (historyButton) {
+      const product = state.products.find(item => String(item.id) === historyButton.dataset.priceHistory);
+      if (product) openPriceHistory(product);
+      return;
+    }
     const editButton = event.target.closest("[data-edit-product]");
     const toggleButton = event.target.closest("[data-toggle-product]");
     const deleteButton = event.target.closest("[data-delete-product]");
@@ -332,6 +342,166 @@
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !modal.hidden) closeProductModal();
+  });
+
+  const historyModal = $("price-history-modal");
+  const historyState = { product: null, rows: [], page: 0, loading: false, error: "", requestId: 0, controller: null };
+  const historyPageSize = 10;
+  let historyPreviousFocus;
+  let historyPreviousOverflow;
+
+  function historyPrice(value) {
+    if (value == null || String(value).trim() === "") return "Chưa có dữ liệu";
+    return Number.isFinite(Number(value)) ? formatCurrency(value) : String(value);
+  }
+
+  function historyTime(value) {
+    if (!value) return "Chưa có dữ liệu";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Chưa có dữ liệu";
+    return new Intl.DateTimeFormat("vi-VN", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    }).format(date);
+  }
+
+  function renderPriceHistory() {
+    const { rows, page, loading, error } = historyState;
+    const totalPages = Math.max(1, Math.ceil(rows.length / historyPageSize));
+    historyModal.setAttribute("aria-busy", String(loading));
+    $("filter-price-history").disabled = loading;
+    $("reset-price-history").disabled = loading;
+    $("price-history-from").disabled = loading;
+    $("price-history-to").disabled = loading;
+    $("price-history-prev").disabled = loading || !!error || page === 0;
+    $("price-history-next").disabled = loading || !!error || page >= totalPages - 1;
+    $("price-history-page").textContent = loading || error ? "—" : `Trang ${page + 1} / ${totalPages}`;
+    $("price-history-error").textContent = error;
+    $("price-history-error").hidden = !error;
+    $("price-history-summary").textContent = loading ? "Đang tải lịch sử thay đổi giá…"
+      : error ? "Chưa tải được lịch sử giá" : `${rows.length.toLocaleString("vi-VN")} lần thay đổi giá · Mới nhất trước`;
+    if (loading || error || !rows.length) {
+      const title = loading ? "Đang tải dữ liệu…" : error ? "Không tải được lịch sử giá" : "Chưa có thay đổi giá trong khoảng thời gian này";
+      $("price-history-rows").innerHTML = `<tr><td colspan="4" class="price-history__empty">
+        <strong>${title}</strong>
+        ${error ? '<span>Kiểm tra kết nối máy chủ và thử lại.</span><button class="btn btn--secondary" type="button" data-retry-price-history>Thử tải lại</button>' : ""}
+      </td></tr>`;
+      return;
+    }
+    $("price-history-rows").innerHTML = rows.slice(page * historyPageSize, (page + 1) * historyPageSize).map(row => `<tr>
+      <td>${escapeHtml(historyTime(row.createdAt))}</td>
+      <td><span class="product-price">${escapeHtml(historyPrice(row.oldValue))}</span></td>
+      <td><span class="product-price">${escapeHtml(historyPrice(row.newValue))}</span></td>
+      <td>${escapeHtml(row.username || "Chưa có dữ liệu")}</td>
+    </tr>`).join("");
+    historyModal.querySelector(".price-history__table-wrap").scrollTop = 0;
+  }
+
+  async function loadPriceHistory() {
+    // The only existing history API is admin-only. Do not call it for a sales manager without that role.
+    if (!historyState.product || !Auth.hasRole("ROLE_ADMIN")) return;
+    const from = $("price-history-from").value;
+    const to = $("price-history-to").value;
+    if (from && to && from > to) {
+      $("price-history-error").textContent = "Ngày bắt đầu không được sau ngày kết thúc.";
+      $("price-history-error").hidden = false;
+      $("price-history-from").focus();
+      return;
+    }
+    historyState.controller?.abort();
+    const controller = new AbortController();
+    historyState.controller = controller;
+    const requestId = ++historyState.requestId;
+    const productId = String(historyState.product.id);
+    historyState.rows = [];
+    historyState.page = 0;
+    historyState.error = "";
+    historyState.loading = true;
+    renderPriceHistory();
+    try {
+      const rows = [];
+      let totalPages = 1;
+      for (let page = 0; page < totalPages; page++) {
+        const params = new URLSearchParams({ entityType: "PRICE", page: String(page), size: "100" });
+        if (from) params.set("startDate", `${from}T00:00:00`);
+        if (to) params.set("endDate", `${to}T23:59:59.999999999`);
+        const response = await Auth.apiFetch(`/admin/audit-logs?${params}`, { signal: controller.signal });
+        const result = await response.json().catch(() => null);
+        if (requestId !== historyState.requestId) return;
+        if (!response.ok || result?.success === false || !Array.isArray(result?.data)) {
+          throw new Error(result?.message || "Không tải được lịch sử giá. Vui lòng thử lại.");
+        }
+        // This API supports entity type, not product ID: read every page and match the exact ID.
+        rows.push(...result.data.filter(row => row.entityType === "PRICE" && String(row.entityId) === productId));
+        const pageCount = Number(result.totalPages);
+        if (!Number.isInteger(pageCount) || pageCount < 0) throw new Error("Dữ liệu phân trang lịch sử giá không hợp lệ.");
+        totalPages = pageCount;
+      }
+      rows.sort((a, b) => (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0));
+      historyState.rows = rows;
+    } catch (error) {
+      if (requestId !== historyState.requestId || error.name === "AbortError") return;
+      historyState.error = error.message || "Không thể kết nối tới máy chủ. Vui lòng thử lại.";
+    } finally {
+      if (requestId === historyState.requestId) {
+        historyState.loading = false;
+        renderPriceHistory();
+      }
+    }
+  }
+
+  function openPriceHistory(product) {
+    if (!canViewPriceHistory) return;
+    historyPreviousFocus = document.activeElement;
+    historyPreviousOverflow = document.body.style.overflow;
+    historyState.product = product;
+    historyState.rows = [];
+    historyState.page = 0;
+    historyState.error = "";
+    $("price-history-product").textContent = `${product.code} · ${product.name}`;
+    $("price-history-filters").reset();
+    const canReadApi = Auth.hasRole("ROLE_ADMIN");
+    $("price-history-unavailable").hidden = canReadApi;
+    $("price-history-content").hidden = !canReadApi;
+    historyModal.hidden = false;
+    document.querySelector(".catalog-shell").inert = true;
+    document.body.style.overflow = "hidden";
+    historyModal.querySelector("[data-close-price-history]").focus();
+    if (canReadApi) loadPriceHistory();
+  }
+
+  function closePriceHistory() {
+    if (historyModal.hidden) return;
+    historyState.requestId++;
+    historyState.controller?.abort();
+    historyState.loading = false;
+    historyModal.hidden = true;
+    document.querySelector(".catalog-shell").inert = false;
+    document.body.style.overflow = historyPreviousOverflow;
+    historyPreviousFocus?.focus();
+  }
+
+  $("price-history-filters").addEventListener("submit", event => { event.preventDefault(); loadPriceHistory(); });
+  $("reset-price-history").addEventListener("click", () => { $("price-history-filters").reset(); loadPriceHistory(); });
+  $("price-history-rows").addEventListener("click", event => { if (event.target.closest("[data-retry-price-history]")) loadPriceHistory(); });
+  $("price-history-prev").addEventListener("click", () => { if (historyState.page > 0) { historyState.page--; renderPriceHistory(); } });
+  $("price-history-next").addEventListener("click", () => {
+    if ((historyState.page + 1) * historyPageSize < historyState.rows.length) { historyState.page++; renderPriceHistory(); }
+  });
+  historyModal.querySelectorAll("[data-close-price-history]").forEach(button => button.addEventListener("click", closePriceHistory));
+  historyModal.addEventListener("click", event => { if (event.target === historyModal) closePriceHistory(); });
+  document.addEventListener("keydown", event => {
+    if (historyModal.hidden) return;
+    if (event.key === "Escape") closePriceHistory();
+    if (event.key !== "Tab") return;
+    const controls = [...historyModal.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]')]
+      .filter(element => element.getClientRects().length);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first)?.focus();
+    }
   });
 
   loadCatalog();

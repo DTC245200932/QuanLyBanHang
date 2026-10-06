@@ -22,6 +22,10 @@
     RECORDED: "Đã ghi sổ", PENDING_APPROVAL: "Chờ duyệt",
     CANCELLED: "Đã hủy", REJECTED: "Đã từ chối",
   })[status] || status || "—";
+  const formatOrderNotes = (delivery, notes) => [
+    delivery ? `Điểm giao: ${delivery.address}; Người nhận: ${delivery.recipient}; SĐT: ${delivery.phone}${delivery.routeNote ? `; Ghi chú đường đi: ${delivery.routeNote}` : ""}` : "",
+    notes || "",
+  ].filter(Boolean).join("\n");
 
   // ══════════════════════════════════════════════════
   // Data from the API
@@ -238,9 +242,10 @@
       }
       const code = receiptData.id || this.generateReceiptCode(receiptData.type);
       if (receiptData.type === "ORDER") {
+        const orderNotes = formatOrderNotes(receiptData.deliveryPoint, receiptData.notes);
         await this.request("/orders", { method: "POST", body: JSON.stringify({
           orderCode: code, customerName: receiptData.partner || "Khách hàng",
-          note: receiptData.notes || "", items: requestItems,
+          note: orderNotes, items: requestItems,
         }) });
       } else {
         await this.request(`/warehouse/${receiptData.type === "EXPORT" ? "export" : "import"}`, {
@@ -565,6 +570,155 @@
     lines: []
   };
 
+  const deliveryPointsStorageKey = `salestock.delivery-points.v1.${user.id || user.username || "guest"}`;
+  let deliveryPointRecords = [];
+  let deliveryPointsStorageAvailable = true;
+  let deliveryPointEditingId = null;
+  let deliveryPointDealerName = "";
+
+  function normalizeDealerName(name) {
+    return String(name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
+  }
+
+  function pointsForDealer(name) {
+    const key = normalizeDealerName(name);
+    return deliveryPointRecords.find((record) => normalizeDealerName(record.dealerName) === key)?.points || [];
+  }
+
+  function loadDeliveryPointRecords() {
+    try {
+      const saved = localStorage.getItem(deliveryPointsStorageKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed) || parsed.some((record) =>
+        !record || typeof record.dealerName !== "string" || !Array.isArray(record.points))) {
+        throw new Error("Dữ liệu điểm giao không đúng định dạng.");
+      }
+      deliveryPointRecords = parsed.map((record) => ({
+        dealerName: record.dealerName,
+        points: record.points.filter((point) =>
+          point && typeof point.id === "string" &&
+          typeof point.address === "string" &&
+          typeof point.recipient === "string" &&
+          typeof point.phone === "string",
+        ).map((point) => ({
+          id: point.id,
+          address: point.address,
+          recipient: point.recipient,
+          phone: point.phone,
+          routeNote: typeof point.routeNote === "string" ? point.routeNote : "",
+          isDefault: Boolean(point.isDefault),
+        })),
+      })).filter((record) => record.points.length);
+    } catch (error) {
+      deliveryPointsStorageAvailable = false;
+      showToast(`Không đọc được danh sách điểm giao đã lưu: ${error.message}`, "error");
+    }
+  }
+
+  function persistDeliveryPointRecords(records) {
+    if (!deliveryPointsStorageAvailable) {
+      showToast("Không thể lưu điểm giao vì dữ liệu đã lưu trước đó không đọc được.", "error");
+      return false;
+    }
+    try {
+      localStorage.setItem(deliveryPointsStorageKey, JSON.stringify(records));
+      deliveryPointRecords = records;
+      return true;
+    } catch (error) {
+      showToast(`Không lưu được điểm giao trong trình duyệt: ${error.message}`, "error");
+      return false;
+    }
+  }
+
+  function renderDeliveryPointOptions(preferredId = $("receipt-delivery-point").value) {
+    const select = $("receipt-delivery-point");
+    const summary = $("receipt-delivery-summary");
+    const dealerName = $("receipt-partner").value.trim();
+    const points = pointsForDealer(dealerName);
+    select.innerHTML = `<option value="">${points.length ? "Chọn điểm giao hàng" : "Chưa có điểm giao hàng"}</option>` +
+      points.map((point) => `<option value="${escapeHtml(point.id)}">${escapeHtml(point.address)} — ${escapeHtml(point.recipient)} (${escapeHtml(point.phone)})${point.isDefault ? " · Mặc định" : ""}</option>`).join("");
+    select.disabled = !dealerName || !points.length;
+    const selected = points.find((point) => point.id === preferredId)
+      || points.find((point) => point.isDefault);
+    select.value = selected?.id || "";
+    summary.textContent = selected
+      ? `${selected.recipient} · ${selected.phone}${selected.routeNote ? ` · ${selected.routeNote}` : ""}`
+      : dealerName
+        ? "Đại lý chưa có điểm giao. Thêm điểm giao để tiếp tục lập đơn."
+        : "Nhập tên đại lý để xem các điểm giao đã khai báo.";
+    $("btn-manage-delivery-points").disabled = !dealerName;
+  }
+
+  function renderDeliveryPointList() {
+    const points = pointsForDealer(deliveryPointDealerName);
+    if (!points.length) {
+      $("delivery-point-list").innerHTML = `<p class="delivery-point-empty">Chưa có điểm giao cho đại lý này. Thêm địa chỉ giao hàng đầu tiên.</p>`;
+      return;
+    }
+    $("delivery-point-list").innerHTML = points.map((point) => `
+      <article class="delivery-point-card">
+        <div class="delivery-point-card__details">
+          <div class="delivery-point-card__heading">
+            <strong>${escapeHtml(point.address)}</strong>
+            ${point.isDefault ? '<span class="delivery-point-default">Mặc định</span>' : ""}
+          </div>
+          <span>Người nhận: ${escapeHtml(point.recipient)} · ${escapeHtml(point.phone)}</span>
+          ${point.routeNote ? `<span>Ghi chú đường đi: ${escapeHtml(point.routeNote)}</span>` : ""}
+        </div>
+        <div class="delivery-point-card__actions">
+          ${point.isDefault ? "" : `<button class="delivery-point-action" type="button" data-default-delivery-point="${escapeHtml(point.id)}">Đặt mặc định</button>`}
+          <button class="delivery-point-action" type="button" data-edit-delivery-point="${escapeHtml(point.id)}">Sửa</button>
+          <button class="delivery-point-action delivery-point-action--danger" type="button" data-delete-delivery-point="${escapeHtml(point.id)}">Xoá</button>
+        </div>
+      </article>
+    `).join("");
+  }
+
+  function showDeliveryPointForm(point = null) {
+    const form = $("delivery-point-form");
+    deliveryPointEditingId = point?.id || null;
+    form.reset();
+    $("delivery-point-form-title").textContent = point ? "Sửa điểm giao" : "Thêm điểm giao";
+    $("delivery-address").value = point?.address || "";
+    $("delivery-recipient").value = point?.recipient || "";
+    $("delivery-phone").value = point?.phone || "";
+    $("delivery-route-note").value = point?.routeNote || "";
+    $("delivery-point-message").hidden = true;
+    form.hidden = false;
+    $("delivery-address").focus();
+  }
+
+  function closeDeliveryPointForm() {
+    deliveryPointEditingId = null;
+    $("delivery-point-form").reset();
+    $("delivery-point-form").hidden = true;
+    $("delivery-point-message").hidden = true;
+  }
+
+  function openDeliveryPointsModal() {
+    deliveryPointDealerName = $("receipt-partner").value.trim().replace(/\s+/g, " ");
+    if (!deliveryPointDealerName) {
+      showToast("Nhập tên đại lý trước khi quản lý điểm giao.", "warning");
+      $("receipt-partner").focus();
+      return;
+    }
+    $("delivery-points-dealer").textContent = `Đại lý: ${deliveryPointDealerName}`;
+    closeDeliveryPointForm();
+    renderDeliveryPointList();
+    $("modal-delivery-points").hidden = false;
+    $("btn-add-delivery-point").focus();
+  }
+
+  function closeDeliveryPointsModal() {
+    $("modal-delivery-points").hidden = true;
+    closeDeliveryPointForm();
+    renderDeliveryPointOptions();
+    $("btn-manage-delivery-points").focus();
+  }
+
+  loadDeliveryPointRecords();
+
   function createDefaultReceiptLine(id = "line-1") {
     const product = Store.products[0];
     if (!product) return null;
@@ -582,6 +736,124 @@
     }
     renderLineItems();
   }
+
+  function updateOrderDeliveryFields() {
+    const isOrder = receiptState.type === "ORDER";
+    $("btn-manage-delivery-points").hidden = !isOrder;
+    $("receipt-delivery-field").hidden = !isOrder;
+    if (isOrder) renderDeliveryPointOptions();
+  }
+
+  $("receipt-partner")?.addEventListener("input", () => {
+    if (receiptState.type === "ORDER") renderDeliveryPointOptions("");
+  });
+  $("receipt-delivery-point")?.addEventListener("change", renderDeliveryPointOptions);
+  $("btn-manage-delivery-points")?.addEventListener("click", openDeliveryPointsModal);
+  $("btn-add-delivery-point")?.addEventListener("click", () => showDeliveryPointForm());
+  $("btn-cancel-delivery-point")?.addEventListener("click", closeDeliveryPointForm);
+  $("delivery-points-close")?.addEventListener("click", closeDeliveryPointsModal);
+  $("btn-close-delivery-points")?.addEventListener("click", closeDeliveryPointsModal);
+  $("modal-delivery-points")?.addEventListener("click", (event) => {
+    if (event.target === $("modal-delivery-points")) closeDeliveryPointsModal();
+  });
+
+  $("delivery-point-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const point = {
+      id: deliveryPointEditingId || (crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+      address: $("delivery-address").value.trim(),
+      recipient: $("delivery-recipient").value.trim(),
+      phone: $("delivery-phone").value.trim(),
+      routeNote: $("delivery-route-note").value.trim(),
+      isDefault: false,
+    };
+    const records = deliveryPointRecords.map((record) => ({
+      dealerName: record.dealerName,
+      points: record.points.map((existing) => ({ ...existing })),
+    }));
+    let record = records.find((item) =>
+      normalizeDealerName(item.dealerName) === normalizeDealerName(deliveryPointDealerName));
+    if (!record) {
+      record = { dealerName: deliveryPointDealerName, points: [] };
+      records.push(record);
+    }
+
+    if (deliveryPointEditingId) {
+      const existing = record.points.find((item) => item.id === deliveryPointEditingId);
+      point.isDefault = Boolean(existing?.isDefault);
+      record.points = record.points.map((item) =>
+        item.id === deliveryPointEditingId ? point : item);
+    } else {
+      point.isDefault = record.points.length === 0;
+      record.points.push(point);
+    }
+
+    if (persistDeliveryPointRecords(records)) {
+      closeDeliveryPointForm();
+      renderDeliveryPointList();
+      if (normalizeDealerName($("receipt-partner").value) === normalizeDealerName(deliveryPointDealerName)) {
+        renderDeliveryPointOptions(point.id);
+      }
+      showToast("Đã lưu điểm giao hàng.", "success");
+    }
+  });
+
+  $("delivery-point-list")?.addEventListener("click", (event) => {
+    const target = event.target;
+    const editButton = target.closest("[data-edit-delivery-point]");
+    const defaultButton = target.closest("[data-default-delivery-point]");
+    const deleteButton = target.closest("[data-delete-delivery-point]");
+    const points = pointsForDealer(deliveryPointDealerName);
+
+    if (editButton) {
+      const point = points.find((item) => item.id === editButton.dataset.editDeliveryPoint);
+      if (point) showDeliveryPointForm(point);
+      return;
+    }
+    if (defaultButton) {
+      const records = deliveryPointRecords.map((record) => ({
+        dealerName: record.dealerName,
+        points: record.points.map((point) => ({
+          ...point,
+          isDefault: normalizeDealerName(record.dealerName) === normalizeDealerName(deliveryPointDealerName)
+            ? point.id === defaultButton.dataset.defaultDeliveryPoint
+            : point.isDefault,
+        })),
+      }));
+      if (persistDeliveryPointRecords(records)) {
+        renderDeliveryPointList();
+        if (normalizeDealerName($("receipt-partner").value) === normalizeDealerName(deliveryPointDealerName)) {
+          renderDeliveryPointOptions(defaultButton.dataset.defaultDeliveryPoint);
+        }
+        showToast("Đã đổi điểm giao mặc định.", "success");
+      }
+      return;
+    }
+    if (deleteButton) {
+      if (!confirm("Xoá điểm giao này?")) return;
+      const records = deliveryPointRecords.map((record) => {
+        if (normalizeDealerName(record.dealerName) !== normalizeDealerName(deliveryPointDealerName)) {
+          return record;
+        }
+        const pointsAfterDelete = record.points.filter((point) =>
+          point.id !== deleteButton.dataset.deleteDeliveryPoint);
+        if (pointsAfterDelete.length && !pointsAfterDelete.some((point) => point.isDefault)) {
+          pointsAfterDelete[0].isDefault = true;
+        }
+        return { dealerName: record.dealerName, points: pointsAfterDelete };
+      }).filter((record) => record.points.length);
+      if (persistDeliveryPointRecords(records)) {
+        closeDeliveryPointForm();
+        renderDeliveryPointList();
+        if (normalizeDealerName($("receipt-partner").value) === normalizeDealerName(deliveryPointDealerName)) {
+          renderDeliveryPointOptions();
+        }
+        showToast("Đã xoá điểm giao hàng.", "success");
+      }
+    }
+  });
 
   $("btn-regen-code")?.addEventListener("click", () => {
     $("receipt-code").value = Store.generateReceiptCode(receiptState.type);
@@ -608,6 +880,7 @@
         partnerLabel.textContent = "Khách hàng / Đại lý phân phối";
         partnerInput.placeholder = "VD: Đại lý Phương Nam (Hà Nội)...";
       }
+      updateOrderDeliveryFields();
     });
   });
 
@@ -776,6 +1049,7 @@
       receiptState.lines = defaultLine ? [defaultLine] : [];
       $("receipt-partner").value = "";
       $("receipt-notes").value = "";
+      renderDeliveryPointOptions("");
       prepareReceiptForm();
     }
   });
@@ -789,6 +1063,26 @@
       const warehouse = $("receipt-warehouse").selectedOptions[0]?.textContent || "";
       const partner = $("receipt-partner").value.trim();
       const notes = $("receipt-notes").value.trim();
+      let deliveryPoint = null;
+      if (receiptState.type === "ORDER") {
+        if (!partner) {
+          showToast("Nhập tên đại lý trước khi lập đơn hàng.", "warning");
+          $("receipt-partner").focus();
+          return;
+        }
+        deliveryPoint = pointsForDealer(partner).find((point) =>
+          point.id === $("receipt-delivery-point").value);
+        if (!deliveryPoint) {
+          showToast("Chọn một điểm giao hàng đã khai báo cho đại lý này.", "warning");
+          $("receipt-delivery-point").focus();
+          return;
+        }
+        if (formatOrderNotes(deliveryPoint, notes).length > 500) {
+          showToast("Ghi chú đơn hàng gồm thông tin giao hàng không được vượt quá 500 ký tự. Hãy rút gọn ghi chú đường đi hoặc ghi chú đơn hàng.", "warning");
+          $("receipt-notes").focus();
+          return;
+        }
+      }
 
       const receiptRecord = await Store.recordReceipt({
         id: code,
@@ -797,6 +1091,7 @@
         warehouse: warehouse,
         warehouseId: warehouseId,
         partner: partner,
+        deliveryPoint,
         notes: notes,
         items: receiptState.lines
       });
@@ -808,6 +1103,7 @@
       receiptState.lines = defaultLine ? [defaultLine] : [];
       $("receipt-partner").value = "";
       $("receipt-notes").value = "";
+      renderDeliveryPointOptions("");
       prepareReceiptForm();
 
       // Navigate to Ledger Audit Tab to show the recorded transaction

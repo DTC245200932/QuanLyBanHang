@@ -330,7 +330,20 @@
 
                 <div class="form-field">
                   <label for="receipt-partner" id="label-receipt-partner">Nhà cung cấp / Đối tác</label>
-                  <input type="text" id="receipt-partner" placeholder="VD: Nhà máy Bia Heineken VN..." />
+                  <div class="receipt-dealer-control">
+                    <input type="text" id="receipt-partner" placeholder="VD: Nhà máy Bia Heineken VN..." />
+                    <button class="btn btn--secondary btn--xs" id="btn-manage-delivery-points" type="button" hidden>
+                      Quản lý điểm giao
+                    </button>
+                  </div>
+                </div>
+
+                <div class="form-field" id="receipt-delivery-field" hidden>
+                  <label for="receipt-delivery-point">Điểm giao hàng</label>
+                  <select id="receipt-delivery-point" disabled>
+                    <option value="">Chọn đại lý trước</option>
+                  </select>
+                  <small id="receipt-delivery-summary">Mỗi đơn hàng giao đến một điểm của đại lý.</small>
                 </div>
 
                 <div class="form-field form-field--span2">
@@ -656,6 +669,55 @@
             <span>In phiếu</span>
           </button>
           <button type="button" class="btn btn--primary" data-close-receipt-modal>Đóng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Delivery points modal ── -->
+    <div class="modal-overlay" id="modal-delivery-points" hidden>
+      <div class="modal modal--wide delivery-points-modal" role="dialog" aria-labelledby="delivery-points-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="delivery-points-title">Điểm giao hàng</h2>
+            <p id="delivery-points-dealer"></p>
+          </div>
+          <button class="modal__close" id="delivery-points-close" type="button" aria-label="Đóng">×</button>
+        </div>
+        <div class="modal__body">
+          <div class="delivery-points-toolbar">
+            <p>Lưu nhiều địa chỉ giao cho cùng đại lý và chọn một địa chỉ mặc định. Danh sách hiện được lưu trên trình duyệt này, chưa đồng bộ máy chủ.</p>
+            <button class="btn btn--primary" id="btn-add-delivery-point" type="button">Thêm điểm giao</button>
+          </div>
+          <div class="delivery-point-list" id="delivery-point-list" aria-live="polite"></div>
+          <form class="delivery-point-form" id="delivery-point-form" hidden>
+            <h3 id="delivery-point-form-title">Thêm điểm giao</h3>
+            <div class="delivery-point-form__grid">
+              <div class="form-field delivery-point-form__wide">
+                <label for="delivery-address">Địa chỉ giao hàng</label>
+                <input id="delivery-address" name="address" maxlength="300" required autocomplete="street-address" />
+              </div>
+              <div class="form-field">
+                <label for="delivery-recipient">Người nhận</label>
+                <input id="delivery-recipient" name="recipient" maxlength="120" required autocomplete="name" />
+              </div>
+              <div class="form-field">
+                <label for="delivery-phone">Số điện thoại</label>
+                <input id="delivery-phone" name="phone" type="tel" maxlength="20" required autocomplete="tel" />
+              </div>
+              <div class="form-field delivery-point-form__wide">
+                <label for="delivery-route-note">Ghi chú đường đi</label>
+                <textarea id="delivery-route-note" name="routeNote" maxlength="500" rows="2" placeholder="VD: Vào cổng bên hông, giao tại kho số 2"></textarea>
+              </div>
+            </div>
+            <div class="delivery-point-form__message" id="delivery-point-message" role="alert" hidden></div>
+            <div class="modal__actions">
+              <button class="btn btn--secondary" id="btn-cancel-delivery-point" type="button">Huỷ</button>
+              <button class="btn btn--primary" type="submit">Lưu điểm giao</button>
+            </div>
+          </form>
+        </div>
+        <div class="modal__actions">
+          <button class="btn btn--secondary" id="btn-close-delivery-points" type="button">Đóng</button>
         </div>
       </div>
     </div>

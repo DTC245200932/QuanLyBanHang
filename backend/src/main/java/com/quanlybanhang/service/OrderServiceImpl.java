@@ -6,6 +6,7 @@ import com.quanlybanhang.dto.response.OrderItemResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.DealerDeliveryPointRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
@@ -27,6 +28,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final DealerRepository dealerRepository;
+    private final DealerDeliveryPointRepository deliveryPointRepository;
     private final PriceListRepository priceListRepository;
     private final UnitConversionService unitConversionService;
     private final AuditLogService auditLogService;
@@ -72,6 +74,22 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        // 2b. Lấy thông tin điểm giao hàng (S3-04)
+        DealerDeliveryPoint deliveryPoint = null;
+        if (request.getDeliveryPointId() != null) {
+            deliveryPoint = deliveryPointRepository.findById(request.getDeliveryPointId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy điểm giao hàng với ID: " + request.getDeliveryPointId()));
+            if (dealer != null && !deliveryPoint.getDealer().getId().equals(dealer.getId())) {
+                throw new IllegalArgumentException("Điểm giao hàng không thuộc đại lý đã chọn");
+            }
+        } else if (dealer != null) {
+            // Lấy điểm giao hàng mặc định nếu có
+            Optional<DealerDeliveryPoint> defaultPoint = deliveryPointRepository.findByDealerIdAndIsDefaultTrue(dealer.getId());
+            if (defaultPoint.isPresent()) {
+                deliveryPoint = defaultPoint.get();
+            }
+        }
+
         // Nếu bảng giá được sử dụng, đánh dấu đã phát sinh đơn (hasOrders = true)
         if (priceList != null) {
             priceList.setHasOrders(true);
@@ -93,6 +111,7 @@ public class OrderServiceImpl implements OrderService {
                 .customerName(request.getCustomerName() != null ? request.getCustomerName() : (dealer != null ? dealer.getName() : null))
                 .customerGroup(customerGroup)
                 .dealer(dealer)
+                .deliveryPoint(deliveryPoint)
                 .priceList(priceList)
                 .note(request.getNote())
                 .status("RECORDED")
@@ -295,6 +314,7 @@ public class OrderServiceImpl implements OrderService {
                 .customerName(order.getCustomerName())
                 .customerGroup(order.getCustomerGroup())
                 .dealerId(order.getDealer() != null ? order.getDealer().getId() : null)
+                .deliveryPointId(order.getDeliveryPoint() != null ? order.getDeliveryPoint().getId() : null)
                 .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
                 .priceListCode(order.getPriceList() != null ? order.getPriceList().getCode() : null)
                 .status(order.getStatus())

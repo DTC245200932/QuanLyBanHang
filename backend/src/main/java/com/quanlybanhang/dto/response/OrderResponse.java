@@ -18,6 +18,7 @@ public class OrderResponse {
     private String customerName;
     private com.quanlybanhang.model.CustomerGroup customerGroup;
     private Long dealerId;
+    private Long deliveryPointId;
     private Long priceListId;
     private String priceListCode;
     private String status;

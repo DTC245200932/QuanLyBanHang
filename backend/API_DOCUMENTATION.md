@@ -415,6 +415,84 @@ Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng v
 ```
 *(Nếu `items` để trống, hệ thống tự động kế thừa toàn bộ danh sách dòng giá của phiên bản tiền nhiệm).*
 
+### Danh sách API Quản lý hồ sơ đại lý (S3-03)
+
+Hỗ trợ Kế toán công nợ và Quản lý kinh doanh quản lý hồ sơ đại lý chuẩn, thống nhất một danh sách khách hàng trong toàn hệ thống.
+
+Quy tắc nghiệp vụ:
+1. Khai báo mã đại lý, tên, mã số thuế, nhóm khách hàng, khu vực, người phụ trách, trạng thái giao dịch.
+2. Mã đại lý là duy nhất trong toàn hệ thống.
+3. Nhóm khách hàng quyết định bảng giá được áp dụng (`CustomerGroup`: `DAI_LY_CAP_1`, `DAI_LY_CAP_2`, `KHACH_LE`).
+4. Đại lý đã phát sinh giao dịch (đơn hàng) thì không được xóa, chỉ được chuyển sang trạng thái ngừng giao dịch (`active = false`).
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý (tìm kiếm, lọc theo nhóm, khu vực, người phụ trách, trạng thái, phân trang) |
+| GET | `/dealers/active` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý đang hoạt động (phục vụ dropdown chọn đại lý khi tạo đơn) |
+| GET | `/dealers/options` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh mục tham chiếu tạo/sửa đại lý (nhóm khách hàng, khu vực, người phụ trách) |
+| GET | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Chi tiết hồ sơ đại lý |
+| POST | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo hồ sơ đại lý mới (kiểm tra tính duy nhất của mã đại lý) |
+| PUT | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật hồ sơ đại lý (kiểm tra trùng mã) |
+| PATCH | `/dealers/{id}/status?active=false` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Ngừng giao dịch; truyền `active=true` để khôi phục giao dịch |
+| DELETE | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa đại lý (**Chặn và trả lỗi 400 nếu đại lý đã phát sinh giao dịch/đơn hàng**, chỉ cho phép ngừng giao dịch) |
+
+`GET /dealers` nhận các tham số query:
+- `keyword`: Tìm kiếm tương đối theo mã, tên, MST, SĐT
+- `customerGroup`: `DAI_LY_CAP_1` | `DAI_LY_CAP_2` | `KHACH_LE`
+- `territoryId`: Lọc theo khu vực
+- `assignedUserId`: Lọc theo nhân viên kinh doanh phụ trách
+- `active`: `true` | `false`
+- `page`: Trang (bắt đầu từ 0)
+- `size`: Số bản ghi mỗi trang (1-200, mặc định 10)
+
+#### Ví dụ Request tạo đại lý (`POST /api/dealers`):
+```json
+{
+  "code": "DL-MINHPHAT",
+  "name": "Đại lý Cấp 1 Minh Phát",
+  "taxCode": "0101234567",
+  "customerGroup": "DAI_LY_CAP_1",
+  "territoryId": 1,
+  "assignedUserId": 2,
+  "phone": "0981234567",
+  "email": "minhphat@dealer.vn",
+  "address": "123 Lê Lợi, Quận 1, TP.HCM",
+  "debtLimit": 100000000,
+  "active": true
+}
+```
+
+#### Ví dụ Response (`GET /api/dealers/{id}`):
+```json
+{
+  "success": true,
+  "message": "Lấy chi tiết đại lý thành công",
+  "data": {
+    "id": 1,
+    "code": "DL-MINHPHAT",
+    "name": "Đại lý Cấp 1 Minh Phát",
+    "taxCode": "0101234567",
+    "customerGroup": "DAI_LY_CAP_1",
+    "customerGroupDisplayName": "Đại lý cấp 1",
+    "territoryId": 1,
+    "territoryCode": "HCM-DONG",
+    "territoryName": "TP.HCM - Khu Đông",
+    "assignedUserId": 2,
+    "assignedUsername": "sales.demo",
+    "assignedUserFullName": "Nhân viên kinh doanh Demo",
+    "active": true,
+    "handoverRequired": false,
+    "debtLimit": 100000000.00,
+    "phone": "0981234567",
+    "email": "minhphat@dealer.vn",
+    "address": "123 Lê Lợi, Quận 1, TP.HCM",
+    "hasTransactions": true,
+    "createdAt": "2026-10-07T09:00:00",
+    "updatedAt": null
+  }
+}
+```
+
 ## Bảy vai trò
 
 - `ROLE_ADMIN`: quản trị tài khoản và hệ thống; không mặc nhiên xem giá vốn.

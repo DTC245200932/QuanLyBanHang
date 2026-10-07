@@ -61,6 +61,12 @@ public class ProductController {
         return ApiResponse.success("Chi tiết sản phẩm", productService.getById(id));
     }
 
+    @GetMapping("/{id}/price-history")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse getProductPriceHistory(@PathVariable Long id) {
+        return ApiResponse.success("Lịch sử thay đổi giá", productService.getPriceHistory(id));
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse> createProduct(@Valid @RequestBody ProductRequest request) {

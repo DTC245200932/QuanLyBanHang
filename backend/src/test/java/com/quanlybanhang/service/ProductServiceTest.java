@@ -42,6 +42,9 @@ class ProductServiceTest {
     private CategoryRepository categoryRepository;
 
     @Mock
+    private com.quanlybanhang.repository.ProductPriceHistoryRepository productPriceHistoryRepository;
+
+    @Mock
     private AuditLogService auditLogService;
 
     @Mock

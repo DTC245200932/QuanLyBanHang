@@ -37,6 +37,7 @@ public class DealerResponse {
     private Boolean active;
     private Boolean handoverRequired;
     private BigDecimal debtLimit;
+    private Integer maxDebtDays;
 
     private String phone;
     private String email;

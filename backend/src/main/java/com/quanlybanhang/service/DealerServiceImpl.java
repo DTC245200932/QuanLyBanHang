@@ -101,6 +101,7 @@ public class DealerServiceImpl implements DealerService {
                 .active(request.getActive() != null ? request.getActive() : true)
                 .handoverRequired(false)
                 .debtLimit(request.getDebtLimit() != null ? request.getDebtLimit() : BigDecimal.ZERO)
+                .maxDebtDays(request.getMaxDebtDays() != null ? request.getMaxDebtDays() : 0)
                 .phone(request.getPhone() != null ? request.getPhone().trim() : null)
                 .email(request.getEmail() != null ? request.getEmail().trim() : null)
                 .address(request.getAddress() != null ? request.getAddress().trim() : null)
@@ -145,6 +146,9 @@ public class DealerServiceImpl implements DealerService {
         }
         if (request.getDebtLimit() != null) {
             dealer.setDebtLimit(request.getDebtLimit());
+        }
+        if (request.getMaxDebtDays() != null) {
+            dealer.setMaxDebtDays(request.getMaxDebtDays());
         }
         dealer.setPhone(request.getPhone() != null ? request.getPhone().trim() : null);
         dealer.setEmail(request.getEmail() != null ? request.getEmail().trim() : null);
@@ -231,6 +235,7 @@ public class DealerServiceImpl implements DealerService {
                 .active(dealer.getActive())
                 .handoverRequired(dealer.getHandoverRequired())
                 .debtLimit(dealer.getDebtLimit())
+                .maxDebtDays(dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0)
                 .phone(dealer.getPhone())
                 .email(dealer.getEmail())
                 .address(dealer.getAddress())

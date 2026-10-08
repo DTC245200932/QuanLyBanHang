@@ -92,6 +92,7 @@ class DealerControllerTest {
                 .name("Đại lý Cấp 1 Minh Phát")
                 .customerGroup(CustomerGroup.DAI_LY_CAP_1)
                 .debtLimit(new BigDecimal("100000000"))
+                .maxDebtDays(30)
                 .active(true)
                 .build();
 
@@ -109,12 +110,14 @@ class DealerControllerTest {
                           "email": "minhphat@dealer.vn",
                           "address": "123 Lê Lợi, TP.HCM",
                           "debtLimit": 100000000,
+                          "maxDebtDays": 30,
                           "active": true
                         }
                         """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.code").value("DL001"))
-                .andExpect(jsonPath("$.data.name").value("Đại lý Cấp 1 Minh Phát"));
+                .andExpect(jsonPath("$.data.name").value("Đại lý Cấp 1 Minh Phát"))
+                .andExpect(jsonPath("$.data.maxDebtDays").value(30));
     }
 
     @ParameterizedTest
@@ -212,6 +215,25 @@ class DealerControllerTest {
         mvc.perform(get("/api/dealers/options").with(user("accountant").roles("ACCOUNTANT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.customerGroups[0].value").value("DAI_LY_CAP_1"));
+    }
+
+    @Test
+    @DisplayName("Khai báo số ngày nợ tối đa âm bị từ chối (400 Bad Request)")
+    void negativeMaxDebtDaysRejected() throws Exception {
+        mvc.perform(post("/api/dealers").with(user("accountant").roles("ACCOUNTANT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                          "code": "DL002",
+                          "name": "Đại lý Test",
+                          "customerGroup": "DAI_LY_CAP_1",
+                          "maxDebtDays": -5
+                        }
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(dealerService);
     }
 }
 

@@ -61,6 +61,11 @@ public class Dealer {
     @Builder.Default
     private BigDecimal debtLimit = BigDecimal.ZERO;
 
+    /** Số ngày nợ tối đa cho phép của đại lý (S3-05). */
+    @Column(name = "max_debt_days", nullable = false)
+    @Builder.Default
+    private Integer maxDebtDays = 0;
+
     /**
      * Nhóm khách hàng của đại lý (mặc định là Đại lý cấp 1 - DAI_LY_CAP_1).
      * Quyết định bảng giá được áp dụng (S3-03, S2-10).
@@ -95,6 +100,9 @@ public class Dealer {
         }
         if (debtLimit == null) {
             debtLimit = BigDecimal.ZERO;
+        }
+        if (maxDebtDays == null) {
+            maxDebtDays = 0;
         }
         if (handoverRequired == null) {
             handoverRequired = false;

@@ -67,6 +67,7 @@ class DealerServiceTest {
                 .email("minhphat@dealer.vn")
                 .address("123 Lê Lợi, TP.HCM")
                 .debtLimit(new BigDecimal("100000000"))
+                .maxDebtDays(30)
                 .active(true)
                 .build();
 
@@ -95,6 +96,7 @@ class DealerServiceTest {
         assertThat(saved.getTerritory()).isEqualTo(territory);
         assertThat(saved.getAssignedUser()).isEqualTo(user);
         assertThat(saved.getDebtLimit()).isEqualTo(new BigDecimal("100000000"));
+        assertThat(saved.getMaxDebtDays()).isEqualTo(30);
         assertThat(saved.getActive()).isTrue();
         assertThat(saved.getPhone()).isEqualTo("0981234567");
         assertThat(saved.getEmail()).isEqualTo("minhphat@dealer.vn");
@@ -104,6 +106,7 @@ class DealerServiceTest {
         assertThat(response.getCustomerGroupDisplayName()).isEqualTo("Đại lý cấp 1");
         assertThat(response.getTerritoryName()).isEqualTo("TP.HCM Đông");
         assertThat(response.getAssignedUserFullName()).isEqualTo("Nguyễn Văn Bán");
+        assertThat(response.getMaxDebtDays()).isEqualTo(30);
 
         verify(auditLogService).logAction(eq("DEALER"), eq("1"), eq("CREATE_DEALER"), isNull(), eq("DL001"), eq("accountant01"));
     }

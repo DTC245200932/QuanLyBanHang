@@ -47,6 +47,9 @@ class ProductServiceTest {
     @Mock
     private ProductExcelService productExcelService;
 
+    @Mock
+    private com.quanlybanhang.repository.ProductPriceHistoryRepository productPriceHistoryRepository;
+
     @InjectMocks
     private ProductServiceImpl productService;
 

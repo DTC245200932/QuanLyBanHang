@@ -133,14 +133,31 @@ Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` v
 |---|---|---|---|
 | GET | `/finance/cost-price` | `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm — chỉ Quản lý kinh doanh; Admin, Thủ kho, Sales, Kế toán đều bị từ chối |
 | GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
-| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng |
-| PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ADMIN`, `ROLE_ACCOUNTANT` | Cập nhật hạn mức công nợ đại lý; tự động ghi nhật ký giá trị trước/sau |
+| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng (bao gồm hạn mức tiền và số ngày nợ tối đa) |
+| PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo / cập nhật hạn mức công nợ và số ngày nợ tối đa (S3-05); bắt buộc nhập lý do, tự động ghi nhật ký giá trị trước/sau kèm lý do |
 
-Body cập nhật hạn mức công nợ:
+Body cập nhật hạn mức công nợ (S3-05):
 
 ```json
 {
-  "debtLimit": 50000000
+  "debtLimit": 50000000,
+  "maxDebtDays": 30,
+  "reason": "Điều chỉnh hạn mức quý 4 theo doanh số"
+}
+```
+
+Response ví dụ:
+```json
+{
+  "success": true,
+  "message": "Đã cập nhật hạn mức công nợ",
+  "data": {
+    "dealerId": 1,
+    "customerName": "Đại lý Cấp 1 Minh Phát",
+    "debtLimit": 50000000,
+    "maxDebtDays": 30,
+    "reason": "Điều chỉnh hạn mức quý 4 theo doanh số"
+  }
 }
 ```
 
@@ -459,6 +476,7 @@ Quy tắc nghiệp vụ:
   "email": "minhphat@dealer.vn",
   "address": "123 Lê Lợi, Quận 1, TP.HCM",
   "debtLimit": 100000000,
+  "maxDebtDays": 30,
   "active": true
 }
 ```
@@ -484,6 +502,7 @@ Quy tắc nghiệp vụ:
     "active": true,
     "handoverRequired": false,
     "debtLimit": 100000000.00,
+    "maxDebtDays": 30,
     "phone": "0981234567",
     "email": "minhphat@dealer.vn",
     "address": "123 Lê Lợi, Quận 1, TP.HCM",

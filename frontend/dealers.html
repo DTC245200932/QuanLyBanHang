@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phân công đại lý | SaleStock</title>
+    <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+    <link rel="stylesheet" href="/css/dealers.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ── Sidebar ── -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar__header">
+          <a class="sidebar__brand" href="/dashboard">
+            <img src="/assets/brand-mark.svg" alt="" class="sidebar__logo" />
+            <span class="sidebar__brand-name">SaleStock</span>
+          </a>
+          <button class="sidebar__close" id="sidebar-close" aria-label="Đóng menu">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <nav class="sidebar__nav" id="sidebar-nav" aria-label="Menu chính"></nav>
+        <div class="sidebar__footer">
+          <div class="sidebar__user" id="sidebar-user">
+            <div class="sidebar__avatar" id="user-avatar">A</div>
+            <div class="sidebar__user-info">
+              <span class="sidebar__user-name" id="user-name">—</span>
+              <span class="sidebar__user-role" id="user-role">—</span>
+            </div>
+          </div>
+          <button class="sidebar__logout" id="btn-logout" title="Đăng xuất">
+            <svg viewBox="0 0 24 24">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- ── Main content ── -->
+      <div class="main-area">
+        <header class="topbar">
+          <button class="topbar__menu-btn" id="sidebar-toggle" aria-label="Mở menu">
+            <svg viewBox="0 0 24 24">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          <div class="topbar__breadcrumb">Phân công đại lý</div>
+          <div class="topbar__actions">
+            <button class="topbar__btn topbar__btn--logout" id="btn-logout-topbar" title="Đăng xuất">
+              <svg viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Đăng xuất</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="content">
+          <!-- Heading -->
+          <div class="dlr-heading">
+            <div class="dlr-heading__text">
+              <p class="dlr-heading__section">Kinh doanh</p>
+              <h1>Phân công đại lý</h1>
+              <p class="dlr-heading__desc">
+                Gán nhân viên kinh doanh phụ trách từng đại lý. Mỗi đại lý có một người chịu trách nhiệm chăm sóc chính.
+              </p>
+            </div>
+            <div class="dlr-heading__actions">
+              <button class="btn btn--secondary" id="btn-bulk-transfer" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24">
+                  <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                  <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                </svg>
+                Chuyển giao hàng loạt
+              </button>
+              <button class="btn btn--primary" id="btn-add-dealer" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Thêm đại lý
+              </button>
+            </div>
+          </div>
+
+          <!-- Toolbar -->
+          <div class="dlr-toolbar">
+            <div class="dlr-search-wrap">
+              <svg width="16" height="16" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                id="dlr-search"
+                placeholder="Tìm theo tên, mã đại lý, địa chỉ…"
+                autocomplete="off"
+              />
+            </div>
+            <div class="dlr-filter-group">
+              <select id="dlr-filter-staff" class="dlr-select">
+                <option value="">Tất cả nhân viên</option>
+              </select>
+              <select id="dlr-filter-territory" class="dlr-select">
+                <option value="">Tất cả địa bàn</option>
+              </select>
+              <select id="dlr-filter-status" class="dlr-select">
+                <option value="">Tất cả trạng thái</option>
+                <option value="ACTIVE">Đang hoạt động</option>
+                <option value="INACTIVE">Ngưng hoạt động</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="dlr-table-wrap">
+            <table class="dlr-table" id="dlr-table">
+              <thead>
+                <tr>
+                  <th class="col-check">
+                    <input type="checkbox" id="select-all" title="Chọn tất cả" />
+                  </th>
+                  <th class="col-code">Mã đại lý</th>
+                  <th class="col-name">Tên đại lý</th>
+                  <th class="col-territory">Địa bàn</th>
+                  <th class="col-staff">Nhân viên phụ trách</th>
+                  <th class="col-assigned">Ngày phân công</th>
+                  <th class="col-status">Trạng thái</th>
+                  <th class="col-actions"></th>
+                </tr>
+              </thead>
+              <tbody id="dlr-tbody">
+                <tr class="dlr-loading-row">
+                  <td colspan="8">
+                    <div class="dlr-loading">Đang tải dữ liệu…</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="dlr-pagination" id="dlr-pagination" hidden>
+            <span class="dlr-pagination__info" id="dlr-page-info"></span>
+            <div class="dlr-pagination__controls" id="dlr-page-controls"></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
+    <!-- ── Modal: Thêm / Sửa đại lý ── -->
+    <div class="modal-overlay" id="dealer-modal" hidden>
+      <div class="modal modal--wide" role="dialog" aria-labelledby="dealer-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="dealer-modal-title">Thêm đại lý</h2>
+            <p class="modal-subtitle" id="dealer-modal-sub">Khai báo thông tin đại lý và phân công nhân viên phụ trách.</p>
+          </div>
+          <button class="modal__close" data-close-dealer aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <form class="modal__body" id="dealer-form" novalidate>
+          <input type="hidden" id="dlr-id" />
+
+          <div class="form-grid">
+            <!-- Mã đại lý -->
+            <div class="form-field">
+              <label for="dlr-code">Mã đại lý <span class="req">*</span></label>
+              <input id="dlr-code" type="text" required maxlength="30"
+                placeholder="VD: DL001" autocomplete="off" />
+              <small>Mã định danh duy nhất, không thể thay đổi sau khi tạo.</small>
+            </div>
+
+            <!-- Địa bàn -->
+            <div class="form-field">
+              <label for="dlr-territory">Địa bàn <span class="req">*</span></label>
+              <select id="dlr-territory" class="dlr-select" required>
+                <option value="">— Chọn địa bàn —</option>
+              </select>
+            </div>
+
+            <!-- Tên đại lý -->
+            <div class="form-field form-field--full">
+              <label for="dlr-name">Tên đại lý <span class="req">*</span></label>
+              <input id="dlr-name" type="text" required maxlength="150"
+                placeholder="VD: Đại lý Minh Phát" autocomplete="off" />
+            </div>
+
+            <!-- Người liên hệ -->
+            <div class="form-field">
+              <label for="dlr-contact-name">Người liên hệ</label>
+              <input id="dlr-contact-name" type="text" maxlength="120"
+                placeholder="Họ và tên" autocomplete="off" />
+            </div>
+
+            <!-- Điện thoại -->
+            <div class="form-field">
+              <label for="dlr-contact-phone">Điện thoại</label>
+              <input id="dlr-contact-phone" type="tel" maxlength="20"
+                placeholder="VD: 0901 234 567" autocomplete="off" />
+            </div>
+
+            <!-- Địa chỉ -->
+            <div class="form-field form-field--full">
+              <label for="dlr-address">Địa chỉ</label>
+              <input id="dlr-address" type="text" maxlength="300"
+                placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
+                autocomplete="off" />
+            </div>
+
+            <!-- Nhân viên phụ trách -->
+            <div class="form-field form-field--full">
+              <label for="dlr-staff">Nhân viên phụ trách <span class="req">*</span></label>
+              <select id="dlr-staff" class="dlr-select" required>
+                <option value="">— Chọn nhân viên —</option>
+              </select>
+              <small>Nhân viên này sẽ chịu trách nhiệm chăm sóc đại lý. Họ chỉ nhìn thấy đại lý được phân công.</small>
+            </div>
+
+            <!-- Ghi chú -->
+            <div class="form-field form-field--full">
+              <label for="dlr-notes">Ghi chú</label>
+              <textarea id="dlr-notes" rows="3" maxlength="1000"
+                placeholder="Thông tin bổ sung về đại lý…"></textarea>
+            </div>
+          </div>
+
+          <div id="dealer-form-message" class="form-message" hidden></div>
+
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-dealer>Huỷ</button>
+            <button type="submit" class="btn btn--primary" id="btn-save-dealer">Lưu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Modal: Phân công lại (đổi nhân viên) ── -->
+    <div class="modal-overlay" id="assign-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="assign-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="assign-modal-title">Đổi nhân viên phụ trách</h2>
+            <p class="modal-subtitle" id="assign-modal-sub"></p>
+          </div>
+          <button class="modal__close" data-close-assign aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <input type="hidden" id="assign-dealer-id" />
+          <div class="form-field">
+            <label for="assign-staff">Nhân viên phụ trách mới <span class="req">*</span></label>
+            <select id="assign-staff" class="dlr-select" required>
+              <option value="">— Chọn nhân viên —</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="assign-reason">Lý do thay đổi <span class="req">*</span></label>
+            <textarea id="assign-reason" rows="3" maxlength="500"
+              placeholder="VD: Nhân viên cũ nghỉ việc, phân công lại khu vực…"></textarea>
+          </div>
+          <div id="assign-form-message" class="form-message" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-assign>Huỷ</button>
+            <button type="button" class="btn btn--primary" id="btn-confirm-assign">Xác nhận phân công</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: Chuyển giao hàng loạt ── -->
+    <div class="modal-overlay" id="bulk-modal" hidden>
+      <div class="modal modal--wide" role="dialog" aria-labelledby="bulk-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="bulk-modal-title">Chuyển giao địa bàn hàng loạt</h2>
+            <p class="modal-subtitle">Chuyển toàn bộ đại lý từ một nhân viên sang nhân viên khác.</p>
+          </div>
+          <button class="modal__close" data-close-bulk aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="bulk-from">Nhân viên bàn giao <span class="req">*</span></label>
+              <select id="bulk-from" class="dlr-select" required>
+                <option value="">— Chọn nhân viên —</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="bulk-to">Nhân viên tiếp nhận <span class="req">*</span></label>
+              <select id="bulk-to" class="dlr-select" required>
+                <option value="">— Chọn nhân viên —</option>
+              </select>
+            </div>
+            <div class="form-field form-field--full">
+              <label for="bulk-reason">Lý do bàn giao <span class="req">*</span></label>
+              <textarea id="bulk-reason" rows="3" maxlength="500"
+                placeholder="VD: Nhân viên nghỉ việc, tái cơ cấu địa bàn…"></textarea>
+            </div>
+          </div>
+
+          <!-- Preview số đại lý -->
+          <div class="bulk-preview" id="bulk-preview" hidden>
+            <div class="bulk-preview__inner" id="bulk-preview-inner"></div>
+          </div>
+
+          <div id="bulk-form-message" class="form-message" hidden></div>
+
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" id="btn-preview-bulk">Xem trước</button>
+            <button type="button" class="btn btn--secondary" data-close-bulk>Huỷ</button>
+            <button type="button" class="btn btn--primary" id="btn-confirm-bulk" disabled>Xác nhận bàn giao</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: Lịch sử phân công ── -->
+    <div class="modal-overlay" id="history-modal" hidden>
+      <div class="modal modal--wide" role="dialog" aria-labelledby="history-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="history-modal-title">Lịch sử phân công</h2>
+            <p class="modal-subtitle" id="history-modal-sub"></p>
+          </div>
+          <button class="modal__close" data-close-history aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <div class="history-wrap">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Thời điểm</th>
+                  <th>Từ nhân viên</th>
+                  <th>Sang nhân viên</th>
+                  <th>Lý do</th>
+                  <th>Người thực hiện</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody">
+                <tr><td colspan="5" class="dlr-loading">Đang tải…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-history>Đóng</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: Xác nhận đổi trạng thái ── -->
+    <div class="modal-overlay" id="status-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="status-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="status-modal-title">Ngưng hoạt động</h2>
+            <p class="modal-subtitle" id="status-modal-sub"></p>
+          </div>
+          <button class="modal__close" data-close-status aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <input type="hidden" id="status-dealer-id" />
+          <input type="hidden" id="status-target" />
+          <p id="status-modal-body" class="status-confirm-text"></p>
+          <div id="status-form-message" class="form-message" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-status>Huỷ</button>
+            <button type="button" class="btn btn--primary" id="btn-confirm-status">Xác nhận</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/menu-config.js"></script>
+    <script src="/js/toast.js"></script>
+    <script src="/js/dealers.js"></script>
+  </body>
+</html>
+

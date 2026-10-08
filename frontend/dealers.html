@@ -84,32 +84,85 @@
             </button>
           </div>
 
-          <!-- Toolbar -->
-          <div class="dlr-toolbar">
-            <div class="dlr-search-wrap">
-              <svg width="16" height="16" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                type="search"
-                id="dlr-search"
-                placeholder="Tìm theo mã, tên, mã số thuế…"
-                autocomplete="off"
-              />
+          <!-- Toolbar & Filters -->
+          <div class="dlr-toolbar-card">
+            <div class="dlr-toolbar">
+              <div class="dlr-search-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  id="dlr-search"
+                  placeholder="Tìm nhanh theo mã, tên, số điện thoại…"
+                  autocomplete="off"
+                  aria-label="Tìm nhanh theo mã, tên, số điện thoại"
+                />
+                <button type="button" class="dlr-search-clear" id="dlr-search-clear" title="Xoá tìm kiếm" aria-label="Xoá tìm kiếm" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="dlr-filter-group">
+                <!-- Khu vực -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-region" class="dlr-select" aria-label="Lọc theo khu vực">
+                    <option value="">Tất cả khu vực</option>
+                  </select>
+                </div>
+
+                <!-- Nhóm khách hàng -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-group" class="dlr-select" aria-label="Lọc theo nhóm khách hàng">
+                    <option value="">Tất cả nhóm KH</option>
+                    <option value="DAI_LY_CAP_1">Đại lý cấp 1</option>
+                    <option value="DAI_LY_CAP_2">Đại lý cấp 2</option>
+                    <option value="KHACH_LE">Khách lẻ</option>
+                  </select>
+                </div>
+
+                <!-- Người phụ trách -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-owner" class="dlr-select" aria-label="Lọc theo người phụ trách">
+                    <option value="">Tất cả người phụ trách</option>
+                  </select>
+                </div>
+
+                <!-- Trạng thái -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-status" class="dlr-select" aria-label="Lọc theo trạng thái">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="ACTIVE">Đang giao dịch</option>
+                    <option value="INACTIVE">Ngừng giao dịch</option>
+                  </select>
+                </div>
+
+                <!-- Nút đặt lại -->
+                <button type="button" id="btn-reset-filters" class="btn btn--secondary dlr-btn-reset" title="Đặt lại bộ lọc" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                    <path d="M3 3v5h5"/>
+                  </svg>
+                  <span>Đặt lại</span>
+                </button>
+              </div>
             </div>
-            <div class="dlr-filter-group">
-              <select id="dlr-filter-group" class="dlr-select">
-                <option value="">Tất cả nhóm KH</option>
-                <option value="DAI_LY_CAP_1">Đại lý cấp 1</option>
-                <option value="DAI_LY_CAP_2">Đại lý cấp 2</option>
-                <option value="KHACH_LE">Khách lẻ</option>
-              </select>
-              <select id="dlr-filter-status" class="dlr-select">
-                <option value="">Tất cả trạng thái</option>
-                <option value="ACTIVE">Đang giao dịch</option>
-                <option value="INACTIVE">Ngừng giao dịch</option>
-              </select>
+
+            <!-- Meta & Quick chips -->
+            <div class="dlr-toolbar-meta">
+              <div class="dlr-meta-count" id="dlr-meta-count">
+                <span class="dlr-meta-dot"></span>
+                <span id="dlr-count-text">Đang tải dữ liệu…</span>
+              </div>
+              <div class="dlr-quick-chips" id="dlr-quick-chips">
+                <button type="button" class="dlr-chip dlr-chip--active" data-chip="all">Tất cả</button>
+                <button type="button" class="dlr-chip" data-chip="my-dealers" id="chip-my-dealers">Của tôi</button>
+                <button type="button" class="dlr-chip" data-chip="active-only">Đang giao dịch</button>
+              </div>
             </div>
           </div>
 
@@ -119,7 +172,7 @@
               <thead>
                 <tr>
                   <th class="col-code">Mã đại lý</th>
-                  <th class="col-name">Tên đại lý</th>
+                  <th class="col-name">Tên đại lý &amp; Liên hệ</th>
                   <th class="col-tax">Mã số thuế</th>
                   <th class="col-group">Nhóm KH</th>
                   <th class="col-region">Khu vực</th>
@@ -204,15 +257,17 @@
             <!-- Khu vực -->
             <div class="form-field">
               <label for="dlr-region">Khu vực</label>
-              <input id="dlr-region" type="text" maxlength="100"
-                placeholder="VD: Hà Nội, TP.HCM, Miền Bắc" autocomplete="off" />
+              <select id="dlr-region" class="dlr-select">
+                <option value="">— Chọn khu vực —</option>
+              </select>
             </div>
 
             <!-- Người phụ trách -->
             <div class="form-field">
               <label for="dlr-owner">Người phụ trách</label>
-              <input id="dlr-owner" type="text" maxlength="120"
-                placeholder="Tên nhân viên phụ trách" autocomplete="off" />
+              <select id="dlr-owner" class="dlr-select">
+                <option value="">— Chọn người phụ trách —</option>
+              </select>
             </div>
 
             <!-- Điện thoại -->

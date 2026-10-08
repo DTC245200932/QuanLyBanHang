@@ -1,6 +1,10 @@
 package com.quanlybanhang.controller;
 
 import com.quanlybanhang.config.SecurityConfig;
+import com.quanlybanhang.dto.request.AssignDealerRequest;
+import com.quanlybanhang.dto.request.BulkHandoverRequest;
+import com.quanlybanhang.dto.response.BulkHandoverResponse;
+import com.quanlybanhang.dto.response.DealerAssignmentHistoryResponse;
 import com.quanlybanhang.dto.response.DealerOptionsResponse;
 import com.quanlybanhang.dto.response.DealerResponse;
 import com.quanlybanhang.exception.DealerHasTransactionsException;
@@ -22,9 +26,11 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -213,5 +219,121 @@ class DealerControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.customerGroups[0].value").value("DAI_LY_CAP_1"));
     }
-}
 
+    // ═════════════════════════════════════════════════════════════════════
+    // S3-06: PHÂN CÔNG & CHUYỂN GIAO ĐỊA BÀN CONTROLLER TESTS
+    // ═════════════════════════════════════════════════════════════════════
+
+    @Test
+    @DisplayName("[S3-06] Quản lý kinh doanh được phép phân công đại lý cho nhân viên (200 OK)")
+    void salesManagerCanAssignDealer() throws Exception {
+        DealerResponse res = DealerResponse.builder().id(1L).code("DL001").name("Đại lý 1").assignedUserId(2L).build();
+        when(dealerService.assignDealer(eq(1L), any(), any())).thenReturn(res);
+
+        mvc.perform(post("/api/dealers/1/assign")
+                        .with(user("sales_mgr").roles("SALES_MANAGER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                          "assignedUserId": 2,
+                          "reason": "Phân công phụ trách địa bàn Quận 1"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.assignedUserId").value(2));
+    }
+
+    @Test
+    @DisplayName("[S3-06] Quản lý kinh doanh được phép chuyển giao địa bàn và đại lý hàng loạt (200 OK)")
+    void salesManagerCanBulkHandover() throws Exception {
+        BulkHandoverResponse res = BulkHandoverResponse.builder()
+                .totalTransferred(2)
+                .fromUserId(10L)
+                .toUserId(20L)
+                .transferredDealerIds(List.of(1L, 2L))
+                .reason("Nhân viên nghỉ việc")
+                .transferredAt(LocalDateTime.now())
+                .build();
+
+        when(dealerService.bulkHandover(any(), any())).thenReturn(res);
+
+        mvc.perform(post("/api/dealers/handover/bulk")
+                        .with(user("sales_mgr").roles("SALES_MANAGER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                          "fromUserId": 10,
+                          "toUserId": 20,
+                          "reason": "Nhân viên nghỉ việc"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalTransferred").value(2))
+                .andExpect(jsonPath("$.data.fromUserId").value(10))
+                .andExpect(jsonPath("$.data.toUserId").value(20));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SALES", "ACCOUNTANT", "VIEWER", "WAREHOUSE_STAFF"})
+    @DisplayName("[S3-06] Nhân viên kinh doanh, kế toán, viewer không được phép gọi API chuyển giao hàng loạt (403 Forbidden)")
+    void unauthorizedRolesCannotBulkHandover(String role) throws Exception {
+        mvc.perform(post("/api/dealers/handover/bulk")
+                        .with(user("staff").roles(role))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                          "fromUserId": 10,
+                          "toUserId": 20,
+                          "reason": "Thử chuyển trái phép"
+                        }
+                        """))
+                .andExpect(status().isForbidden());
+
+        verify(dealerService, never()).bulkHandover(any(), any());
+    }
+
+    @Test
+    @DisplayName("[S3-06] Quản lý kinh doanh xem danh sách đại lý cần bàn giao (200 OK)")
+    void salesManagerCanGetPendingHandover() throws Exception {
+        when(dealerService.getPendingHandoverDealers()).thenReturn(
+                List.of(DealerResponse.builder().id(1L).code("DL01").handoverRequired(true).build())
+        );
+
+        mvc.perform(get("/api/dealers/handover/pending").with(user("sales_mgr").roles("SALES_MANAGER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].code").value("DL01"))
+                .andExpect(jsonPath("$.data[0].handoverRequired").value(true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SALES_MANAGER", "ADMIN", "ACCOUNTANT", "VIEWER"})
+    @DisplayName("[S3-06] Các vai trò được phép tra cứu lịch sử chuyển giao đại lý (200 OK)")
+    void allowedRolesCanGetHandoverHistory(String role) throws Exception {
+        when(dealerService.getHandoverHistory(any(), any(), any(), any(), any(), any(), any())).thenReturn(
+                new PageImpl<>(List.of(DealerAssignmentHistoryResponse.builder()
+                        .id(1L)
+                        .dealerCode("DL01")
+                        .fromUsername("sales_old")
+                        .toUsername("sales_new")
+                        .reason("Bàn giao")
+                        .build()))
+        );
+
+        mvc.perform(get("/api/dealers/handover/history").with(user("reader").roles(role)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].dealerCode").value("DL01"))
+                .andExpect(jsonPath("$.data.content[0].fromUsername").value("sales_old"));
+    }
+
+    @Test
+    @DisplayName("[S3-06] Nhân viên kinh doanh xem đại lý không thuộc quyền phụ trách bị trả về 403 Forbidden")
+    void salesAccessDeniedWhenViewingOtherDealer() throws Exception {
+        doThrow(new AccessDeniedException("Bạn chỉ có quyền xem đại lý do mình phụ trách"))
+                .when(dealerService).getDealerById(999L);
+
+        mvc.perform(get("/api/dealers/999").with(user("sales01").roles("SALES")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Bạn không có quyền thực hiện chức năng này"));
+    }
+}

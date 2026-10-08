@@ -31,6 +31,14 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
 
     List<Dealer> findByActiveTrueOrderByNameAsc();
 
+    List<Dealer> findByAssignedUserIdAndActiveTrueOrderByNameAsc(Long userId);
+
+    List<Dealer> findByHandoverRequiredTrueOrderByNameAsc();
+
+    List<Dealer> findByAssignedUserIdAndTerritoryId(Long userId, Long territoryId);
+
+    List<Dealer> findByAssignedUserIdAndIdIn(Long userId, List<Long> ids);
+
     List<Dealer> findByCustomerGroupAndActiveTrue(CustomerGroup customerGroup);
 
     @Query("SELECT d FROM Dealer d WHERE " +

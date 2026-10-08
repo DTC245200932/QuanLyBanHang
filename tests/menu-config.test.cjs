@@ -38,3 +38,18 @@ test('every visible page has an absolute, extensionless link even from a nested 
     assert.equal(menu.resolveHref(item.href), item.href);
   }
 });
+
+test('debt limit menu follows finance roles and view permission', () => {
+  for (const role of ['ROLE_ADMIN', 'ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER']) {
+    assert.ok(ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
+    assert.ok(!ids({roles:[role], permissions:[]}).includes('debt-limits'));
+  }
+  for (const role of ['ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER']) {
+    assert.ok(!ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
+  }
+});
+
+test('debt limit menu uses the existing dashboard route', () => {
+  const item = menu.menuItems.find(item => item.id === 'debt-limits');
+  assert.equal(item.href, '/dashboard?view=debt-limits');
+});

@@ -416,9 +416,9 @@ Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng v
 ```
 *(Nếu `items` để trống, hệ thống tự động kế thừa toàn bộ danh sách dòng giá của phiên bản tiền nhiệm).*
 
-### Danh sách API Quản lý hồ sơ đại lý (S3-03)
+### Danh sách API Quản lý hồ sơ đại lý (S3-03) và Tìm kiếm nhanh đại lý (S3-08)
 
-Hỗ trợ Kế toán công nợ và Quản lý kinh doanh quản lý hồ sơ đại lý chuẩn, thống nhất một danh sách khách hàng trong toàn hệ thống.
+Hỗ trợ Kế toán công nợ và Quản lý kinh doanh quản lý hồ sơ đại lý chuẩn (S3-03), đồng thời hỗ trợ Nhân viên kinh doanh tìm kiếm nhanh khách trong tuyến trên thiết bị di động khi đứng ngoài đường (S3-08).
 
 Quy tắc nghiệp vụ:
 1. Khai báo mã đại lý, tên, mã số thuế, nhóm khách hàng, khu vực, người phụ trách, trạng thái giao dịch.

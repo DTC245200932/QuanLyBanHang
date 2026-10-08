@@ -19,6 +19,7 @@ import java.util.List;
 
 /**
  * Controller quản lý hồ sơ đại lý (S3-03).
+ * Bao gồm tính năng tìm kiếm nhanh khách trong tuyến cho Nhân viên kinh doanh (S3-08).
  *
  * Phân quyền:
  * - Xem danh sách, chi tiết, options: ACCOUNTANT, SALES_MANAGER, ADMIN, SALES, VIEWER

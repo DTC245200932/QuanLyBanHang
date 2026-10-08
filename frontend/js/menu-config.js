@@ -114,6 +114,15 @@ const MenuConfig = (() => {
       ],
     },
     {
+      id: "debt-limits",
+      section: "Tài chính",
+      label: "Hạn mức công nợ",
+      icon: '<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+      href: "/dashboard?view=debt-limits",
+      roles: ["ROLE_ADMIN", "ROLE_ACCOUNTANT", "ROLE_SALES_MANAGER"],
+      permission: "FINANCE_VIEW_DEBT",
+    },
+    {
       id: "users",
       section: "Hệ thống",
       label: "Quản lý tài khoản",

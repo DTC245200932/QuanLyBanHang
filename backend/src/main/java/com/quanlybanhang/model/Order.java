@@ -70,6 +70,20 @@ public class Order {
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
 
+    /**
+     * Tổng tiền hàng trước chiết khấu (S3-01).
+     */
+    @Column(name = "subtotal_amount", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal subtotalAmount = BigDecimal.ZERO;
+
+    /**
+     * Tổng tiền chiết khấu theo sản lượng của đơn hàng (S3-01).
+     */
+    @Column(name = "discount_amount", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     @Column(name = "total_amount", precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal totalAmount = BigDecimal.ZERO;
@@ -109,6 +123,12 @@ public class Order {
         }
         if (this.status == null) {
             this.status = "RECORDED";
+        }
+        if (this.subtotalAmount == null) {
+            this.subtotalAmount = BigDecimal.ZERO;
+        }
+        if (this.discountAmount == null) {
+            this.discountAmount = BigDecimal.ZERO;
         }
         if (this.totalAmount == null) {
             this.totalAmount = BigDecimal.ZERO;

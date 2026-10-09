@@ -54,6 +54,9 @@ class OrderPriceListTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private VolumeDiscountPolicyService volumeDiscountPolicyService;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 

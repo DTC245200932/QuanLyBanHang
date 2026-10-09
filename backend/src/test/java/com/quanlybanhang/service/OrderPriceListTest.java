@@ -43,13 +43,13 @@ class OrderPriceListTest {
     private DealerRepository dealerRepository;
 
     @Mock
+    private DealerDeliveryPointRepository deliveryPointRepository;
+
+    @Mock
     private PriceListRepository priceListRepository;
 
     @Mock
     private UnitConversionService unitConversionService;
-
-    @Mock
-    private DealerDeliveryPointRepository deliveryPointRepository;
 
     @Mock
     private AuditLogService auditLogService;

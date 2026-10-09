@@ -682,6 +682,74 @@ Quản lý kinh doanh hoặc Admin có thể duyệt/từ chối đơn `PENDING_
 Trang `/create-order` là màn hình tạo đơn nội bộ; chưa có cổng đại lý riêng.
 Giao diện không lưu hồ sơ đại lý hay trạng thái đơn vào `localStorage`.
 
+### Danh sách API Phân công & Chuyển giao địa bàn đại lý (S3-06)
+
+Hỗ trợ Quản lý kinh doanh (`ROLE_SALES_MANAGER`) và Quản trị viên (`ROLE_ADMIN`) phân công nhân viên kinh doanh theo đại lý và khu vực, đảm bảo mỗi đại lý đều có một người chịu trách nhiệm chăm sóc và xử lý bàn giao hàng loạt khi nhân viên nghỉ việc.
+
+Quy tắc nghiệp vụ:
+1. Mỗi đại lý được gán một nhân viên kinh doanh phụ trách chính (`assignedUser`).
+2. **Bảo mật dữ liệu (Row-Level Security)**: Nhân viên kinh doanh (`ROLE_SALES`) chỉ nhìn thấy các đại lý do mình phụ trách trong danh sách và chi tiết. Cố gắng xem đại lý của người khác sẽ bị từ chối truy cập (403 Forbidden).
+3. **Chuyển giao địa bàn hàng loạt**: Khi nhân viên nghỉ việc hoặc điều chuyển, Quản lý kinh doanh/Admin có thể chuyển giao hàng loạt toàn bộ hoặc một phần đại lý từ nhân viên cũ sang nhân viên tiếp nhận mới (theo danh sách hoặc theo địa bàn).
+4. **Lưu lịch sử đầy đủ**: Mỗi lần phân công hoặc chuyển giao đều được lưu vết chi tiết trong cơ sở dữ liệu (`dealer_assignment_histories`) bao gồm người giao, người nhận, đại lý, khu vực, lý do, người thực hiện và thời gian chuyển giao.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| POST | `/dealers/{id}/assign` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Gán hoặc thay đổi nhân viên phụ trách chính cho một đại lý (ghi lịch sử phân công) |
+| POST | `/dealers/handover/bulk` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Chuyển giao địa bàn và đại lý hàng loạt từ nhân viên cũ sang nhân viên mới (khi nghỉ việc/điều chuyển) |
+| GET | `/dealers/handover/pending` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Danh sách các đại lý đang cần bàn giao (có cờ `handoverRequired` do nhân viên bị khoá/nghỉ) |
+| GET | `/dealers/handover/history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Tra cứu lịch sử chuyển giao địa bàn và đại lý (phân trang, lọc theo người giao, người nhận, đại lý, khu vực, khoảng thời gian) |
+| GET | `/dealers/{id}/assignment-history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_SALES`, `ROLE_VIEWER` | Lịch sử phân công của riêng một đại lý cụ thể |
+
+#### Ví dụ Request Phân công một đại lý (`POST /api/dealers/1/assign`):
+```json
+{
+  "assignedUserId": 2,
+  "reason": "Phân công phụ trách chính khu vực Quận 1"
+}
+```
+
+#### Ví dụ Request Chuyển giao hàng loạt (`POST /api/dealers/handover/bulk`):
+```json
+{
+  "fromUserId": 5,
+  "toUserId": 2,
+  "territoryId": 1,
+  "dealerIds": [1, 2, 3],
+  "reason": "Nhân viên Nguyễn Văn A nghỉ việc, bàn giao toàn bộ địa bàn cho Trần Văn B",
+  "notes": "Đã bàn giao hồ sơ công nợ và đơn hàng đang xử lý"
+}
+```
+*(Nếu `dealerIds` và `territoryId` để trống, hệ thống tự động chuyển giao TOÀN BỘ đại lý do `fromUserId` phụ trách sang `toUserId`).*
+
+#### Ví dụ Response Chuyển giao hàng loạt:
+```json
+{
+  "success": true,
+  "message": "Chuyển giao địa bàn hàng loạt thành công",
+  "data": {
+    "totalTransferred": 3,
+    "fromUserId": 5,
+    "fromUsername": "sales.old",
+    "fromUserFullName": "Nguyễn Văn A",
+    "toUserId": 2,
+    "toUsername": "sales.new",
+    "toUserFullName": "Trần Văn B",
+    "territoryId": 1,
+    "territoryName": "TP.HCM - Khu Đông",
+    "transferredDealerIds": [1, 2, 3],
+    "transferredDealerNames": ["Đại lý Cấp 1 Minh Phát", "Đại lý Cấp 2 Tân Bình", "Đại lý An Phú"],
+    "reason": "Nhân viên Nguyễn Văn A nghỉ việc, bàn giao toàn bộ địa bàn cho Trần Văn B",
+    "transferredAt": "2026-10-08T14:30:00",
+    "performedByUsername": "sales.manager"
+  }
+}
+```
+
+Khi phối hợp S3-06 với S3-07, `GET /api/dealers/active` chỉ trả đại lý đang giao dịch
+và chưa bị khoá. Với người dùng chỉ có vai trò `SALES`, danh sách này và
+`GET /api/dealers/{id}/in-progress-orders` đều giới hạn theo nhân viên phụ trách;
+xem đơn đang dở của đại lý do người khác phụ trách trả HTTP 403.
+
 ## Bảy vai trò
 
 - `ROLE_ADMIN`: quản trị tài khoản và hệ thống; không mặc nhiên xem giá vốn.

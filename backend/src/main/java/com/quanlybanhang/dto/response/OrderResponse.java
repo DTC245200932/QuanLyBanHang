@@ -32,4 +32,9 @@ public class OrderResponse {
     private LocalDateTime createdAt;
     private LocalDateTime recordedAt;
     private List<OrderItemResponse> items;
+
+    /** Cảnh báo đơn của đại lý bị khoá giao dịch (S3-07). */
+    private Boolean dealerLocked;
+    private String dealerLockWarning;
+    private String warning;
 }

@@ -38,6 +38,15 @@ public class DealerResponse {
     private Boolean handoverRequired;
     private BigDecimal debtLimit;
 
+    /** Trạng thái khoá giao dịch (S3-07): true = Bị khoá, false = Đang mở */
+    private Boolean locked;
+    private String lockReason;
+    private LocalDateTime lockedAt;
+    private String lockedBy;
+
+    /** Số lượng đơn hàng đang dở dang (S3-07). */
+    private Long inProgressOrderCount;
+
     private String phone;
     private String email;
     private String address;

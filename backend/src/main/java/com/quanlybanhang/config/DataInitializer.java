@@ -395,12 +395,26 @@ public class DataInitializer implements CommandLineRunner {
     private void seedPriceLists() {
         if (dealerRepository.count() == 0) {
             dealerRepository.save(com.quanlybanhang.model.Dealer.builder()
+                    .code("DL001")
                     .name("Đại lý Cấp 1 Minh Phát")
+                    .taxCode("0101234567")
+                    .phone("0981234567")
+                    .email("minhphat@dealer.vn")
+                    .address("123 Lê Lợi, Quận 1, TP.HCM")
+                    .active(true)
+                    .debtLimit(new java.math.BigDecimal("100000000"))
                     .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_1)
                     .handoverRequired(false)
                     .build());
             dealerRepository.save(com.quanlybanhang.model.Dealer.builder()
+                    .code("DL002")
                     .name("Đại lý Cấp 2 Tân Bình")
+                    .taxCode("0309876543")
+                    .phone("0989876543")
+                    .email("tanbinh@dealer.vn")
+                    .address("456 Hoàng Văn Thụ, Tân Bình, TP.HCM")
+                    .active(true)
+                    .debtLimit(new java.math.BigDecimal("50000000"))
                     .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_2)
                     .handoverRequired(false)
                     .build());

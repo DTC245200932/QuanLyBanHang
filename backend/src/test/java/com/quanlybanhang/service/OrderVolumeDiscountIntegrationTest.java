@@ -5,6 +5,7 @@ import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.DealerDeliveryPointRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
@@ -37,6 +38,9 @@ class OrderVolumeDiscountIntegrationTest {
 
     @Mock
     private DealerRepository dealerRepository;
+
+    @Mock
+    private DealerDeliveryPointRepository deliveryPointRepository;
 
     @Mock
     private PriceListRepository priceListRepository;

@@ -10,6 +10,7 @@
     <title>Tổng quan | SaleStock</title>
     <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/dashboard.css" />
+    <link rel="stylesheet" href="/css/debt-limits.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -122,6 +123,50 @@
             <h2 id="work-title">Công việc</h2>
             <div class="work-list" id="work-list"></div>
           </section>
+          <section class="debt-limits" id="debt-limits-view" aria-labelledby="debt-limits-title" hidden>
+            <div class="debt-limits__heading">
+              <div>
+                <h1 id="debt-limits-title">Hạn mức công nợ</h1>
+                <p>Khai báo hạn mức tiền và số ngày nợ tối đa của từng đại lý.</p>
+              </div>
+              <button class="btn btn--secondary" id="reload-debt-limits" type="button">Tải lại</button>
+            </div>
+            <div class="debt-limits__notice" role="note">
+              <strong>Chức năng lưu khai báo chưa sẵn sàng</strong>
+              <p>Hệ thống hiện mới cung cấp hạn mức tiền. Số ngày nợ tối đa và lý do thay đổi chưa được hỗ trợ lưu đầy đủ. Bạn có thể tra cứu và kiểm tra khai báo; dữ liệu nhập trong form chưa được lưu.</p>
+            </div>
+            <p class="debt-limits__access" id="debt-limits-readonly" hidden>Bạn có quyền tra cứu. Chỉ Kế toán và Quản lý kinh doanh được mở form khai báo.</p>
+            <form class="debt-limits__filters" id="debt-limits-filters">
+              <label for="debt-limit-search">Tìm đại lý
+                <input id="debt-limit-search" type="search" placeholder="Tên hoặc ID đại lý" />
+              </label>
+              <label for="debt-limit-filter">Hạn mức tiền
+                <select id="debt-limit-filter">
+                  <option value="all">Tất cả</option>
+                  <option value="positive">Có hạn mức tiền lớn hơn 0</option>
+                  <option value="zero">Hạn mức tiền bằng 0</option>
+                </select>
+              </label>
+              <button class="btn btn--secondary" id="reset-debt-limit-filters" type="button">Đặt lại</button>
+            </form>
+            <div class="debt-limits__panel">
+              <p class="debt-limits__summary" id="debt-limits-summary" role="status" aria-live="polite">Đang tải danh sách đại lý…</p>
+              <div class="debt-limits__table-wrap" tabindex="0" role="region" aria-label="Hạn mức công nợ của đại lý">
+                <table class="debt-limits__table">
+                  <thead><tr>
+                    <th scope="col">Đại lý</th><th scope="col">Hạn mức tiền tối đa</th>
+                    <th scope="col">Số ngày nợ tối đa</th><th scope="col">Khai báo</th>
+                  </tr></thead>
+                  <tbody id="debt-limits-rows"></tbody>
+                </table>
+              </div>
+              <nav class="debt-limits__pagination" aria-label="Phân trang hạn mức công nợ">
+                <button class="btn btn--secondary" id="debt-limits-prev" type="button" disabled>Trang trước</button>
+                <span id="debt-limits-page" aria-live="polite"></span>
+                <button class="btn btn--secondary" id="debt-limits-next" type="button" disabled>Trang sau</button>
+              </nav>
+            </div>
+          </section>
         </main>
       </div>
     </div>
@@ -226,8 +271,55 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="debt-limit-modal" hidden>
+      <div class="modal modal--debt-limit" role="dialog" aria-modal="true"
+        aria-labelledby="debt-limit-modal-title" aria-describedby="debt-limit-modal-dealer">
+        <div class="modal__header">
+          <div>
+            <h2 id="debt-limit-modal-title">Khai báo hạn mức công nợ</h2>
+            <p class="debt-limit__dealer" id="debt-limit-modal-dealer"></p>
+          </div>
+          <button class="modal__close" data-close-debt-limit type="button" aria-label="Đóng khai báo hạn mức">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <form class="modal__body debt-limit-form" id="debt-limit-form" novalidate>
+          <p class="debt-limit__current" id="debt-limit-current"></p>
+          <div class="debt-limit-form__grid">
+            <div class="form-field">
+              <label for="debt-limit-amount">Hạn mức tiền tối đa (VND) <span aria-hidden="true">*</span></label>
+              <input id="debt-limit-amount" type="number" min="0" step="0.01" inputmode="decimal" required />
+              <small>Nhập số tiền không âm, tối đa 2 chữ số thập phân.</small>
+            </div>
+            <div class="form-field">
+              <label for="debt-limit-days">Số ngày nợ tối đa <span aria-hidden="true">*</span></label>
+              <input id="debt-limit-days" type="number" min="0" step="1" inputmode="numeric" required aria-describedby="debt-limit-days-help" />
+              <small id="debt-limit-days-help">Nhập số ngày nguyên không âm. Chưa có dữ liệu hiện tại từ hệ thống.</small>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="debt-limit-reason">Lý do thay đổi <span aria-hidden="true">*</span></label>
+            <textarea id="debt-limit-reason" rows="3" required placeholder="Giải thích lý do cấp hoặc điều chỉnh hạn mức"></textarea>
+            <small>Bắt buộc nhập lý do khi khai báo hoặc thay đổi hạn mức.</small>
+          </div>
+          <div class="debt-limit__message" id="debt-limit-form-message" role="alert" hidden></div>
+          <section class="debt-limit__preview" id="debt-limit-preview" aria-label="Kiểm tra khai báo" aria-live="polite" hidden>
+            <h3>Khai báo đã kiểm tra — chưa lưu</h3>
+            <dl id="debt-limit-preview-values"></dl>
+          </section>
+          <p class="debt-limit__save-note" id="debt-limit-save-note">Chưa thể lưu: hệ thống chưa hỗ trợ số ngày nợ tối đa, lưu lý do vào nhật ký và quyền cập nhật của Quản lý kinh doanh. Đóng form sẽ bỏ dữ liệu đang nhập.</p>
+          <div class="modal__actions">
+            <button class="btn btn--secondary" data-close-debt-limit type="button">Hủy</button>
+            <button class="btn btn--secondary" type="submit">Kiểm tra khai báo</button>
+            <button class="btn btn--primary" id="save-debt-limit" type="button" disabled aria-describedby="debt-limit-save-note">Lưu khai báo</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script src="/js/auth.js"></script>
     <script src="/js/menu-config.js"></script>
     <script src="/js/dashboard.js"></script>
+    <script src="/js/debt-limits.js"></script>
   </body>
 </html>

@@ -4,8 +4,10 @@ import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.OrderItemResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
+import com.quanlybanhang.exception.DealerLockedException;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.DealerDeliveryPointRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
@@ -27,6 +29,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final DealerRepository dealerRepository;
+    private final DealerDeliveryPointRepository deliveryPointRepository;
     private final PriceListRepository priceListRepository;
     private final UnitConversionService unitConversionService;
     private final AuditLogService auditLogService;
@@ -66,6 +69,14 @@ public class OrderServiceImpl implements OrderService {
         if (request.getDealerId() != null) {
             dealer = dealerRepository.findById(request.getDealerId())
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
+            // S3-07: Đại lý bị khoá không tạo được đơn mới, kể cả trên cổng đặt hàng
+            if (Boolean.TRUE.equals(dealer.getLocked())) {
+                throw new DealerLockedException(dealer.getCode(), dealer.getName(), dealer.getLockReason());
+            }
+            if (Boolean.FALSE.equals(dealer.getActive())) {
+                throw new IllegalArgumentException(String.format("Đại lý '%s' (%s) đã ngừng giao dịch, không thể tạo đơn hàng mới.",
+                        dealer.getName(), dealer.getCode()));
+            }
             if (customerGroup == null) {
                 customerGroup = dealer.getCustomerGroup();
             }
@@ -83,6 +94,22 @@ public class OrderServiceImpl implements OrderService {
             List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, LocalDate.now());
             if (!effectivePriceLists.isEmpty()) {
                 priceList = effectivePriceLists.get(0);
+            }
+        }
+
+        // 2b. Lấy thông tin điểm giao hàng (S3-04)
+        DealerDeliveryPoint deliveryPoint = null;
+        if (request.getDeliveryPointId() != null) {
+            deliveryPoint = deliveryPointRepository.findById(request.getDeliveryPointId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy điểm giao hàng với ID: " + request.getDeliveryPointId()));
+            if (dealer != null && !deliveryPoint.getDealer().getId().equals(dealer.getId())) {
+                throw new IllegalArgumentException("Điểm giao hàng không thuộc đại lý đã chọn");
+            }
+        } else if (dealer != null) {
+            // Lấy điểm giao hàng mặc định nếu có
+            Optional<DealerDeliveryPoint> defaultPoint = deliveryPointRepository.findByDealerIdAndIsDefaultTrue(dealer.getId());
+            if (defaultPoint.isPresent()) {
+                deliveryPoint = defaultPoint.get();
             }
         }
 
@@ -107,6 +134,7 @@ public class OrderServiceImpl implements OrderService {
                 .customerName(request.getCustomerName() != null ? request.getCustomerName() : (dealer != null ? dealer.getName() : null))
                 .customerGroup(customerGroup)
                 .dealer(dealer)
+                .deliveryPoint(deliveryPoint)
                 .priceList(priceList)
                 .note(request.getNote())
                 .status("RECORDED")
@@ -314,8 +342,12 @@ public class OrderServiceImpl implements OrderService {
         order.setApprovedAt(LocalDateTime.now());
 
         Order saved = orderRepository.save(order);
+        Dealer dealer = order.getDealer();
+        boolean dealerLocked = dealer != null && Boolean.TRUE.equals(dealer.getLocked());
+        String auditDetail = "Quản lý kinh doanh duyệt đơn bán dưới giá sàn" +
+                (dealerLocked ? " [Cảnh báo: Đại lý '" + dealer.getName() + "' đang bị khoá giao dịch. Lý do: " + dealer.getLockReason() + "]" : "");
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "APPROVE", "PENDING_APPROVAL",
-                "Quản lý kinh doanh duyệt đơn bán dưới giá sàn", username != null ? username : "system");
+                auditDetail, username != null ? username : "system");
         return mapToResponse(saved);
     }
 
@@ -359,12 +391,20 @@ public class OrderServiceImpl implements OrderService {
                 ? order.getItems().stream().map(this::mapToItemResponse).collect(Collectors.toList())
                 : Collections.emptyList();
 
+        Dealer dealer = order.getDealer();
+        boolean dealerLocked = dealer != null && Boolean.TRUE.equals(dealer.getLocked());
+        String dealerLockWarning = dealerLocked
+                ? String.format("Cảnh báo: Đại lý '%s' (%s) đang bị khoá giao dịch. Lý do: %s. Đơn hàng đang dở dang vẫn được xử lý nhưng cần theo dõi thu hồi công nợ.",
+                        dealer.getName(), dealer.getCode(), dealer.getLockReason() != null ? dealer.getLockReason() : "Không nêu rõ")
+                : null;
+
         return OrderResponse.builder()
                 .id(order.getId())
                 .orderCode(order.getOrderCode())
                 .customerName(order.getCustomerName())
                 .customerGroup(order.getCustomerGroup())
                 .dealerId(order.getDealer() != null ? order.getDealer().getId() : null)
+                .deliveryPointId(order.getDeliveryPoint() != null ? order.getDeliveryPoint().getId() : null)
                 .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
                 .priceListCode(order.getPriceList() != null ? order.getPriceList().getCode() : null)
                 .status(order.getStatus())
@@ -380,6 +420,9 @@ public class OrderServiceImpl implements OrderService {
                 .createdAt(order.getCreatedAt())
                 .recordedAt(order.getRecordedAt())
                 .items(items)
+                .dealerLocked(dealerLocked)
+                .dealerLockWarning(dealerLockWarning)
+                .warning(dealerLockWarning)
                 .build();
     }
 

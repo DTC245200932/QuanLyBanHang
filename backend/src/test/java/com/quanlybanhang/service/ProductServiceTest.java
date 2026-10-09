@@ -42,13 +42,13 @@ class ProductServiceTest {
     private CategoryRepository categoryRepository;
 
     @Mock
+    private com.quanlybanhang.repository.ProductPriceHistoryRepository productPriceHistoryRepository;
+
+    @Mock
     private AuditLogService auditLogService;
 
     @Mock
     private ProductExcelService productExcelService;
-
-    @Mock
-    private com.quanlybanhang.repository.ProductPriceHistoryRepository productPriceHistoryRepository;
 
     @InjectMocks
     private ProductServiceImpl productService;

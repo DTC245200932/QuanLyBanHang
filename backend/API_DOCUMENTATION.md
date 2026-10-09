@@ -452,6 +452,9 @@ Quy tắc nghiệp vụ:
 | POST | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo hồ sơ đại lý mới (kiểm tra tính duy nhất của mã đại lý) |
 | PUT | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật hồ sơ đại lý (kiểm tra trùng mã) |
 | PATCH | `/dealers/{id}/status?active=false` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Ngừng giao dịch; truyền `active=true` để khôi phục giao dịch |
+| POST | `/dealers/{id}/lock` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | **Khoá giao dịch đại lý (S3-07)**: Bắt buộc nhập lý do khoá; dừng bán ngay; cảnh báo nếu có đơn dở dang |
+| POST | `/dealers/{id}/unlock` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | **Mở khoá giao dịch đại lý (S3-07)**: Khôi phục khả năng giao dịch và đặt hàng |
+| GET | `/dealers/{id}/in-progress-orders` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | **Danh sách đơn hàng đang dở dang (S3-07)**: Đơn hàng cần theo dõi khi khoá đại lý |
 | DELETE | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa đại lý (**Chặn và trả lỗi 400 nếu đại lý đã phát sinh giao dịch/đơn hàng**, chỉ cho phép ngừng giao dịch) |
 
 `GET /dealers` nhận các tham số query:
@@ -460,8 +463,73 @@ Quy tắc nghiệp vụ:
 - `territoryId`: Lọc theo khu vực
 - `assignedUserId`: Lọc theo nhân viên kinh doanh phụ trách
 - `active`: `true` | `false`
+- `locked`: `true` | `false` (Lọc theo trạng thái khoá giao dịch - S3-07)
 - `page`: Trang (bắt đầu từ 0)
 - `size`: Số bản ghi mỗi trang (1-200, mặc định 10)
+
+### Khoá / Mở giao dịch với đại lý (S3-07)
+
+Hỗ trợ Kế toán công nợ dừng bán ngay cho các đại lý có dấu hiệu mất khả năng thanh toán.
+
+Quy tắc nghiệp vụ:
+1. **Đại lý bị khoá không tạo được đơn mới**:
+   - Mọi nỗ lực tạo đơn mới (`POST /api/orders`) chỉ định đại lý bị khoá đều bị từ chối với mã lỗi `400 Bad Request` kèm thông báo chi tiết và lý do khoá.
+   - Endpoint `GET /api/dealers/active` tự động loại trừ đại lý bị khoá để ngăn chặn việc chọn đại lý bị khoá trên giao diện/cổng đặt hàng.
+2. **Bắt buộc nhập lý do khoá**:
+   - Request `POST /api/dealers/{id}/lock` bắt buộc có trường `reason` (không được để trống, tối đa 500 ký tự). Nếu để trống sẽ trả về `400 Bad Request`.
+3. **Đơn đang dở của đại lý bị khoá vẫn xử lý tiếp được nhưng có cảnh báo**:
+   - Khi khoá đại lý, nếu đại lý còn đơn hàng dở dang (`PENDING_APPROVAL`, `RECORDED`), API trả về thông báo thành công kèm cảnh báo số lượng đơn dở dang cần theo dõi.
+   - Các đơn hàng này vẫn được phép tiếp tục phê duyệt (`PUT /api/orders/{id}/approve`), huỷ (`PUT /api/orders/{id}/cancel`), hoặc từ chối (`PUT /api/orders/{id}/reject`).
+   - Khi truy vấn chi tiết đơn hàng hoặc thực hiện xử lý đơn hàng, hệ thống trả về thông tin `dealerLocked: true` kèm `dealerLockWarning` và ghi rõ cảnh báo trong nhật ký kiểm toán (Audit Log).
+
+#### Ví dụ Request khoá đại lý (`POST /api/dealers/{id}/lock`):
+```json
+{
+  "reason": "Nợ quá hạn 90 ngày, có dấu hiệu mất khả năng thanh toán"
+}
+```
+
+#### Ví dụ Response khoá đại lý thành công có cảnh báo đơn dở:
+```json
+{
+  "success": true,
+  "message": "Đã khoá giao dịch với đại lý 'Đại lý Cấp 1 Minh Phát'. Cảnh báo: Đại lý hiện có 2 đơn hàng đang dở dang cần theo dõi xử lý.",
+  "data": {
+    "id": 1,
+    "code": "DL-MINHPHAT",
+    "name": "Đại lý Cấp 1 Minh Phát",
+    "locked": true,
+    "lockReason": "Nợ quá hạn 90 ngày, có dấu hiệu mất khả năng thanh toán",
+    "lockedAt": "2026-10-08T15:30:00",
+    "lockedBy": "accountant01",
+    "inProgressOrderCount": 2,
+    "active": true
+  }
+}
+```
+
+#### Ví dụ Request mở khoá đại lý (`POST /api/dealers/{id}/unlock`):
+```json
+POST /api/dealers/1/unlock
+```
+Response:
+```json
+{
+  "success": true,
+  "message": "Đã mở khoá giao dịch cho đại lý 'Đại lý Cấp 1 Minh Phát'",
+  "data": {
+    "id": 1,
+    "code": "DL-MINHPHAT",
+    "name": "Đại lý Cấp 1 Minh Phát",
+    "locked": false,
+    "lockReason": null,
+    "lockedAt": null,
+    "lockedBy": null,
+    "inProgressOrderCount": 2,
+    "active": true
+  }
+}
+```
 
 #### Ví dụ Request tạo đại lý (`POST /api/dealers`):
 ```json

@@ -4,6 +4,7 @@ import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.model.*;
+import com.quanlybanhang.repository.DealerDeliveryPointRepository;
 import com.quanlybanhang.repository.DealerRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.PriceListRepository;
@@ -48,10 +49,10 @@ class OrderPriceListTest {
     private UnitConversionService unitConversionService;
 
     @Mock
-    private AuditLogService auditLogService;
+    private DealerDeliveryPointRepository deliveryPointRepository;
 
     @Mock
-    private com.quanlybanhang.repository.DealerDeliveryPointRepository deliveryPointRepository;
+    private AuditLogService auditLogService;
 
     @InjectMocks
     private OrderServiceImpl orderService;

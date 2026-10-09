@@ -18,5 +18,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     boolean existsByPriceListId(Long priceListId);
 
+    boolean existsByDealerId(Long dealerId);
+
     List<Order> findByStatus(String status);
+
+    long countByDealerIdAndStatusNotIn(Long dealerId, java.util.Collection<String> statuses);
+
+    List<Order> findByDealerIdAndStatusNotInOrderByCreatedAtDesc(Long dealerId, java.util.Collection<String> statuses);
 }

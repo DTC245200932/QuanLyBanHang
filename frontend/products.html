@@ -182,6 +182,62 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="price-history-modal" hidden>
+      <div class="modal modal--price-history" role="dialog" aria-modal="true"
+        aria-labelledby="price-history-title" aria-describedby="price-history-product">
+        <div class="modal__header product-modal__header">
+          <div>
+            <h2 id="price-history-title">Lịch sử thay đổi giá</h2>
+            <p id="price-history-product"></p>
+          </div>
+          <button class="modal__close" data-close-price-history type="button" aria-label="Đóng lịch sử giá">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body price-history">
+          <p class="price-history__readonly">Lịch sử chỉ dùng để tra cứu. Không thể sửa hoặc xóa bản ghi tại đây.</p>
+          <div class="price-history__unavailable" id="price-history-unavailable" role="status" hidden>
+            <strong>Chưa thể tải lịch sử giá cho tài khoản này</strong>
+            <p>Hệ thống hiện chưa hỗ trợ quyền xem lịch sử giá cho Quản lý kinh doanh. Vui lòng liên hệ quản trị hệ thống để được hỗ trợ tra cứu.</p>
+          </div>
+          <div id="price-history-content">
+            <form class="price-history__filters" id="price-history-filters">
+              <label for="price-history-from">Từ ngày
+                <input id="price-history-from" type="date" />
+              </label>
+              <label for="price-history-to">Đến ngày
+                <input id="price-history-to" type="date" />
+              </label>
+              <button class="btn btn--primary" id="filter-price-history" type="submit">Lọc lịch sử</button>
+              <button class="btn btn--secondary" id="reset-price-history" type="button">Đặt lại</button>
+            </form>
+            <p class="product-form__message" id="price-history-error" role="alert" hidden></p>
+            <p class="price-history__summary" id="price-history-summary" role="status" aria-live="polite"></p>
+            <div class="price-history__table-wrap" tabindex="0" role="region" aria-label="Bảng lịch sử thay đổi giá">
+              <table class="price-history__table">
+                <thead><tr>
+                  <th scope="col">Thời điểm ghi nhận</th>
+                  <th scope="col">Giá cũ</th>
+                  <th scope="col">Giá mới</th>
+                  <th scope="col">Người sửa</th>
+                </tr></thead>
+                <tbody id="price-history-rows"></tbody>
+              </table>
+            </div>
+            <nav class="price-history__pagination" aria-label="Phân trang lịch sử giá">
+              <button class="btn btn--secondary" id="price-history-prev" type="button" disabled>Trang trước</button>
+              <span id="price-history-page" aria-live="polite"></span>
+              <button class="btn btn--secondary" id="price-history-next" type="button" disabled>Trang sau</button>
+            </nav>
+            <p class="price-history__note">Thời điểm hiển thị là lúc hệ thống ghi nhận thay đổi giá. Chưa có dữ liệu thời điểm áp dụng riêng.</p>
+          </div>
+          <div class="modal__actions">
+            <button class="btn btn--secondary" data-close-price-history type="button">Đóng</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="/js/auth.js"></script>
     <script src="/js/products.js"></script>
   </body>

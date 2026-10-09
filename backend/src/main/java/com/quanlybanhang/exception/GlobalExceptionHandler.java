@@ -128,6 +128,24 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Xử lý lỗi không thể xóa đại lý đã phát sinh giao dịch (S3-03).
+     */
+    @ExceptionHandler(DealerHasTransactionsException.class)
+    public ResponseEntity<ApiResponse> handleDealerHasTransactions(DealerHasTransactionsException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Xử lý lỗi đại lý bị khoá không tạo được đơn mới (S3-07).
+     */
+    @ExceptionHandler(DealerLockedException.class)
+    public ResponseEntity<ApiResponse> handleDealerLocked(DealerLockedException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
      * Xử lý lỗi không có quyền truy cập (@PreAuthorize hoặc AccessDeniedException).
      * Trả về 403 Forbidden.
      */

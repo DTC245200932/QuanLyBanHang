@@ -182,6 +182,7 @@ Hỗ trợ Quản lý kinh doanh quản lý danh mục sản phẩm chuẩn hóa
 |---|---|---|---|
 | GET | `/products?categoryId={id}&search={q}&active={true/false}` | Đã đăng nhập | Danh sách sản phẩm (hỗ trợ lọc nhóm, tìm kiếm theo SKU/tên, trạng thái; giá vốn chỉ trả về cho Sales Manager) |
 | GET | `/products/{id}` | Đã đăng nhập | Xem chi tiết sản phẩm kèm danh sách đơn vị quy đổi (giá vốn bảo mật) |
+| GET | `/products/{id}/price-history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xem lịch sử thay đổi giá của một sản phẩm (giá cũ, giá mới, người sửa, thời điểm) |
 | POST | `/products` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo sản phẩm mới, có thể khai báo `unitConversions` (chỉ Sales Manager gán được giá vốn ban đầu) |
 | PUT | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật thông tin sản phẩm (chỉ Sales Manager sửa được giá vốn; vai trò khác giữ nguyên giá vốn cũ) |
 | PATCH | `/products/{id}/status?active={true/false}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Chuyển đổi trạng thái Đang kinh doanh / Ngừng kinh doanh |
@@ -414,6 +415,162 @@ Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng v
 }
 ```
 *(Nếu `items` để trống, hệ thống tự động kế thừa toàn bộ danh sách dòng giá của phiên bản tiền nhiệm).*
+
+### Danh sách API Quản lý hồ sơ đại lý (S3-03) và Tìm kiếm nhanh đại lý (S3-08)
+
+Hỗ trợ Kế toán công nợ và Quản lý kinh doanh quản lý hồ sơ đại lý chuẩn (S3-03), đồng thời hỗ trợ Nhân viên kinh doanh tìm kiếm nhanh khách trong tuyến trên thiết bị di động khi đứng ngoài đường (S3-08).
+
+Quy tắc nghiệp vụ:
+1. Khai báo mã đại lý, tên, mã số thuế, nhóm khách hàng, khu vực, người phụ trách, trạng thái giao dịch.
+2. Mã đại lý là duy nhất trong toàn hệ thống.
+3. Nhóm khách hàng quyết định bảng giá được áp dụng (`CustomerGroup`: `DAI_LY_CAP_1`, `DAI_LY_CAP_2`, `KHACH_LE`).
+4. Đại lý đã phát sinh giao dịch (đơn hàng) thì không được xóa, chỉ được chuyển sang trạng thái ngừng giao dịch (`active = false`).
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý (tìm kiếm, lọc theo nhóm, khu vực, người phụ trách, trạng thái, phân trang) |
+| GET | `/dealers/active` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý đang hoạt động (phục vụ dropdown chọn đại lý khi tạo đơn) |
+| GET | `/dealers/options` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh mục tham chiếu tạo/sửa đại lý (nhóm khách hàng, khu vực, người phụ trách) |
+| GET | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Chi tiết hồ sơ đại lý |
+| POST | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo hồ sơ đại lý mới (kiểm tra tính duy nhất của mã đại lý) |
+| PUT | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật hồ sơ đại lý (kiểm tra trùng mã) |
+| PATCH | `/dealers/{id}/status?active=false` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Ngừng giao dịch; truyền `active=true` để khôi phục giao dịch |
+| POST | `/dealers/{id}/lock` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | **Khoá giao dịch đại lý (S3-07)**: Bắt buộc nhập lý do khoá; dừng bán ngay; cảnh báo nếu có đơn dở dang |
+| POST | `/dealers/{id}/unlock` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | **Mở khoá giao dịch đại lý (S3-07)**: Khôi phục khả năng giao dịch và đặt hàng |
+| GET | `/dealers/{id}/in-progress-orders` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | **Danh sách đơn hàng đang dở dang (S3-07)**: Đơn hàng cần theo dõi khi khoá đại lý |
+| DELETE | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa đại lý (**Chặn và trả lỗi 400 nếu đại lý đã phát sinh giao dịch/đơn hàng**, chỉ cho phép ngừng giao dịch) |
+
+`GET /dealers` nhận các tham số query:
+- `keyword`: Tìm kiếm tương đối theo mã, tên, MST, SĐT
+- `customerGroup`: `DAI_LY_CAP_1` | `DAI_LY_CAP_2` | `KHACH_LE`
+- `territoryId`: Lọc theo khu vực
+- `assignedUserId`: Lọc theo nhân viên kinh doanh phụ trách
+- `active`: `true` | `false`
+- `locked`: `true` | `false` (Lọc theo trạng thái khoá giao dịch - S3-07)
+- `page`: Trang (bắt đầu từ 0)
+- `size`: Số bản ghi mỗi trang (1-200, mặc định 10)
+
+### Khoá / Mở giao dịch với đại lý (S3-07)
+
+Hỗ trợ Kế toán công nợ dừng bán ngay cho các đại lý có dấu hiệu mất khả năng thanh toán.
+
+Quy tắc nghiệp vụ:
+1. **Đại lý bị khoá không tạo được đơn mới**:
+   - Mọi nỗ lực tạo đơn mới (`POST /api/orders`) chỉ định đại lý bị khoá đều bị từ chối với mã lỗi `400 Bad Request` kèm thông báo chi tiết và lý do khoá.
+   - Endpoint `GET /api/dealers/active` tự động loại trừ đại lý bị khoá để ngăn chặn việc chọn đại lý bị khoá trên giao diện/cổng đặt hàng.
+2. **Bắt buộc nhập lý do khoá**:
+   - Request `POST /api/dealers/{id}/lock` bắt buộc có trường `reason` (không được để trống, tối đa 500 ký tự). Nếu để trống sẽ trả về `400 Bad Request`.
+3. **Đơn đang dở của đại lý bị khoá vẫn xử lý tiếp được nhưng có cảnh báo**:
+   - Khi khoá đại lý, nếu đại lý còn đơn hàng dở dang (`PENDING_APPROVAL`, `RECORDED`), API trả về thông báo thành công kèm cảnh báo số lượng đơn dở dang cần theo dõi.
+   - Các đơn hàng này vẫn được phép tiếp tục phê duyệt (`PUT /api/orders/{id}/approve`), huỷ (`PUT /api/orders/{id}/cancel`), hoặc từ chối (`PUT /api/orders/{id}/reject`).
+   - Khi truy vấn chi tiết đơn hàng hoặc thực hiện xử lý đơn hàng, hệ thống trả về thông tin `dealerLocked: true` kèm `dealerLockWarning` và ghi rõ cảnh báo trong nhật ký kiểm toán (Audit Log).
+
+#### Ví dụ Request khoá đại lý (`POST /api/dealers/{id}/lock`):
+```json
+{
+  "reason": "Nợ quá hạn 90 ngày, có dấu hiệu mất khả năng thanh toán"
+}
+```
+
+#### Ví dụ Response khoá đại lý thành công có cảnh báo đơn dở:
+```json
+{
+  "success": true,
+  "message": "Đã khoá giao dịch với đại lý 'Đại lý Cấp 1 Minh Phát'. Cảnh báo: Đại lý hiện có 2 đơn hàng đang dở dang cần theo dõi xử lý.",
+  "data": {
+    "id": 1,
+    "code": "DL-MINHPHAT",
+    "name": "Đại lý Cấp 1 Minh Phát",
+    "locked": true,
+    "lockReason": "Nợ quá hạn 90 ngày, có dấu hiệu mất khả năng thanh toán",
+    "lockedAt": "2026-10-08T15:30:00",
+    "lockedBy": "accountant01",
+    "inProgressOrderCount": 2,
+    "active": true
+  }
+}
+```
+
+#### Ví dụ Request mở khoá đại lý (`POST /api/dealers/{id}/unlock`):
+```json
+POST /api/dealers/1/unlock
+```
+Response:
+```json
+{
+  "success": true,
+  "message": "Đã mở khoá giao dịch cho đại lý 'Đại lý Cấp 1 Minh Phát'",
+  "data": {
+    "id": 1,
+    "code": "DL-MINHPHAT",
+    "name": "Đại lý Cấp 1 Minh Phát",
+    "locked": false,
+    "lockReason": null,
+    "lockedAt": null,
+    "lockedBy": null,
+    "inProgressOrderCount": 2,
+    "active": true
+  }
+}
+```
+
+#### Ví dụ Request tạo đại lý (`POST /api/dealers`):
+```json
+{
+  "code": "DL-MINHPHAT",
+  "name": "Đại lý Cấp 1 Minh Phát",
+  "taxCode": "0101234567",
+  "customerGroup": "DAI_LY_CAP_1",
+  "territoryId": 1,
+  "assignedUserId": 2,
+  "phone": "0981234567",
+  "email": "minhphat@dealer.vn",
+  "address": "123 Lê Lợi, Quận 1, TP.HCM",
+  "debtLimit": 100000000,
+  "active": true
+}
+```
+
+#### Ví dụ Response (`GET /api/dealers/{id}`):
+```json
+{
+  "success": true,
+  "message": "Lấy chi tiết đại lý thành công",
+  "data": {
+    "id": 1,
+    "code": "DL-MINHPHAT",
+    "name": "Đại lý Cấp 1 Minh Phát",
+    "taxCode": "0101234567",
+    "customerGroup": "DAI_LY_CAP_1",
+    "customerGroupDisplayName": "Đại lý cấp 1",
+    "territoryId": 1,
+    "territoryCode": "HCM-DONG",
+    "territoryName": "TP.HCM - Khu Đông",
+    "assignedUserId": 2,
+    "assignedUsername": "sales.demo",
+    "assignedUserFullName": "Nhân viên kinh doanh Demo",
+    "active": true,
+    "handoverRequired": false,
+    "debtLimit": 100000000.00,
+    "phone": "0981234567",
+    "email": "minhphat@dealer.vn",
+    "address": "123 Lê Lợi, Quận 1, TP.HCM",
+    "hasTransactions": true,
+    "createdAt": "2026-10-07T09:00:00",
+    "updatedAt": null
+  }
+}
+```
+
+### Luồng giao diện S3-07
+
+Trang `/dealers` dùng dữ liệu server và các API khoá/mở khoá nêu trên. Lý do khoá
+là bắt buộc, tối đa 500 ký tự. Nút **Đơn đang dở** đọc
+`GET /api/dealers/{id}/in-progress-orders` và hiển thị cảnh báo công nợ.
+Quản lý kinh doanh hoặc Admin có thể duyệt/từ chối đơn `PENDING_APPROVAL` bằng
+`PUT /api/orders/{id}/approve` hoặc `PUT /api/orders/{id}/reject`.
+Trang `/create-order` là màn hình tạo đơn nội bộ; chưa có cổng đại lý riêng.
+Giao diện không lưu hồ sơ đại lý hay trạng thái đơn vào `localStorage`.
 
 ## Bảy vai trò
 

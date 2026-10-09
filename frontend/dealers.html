@@ -50,7 +50,9 @@
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <div class="topbar__breadcrumb"><span>Đại lý</span></div>
+          <div class="topbar__breadcrumb">
+            <span>Đại lý</span>
+          </div>
           <div class="topbar__actions">
             <button class="topbar__btn topbar__btn--logout" id="btn-logout-topbar" title="Đăng xuất">
               <svg viewBox="0 0 24 24">
@@ -67,52 +69,111 @@
           <!-- Heading -->
           <div class="dlr-heading">
             <div class="dlr-heading__text">
-              <p class="dlr-heading__context">Kinh doanh</p>
+              <p class="dlr-heading__section">Kinh doanh</p>
               <h1>Đại lý</h1>
               <p class="dlr-heading__desc">
-                Hồ sơ khách hàng tập trung — mã, nhóm, khu vực, người phụ trách và trạng thái giao dịch.
+                Quản lý hồ sơ đại lý tập trung — mã, nhóm khách hàng, khu vực và người phụ trách.
               </p>
             </div>
             <button class="btn btn--primary" id="btn-add-dealer" hidden>
-              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              <svg width="16" height="16" viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
               Thêm đại lý
             </button>
           </div>
 
-          <!-- Toolbar -->
-          <div class="dlr-toolbar">
-            <div class="dlr-search-wrap">
-              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input type="search" id="dlr-search"
-                placeholder="Tìm theo mã, tên, mã số thuế…" autocomplete="off" />
+          <!-- Toolbar & Filters -->
+          <div class="dlr-toolbar-card">
+            <div class="dlr-toolbar">
+              <div class="dlr-search-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  id="dlr-search"
+                  placeholder="Tìm nhanh theo mã, tên, số điện thoại…"
+                  autocomplete="off"
+                  aria-label="Tìm nhanh theo mã, tên, số điện thoại"
+                />
+                <button type="button" class="dlr-search-clear" id="dlr-search-clear" title="Xoá tìm kiếm" aria-label="Xoá tìm kiếm" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="dlr-filter-group">
+                <!-- Khu vực -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-region" class="dlr-select" aria-label="Lọc theo khu vực">
+                    <option value="">Tất cả khu vực</option>
+                  </select>
+                </div>
+
+                <!-- Nhóm khách hàng -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-group" class="dlr-select" aria-label="Lọc theo nhóm khách hàng">
+                    <option value="">Tất cả nhóm KH</option>
+                    <option value="DAI_LY_CAP_1">Đại lý cấp 1</option>
+                    <option value="DAI_LY_CAP_2">Đại lý cấp 2</option>
+                    <option value="KHACH_LE">Khách lẻ</option>
+                  </select>
+                </div>
+
+                <!-- Người phụ trách -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-owner" class="dlr-select" aria-label="Lọc theo người phụ trách">
+                    <option value="">Tất cả người phụ trách</option>
+                  </select>
+                </div>
+
+                <!-- Trạng thái -->
+                <div class="dlr-filter-item">
+                  <select id="dlr-filter-status" class="dlr-select" aria-label="Lọc theo trạng thái">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="ACTIVE">Đang giao dịch</option>
+                <option value="LOCKED">Bị khoá giao dịch</option>
+                    <option value="INACTIVE">Ngừng giao dịch</option>
+                  </select>
+                </div>
+
+                <!-- Nút đặt lại -->
+                <button type="button" id="btn-reset-filters" class="btn btn--secondary dlr-btn-reset" title="Đặt lại bộ lọc" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                    <path d="M3 3v5h5"/>
+                  </svg>
+                  <span>Đặt lại</span>
+                </button>
+              </div>
             </div>
-            <div class="dlr-filter-group">
-              <select id="dlr-filter-group" class="dlr-select">
-                <option value="">Tất cả nhóm KH</option>
-                <option value="DAI_LY_CAP_1">Đại lý cấp 1</option>
-                <option value="DAI_LY_CAP_2">Đại lý cấp 2</option>
-                <option value="KHACH_LE">Khách lẻ</option>
-              </select>
-              <select id="dlr-filter-status" class="dlr-select">
-                <option value="">Tất cả trạng thái</option>
-                <option value="ACTIVE">Đang giao dịch</option>
-                <option value="LOCKED">Bị khoá</option>
-                <option value="INACTIVE">Ngừng giao dịch</option>
-              </select>
+
+            <!-- Meta & Quick chips -->
+            <div class="dlr-toolbar-meta">
+              <div class="dlr-meta-count" id="dlr-meta-count">
+                <span class="dlr-meta-dot"></span>
+                <span id="dlr-count-text">Đang tải dữ liệu…</span>
+              </div>
+              <div class="dlr-quick-chips" id="dlr-quick-chips">
+                <button type="button" class="dlr-chip dlr-chip--active" data-chip="all">Tất cả</button>
+                <button type="button" class="dlr-chip" data-chip="my-dealers" id="chip-my-dealers">Của tôi</button>
+                <button type="button" class="dlr-chip" data-chip="active-only">Đang giao dịch</button>
+              </div>
             </div>
           </div>
 
           <!-- Table -->
           <div class="dlr-table-wrap">
-            <table class="dlr-table">
+            <table class="dlr-table" id="dlr-table">
               <thead>
                 <tr>
                   <th class="col-code">Mã đại lý</th>
-                  <th class="col-name">Tên đại lý</th>
+                  <th class="col-name">Tên đại lý &amp; Liên hệ</th>
                   <th class="col-tax">Mã số thuế</th>
                   <th class="col-group">Nhóm KH</th>
                   <th class="col-region">Khu vực</th>
@@ -123,7 +184,9 @@
               </thead>
               <tbody id="dlr-tbody">
                 <tr class="dlr-loading-row">
-                  <td colspan="8"><div class="dlr-loading">Đang tải dữ liệu…</div></td>
+                  <td colspan="8">
+                    <div class="dlr-loading">Đang tải dữ liệu…</div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -143,7 +206,7 @@
 
     <!-- ── Modal: Thêm / Sửa đại lý ── -->
     <div class="modal-overlay" id="dealer-modal" hidden>
-      <div class="modal modal--wide" role="dialog" aria-labelledby="dealer-modal-title" aria-modal="true">
+      <div class="modal modal--wide" role="dialog" aria-labelledby="dealer-modal-title">
         <div class="modal__header">
           <div>
             <h2 id="dealer-modal-title">Thêm đại lý</h2>
@@ -153,8 +216,10 @@
             <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
+
         <form class="modal__body" id="dealer-form" novalidate>
           <input type="hidden" id="dlr-id" />
+
           <div class="form-grid">
             <!-- Mã đại lý -->
             <div class="form-field">
@@ -163,18 +228,21 @@
                 placeholder="VD: DL001" autocomplete="off" />
               <small>Mã định danh duy nhất, không thể thay đổi sau khi tạo.</small>
             </div>
+
             <!-- Mã số thuế -->
             <div class="form-field">
               <label for="dlr-tax">Mã số thuế</label>
               <input id="dlr-tax" type="text" maxlength="20"
                 placeholder="VD: 0123456789" autocomplete="off" />
             </div>
+
             <!-- Tên đại lý -->
             <div class="form-field form-field--full">
               <label for="dlr-name">Tên đại lý <span class="req">*</span></label>
               <input id="dlr-name" type="text" required maxlength="150"
                 placeholder="VD: Công ty TNHH Thương mại Minh Đức" autocomplete="off" />
             </div>
+
             <!-- Nhóm khách hàng -->
             <div class="form-field">
               <label for="dlr-group">Nhóm khách hàng <span class="req">*</span></label>
@@ -186,24 +254,30 @@
               </select>
               <small>Nhóm KH quyết định bảng giá được áp dụng.</small>
             </div>
+
             <!-- Khu vực -->
             <div class="form-field">
               <label for="dlr-region">Khu vực</label>
-              <input id="dlr-region" type="text" maxlength="100"
-                placeholder="VD: Hà Nội, TP.HCM, Miền Bắc" autocomplete="off" />
+              <select id="dlr-region" class="dlr-select">
+                <option value="">— Chọn khu vực —</option>
+              </select>
             </div>
+
             <!-- Người phụ trách -->
             <div class="form-field">
               <label for="dlr-owner">Người phụ trách</label>
-              <input id="dlr-owner" type="text" maxlength="120"
-                placeholder="Tên nhân viên phụ trách" autocomplete="off" />
+              <select id="dlr-owner" class="dlr-select">
+                <option value="">— Chọn người phụ trách —</option>
+              </select>
             </div>
+
             <!-- Điện thoại -->
             <div class="form-field">
               <label for="dlr-phone">Điện thoại</label>
               <input id="dlr-phone" type="tel" maxlength="20"
                 placeholder="VD: 0901 234 567" autocomplete="off" />
             </div>
+
             <!-- Địa chỉ -->
             <div class="form-field form-field--full">
               <label for="dlr-address">Địa chỉ</label>
@@ -211,6 +285,7 @@
                 placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
                 autocomplete="off" />
             </div>
+
             <!-- Ghi chú -->
             <div class="form-field form-field--full">
               <label for="dlr-notes">Ghi chú</label>
@@ -218,7 +293,9 @@
                 placeholder="Thông tin bổ sung về đại lý…"></textarea>
             </div>
           </div>
-          <div id="dealer-form-msg" class="form-message" hidden></div>
+
+          <div id="dealer-form-message" class="form-message" hidden></div>
+
           <div class="modal__actions">
             <button type="button" class="btn btn--secondary" data-close-dealer>Huỷ</button>
             <button type="submit" class="btn btn--primary" id="btn-save-dealer">Lưu</button>
@@ -227,68 +304,71 @@
       </div>
     </div>
 
-    <!-- ── Modal: Khoá giao dịch (S3-07) — nhập lý do bắt buộc ── -->
-    <div class="modal-overlay" id="lock-modal" hidden>
-      <div class="modal" role="dialog" aria-labelledby="lock-modal-title" aria-modal="true">
+    <!-- ── Modal: Xác nhận ngừng / khôi phục giao dịch ── -->
+    <div class="modal-overlay" id="dlr-status-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="dlr-status-modal-title">
         <div class="modal__header">
           <div>
-            <h2 id="lock-modal-title">Khoá giao dịch</h2>
-            <p class="modal-subtitle" id="lock-modal-sub"></p>
+            <h2 id="dlr-status-modal-title">Ngừng giao dịch</h2>
+            <p class="modal-subtitle" id="dlr-status-modal-sub"></p>
           </div>
-          <button class="modal__close" data-close-lock aria-label="Đóng">
+          <button class="modal__close" data-close-dlr-status aria-label="Đóng">
             <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
         <div class="modal__body">
-          <input type="hidden" id="lock-dlr-id" />
-          <div class="lock-warning-banner">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-            <span>Đại lý bị khoá sẽ <strong>không tạo được đơn mới</strong>, kể cả trên cổng đặt hàng. Các đơn đang dở vẫn được xử lý nhưng hiển thị cảnh báo.</span>
-          </div>
-          <div class="form-field" style="margin-top:16px;">
-            <label for="lock-reason">Lý do khoá <span class="req">*</span></label>
-            <textarea id="lock-reason" rows="3" maxlength="500" required
-              placeholder="Nhập lý do khoá giao dịch (bắt buộc)…"></textarea>
-          </div>
-          <div id="lock-form-msg" class="form-message" hidden></div>
+          <input type="hidden" id="dlr-status-id" />
+          <input type="hidden" id="dlr-status-target" />
+          <p id="dlr-status-modal-body" class="status-confirm-text"></p>
+          <div id="dlr-status-form-message" class="form-message" hidden></div>
           <div class="modal__actions">
-            <button type="button" class="btn btn--secondary" data-close-lock>Huỷ</button>
-            <button type="button" class="btn btn--danger" id="btn-confirm-lock">Khoá giao dịch</button>
+            <button type="button" class="btn btn--secondary" data-close-dlr-status>Huỷ</button>
+            <button type="button" class="btn btn--primary" id="btn-confirm-dlr-status">Xác nhận</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ── Modal: Mở khoá / Ngừng / Khôi phục giao dịch ── -->
-    <div class="modal-overlay" id="status-modal" hidden>
-      <div class="modal" role="dialog" aria-labelledby="status-modal-title" aria-modal="true">
+    <div class="modal-overlay" id="lock-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="lock-modal-title" aria-modal="true">
         <div class="modal__header">
-          <div>
-            <h2 id="status-modal-title">Xác nhận</h2>
-            <p class="modal-subtitle" id="status-modal-sub"></p>
+          <div><h2 id="lock-modal-title">Khoá giao dịch</h2><p class="modal-subtitle" id="lock-modal-sub"></p></div>
+          <button class="modal__close" type="button" data-close-transaction="lock-modal" aria-label="Đóng"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <form class="modal__body" id="lock-form" novalidate>
+          <input type="hidden" id="lock-dlr-id" />
+          <p class="lock-warning-banner">Đại lý bị khoá không tạo được đơn mới, kể cả trên cổng đặt hàng. Các đơn đang dở vẫn được xử lý tiếp và có cảnh báo.</p>
+          <div class="form-field">
+            <label for="lock-reason">Lý do khoá <span class="req">*</span></label>
+            <textarea id="lock-reason" rows="3" maxlength="500" required></textarea>
           </div>
-          <button class="modal__close" data-close-status aria-label="Đóng">
-            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
+          <div id="lock-form-msg" class="form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-transaction="lock-modal">Huỷ</button>
+            <button type="submit" class="btn btn--danger" id="btn-confirm-lock">Khoá giao dịch</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="modal-overlay" id="dealer-orders-modal" hidden>
+      <div class="modal modal--wide" role="dialog" aria-labelledby="dealer-orders-title" aria-modal="true">
+        <div class="modal__header">
+          <h2 id="dealer-orders-title">Đơn đang dở</h2>
+          <button class="modal__close" type="button" data-close-transaction="dealer-orders-modal" aria-label="Đóng"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
         </div>
         <div class="modal__body">
-          <input type="hidden" id="status-dlr-id" />
-          <input type="hidden" id="status-target" />
-          <p id="status-modal-body" class="status-confirm-text"></p>
-          <div id="status-form-msg" class="form-message" hidden></div>
-          <div class="modal__actions">
-            <button type="button" class="btn btn--secondary" data-close-status>Huỷ</button>
-            <button type="button" class="btn btn--primary" id="btn-confirm-status">Xác nhận</button>
+          <p id="dealer-orders-warning" class="lock-warning-banner" role="alert" hidden></p>
+          <div class="dealer-orders-table-wrap">
+            <table class="dlr-table"><thead><tr><th>Mã đơn</th><th>Trạng thái</th><th>Tổng phải thu</th><th>Thao tác</th></tr></thead><tbody id="dealer-orders-body"></tbody></table>
           </div>
+          <div id="dealer-orders-message" class="form-message" role="alert" hidden></div>
         </div>
       </div>
     </div>
 
     <script src="/js/auth.js"></script>
     <script src="/js/menu-config.js"></script>
+    <script src="/js/dealer-transactions.js"></script>
     <script src="/js/dealers.js"></script>
   </body>
 </html>

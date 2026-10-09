@@ -43,6 +43,10 @@ public class Order {
     private Dealer dealer;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "delivery_point_id")
+    private DealerDeliveryPoint deliveryPoint;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "price_list_id")
     private PriceList priceList;
 

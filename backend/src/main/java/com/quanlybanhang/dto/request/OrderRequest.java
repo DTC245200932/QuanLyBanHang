@@ -29,6 +29,11 @@ public class OrderRequest {
     private Long dealerId;
 
     /**
+     * ID điểm giao hàng của đại lý (S3-04).
+     */
+    private Long deliveryPointId;
+
+    /**
      * Chỉ định rõ ID bảng giá (nếu không truyền, hệ thống tự động tìm bảng giá hiệu lực).
      */
     private Long priceListId;

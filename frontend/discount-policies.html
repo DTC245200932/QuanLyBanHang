@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Khai báo chính sách chiết khấu theo sản lượng cho đại lý trong SaleStock."
+    />
+    <title>Chiết khấu sản lượng | SaleStock</title>
+    <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+    <link rel="stylesheet" href="/css/discount-policies.css" />
+  </head>
+  <body>
+    <div class="disc-shell">
+      <header class="disc-topbar">
+        <a class="disc-brand" href="/dashboard">
+          <img src="/assets/brand-mark.svg" alt="" />
+          <span>SaleStock</span>
+        </a>
+        <a class="disc-back" href="/dashboard">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+          Về tổng quan
+        </a>
+      </header>
+
+      <main class="disc-main">
+        <section class="disc-heading" aria-labelledby="disc-title">
+          <div>
+            <p>Chính sách bán hàng</p>
+            <h1 id="disc-title">Chiết khấu theo sản lượng</h1>
+            <span>
+              Khai báo bậc chiết khấu theo số lượng mua để đại lý tự động nhận chiết khấu
+              tốt nhất mà không cần thoả thuận riêng từng lần.
+            </span>
+          </div>
+          <button class="btn btn--primary" id="create-policy" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Tạo chính sách
+          </button>
+        </section>
+
+        <!-- Rule summary -->
+        <section class="disc-rules" aria-label="Quy tắc chiết khấu">
+          <div>
+            <span class="disc-rules__icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h8" /></svg>
+            </span>
+            <p><strong>Bậc theo sản lượng</strong><span>SKU hoặc nhóm hàng.</span></p>
+          </div>
+          <div>
+            <span class="disc-rules__icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+            </span>
+            <p><strong>% hoặc tiền cố định</strong><span>Phần trăm hoặc số tiền trên đơn vị.</span></p>
+          </div>
+          <div>
+            <span class="disc-rules__icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+            </span>
+            <p><strong>Lấy lợi nhất cho khách</strong><span>Nhiều chính sách cùng áp — tự chọn bậc tốt nhất.</span></p>
+          </div>
+          <div>
+            <span class="disc-rules__icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+            </span>
+            <p><strong>Có thời gian hiệu lực</strong><span>Ngày bắt đầu và ngày kết thúc rõ ràng.</span></p>
+          </div>
+        </section>
+
+        <!-- Overview stats -->
+        <div class="disc-overview" aria-live="polite">
+          <p><strong id="disc-total-count">0</strong><span>Chính sách</span></p>
+          <p><strong id="disc-active-count">0</strong><span>Đang hiệu lực</span></p>
+          <p><strong id="disc-sku-count">0</strong><span>SKU được áp dụng</span></p>
+          <p class="disc-overview__right"><strong id="disc-group-count">0</strong><span>Nhóm hàng được áp dụng</span></p>
+        </div>
+
+        <!-- Filters -->
+        <form class="disc-filters" id="disc-filters">
+          <label class="disc-filter disc-filter--search">
+            <span>Tìm chính sách</span>
+            <div class="disc-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+              </svg>
+              <input id="disc-search" type="search" placeholder="Tên hoặc mã chính sách" />
+            </div>
+          </label>
+          <label class="disc-filter">
+            <span>Phạm vi áp dụng</span>
+            <select id="disc-scope-filter">
+              <option value="">Tất cả phạm vi</option>
+              <option value="SKU">Theo SKU</option>
+              <option value="CATEGORY">Theo nhóm hàng</option>
+            </select>
+          </label>
+          <label class="disc-filter">
+            <span>Loại chiết khấu</span>
+            <select id="disc-type-filter">
+              <option value="">Tất cả loại</option>
+              <option value="PERCENT">Phần trăm (%)</option>
+              <option value="FIXED">Số tiền cố định (đ)</option>
+            </select>
+          </label>
+          <label class="disc-filter">
+            <span>Trạng thái</span>
+            <select id="disc-status-filter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="active">Đang hiệu lực</option>
+              <option value="upcoming">Sắp hiệu lực</option>
+              <option value="expired">Đã hết hiệu lực</option>
+              <option value="inactive">Ngừng áp dụng</option>
+            </select>
+          </label>
+          <button class="btn btn--secondary" id="clear-disc-filters" type="button">Đặt lại</button>
+        </form>
+
+        <!-- Table panel -->
+        <section class="disc-panel">
+          <div class="disc-panel__header">
+            <div>
+              <h2>Danh sách chính sách chiết khấu</h2>
+              <p id="disc-result-summary">Đang tải dữ liệu…</p>
+            </div>
+            <span class="session-badge">Dữ liệu hệ thống</span>
+          </div>
+          <div class="disc-table-wrap">
+            <table class="disc-table">
+              <thead>
+                <tr>
+                  <th>Chính sách</th>
+                  <th>Phạm vi</th>
+                  <th>Loại chiết khấu</th>
+                  <th>Bậc chiết khấu</th>
+                  <th>Thời gian hiệu lực</th>
+                  <th>Trạng thái</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="disc-policies-body">
+                <tr>
+                  <td class="disc-empty" colspan="7">
+                    <strong>Đang tải chính sách</strong>
+                    <span>Vui lòng chờ dữ liệu từ hệ thống.</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Create / Edit Modal -->
+    <div class="modal-overlay" id="disc-modal" hidden>
+      <div class="modal disc-modal" role="dialog" aria-modal="true" aria-labelledby="disc-modal-title">
+        <div class="modal__header disc-modal__header">
+          <div>
+            <h2 id="disc-modal-title">Tạo chính sách chiết khấu</h2>
+            <p id="disc-modal-subtitle">Khai báo phạm vi, loại chiết khấu và các bậc sản lượng.</p>
+          </div>
+          <button class="modal__close" data-close-disc-modal type="button" aria-label="Đóng">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <form class="modal__body disc-form" id="disc-form" novalidate>
+          <input id="disc-policy-id" type="hidden" />
+
+          <div class="disc-form__grid">
+            <label class="form-field disc-form__code">
+              <span>Mã chính sách</span>
+              <input id="disc-code" maxlength="60" placeholder="Ví dụ: CK-SL-DLC1-2026" required />
+            </label>
+            <label class="form-field disc-form__name">
+              <span>Tên chính sách</span>
+              <input id="disc-name" maxlength="150" placeholder="Ví dụ: Chiết khấu sản lượng Đại lý cấp 1" required />
+            </label>
+
+            <label class="form-field">
+              <span>Phạm vi áp dụng</span>
+              <select id="disc-scope" required>
+                <option value="">Chọn phạm vi</option>
+                <option value="SKU">Theo SKU cụ thể</option>
+                <option value="CATEGORY">Theo nhóm hàng</option>
+              </select>
+            </label>
+
+            <label class="form-field" id="disc-target-field">
+              <span id="disc-target-label">SKU áp dụng</span>
+              <select id="disc-target" required>
+                <option value="">Chọn SKU</option>
+              </select>
+            </label>
+
+            <label class="form-field">
+              <span>Loại chiết khấu</span>
+              <select id="disc-type" required>
+                <option value="">Chọn loại</option>
+                <option value="PERCENT">Phần trăm (%)</option>
+                <option value="FIXED">Số tiền cố định (đ/đơn vị)</option>
+              </select>
+            </label>
+
+            <label class="form-field">
+              <span>Nhóm khách hàng</span>
+              <select id="disc-customer-group">
+                <option value="">Tất cả nhóm</option>
+                <option value="DAI_LY_CAP_1">Đại lý cấp 1</option>
+                <option value="DAI_LY_CAP_2">Đại lý cấp 2</option>
+                <option value="KHACH_LE">Khách lẻ</option>
+              </select>
+            </label>
+
+            <label class="form-field">
+              <span>Ngày bắt đầu</span>
+              <input id="disc-start-date" type="date" required />
+            </label>
+            <label class="form-field">
+              <span>Ngày kết thúc</span>
+              <input id="disc-end-date" type="date" required />
+            </label>
+            <label class="form-field disc-form__note">
+              <span>Ghi chú</span>
+              <textarea id="disc-note" rows="2" maxlength="500" placeholder="Điều kiện hoặc phạm vi áp dụng bổ sung"></textarea>
+            </label>
+          </div>
+
+          <!-- Tiers editor -->
+          <section class="disc-tiers-section" aria-labelledby="disc-tiers-title">
+            <div class="disc-tiers-header">
+              <div>
+                <h3 id="disc-tiers-title">Bậc chiết khấu</h3>
+                <p>Nhập số lượng và mức chiết khấu tương ứng — từ thấp đến cao.</p>
+              </div>
+              <button class="disc-add-tier" id="add-tier" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                Thêm bậc
+              </button>
+            </div>
+
+            <div class="disc-tiers-wrap">
+              <table class="disc-tiers-table">
+                <thead>
+                  <tr>
+                    <th>Bậc</th>
+                    <th>Số lượng từ (≥)</th>
+                    <th id="disc-value-header">Chiết khấu (%)</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="disc-tiers-body">
+                  <!-- rows injected by JS -->
+                </tbody>
+              </table>
+            </div>
+            <p class="disc-tiers-hint" id="disc-tiers-hint">
+              Chưa có bậc nào. Thêm ít nhất một bậc chiết khấu.
+            </p>
+          </section>
+
+          <div class="disc-form__message" id="disc-form-message" role="alert" hidden></div>
+
+          <div class="modal__actions">
+            <p>Thay đổi được lưu trực tiếp vào hệ thống.</p>
+            <button class="btn btn--secondary" data-close-disc-modal type="button">Huỷ</button>
+            <button class="btn btn--primary" id="save-disc-policy" type="submit">Lưu chính sách</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tiers detail drawer (read-only) -->
+    <div class="modal-overlay" id="disc-tiers-modal" hidden>
+      <div class="modal disc-tiers-detail-modal" role="dialog" aria-modal="true" aria-labelledby="disc-tiers-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="disc-tiers-modal-title">Bậc chiết khấu</h2>
+            <p id="disc-tiers-modal-subtitle"></p>
+          </div>
+          <button class="modal__close" data-close-tiers-modal type="button" aria-label="Đóng">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <div class="disc-tiers-view-wrap">
+            <table class="disc-tiers-table">
+              <thead>
+                <tr>
+                  <th>Bậc</th>
+                  <th>Số lượng từ (≥)</th>
+                  <th id="disc-view-value-header">Chiết khấu</th>
+                </tr>
+              </thead>
+              <tbody id="disc-tiers-view-body"></tbody>
+            </table>
+          </div>
+          <p class="disc-best-rule">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+            Nếu nhiều chính sách cùng áp dụng, hệ thống tự động chọn bậc chiết khấu có lợi nhất cho khách.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+    <script src="/js/auth.js"></script>
+    <script src="/js/discount-policies.js"></script>
+  </body>
+</html>

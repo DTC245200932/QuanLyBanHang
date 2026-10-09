@@ -48,6 +48,13 @@ const MenuConfig = (() => {
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_VIEWER"],
     },
     {
+      id: "create-order",
+      label: "Tạo đơn hàng",
+      icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/><line x1="6" y1="10" x2="10" y2="10"/>',
+      href: "/create-order",
+      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_SALES", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF"],
+    },
+    {
       id: "price-lists",
       label: "Bảng giá",
       icon: '<path d="M20 12V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14l4-3 4 3 4-3 4 3v-7"/><path d="M8 8h8M8 12h5"/>',
@@ -55,11 +62,24 @@ const MenuConfig = (() => {
       roles: ["ROLE_SALES_MANAGER"],
     },
     {
+      id: "discount-policies",
+      label: "Chiết khấu sản lượng",
+      icon: '<path d="M9 14l2 2 4-4"/><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7"/><circle cx="18" cy="18" r="4"/><path d="M15 18h6M18 15v6"/>',
+      href: "/discount-policies",
+      roles: ["ROLE_SALES_MANAGER"],
+    },
+    {
       id: "dealers",
       label: "Đại lý",
-      icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+      icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
       href: "/dealers",
-      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_ACCOUNTANT", "ROLE_SALES"],
+      roles: [
+        "ROLE_ADMIN",
+        "ROLE_SALES_MANAGER",
+        "ROLE_SALES",
+        "ROLE_ACCOUNTANT",
+        "ROLE_VIEWER",
+      ],
     },
     {
       id: "warehouse",
@@ -112,6 +132,15 @@ const MenuConfig = (() => {
         "ROLE_WAREHOUSE_MANAGER",
         "ROLE_WAREHOUSE_STAFF",
       ],
+    },
+    {
+      id: "debt-limits",
+      section: "Tài chính",
+      label: "Hạn mức công nợ",
+      icon: '<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+      href: "/dashboard?view=debt-limits",
+      roles: ["ROLE_ADMIN", "ROLE_ACCOUNTANT", "ROLE_SALES_MANAGER"],
+      permission: "FINANCE_VIEW_DEBT",
     },
     {
       id: "users",

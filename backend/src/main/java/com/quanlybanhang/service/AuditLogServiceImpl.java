@@ -20,12 +20,19 @@ public class AuditLogServiceImpl implements AuditLogService {
     @Override
     @Transactional
     public void logAction(String entityType, String entityId, String action, String oldValue, String newValue, String username) {
+        logAction(entityType, entityId, action, oldValue, newValue, null, username);
+    }
+
+    @Override
+    @Transactional
+    public void logAction(String entityType, String entityId, String action, String oldValue, String newValue, String reason, String username) {
         AuditLog auditLog = AuditLog.builder()
                 .entityType(entityType)
                 .entityId(entityId)
                 .action(action)
                 .oldValue(oldValue)
                 .newValue(newValue)
+                .reason(reason)
                 .username(username)
                 .build();
         auditLogRepository.save(auditLog);

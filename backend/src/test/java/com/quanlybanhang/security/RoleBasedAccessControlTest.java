@@ -228,30 +228,60 @@ class RoleBasedAccessControlTest {
 
     @Test
     @WithMockUser(username = "sales_manager", roles = {"SALES_MANAGER"})
-    @DisplayName("[ROLE_SALES_MANAGER] Quản lý kinh doanh chỉ xem, không được đổi hạn mức công nợ")
-    void salesManagerCannotUpdateDebtLimit() throws Exception {
-        mockMvc.perform(put("/api/finance/debt/1/limit")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"debtLimit\": 50000000}"))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @WithMockUser(username = "accountant", roles = {"ACCOUNTANT"})
-    @DisplayName("[ROLE_ACCOUNTANT] Kế toán được cập nhật hạn mức công nợ")
-    void accountantCanUpdateDebtLimit() throws Exception {
+    @DisplayName("[ROLE_SALES_MANAGER] Quản lý kinh doanh được cập nhật hạn mức công nợ (S3-05)")
+    void salesManagerCanUpdateDebtLimit() throws Exception {
         com.quanlybanhang.model.Dealer dealer = com.quanlybanhang.model.Dealer.builder()
                 .id(1L)
                 .name("Đại lý Hà Nội")
                 .debtLimit(java.math.BigDecimal.ZERO)
+                .maxDebtDays(0)
                 .build();
         org.mockito.Mockito.when(dealerRepository.findById(1L))
                 .thenReturn(java.util.Optional.of(dealer));
 
         mockMvc.perform(put("/api/finance/debt/1/limit")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"debtLimit\": 50000000}"))
+                        .content("{\"debtLimit\": 50000000, \"maxDebtDays\": 30, \"reason\": \"Điều chỉnh hạn mức quý 4\"}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "accountant", roles = {"ACCOUNTANT"})
+    @DisplayName("[ROLE_ACCOUNTANT] Kế toán công nợ được cập nhật hạn mức công nợ (S3-05)")
+    void accountantCanUpdateDebtLimit() throws Exception {
+        com.quanlybanhang.model.Dealer dealer = com.quanlybanhang.model.Dealer.builder()
+                .id(1L)
+                .name("Đại lý Hà Nội")
+                .debtLimit(java.math.BigDecimal.ZERO)
+                .maxDebtDays(0)
+                .build();
+        org.mockito.Mockito.when(dealerRepository.findById(1L))
+                .thenReturn(java.util.Optional.of(dealer));
+
+        mockMvc.perform(put("/api/finance/debt/1/limit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"debtLimit\": 50000000, \"maxDebtDays\": 30, \"reason\": \"Khai báo hạn mức đại lý mới\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG được sửa hạn mức công nợ (403 Forbidden)")
+    void salesCannotUpdateDebtLimit() throws Exception {
+        mockMvc.perform(put("/api/finance/debt/1/limit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"debtLimit\": 50000000, \"maxDebtDays\": 30, \"reason\": \"Thử sửa hạn mức\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "accountant", roles = {"ACCOUNTANT"})
+    @DisplayName("[S3-05] Cập nhật hạn mức công nợ bắt buộc nhập lý do (400 Bad Request)")
+    void updateDebtLimitRequiresReasonValidation() throws Exception {
+        mockMvc.perform(put("/api/finance/debt/1/limit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"debtLimit\": 50000000, \"maxDebtDays\": 30}"))
+                .andExpect(status().isBadRequest());
     }
 
     // ═══════════════════════════════════════════════════════════════

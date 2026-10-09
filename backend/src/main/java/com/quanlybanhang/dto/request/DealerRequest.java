@@ -43,6 +43,9 @@ public class DealerRequest {
 
     private BigDecimal debtLimit;
 
+    @jakarta.validation.constraints.Min(value = 0, message = "Số ngày nợ tối đa không được âm")
+    private Integer maxDebtDays;
+
     @Size(max = 20, message = "Số điện thoại không được vượt quá 20 ký tự")
     @Pattern(regexp = "^(?:$|(?:0|\\+84|84)[35789]\\d{8})$", message = "Số điện thoại không đúng định dạng Việt Nam")
     private String phone;

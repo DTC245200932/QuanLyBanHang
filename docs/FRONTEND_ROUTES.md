@@ -20,6 +20,10 @@ Backend vẫn chạy ở cổng 8080 theo cấu hình trong README.
 | Sản phẩm | `/products` |
 | Nhóm hàng | `/product-groups` |
 | Bảng giá | `/price-lists` |
+| Chiết khấu sản lượng | `/discount-policies` |
+| Hồ sơ, tìm kiếm và khoá đại lý | `/dealers` |
+| Tạo đơn hàng | `/create-order` |
+| Hạn mức công nợ | `/dashboard?view=debt-limits` |
 | Nhà cung cấp | `/suppliers` |
 | Đơn vị tính | `/warehouse/units?tab=units` |
 | Lập chứng từ | `/warehouse/units?tab=receipts` |

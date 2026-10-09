@@ -46,6 +46,7 @@ public class DataInitializer implements CommandLineRunner {
     private final com.quanlybanhang.repository.UnitConversionRepository unitConversionRepository;
     private final com.quanlybanhang.repository.PriceListRepository priceListRepository;
     private final com.quanlybanhang.repository.DealerRepository dealerRepository;
+    private final com.quanlybanhang.repository.VolumeDiscountPolicyRepository volumeDiscountPolicyRepository;
 
     @Value("${app.seed-demo-users:false}")
     private boolean seedDemoUsers;
@@ -84,6 +85,11 @@ public class DataInitializer implements CommandLineRunner {
         // Khởi tạo bảng giá theo nhóm khách hàng (S2-10)
         if (priceListRepository.count() == 0) {
             seedPriceLists();
+        }
+
+        // Khởi tạo chính sách chiết khấu theo sản lượng mẫu (S3-01)
+        if (volumeDiscountPolicyRepository.count() == 0) {
+            seedVolumeDiscountPolicies();
         }
 
         // Tạo tài khoản admin mặc định nếu chưa có
@@ -397,6 +403,7 @@ public class DataInitializer implements CommandLineRunner {
                     .address("123 Lê Lợi, Quận 1, TP.HCM")
                     .active(true)
                     .debtLimit(new java.math.BigDecimal("100000000"))
+                    .maxDebtDays(30)
                     .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_1)
                     .handoverRequired(false)
                     .build());
@@ -409,6 +416,7 @@ public class DataInitializer implements CommandLineRunner {
                     .address("456 Hoàng Văn Thụ, Tân Bình, TP.HCM")
                     .active(true)
                     .debtLimit(new java.math.BigDecimal("50000000"))
+                    .maxDebtDays(15)
                     .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_2)
                     .handoverRequired(false)
                     .build());
@@ -543,5 +551,100 @@ public class DataInitializer implements CommandLineRunner {
         priceListRepository.save(bgKhachLe);
 
         logger.info("Đã khởi tạo 3 bảng giá song song mẫu cho S2-10 (Đại lý cấp 1, cấp 2, Khách lẻ)");
+    }
+
+    private void seedVolumeDiscountPolicies() {
+        Product heineken = productRepository.findByCode("SP-KEN330").orElse(null);
+        Category doUong = categoryRepository.findByCode("CAT-BEV").orElse(null);
+
+        java.time.LocalDate now = java.time.LocalDate.now();
+        java.time.LocalDate startOfYear = now.withDayOfYear(1);
+        java.time.LocalDate endOfYear = now.withDayOfYear(now.lengthOfYear());
+
+        // 1. Chính sách chiết khấu theo sản lượng cho SKU Bia Heineken Sleek (S3-01)
+        if (heineken != null) {
+            com.quanlybanhang.model.VolumeDiscountPolicy policyHeineken = com.quanlybanhang.model.VolumeDiscountPolicy.builder()
+                    .code("CK-KEN-" + now.getYear())
+                    .name("Chiết khấu sản lượng bia Heineken Sleek 330ml")
+                    .description("Khuyến khích đại lý lấy số lượng lớn bia Heineken theo thùng/lốc")
+                    .targetType(com.quanlybanhang.model.DiscountTargetType.PRODUCT)
+                    .product(heineken)
+                    .startDate(startOfYear)
+                    .endDate(endOfYear)
+                    .active(true)
+                    .createdBy("admin")
+                    .build();
+
+            // Bậc 1: Từ 48 lon (2 thùng) đến 119 lon -> giảm 3%
+            policyHeineken.addTier(com.quanlybanhang.model.VolumeDiscountTier.builder()
+                    .policy(policyHeineken)
+                    .minQuantity(new BigDecimal("48"))
+                    .maxQuantity(new BigDecimal("119"))
+                    .discountType(com.quanlybanhang.model.DiscountType.PERCENTAGE)
+                    .discountValue(new BigDecimal("3.0"))
+                    .tierOrder(1)
+                    .build());
+
+            // Bậc 2: Từ 120 lon (5 thùng) đến 239 lon -> giảm 5%
+            policyHeineken.addTier(com.quanlybanhang.model.VolumeDiscountTier.builder()
+                    .policy(policyHeineken)
+                    .minQuantity(new BigDecimal("120"))
+                    .maxQuantity(new BigDecimal("239"))
+                    .discountType(com.quanlybanhang.model.DiscountType.PERCENTAGE)
+                    .discountValue(new BigDecimal("5.0"))
+                    .tierOrder(2)
+                    .build());
+
+            // Bậc 3: Từ 240 lon (10 thùng) trở lên -> giảm 8%
+            policyHeineken.addTier(com.quanlybanhang.model.VolumeDiscountTier.builder()
+                    .policy(policyHeineken)
+                    .minQuantity(new BigDecimal("240"))
+                    .maxQuantity(null)
+                    .discountType(com.quanlybanhang.model.DiscountType.PERCENTAGE)
+                    .discountValue(new BigDecimal("8.0"))
+                    .tierOrder(3)
+                    .build());
+
+            volumeDiscountPolicyRepository.save(policyHeineken);
+        }
+
+        // 2. Chính sách chiết khấu theo sản lượng cho toàn bộ Nhóm hàng Đồ uống (S3-01)
+        if (doUong != null) {
+            com.quanlybanhang.model.VolumeDiscountPolicy policyDoUong = com.quanlybanhang.model.VolumeDiscountPolicy.builder()
+                    .code("CK-NHOM-DOUONG-" + now.getYear())
+                    .name("Chiết khấu sản lượng toàn ngành Đồ uống & Nước giải khát")
+                    .description("Chiết khấu tính theo số tiền trên một đơn vị cơ sở (lon/chai) cho tổng sản lượng ngành đồ uống")
+                    .targetType(com.quanlybanhang.model.DiscountTargetType.CATEGORY)
+                    .category(doUong)
+                    .startDate(startOfYear)
+                    .endDate(endOfYear)
+                    .active(true)
+                    .createdBy("admin")
+                    .build();
+
+            // Bậc 1: Từ 100 đến 499 lon/chai -> giảm 400 đ / đơn vị
+            policyDoUong.addTier(com.quanlybanhang.model.VolumeDiscountTier.builder()
+                    .policy(policyDoUong)
+                    .minQuantity(new BigDecimal("100"))
+                    .maxQuantity(new BigDecimal("499"))
+                    .discountType(com.quanlybanhang.model.DiscountType.FIXED_AMOUNT)
+                    .discountValue(new BigDecimal("400"))
+                    .tierOrder(1)
+                    .build());
+
+            // Bậc 2: Từ 500 lon/chai trở lên -> giảm 800 đ / đơn vị
+            policyDoUong.addTier(com.quanlybanhang.model.VolumeDiscountTier.builder()
+                    .policy(policyDoUong)
+                    .minQuantity(new BigDecimal("500"))
+                    .maxQuantity(null)
+                    .discountType(com.quanlybanhang.model.DiscountType.FIXED_AMOUNT)
+                    .discountValue(new BigDecimal("800"))
+                    .tierOrder(2)
+                    .build());
+
+            volumeDiscountPolicyRepository.save(policyDoUong);
+        }
+
+        logger.info("Đã khởi tạo chính sách chiết khấu sản lượng mẫu cho S3-01 (SKU và Nhóm hàng)");
     }
 }

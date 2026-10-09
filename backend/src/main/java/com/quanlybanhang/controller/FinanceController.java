@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Controller Tài chính.
@@ -78,6 +79,7 @@ public class FinanceController {
                     item.put("customerName", dealer.getName());
                     item.put("debtAmount", BigDecimal.ZERO);
                     item.put("debtLimit", normalizeDebtLimit(dealer.getDebtLimit()));
+                    item.put("maxDebtDays", dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0);
                     return item;
                 })
                 .toList();
@@ -85,11 +87,12 @@ public class FinanceController {
     }
 
     /**
-     * Cập nhật hạn mức công nợ và ghi lại giá trị trước/sau vào nhật ký.
-     * Cùng một transaction đảm bảo không có trường hợp cập nhật thành công nhưng thiếu audit log.
+     * Cập nhật hạn mức công nợ và số ngày nợ tối đa (S3-05).
+     * Bắt buộc nhập lý do thay đổi và tự động ghi nhật ký giá trị trước/sau kèm lý do.
+     * Chỉ Kế toán công nợ và Quản lý kinh doanh (và Quản trị hệ thống) được phép sửa.
      */
     @PutMapping("/debt/{dealerId}/limit")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
     @Transactional
     public ApiResponse updateDebtLimit(
             @PathVariable Long dealerId,
@@ -98,29 +101,58 @@ public class FinanceController {
         Dealer dealer = dealerRepository.findById(dealerId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đại lý"));
 
-        BigDecimal oldLimit = normalizeDebtLimit(dealer.getDebtLimit());
-        BigDecimal newLimit = request.getDebtLimit();
+        if (request.getReason() == null || request.getReason().trim().isEmpty()) {
+            throw new IllegalArgumentException("Lý do thay đổi hạn mức không được để trống");
+        }
 
-        if (oldLimit.compareTo(newLimit) != 0) {
+        BigDecimal oldLimit = normalizeDebtLimit(dealer.getDebtLimit());
+        Integer oldDays = dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0;
+
+        BigDecimal newLimit = request.getDebtLimit();
+        Integer newDays = request.getMaxDebtDays() != null ? request.getMaxDebtDays() : oldDays;
+        String reason = request.getReason().trim();
+
+        boolean limitChanged = oldLimit.compareTo(newLimit) != 0;
+        boolean daysChanged = request.getMaxDebtDays() != null && !Objects.equals(oldDays, newDays);
+
+        if (limitChanged || daysChanged) {
             dealer.setDebtLimit(newLimit);
+            dealer.setMaxDebtDays(newDays);
             dealerRepository.save(dealer);
+
+            String oldValueStr;
+            String newValueStr;
+            if (limitChanged && daysChanged) {
+                oldValueStr = oldLimit.toPlainString() + " (" + oldDays + " ngày)";
+                newValueStr = newLimit.toPlainString() + " (" + newDays + " ngày)";
+            } else if (limitChanged) {
+                oldValueStr = oldLimit.toPlainString();
+                newValueStr = newLimit.toPlainString();
+            } else {
+                oldValueStr = oldDays + " ngày";
+                newValueStr = newDays + " ngày";
+            }
+
             auditLogService.logAction(
                     "DEBT_LIMIT",
                     dealerId.toString(),
                     "UPDATE",
-                    oldLimit.toPlainString(),
-                    newLimit.toPlainString(),
-                    authentication.getName());
+                    oldValueStr,
+                    newValueStr,
+                    reason,
+                    authentication != null ? authentication.getName() : "system");
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("dealerId", dealer.getId());
         result.put("customerName", dealer.getName());
         result.put("debtLimit", newLimit);
+        result.put("maxDebtDays", newDays);
+        result.put("reason", reason);
         return ApiResponse.success(
-                oldLimit.compareTo(newLimit) == 0
-                        ? "Hạn mức công nợ không thay đổi"
-                        : "Đã cập nhật hạn mức công nợ",
+                limitChanged || daysChanged
+                        ? "Đã cập nhật hạn mức công nợ"
+                        : "Hạn mức công nợ không thay đổi",
                 result);
     }
 

@@ -1,29 +1,24 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.AssignDealerRequest;
+import com.quanlybanhang.dto.request.BulkHandoverRequest;
 import com.quanlybanhang.dto.request.DealerRequest;
-import com.quanlybanhang.dto.response.DealerOptionsResponse;
-import com.quanlybanhang.dto.response.DealerResponse;
-import com.quanlybanhang.dto.response.NamedResourceResponse;
-import com.quanlybanhang.dto.response.OrderItemResponse;
-import com.quanlybanhang.dto.response.OrderResponse;
+import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.exception.DealerHasTransactionsException;
-import com.quanlybanhang.model.CustomerGroup;
-import com.quanlybanhang.model.Dealer;
-import com.quanlybanhang.model.Order;
-import com.quanlybanhang.model.OrderItem;
-import com.quanlybanhang.model.Territory;
-import com.quanlybanhang.model.User;
-import com.quanlybanhang.repository.DealerRepository;
-import com.quanlybanhang.repository.OrderRepository;
-import com.quanlybanhang.repository.TerritoryRepository;
-import com.quanlybanhang.repository.UserRepository;
+import com.quanlybanhang.model.*;
+import com.quanlybanhang.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -35,6 +30,7 @@ public class DealerServiceImpl implements DealerService {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final TerritoryRepository territoryRepository;
+    private final DealerAssignmentHistoryRepository dealerAssignmentHistoryRepository;
     private final AuditLogService auditLogService;
 
     @Override
@@ -48,12 +44,20 @@ public class DealerServiceImpl implements DealerService {
             Boolean locked,
             Pageable pageable) {
 
+        Long effectiveAssignedUserId = assignedUserId;
+        if (isSalesOnlyUser()) {
+            User currentUser = getCurrentUser();
+            if (currentUser != null) {
+                effectiveAssignedUserId = currentUser.getId();
+            }
+        }
+
         String trimmedKeyword = (keyword != null && !keyword.trim().isEmpty()) ? keyword.trim() : null;
         Page<Dealer> page = dealerRepository.searchDealers(
                 trimmedKeyword,
                 customerGroup,
                 territoryId,
-                assignedUserId,
+                effectiveAssignedUserId,
                 active,
                 locked,
                 pageable);
@@ -64,6 +68,15 @@ public class DealerServiceImpl implements DealerService {
     @Override
     @Transactional(readOnly = true)
     public List<DealerResponse> getActiveDealers() {
+        if (isSalesOnlyUser()) {
+            User currentUser = getCurrentUser();
+            if (currentUser != null) {
+                return dealerRepository.findByAssignedUserIdAndActiveTrueOrderByNameAsc(currentUser.getId()).stream()
+                        .filter(d -> !Boolean.TRUE.equals(d.getLocked()))
+                        .map(this::mapToResponse)
+                        .toList();
+            }
+        }
         return dealerRepository.findByActiveTrueOrderByNameAsc().stream()
                 .filter(d -> !Boolean.TRUE.equals(d.getLocked()))
                 .map(this::mapToResponse)
@@ -75,6 +88,17 @@ public class DealerServiceImpl implements DealerService {
     public DealerResponse getDealerById(Long id) {
         Dealer dealer = dealerRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + id));
+
+        // Quy tắc S3-06: Nhân viên kinh doanh chỉ nhìn thấy đại lý mình phụ trách
+        if (isSalesOnlyUser()) {
+            User currentUser = getCurrentUser();
+            if (currentUser != null) {
+                if (dealer.getAssignedUser() == null || !dealer.getAssignedUser().getId().equals(currentUser.getId())) {
+                    throw new AccessDeniedException("Bạn chỉ có quyền xem đại lý do mình phụ trách");
+                }
+            }
+        }
+
         return mapToResponse(dealer);
     }
 
@@ -90,6 +114,7 @@ public class DealerServiceImpl implements DealerService {
         if (request.getAssignedUserId() != null) {
             assignedUser = userRepository.findById(request.getAssignedUserId())
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy người phụ trách với ID: " + request.getAssignedUserId()));
+            validateSalesUser(assignedUser);
         }
 
         Territory territory = null;
@@ -108,12 +133,25 @@ public class DealerServiceImpl implements DealerService {
                 .active(request.getActive() != null ? request.getActive() : true)
                 .handoverRequired(false)
                 .debtLimit(request.getDebtLimit() != null ? request.getDebtLimit() : BigDecimal.ZERO)
+                .maxDebtDays(request.getMaxDebtDays() != null ? request.getMaxDebtDays() : 0)
                 .phone(request.getPhone() != null ? request.getPhone().trim() : null)
                 .email(request.getEmail() != null ? request.getEmail().trim() : null)
                 .address(request.getAddress() != null ? request.getAddress().trim() : null)
                 .build();
 
         Dealer saved = dealerRepository.save(dealer);
+
+        if (assignedUser != null) {
+            recordAssignmentHistory(
+                    saved,
+                    null,
+                    assignedUser,
+                    saved.getTerritory(),
+                    "INITIAL_ASSIGNMENT",
+                    "Phân công người phụ trách khi khởi tạo hồ sơ đại lý",
+                    currentUsername);
+        }
+
         auditLogService.logAction("DEALER", saved.getId().toString(), "CREATE_DEALER", null, saved.getCode(), currentUsername);
         return mapToResponse(saved);
     }
@@ -129,10 +167,12 @@ public class DealerServiceImpl implements DealerService {
             throw new IllegalArgumentException("Mã đại lý '" + newCode + "' đã tồn tại");
         }
 
-        User assignedUser = null;
+        User oldAssignedUser = dealer.getAssignedUser();
+        User newAssignedUser = null;
         if (request.getAssignedUserId() != null) {
-            assignedUser = userRepository.findById(request.getAssignedUserId())
+            newAssignedUser = userRepository.findById(request.getAssignedUserId())
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy người phụ trách với ID: " + request.getAssignedUserId()));
+            validateSalesUser(newAssignedUser);
         }
 
         Territory territory = null;
@@ -145,7 +185,7 @@ public class DealerServiceImpl implements DealerService {
         dealer.setName(request.getName().trim());
         dealer.setTaxCode(request.getTaxCode() != null ? request.getTaxCode().trim() : null);
         dealer.setCustomerGroup(request.getCustomerGroup() != null ? request.getCustomerGroup() : CustomerGroup.DAI_LY_CAP_1);
-        dealer.setAssignedUser(assignedUser);
+        dealer.setAssignedUser(newAssignedUser);
         dealer.setTerritory(territory);
         if (request.getActive() != null) {
             dealer.setActive(request.getActive());
@@ -153,11 +193,32 @@ public class DealerServiceImpl implements DealerService {
         if (request.getDebtLimit() != null) {
             dealer.setDebtLimit(request.getDebtLimit());
         }
+        if (request.getMaxDebtDays() != null) {
+            dealer.setMaxDebtDays(request.getMaxDebtDays());
+        }
         dealer.setPhone(request.getPhone() != null ? request.getPhone().trim() : null);
         dealer.setEmail(request.getEmail() != null ? request.getEmail().trim() : null);
         dealer.setAddress(request.getAddress() != null ? request.getAddress().trim() : null);
 
+        // Nếu có gán người phụ trách mới thì xóa cờ handoverRequired
+        if (newAssignedUser != null && Boolean.TRUE.equals(dealer.getHandoverRequired())) {
+            dealer.setHandoverRequired(false);
+        }
+
         Dealer updated = dealerRepository.save(dealer);
+
+        // Ghi lại lịch sử nếu có sự thay đổi người phụ trách
+        if (isUserChanged(oldAssignedUser, newAssignedUser)) {
+            recordAssignmentHistory(
+                    updated,
+                    oldAssignedUser,
+                    newAssignedUser,
+                    updated.getTerritory(),
+                    "INDIVIDUAL_ASSIGNMENT",
+                    "Cập nhật người phụ trách trong hồ sơ đại lý",
+                    currentUsername);
+        }
+
         auditLogService.logAction("DEALER", updated.getId().toString(), "UPDATE_DEALER", null, updated.getCode(), currentUsername);
         return mapToResponse(updated);
     }
@@ -239,7 +300,9 @@ public class DealerServiceImpl implements DealerService {
     @Override
     @Transactional(readOnly = true)
     public List<OrderResponse> getInProgressOrders(Long dealerId) {
-        if (!dealerRepository.existsById(dealerId)) {
+        if (isSalesOnlyUser()) {
+            getDealerById(dealerId);
+        } else if (!dealerRepository.existsById(dealerId)) {
             throw new IllegalArgumentException("Không tìm thấy đại lý với ID: " + dealerId);
         }
         return orderRepository.findByDealerIdAndStatusNotInOrderByCreatedAtDesc(
@@ -277,6 +340,7 @@ public class DealerServiceImpl implements DealerService {
 
         List<DealerOptionsResponse.AssignedUserOption> assignedUsers = userRepository.findAll().stream()
                 .filter(u -> Boolean.TRUE.equals(u.getActive()))
+                .filter(this::hasSalesRole)
                 .map(u -> new DealerOptionsResponse.AssignedUserOption(u.getId(), u.getUsername(), u.getFullName()))
                 .toList();
 
@@ -285,6 +349,271 @@ public class DealerServiceImpl implements DealerService {
                 .territories(territories)
                 .assignedUsers(assignedUsers)
                 .build();
+    }
+
+    // ── Phân công & Chuyển giao địa bàn (S3-06) ──
+
+    @Override
+    @Transactional
+    public DealerResponse assignDealer(Long id, AssignDealerRequest request, String currentUsername) {
+        Dealer dealer = dealerRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + id));
+
+        User toUser = userRepository.findById(request.getAssignedUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy người phụ trách với ID: " + request.getAssignedUserId()));
+
+        validateSalesUser(toUser);
+
+        User fromUser = dealer.getAssignedUser();
+        dealer.setAssignedUser(toUser);
+        dealer.setHandoverRequired(false);
+
+        Dealer saved = dealerRepository.save(dealer);
+
+        recordAssignmentHistory(
+                saved,
+                fromUser,
+                toUser,
+                saved.getTerritory(),
+                "INDIVIDUAL_ASSIGNMENT",
+                (request.getReason() != null && !request.getReason().isBlank())
+                        ? request.getReason().trim()
+                        : "Phân công nhân viên phụ trách chính",
+                currentUsername);
+
+        auditLogService.logAction(
+                "DEALER_ASSIGN",
+                saved.getId().toString(),
+                "ASSIGN_DEALER",
+                fromUser != null ? fromUser.getUsername() : "Chưa có",
+                toUser.getUsername(),
+                currentUsername);
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public BulkHandoverResponse bulkHandover(BulkHandoverRequest request, String currentUsername) {
+        if (request.getFromUserId().equals(request.getToUserId())) {
+            throw new IllegalArgumentException("Nhân viên tiếp nhận phải khác nhân viên bàn giao");
+        }
+
+        User fromUser = userRepository.findById(request.getFromUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhân viên bàn giao"));
+
+        User toUser = userRepository.findById(request.getToUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhân viên tiếp nhận"));
+
+        validateSalesUser(toUser);
+
+        List<Dealer> candidates;
+        if (request.getDealerIds() != null && !request.getDealerIds().isEmpty()) {
+            candidates = dealerRepository.findByAssignedUserIdAndIdIn(fromUser.getId(), request.getDealerIds());
+        } else if (request.getTerritoryId() != null) {
+            candidates = dealerRepository.findByAssignedUserIdAndTerritoryId(fromUser.getId(), request.getTerritoryId());
+        } else {
+            candidates = dealerRepository.findByAssignedUserId(fromUser.getId());
+        }
+
+        if (candidates.isEmpty()) {
+            throw new IllegalArgumentException("Không tìm thấy đại lý nào thuộc nhân viên bàn giao để chuyển giao");
+        }
+
+        User performedBy = userRepository.findByUsername(currentUsername).orElse(null);
+        String performedByName = performedBy != null
+                ? (performedBy.getFullName() != null ? performedBy.getFullName() : performedBy.getUsername())
+                : currentUsername;
+        String fromUserName = fromUser.getFullName() != null ? fromUser.getFullName() : fromUser.getUsername();
+        String toUserName = toUser.getFullName() != null ? toUser.getFullName() : toUser.getUsername();
+        LocalDateTime now = LocalDateTime.now();
+
+        List<DealerAssignmentHistory> historyList = new ArrayList<>();
+        List<Long> transferredDealerIds = new ArrayList<>();
+        List<String> transferredDealerNames = new ArrayList<>();
+
+        for (Dealer d : candidates) {
+            d.setAssignedUser(toUser);
+            d.setHandoverRequired(false);
+
+            DealerAssignmentHistory h = DealerAssignmentHistory.builder()
+                    .dealer(d)
+                    .dealerCode(d.getCode())
+                    .dealerName(d.getName())
+                    .fromUser(fromUser)
+                    .fromUserName(fromUserName)
+                    .toUser(toUser)
+                    .toUserName(toUserName)
+                    .territory(d.getTerritory())
+                    .territoryName(d.getTerritory() != null ? d.getTerritory().getName() : null)
+                    .transferType("BULK_HANDOVER")
+                    .reason(request.getReason().trim())
+                    .performedBy(performedBy)
+                    .performedByName(performedByName)
+                    .transferredAt(now)
+                    .build();
+            historyList.add(h);
+
+            transferredDealerIds.add(d.getId());
+            transferredDealerNames.add(d.getName());
+        }
+
+        dealerRepository.saveAll(candidates);
+        dealerAssignmentHistoryRepository.saveAll(historyList);
+
+        auditLogService.logAction(
+                "DEALER_HANDOVER",
+                fromUser.getId() + "->" + toUser.getId(),
+                "BULK_HANDOVER",
+                "Chuyển " + candidates.size() + " đại lý từ " + fromUser.getUsername() + " sang " + toUser.getUsername(),
+                request.getReason(),
+                currentUsername);
+
+        Territory territory = request.getTerritoryId() != null
+                ? territoryRepository.findById(request.getTerritoryId()).orElse(null)
+                : null;
+
+        return BulkHandoverResponse.builder()
+                .totalTransferred(candidates.size())
+                .fromUserId(fromUser.getId())
+                .fromUsername(fromUser.getUsername())
+                .fromUserFullName(fromUserName)
+                .toUserId(toUser.getId())
+                .toUsername(toUser.getUsername())
+                .toUserFullName(toUserName)
+                .territoryId(territory != null ? territory.getId() : null)
+                .territoryName(territory != null ? territory.getName() : null)
+                .transferredDealerIds(transferredDealerIds)
+                .transferredDealerNames(transferredDealerNames)
+                .reason(request.getReason().trim())
+                .transferredAt(now)
+                .performedByUsername(currentUsername)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DealerResponse> getPendingHandoverDealers() {
+        return dealerRepository.findByHandoverRequiredTrueOrderByNameAsc().stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<DealerAssignmentHistoryResponse> getHandoverHistory(
+            Long fromUserId,
+            Long toUserId,
+            Long dealerId,
+            Long territoryId,
+            LocalDateTime startDate,
+            LocalDateTime endDate,
+            Pageable pageable) {
+
+        Page<DealerAssignmentHistory> page = dealerAssignmentHistoryRepository.searchHistory(
+                fromUserId,
+                toUserId,
+                dealerId,
+                territoryId,
+                startDate,
+                endDate,
+                pageable);
+
+        return page.map(this::mapToHistoryResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DealerAssignmentHistoryResponse> getDealerAssignmentHistory(Long dealerId) {
+        // Kiểm tra quyền nếu là SALES: chỉ xem được lịch sử đại lý do mình phụ trách
+        if (isSalesOnlyUser()) {
+            Dealer dealer = dealerRepository.findById(dealerId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + dealerId));
+            User currentUser = getCurrentUser();
+            if (currentUser != null && (dealer.getAssignedUser() == null || !dealer.getAssignedUser().getId().equals(currentUser.getId()))) {
+                throw new AccessDeniedException("Bạn chỉ có quyền xem đại lý do mình phụ trách");
+            }
+        }
+
+        return dealerAssignmentHistoryRepository.findByDealerIdOrderByTransferredAtDesc(dealerId).stream()
+                .map(this::mapToHistoryResponse)
+                .toList();
+    }
+
+    // ── Helper methods ──
+
+    private void validateSalesUser(User user) {
+        if (!Boolean.TRUE.equals(user.getActive())) {
+            throw new IllegalArgumentException("Tài khoản '" + user.getUsername() + "' đang bị khoá, không thể phân công phụ trách đại lý");
+        }
+        if (!hasSalesRole(user)) {
+            throw new IllegalArgumentException("Nhân viên được gán phải có vai trò kinh doanh (ROLE_SALES hoặc ROLE_SALES_MANAGER)");
+        }
+    }
+
+    private boolean hasSalesRole(User user) {
+        if (user.getRoles() == null) return false;
+        return user.getRoles().stream()
+                .anyMatch(r -> r.getName() == ERole.ROLE_SALES || r.getName() == ERole.ROLE_SALES_MANAGER);
+    }
+
+    private boolean isUserChanged(User oldUser, User newUser) {
+        if (oldUser == null && newUser == null) return false;
+        if (oldUser == null || newUser == null) return true;
+        return !oldUser.getId().equals(newUser.getId());
+    }
+
+    private void recordAssignmentHistory(
+            Dealer dealer,
+            User fromUser,
+            User toUser,
+            Territory territory,
+            String transferType,
+            String reason,
+            String currentUsername) {
+
+        User performedBy = userRepository.findByUsername(currentUsername).orElse(null);
+        String performedByName = performedBy != null
+                ? (performedBy.getFullName() != null ? performedBy.getFullName() : performedBy.getUsername())
+                : currentUsername;
+
+        DealerAssignmentHistory history = DealerAssignmentHistory.builder()
+                .dealer(dealer)
+                .dealerCode(dealer.getCode())
+                .dealerName(dealer.getName())
+                .fromUser(fromUser)
+                .fromUserName(fromUser != null ? (fromUser.getFullName() != null ? fromUser.getFullName() : fromUser.getUsername()) : null)
+                .toUser(toUser)
+                .toUserName(toUser != null ? (toUser.getFullName() != null ? toUser.getFullName() : toUser.getUsername()) : null)
+                .territory(territory)
+                .territoryName(territory != null ? territory.getName() : null)
+                .transferType(transferType)
+                .reason(reason)
+                .performedBy(performedBy)
+                .performedByName(performedByName)
+                .transferredAt(LocalDateTime.now())
+                .build();
+
+        dealerAssignmentHistoryRepository.save(history);
+    }
+
+    private boolean isSalesOnlyUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return false;
+        boolean hasSales = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_SALES".equals(a.getAuthority()));
+        boolean hasElevated = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
+                        || "ROLE_SALES_MANAGER".equals(a.getAuthority())
+                        || "ROLE_ACCOUNTANT".equals(a.getAuthority())
+                        || "ROLE_VIEWER".equals(a.getAuthority()));
+        return hasSales && !hasElevated;
+    }
+
+    private User getCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return null;
+        return userRepository.findByUsername(auth.getName()).orElse(null);
     }
 
     private DealerResponse mapToResponse(Dealer dealer) {
@@ -308,6 +637,7 @@ public class DealerServiceImpl implements DealerService {
                 .active(dealer.getActive())
                 .handoverRequired(dealer.getHandoverRequired())
                 .debtLimit(dealer.getDebtLimit())
+                .maxDebtDays(dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0)
                 .locked(dealer.getLocked())
                 .lockReason(dealer.getLockReason())
                 .lockedAt(dealer.getLockedAt())
@@ -378,5 +708,27 @@ public class DealerServiceImpl implements DealerService {
                 .note(item.getNote())
                 .build();
     }
-}
 
+    private DealerAssignmentHistoryResponse mapToHistoryResponse(DealerAssignmentHistory history) {
+        return DealerAssignmentHistoryResponse.builder()
+                .id(history.getId())
+                .dealerId(history.getDealer().getId())
+                .dealerCode(history.getDealerCode())
+                .dealerName(history.getDealerName())
+                .fromUserId(history.getFromUser() != null ? history.getFromUser().getId() : null)
+                .fromUsername(history.getFromUser() != null ? history.getFromUser().getUsername() : null)
+                .fromUserFullName(history.getFromUserName())
+                .toUserId(history.getToUser() != null ? history.getToUser().getId() : null)
+                .toUsername(history.getToUser() != null ? history.getToUser().getUsername() : null)
+                .toUserFullName(history.getToUserName())
+                .territoryId(history.getTerritory() != null ? history.getTerritory().getId() : null)
+                .territoryName(history.getTerritoryName())
+                .transferType(history.getTransferType())
+                .reason(history.getReason())
+                .performedByUserId(history.getPerformedBy() != null ? history.getPerformedBy().getId() : null)
+                .performedByUsername(history.getPerformedBy() != null ? history.getPerformedBy().getUsername() : null)
+                .performedByFullName(history.getPerformedByName())
+                .transferredAt(history.getTransferredAt())
+                .build();
+    }
+}

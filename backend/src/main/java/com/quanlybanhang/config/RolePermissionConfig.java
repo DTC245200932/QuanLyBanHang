@@ -43,7 +43,7 @@ public class RolePermissionConfig {
                 CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT,
                 WAREHOUSE_VIEW,
                 FINANCE_VIEW_COST_PRICE, FINANCE_VIEW_PROFIT_MARGIN,
-                FINANCE_VIEW_DEBT,
+                FINANCE_VIEW_DEBT, FINANCE_MANAGE,
                 REPORT_SALES, REPORT_INVENTORY, REPORT_FINANCE
         ));
 

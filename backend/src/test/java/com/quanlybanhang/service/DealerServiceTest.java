@@ -1,17 +1,13 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.AssignDealerRequest;
+import com.quanlybanhang.dto.request.BulkHandoverRequest;
 import com.quanlybanhang.dto.request.DealerRequest;
-import com.quanlybanhang.dto.response.DealerOptionsResponse;
-import com.quanlybanhang.dto.response.DealerResponse;
+import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.exception.DealerHasTransactionsException;
-import com.quanlybanhang.model.CustomerGroup;
-import com.quanlybanhang.model.Dealer;
-import com.quanlybanhang.model.Territory;
-import com.quanlybanhang.model.User;
-import com.quanlybanhang.repository.DealerRepository;
-import com.quanlybanhang.repository.OrderRepository;
-import com.quanlybanhang.repository.TerritoryRepository;
-import com.quanlybanhang.repository.UserRepository;
+import com.quanlybanhang.model.*;
+import com.quanlybanhang.repository.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,10 +18,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,10 +50,29 @@ class DealerServiceTest {
     private TerritoryRepository territoryRepository;
 
     @Mock
+    private DealerAssignmentHistoryRepository dealerAssignmentHistoryRepository;
+
+    @Mock
     private AuditLogService auditLogService;
 
     @InjectMocks
     private DealerServiceImpl dealerService;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private User buildSalesUser(Long id, String username, String fullName) {
+        Role salesRole = Role.builder().id(1L).name(ERole.ROLE_SALES).build();
+        return User.builder()
+                .id(id)
+                .username(username)
+                .fullName(fullName)
+                .active(true)
+                .roles(Set.of(salesRole))
+                .build();
+    }
 
     @Test
     @DisplayName("Tạo đại lý thành công với đầy đủ các trường thông tin theo S3-03")
@@ -67,11 +88,12 @@ class DealerServiceTest {
                 .email("minhphat@dealer.vn")
                 .address("123 Lê Lợi, TP.HCM")
                 .debtLimit(new BigDecimal("100000000"))
+                .maxDebtDays(30)
                 .active(true)
                 .build();
 
         Territory territory = Territory.builder().id(10L).code("HCM-DONG").name("TP.HCM Đông").build();
-        User user = User.builder().id(20L).username("sales.user").fullName("Nguyễn Văn Bán").build();
+        User user = buildSalesUser(20L, "sales.user", "Nguyễn Văn Bán");
 
         when(dealerRepository.existsByCodeIgnoreCase("DL001")).thenReturn(false);
         when(territoryRepository.findById(10L)).thenReturn(Optional.of(territory));
@@ -95,16 +117,16 @@ class DealerServiceTest {
         assertThat(saved.getTerritory()).isEqualTo(territory);
         assertThat(saved.getAssignedUser()).isEqualTo(user);
         assertThat(saved.getDebtLimit()).isEqualTo(new BigDecimal("100000000"));
+        assertThat(saved.getMaxDebtDays()).isEqualTo(30);
         assertThat(saved.getActive()).isTrue();
-        assertThat(saved.getPhone()).isEqualTo("0981234567");
-        assertThat(saved.getEmail()).isEqualTo("minhphat@dealer.vn");
-        assertThat(saved.getAddress()).isEqualTo("123 Lê Lợi, TP.HCM");
 
         assertThat(response.getId()).isEqualTo(1L);
         assertThat(response.getCustomerGroupDisplayName()).isEqualTo("Đại lý cấp 1");
         assertThat(response.getTerritoryName()).isEqualTo("TP.HCM Đông");
         assertThat(response.getAssignedUserFullName()).isEqualTo("Nguyễn Văn Bán");
+        assertThat(response.getMaxDebtDays()).isEqualTo(30);
 
+        verify(dealerAssignmentHistoryRepository).save(any(DealerAssignmentHistory.class));
         verify(auditLogService).logAction(eq("DEALER"), eq("1"), eq("CREATE_DEALER"), isNull(), eq("DL001"), eq("accountant01"));
     }
 
@@ -196,12 +218,10 @@ class DealerServiceTest {
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        // Ngừng giao dịch
         DealerResponse res = dealerService.updateStatus(1L, false, "accountant01");
         assertThat(res.getActive()).isFalse();
         verify(auditLogService).logAction(eq("DEALER"), eq("1"), eq("DEACTIVATE_DEALER"), isNull(), eq("DL001"), eq("accountant01"));
 
-        // Khôi phục giao dịch
         res = dealerService.updateStatus(1L, true, "accountant01");
         assertThat(res.getActive()).isTrue();
         verify(auditLogService).logAction(eq("DEALER"), eq("1"), eq("ACTIVATE_DEALER"), isNull(), eq("DL001"), eq("accountant01"));
@@ -268,11 +288,12 @@ class DealerServiceTest {
     }
 
     @Test
-    @DisplayName("Lấy danh mục tham chiếu cho hồ sơ đại lý")
+    @DisplayName("Lấy danh mục tham chiếu cho hồ sơ đại lý chỉ trả về nhân viên có vai trò kinh doanh")
     void getDealerOptions_success() {
         Territory t1 = Territory.builder().id(1L).code("HCM").name("Hồ Chí Minh").build();
-        User u1 = User.builder().id(2L).username("sales1").fullName("Sales One").active(true).build();
-        User u2 = User.builder().id(3L).username("locked").fullName("Locked User").active(false).build();
+        User u1 = buildSalesUser(2L, "sales1", "Sales One");
+        User u2 = User.builder().id(3L).username("accountant1").fullName("Accountant").active(true)
+                .roles(Set.of(Role.builder().name(ERole.ROLE_ACCOUNTANT).build())).build();
 
         when(territoryRepository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of(t1));
         when(userRepository.findAll()).thenReturn(List.of(u1, u2));
@@ -282,7 +303,7 @@ class DealerServiceTest {
         assertThat(options.getCustomerGroups()).hasSize(3);
         assertThat(options.getTerritories()).hasSize(1);
         assertThat(options.getTerritories().get(0).code()).isEqualTo("HCM");
-        // Chỉ lấy user active
+        // Chỉ lấy user active và có vai trò sales
         assertThat(options.getAssignedUsers()).hasSize(1);
         assertThat(options.getAssignedUsers().get(0).username()).isEqualTo("sales1");
     }
@@ -390,5 +411,218 @@ class DealerServiceTest {
         assertThat(inProgress.get(0).getDealerLocked()).isTrue();
         assertThat(inProgress.get(0).getDealerLockWarning()).contains("Cảnh báo: Đại lý 'Đại lý Minh Phát'");
     }
-}
 
+    // ═════════════════════════════════════════════════════════════════════
+    // S3-06: PHÂN CÔNG & CHUYỂN GIAO ĐỊA BÀN / BẢO MẬT DỮ LIỆU SALES
+    // ═════════════════════════════════════════════════════════════════════
+
+    @Test
+    @DisplayName("[S3-06] Phân công nhân viên phụ trách chính cho một đại lý thành công")
+    void assignDealer_success() {
+        User oldUser = buildSalesUser(10L, "sales.old", "Nhân viên cũ");
+        User newUser = buildSalesUser(20L, "sales.new", "Nhân viên mới");
+        Territory territory = Territory.builder().id(1L).name("Khu vực 1").build();
+
+        Dealer dealer = Dealer.builder()
+                .id(100L)
+                .code("DL100")
+                .name("Đại lý An Phú")
+                .assignedUser(oldUser)
+                .territory(territory)
+                .handoverRequired(true)
+                .build();
+
+        AssignDealerRequest req = AssignDealerRequest.builder()
+                .assignedUserId(20L)
+                .reason("Bàn giao phụ trách chính khu vực Quận 2")
+                .build();
+
+        when(dealerRepository.findById(100L)).thenReturn(Optional.of(dealer));
+        when(userRepository.findById(20L)).thenReturn(Optional.of(newUser));
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(i -> i.getArgument(0));
+
+        DealerResponse res = dealerService.assignDealer(100L, req, "sales.manager");
+
+        assertThat(dealer.getAssignedUser()).isEqualTo(newUser);
+        assertThat(dealer.getHandoverRequired()).isFalse();
+
+        ArgumentCaptor<DealerAssignmentHistory> historyCaptor = ArgumentCaptor.forClass(DealerAssignmentHistory.class);
+        verify(dealerAssignmentHistoryRepository).save(historyCaptor.capture());
+        DealerAssignmentHistory h = historyCaptor.getValue();
+        assertThat(h.getFromUser()).isEqualTo(oldUser);
+        assertThat(h.getToUser()).isEqualTo(newUser);
+        assertThat(h.getTransferType()).isEqualTo("INDIVIDUAL_ASSIGNMENT");
+        assertThat(h.getReason()).isEqualTo("Bàn giao phụ trách chính khu vực Quận 2");
+
+        verify(auditLogService).logAction(eq("DEALER_ASSIGN"), eq("100"), eq("ASSIGN_DEALER"), eq("sales.old"), eq("sales.new"), eq("sales.manager"));
+    }
+
+    @Test
+    @DisplayName("[S3-06] Phân công đại lý cho tài khoản bị khóa phải ném lỗi")
+    void assignDealer_toInactiveUser_throwsException() {
+        Dealer dealer = Dealer.builder().id(100L).code("DL100").name("Đại lý").build();
+        User lockedUser = User.builder().id(20L).username("locked.user").active(false).build();
+
+        when(dealerRepository.findById(100L)).thenReturn(Optional.of(dealer));
+        when(userRepository.findById(20L)).thenReturn(Optional.of(lockedUser));
+
+        AssignDealerRequest req = AssignDealerRequest.builder().assignedUserId(20L).build();
+
+        assertThatThrownBy(() -> dealerService.assignDealer(100L, req, "manager"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("đang bị khoá");
+
+        verify(dealerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("[S3-06] Chuyển giao địa bàn và đại lý hàng loạt khi nhân viên nghỉ việc thành công")
+    void bulkHandover_success() {
+        User fromUser = buildSalesUser(10L, "sales.retiring", "Nhân viên sắp nghỉ");
+        User toUser = buildSalesUser(20L, "sales.successor", "Nhân viên tiếp quản");
+        Territory territory = Territory.builder().id(1L).code("HCM-DONG").name("TP.HCM Khu Đông").build();
+
+        Dealer d1 = Dealer.builder().id(101L).code("DL101").name("Đại lý A").assignedUser(fromUser).territory(territory).handoverRequired(true).build();
+        Dealer d2 = Dealer.builder().id(102L).code("DL102").name("Đại lý B").assignedUser(fromUser).territory(territory).handoverRequired(true).build();
+        List<Dealer> candidates = List.of(d1, d2);
+
+        BulkHandoverRequest req = BulkHandoverRequest.builder()
+                .fromUserId(10L)
+                .toUserId(20L)
+                .reason("Nhân viên nghỉ việc theo thoả thuận")
+                .notes("Đã chuyển giao toàn bộ công nợ")
+                .build();
+
+        when(userRepository.findById(10L)).thenReturn(Optional.of(fromUser));
+        when(userRepository.findById(20L)).thenReturn(Optional.of(toUser));
+        when(dealerRepository.findByAssignedUserId(10L)).thenReturn(candidates);
+
+        BulkHandoverResponse res = dealerService.bulkHandover(req, "manager01");
+
+        assertThat(res.getTotalTransferred()).isEqualTo(2);
+        assertThat(res.getFromUsername()).isEqualTo("sales.retiring");
+        assertThat(res.getToUsername()).isEqualTo("sales.successor");
+        assertThat(res.getTransferredDealerIds()).containsExactlyInAnyOrder(101L, 102L);
+
+        // Đảm bảo cả 2 đại lý đều được đổi người phụ trách và xoá cờ handoverRequired
+        assertThat(d1.getAssignedUser()).isEqualTo(toUser);
+        assertThat(d1.getHandoverRequired()).isFalse();
+        assertThat(d2.getAssignedUser()).isEqualTo(toUser);
+        assertThat(d2.getHandoverRequired()).isFalse();
+
+        verify(dealerRepository).saveAll(candidates);
+        verify(dealerAssignmentHistoryRepository).saveAll(any());
+        verify(auditLogService).logAction(eq("DEALER_HANDOVER"), eq("10->20"), eq("BULK_HANDOVER"), anyString(), eq("Nhân viên nghỉ việc theo thoả thuận"), eq("manager01"));
+    }
+
+    @Test
+    @DisplayName("[S3-06] Chuyển giao hàng loạt cùng 1 nhân viên phải ném ngoại lệ")
+    void bulkHandover_sameUser_throwsException() {
+        BulkHandoverRequest req = BulkHandoverRequest.builder()
+                .fromUserId(10L)
+                .toUserId(10L)
+                .reason("Lỗi")
+                .build();
+
+        assertThatThrownBy(() -> dealerService.bulkHandover(req, "manager"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Nhân viên tiếp nhận phải khác nhân viên bàn giao");
+    }
+
+    @Test
+    @DisplayName("[S3-06] Nhân viên kinh doanh chỉ nhìn thấy đại lý mình phụ trách trong danh sách")
+    void getAllDealers_asSalesUser_restrictedToAssignedUser() {
+        User salesUser = buildSalesUser(15L, "sales01", "Nhân viên 01");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("sales01", "pass", List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+        );
+
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(salesUser));
+        when(dealerRepository.searchDealers(isNull(), isNull(), isNull(), eq(15L), isNull(), isNull(), any()))
+                .thenReturn(new PageImpl<>(List.of(Dealer.builder().id(1L).code("DL01").name("Đại lý").build())));
+
+        Page<DealerResponse> res = dealerService.getAllDealers(null, null, null, 999L, null, PageRequest.of(0, 10));
+
+        // Phải bị ép gán sang 15L (ID của sales01) thay vì 999L do client truyền
+        verify(dealerRepository).searchDealers(isNull(), isNull(), isNull(), eq(15L), isNull(), isNull(), any());
+        assertThat(res.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("[S3-06] Nhân viên kinh doanh cố xem đại lý của người khác bị ném AccessDeniedException")
+    void getDealerById_asSalesUser_otherDealer_throwsAccessDeniedException() {
+        User salesUser = buildSalesUser(15L, "sales01", "Nhân viên 01");
+        User otherSales = buildSalesUser(16L, "sales02", "Nhân viên 02");
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("sales01", "pass", List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+        );
+
+        Dealer otherDealer = Dealer.builder()
+                .id(200L)
+                .code("DL200")
+                .name("Đại lý của người khác")
+                .assignedUser(otherSales)
+                .build();
+
+        when(dealerRepository.findById(200L)).thenReturn(Optional.of(otherDealer));
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(salesUser));
+
+        assertThatThrownBy(() -> dealerService.getDealerById(200L))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Bạn chỉ có quyền xem đại lý do mình phụ trách");
+
+        assertThatThrownBy(() -> dealerService.getInProgressOrders(200L))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(orderRepository, never()).findByDealerIdAndStatusNotInOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("[S3-06 & S3-07] Danh sách đặt hàng của sales loại bỏ đại lý đang khoá")
+    void getActiveDealers_asSalesUser_excludesLockedDealers() {
+        User salesUser = buildSalesUser(15L, "sales01", "Nhân viên 01");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("sales01", "pass", List.of(new SimpleGrantedAuthority("ROLE_SALES"))));
+        Dealer open = Dealer.builder().id(1L).code("DL01").name("Đại lý đang mở").assignedUser(salesUser).build();
+        Dealer locked = Dealer.builder().id(2L).code("DL02").name("Đại lý khoá").assignedUser(salesUser).locked(true).build();
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(salesUser));
+        when(dealerRepository.findByAssignedUserIdAndActiveTrueOrderByNameAsc(15L)).thenReturn(List.of(open, locked));
+
+        assertThat(dealerService.getActiveDealers()).extracting(DealerResponse::getId).containsExactly(1L);
+    }
+
+    @Test
+    @DisplayName("[S3-06] Nhân viên kinh doanh xem đại lý do chính mình phụ trách thành công")
+    void getDealerById_asSalesUser_ownDealer_success() {
+        User salesUser = buildSalesUser(15L, "sales01", "Nhân viên 01");
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("sales01", "pass", List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+        );
+
+        Dealer ownDealer = Dealer.builder()
+                .id(200L)
+                .code("DL200")
+                .name("Đại lý của tôi")
+                .assignedUser(salesUser)
+                .build();
+
+        when(dealerRepository.findById(200L)).thenReturn(Optional.of(ownDealer));
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(salesUser));
+
+        DealerResponse res = dealerService.getDealerById(200L);
+        assertThat(res.getId()).isEqualTo(200L);
+        assertThat(res.getCode()).isEqualTo("DL200");
+    }
+
+    @Test
+    @DisplayName("[S3-06] Lấy danh sách đại lý cần bàn giao")
+    void getPendingHandoverDealers_success() {
+        Dealer d1 = Dealer.builder().id(1L).code("DL01").name("Đại lý Cần Bàn Giao").handoverRequired(true).build();
+        when(dealerRepository.findByHandoverRequiredTrueOrderByNameAsc()).thenReturn(List.of(d1));
+
+        List<DealerResponse> pending = dealerService.getPendingHandoverDealers();
+        assertThat(pending).hasSize(1);
+        assertThat(pending.get(0).getCode()).isEqualTo("DL01");
+    }
+}

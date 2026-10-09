@@ -133,14 +133,31 @@ Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` v
 |---|---|---|---|
 | GET | `/finance/cost-price` | `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm — chỉ Quản lý kinh doanh; Admin, Thủ kho, Sales, Kế toán đều bị từ chối |
 | GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
-| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng |
-| PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ADMIN`, `ROLE_ACCOUNTANT` | Cập nhật hạn mức công nợ đại lý; tự động ghi nhật ký giá trị trước/sau |
+| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng (bao gồm hạn mức tiền và số ngày nợ tối đa) |
+| PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo / cập nhật hạn mức công nợ và số ngày nợ tối đa (S3-05); bắt buộc nhập lý do, tự động ghi nhật ký giá trị trước/sau kèm lý do |
 
-Body cập nhật hạn mức công nợ:
+Body cập nhật hạn mức công nợ (S3-05):
 
 ```json
 {
-  "debtLimit": 50000000
+  "debtLimit": 50000000,
+  "maxDebtDays": 30,
+  "reason": "Điều chỉnh hạn mức quý 4 theo doanh số"
+}
+```
+
+Response ví dụ:
+```json
+{
+  "success": true,
+  "message": "Đã cập nhật hạn mức công nợ",
+  "data": {
+    "dealerId": 1,
+    "customerName": "Đại lý Cấp 1 Minh Phát",
+    "debtLimit": 50000000,
+    "maxDebtDays": 30,
+    "reason": "Điều chỉnh hạn mức quý 4 theo doanh số"
+  }
 }
 ```
 
@@ -416,6 +433,97 @@ Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng v
 ```
 *(Nếu `items` để trống, hệ thống tự động kế thừa toàn bộ danh sách dòng giá của phiên bản tiền nhiệm).*
 
+## Khai báo Chính sách chiết khấu theo sản lượng (S3-01)
+
+Hỗ trợ Quản lý kinh doanh khai báo chính sách chiết khấu theo sản lượng, để khuyến khích đại lý lấy nhiều hàng mà không phải thoả thuận miệng từng lần.
+
+### Quy tắc nghiệp vụ cốt lõi:
+
+1. **Bậc chiết khấu theo số lượng mua của một SKU hoặc một nhóm hàng**:
+   - Chính sách có thể áp dụng cho một SKU cụ thể (`targetType = PRODUCT`) hoặc áp dụng cho một nhóm hàng (`targetType = CATEGORY`).
+   - Khi áp dụng cho nhóm hàng, toàn bộ các nhóm con trong cây phân cấp và các sản phẩm thuộc nhánh nhóm hàng đó đều được hưởng chính sách.
+   - Sản lượng mua được tự động quy về **đơn vị cơ sở** (base quantity, ví dụ số lon/chai/cái) theo hệ số quy đổi đóng băng tại thời điểm tạo đơn (S2-07), đảm bảo tính công bằng và chính xác dù đại lý đặt theo lon, lốc hay thùng.
+   - Khi đặt nhiều sản phẩm cùng thuộc một nhóm hàng trong một đơn hàng, hệ thống **tự động cộng dồn tổng sản lượng** của tất cả sản phẩm trong nhóm để xác định bậc chiết khấu đạt được.
+
+2. **Cách tính chiết khấu**:
+   - **Theo phần trăm (`PERCENTAGE`)**: Tính theo tỷ lệ % trên thành tiền của dòng sản phẩm (`discountAmount = subtotalAmount * discountPercent / 100`).
+   - **Theo số tiền trên đơn vị (`FIXED_AMOUNT`)**: Tính theo số tiền cố định trên một đơn vị cơ sở (`discountAmount = discountValue * baseQuantity`).
+
+3. **QUY TẮC CỐT LÕI: Nhiều chính sách cùng áp dụng thì lấy chính sách có lợi nhất cho khách**:
+   - Khi một mặt hàng trong đơn hàng đủ điều kiện áp dụng nhiều chính sách chiết khấu cùng một lúc (ví dụ: vừa có chính sách riêng theo SKU, vừa thuộc nhóm hàng có chính sách chiết khấu theo nhóm; hoặc có đồng thời chính sách theo % và chính sách theo số tiền/đơn vị):
+   - **Hệ thống tự động so sánh số tiền chiết khấu thực tế (VND)** mà khách hàng sẽ nhận được theo từng chính sách hợp lệ.
+   - **Quy tắc giải quyết**: Luôn tự động chọn chính sách mang lại số tiền chiết khấu **LỚN NHẤT** cho khách hàng (số tiền khách hàng phải thanh toán là THẤP NHẤT).
+   - Nếu có hai chính sách cùng mang lại mức giảm bằng nhau, hệ thống ưu tiên chính sách trực tiếp theo SKU trước chính sách theo nhóm hàng.
+   - Thông tin chính sách được chọn (`appliedPolicyId`, `appliedPolicyCode`, `appliedPolicyName`, `discountAmount`, `discountPercent`) được lưu vết đóng băng vào dòng đơn hàng (`OrderItem`) và hiển thị minh bạch cho khách hàng và kế toán.
+   - API tính thử (`POST /api/volume-discounts/calculate`) trả về đầy đủ danh sách các chính sách ứng viên (`candidatePolicies`) kèm số tiền chiết khấu tính toán của từng chính sách và lý do lựa chọn (`selectionReason`), giúp nhân viên kinh doanh và đại lý dễ dàng đối chiếu.
+
+4. **Bảo mật và phân quyền**:
+   - Chỉ **Quản lý kinh doanh (`ROLE_SALES_MANAGER`)** và **Quản trị hệ thống (`ROLE_ADMIN`)** có quyền Khai báo, Sửa, Đổi trạng thái (`active`) và Xóa chính sách chiết khấu.
+   - Các vai trò khác (`ROLE_SALES`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER`) có quyền xem danh sách, xem chi tiết và tính toán thử chiết khấu (`/api/volume-discounts/calculate`).
+   - Mọi thao tác quản lý chính sách chiết khấu đều được ghi nhận vào nhật ký hệ thống (`AuditLog`).
+
+### Danh sách API Chính sách chiết khấu theo sản lượng (`/api/volume-discounts`)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/volume-discounts` | Đã đăng nhập | Xem danh sách chính sách chiết khấu (lọc theo targetType, productId, categoryId, customerGroup, active, keyword) |
+| GET | `/volume-discounts/{id}` | Đã đăng nhập | Xem chi tiết chính sách chiết khấu kèm các bậc sản lượng |
+| POST | `/volume-discounts` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo chính sách chiết khấu mới |
+| PUT | `/volume-discounts/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật thông tin và các bậc chiết khấu |
+| PATCH | `/volume-discounts/{id}/status?active=true/false` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Bật/tắt trạng thái hoạt động của chính sách |
+| DELETE | `/volume-discounts/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa chính sách chiết khấu |
+| POST | `/volume-discounts/calculate` | Đã đăng nhập | Tính toán thử chiết khấu cho danh sách mặt hàng dự kiến đặt |
+
+#### Ví dụ Request khai báo chính sách chiết khấu (`POST /api/volume-discounts`):
+```json
+{
+  "code": "CK-KEN-2026",
+  "name": "Chiết khấu sản lượng bia Heineken Sleek lon 330ml",
+  "description": "Khuyến khích đại lý cấp 1 và cấp 2 lấy số lượng lớn theo thùng",
+  "targetType": "PRODUCT",
+  "productId": 10,
+  "customerGroup": null,
+  "startDate": "2026-01-01",
+  "endDate": "2026-12-31",
+  "active": true,
+  "tiers": [
+    {
+      "minQuantity": 48,
+      "maxQuantity": 119,
+      "discountType": "PERCENTAGE",
+      "discountValue": 3.0
+    },
+    {
+      "minQuantity": 120,
+      "maxQuantity": 239,
+      "discountType": "PERCENTAGE",
+      "discountValue": 5.0
+    },
+    {
+      "minQuantity": 240,
+      "maxQuantity": null,
+      "discountType": "PERCENTAGE",
+      "discountValue": 8.0
+    }
+  ]
+}
+```
+
+#### Ví dụ Request tính toán thử chiết khấu (`POST /api/volume-discounts/calculate`):
+```json
+{
+  "customerGroup": "DAI_LY_CAP_1",
+  "items": [
+    {
+      "productId": 10,
+      "unit": "thùng",
+      "quantity": 5,
+      "price": 396000
+    }
+  ]
+}
+```
+
 ### Danh sách API Quản lý hồ sơ đại lý (S3-03) và Tìm kiếm nhanh đại lý (S3-08)
 
 Hỗ trợ Kế toán công nợ và Quản lý kinh doanh quản lý hồ sơ đại lý chuẩn (S3-03), đồng thời hỗ trợ Nhân viên kinh doanh tìm kiếm nhanh khách trong tuyến trên thiết bị di động khi đứng ngoài đường (S3-08).
@@ -527,6 +635,7 @@ Response:
   "email": "minhphat@dealer.vn",
   "address": "123 Lê Lợi, Quận 1, TP.HCM",
   "debtLimit": 100000000,
+  "maxDebtDays": 30,
   "active": true
 }
 ```
@@ -552,6 +661,7 @@ Response:
     "active": true,
     "handoverRequired": false,
     "debtLimit": 100000000.00,
+    "maxDebtDays": 30,
     "phone": "0981234567",
     "email": "minhphat@dealer.vn",
     "address": "123 Lê Lợi, Quận 1, TP.HCM",
@@ -571,6 +681,74 @@ Quản lý kinh doanh hoặc Admin có thể duyệt/từ chối đơn `PENDING_
 `PUT /api/orders/{id}/approve` hoặc `PUT /api/orders/{id}/reject`.
 Trang `/create-order` là màn hình tạo đơn nội bộ; chưa có cổng đại lý riêng.
 Giao diện không lưu hồ sơ đại lý hay trạng thái đơn vào `localStorage`.
+
+### Danh sách API Phân công & Chuyển giao địa bàn đại lý (S3-06)
+
+Hỗ trợ Quản lý kinh doanh (`ROLE_SALES_MANAGER`) và Quản trị viên (`ROLE_ADMIN`) phân công nhân viên kinh doanh theo đại lý và khu vực, đảm bảo mỗi đại lý đều có một người chịu trách nhiệm chăm sóc và xử lý bàn giao hàng loạt khi nhân viên nghỉ việc.
+
+Quy tắc nghiệp vụ:
+1. Mỗi đại lý được gán một nhân viên kinh doanh phụ trách chính (`assignedUser`).
+2. **Bảo mật dữ liệu (Row-Level Security)**: Nhân viên kinh doanh (`ROLE_SALES`) chỉ nhìn thấy các đại lý do mình phụ trách trong danh sách và chi tiết. Cố gắng xem đại lý của người khác sẽ bị từ chối truy cập (403 Forbidden).
+3. **Chuyển giao địa bàn hàng loạt**: Khi nhân viên nghỉ việc hoặc điều chuyển, Quản lý kinh doanh/Admin có thể chuyển giao hàng loạt toàn bộ hoặc một phần đại lý từ nhân viên cũ sang nhân viên tiếp nhận mới (theo danh sách hoặc theo địa bàn).
+4. **Lưu lịch sử đầy đủ**: Mỗi lần phân công hoặc chuyển giao đều được lưu vết chi tiết trong cơ sở dữ liệu (`dealer_assignment_histories`) bao gồm người giao, người nhận, đại lý, khu vực, lý do, người thực hiện và thời gian chuyển giao.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| POST | `/dealers/{id}/assign` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Gán hoặc thay đổi nhân viên phụ trách chính cho một đại lý (ghi lịch sử phân công) |
+| POST | `/dealers/handover/bulk` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Chuyển giao địa bàn và đại lý hàng loạt từ nhân viên cũ sang nhân viên mới (khi nghỉ việc/điều chuyển) |
+| GET | `/dealers/handover/pending` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Danh sách các đại lý đang cần bàn giao (có cờ `handoverRequired` do nhân viên bị khoá/nghỉ) |
+| GET | `/dealers/handover/history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Tra cứu lịch sử chuyển giao địa bàn và đại lý (phân trang, lọc theo người giao, người nhận, đại lý, khu vực, khoảng thời gian) |
+| GET | `/dealers/{id}/assignment-history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_SALES`, `ROLE_VIEWER` | Lịch sử phân công của riêng một đại lý cụ thể |
+
+#### Ví dụ Request Phân công một đại lý (`POST /api/dealers/1/assign`):
+```json
+{
+  "assignedUserId": 2,
+  "reason": "Phân công phụ trách chính khu vực Quận 1"
+}
+```
+
+#### Ví dụ Request Chuyển giao hàng loạt (`POST /api/dealers/handover/bulk`):
+```json
+{
+  "fromUserId": 5,
+  "toUserId": 2,
+  "territoryId": 1,
+  "dealerIds": [1, 2, 3],
+  "reason": "Nhân viên Nguyễn Văn A nghỉ việc, bàn giao toàn bộ địa bàn cho Trần Văn B",
+  "notes": "Đã bàn giao hồ sơ công nợ và đơn hàng đang xử lý"
+}
+```
+*(Nếu `dealerIds` và `territoryId` để trống, hệ thống tự động chuyển giao TOÀN BỘ đại lý do `fromUserId` phụ trách sang `toUserId`).*
+
+#### Ví dụ Response Chuyển giao hàng loạt:
+```json
+{
+  "success": true,
+  "message": "Chuyển giao địa bàn hàng loạt thành công",
+  "data": {
+    "totalTransferred": 3,
+    "fromUserId": 5,
+    "fromUsername": "sales.old",
+    "fromUserFullName": "Nguyễn Văn A",
+    "toUserId": 2,
+    "toUsername": "sales.new",
+    "toUserFullName": "Trần Văn B",
+    "territoryId": 1,
+    "territoryName": "TP.HCM - Khu Đông",
+    "transferredDealerIds": [1, 2, 3],
+    "transferredDealerNames": ["Đại lý Cấp 1 Minh Phát", "Đại lý Cấp 2 Tân Bình", "Đại lý An Phú"],
+    "reason": "Nhân viên Nguyễn Văn A nghỉ việc, bàn giao toàn bộ địa bàn cho Trần Văn B",
+    "transferredAt": "2026-10-08T14:30:00",
+    "performedByUsername": "sales.manager"
+  }
+}
+```
+
+Khi phối hợp S3-06 với S3-07, `GET /api/dealers/active` chỉ trả đại lý đang giao dịch
+và chưa bị khoá. Với người dùng chỉ có vai trò `SALES`, danh sách này và
+`GET /api/dealers/{id}/in-progress-orders` đều giới hạn theo nhân viên phụ trách;
+xem đơn đang dở của đại lý do người khác phụ trách trả HTTP 403.
 
 ## Bảy vai trò
 

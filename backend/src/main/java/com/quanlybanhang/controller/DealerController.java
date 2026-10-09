@@ -1,10 +1,10 @@
 package com.quanlybanhang.controller;
 
+import com.quanlybanhang.dto.request.AssignDealerRequest;
+import com.quanlybanhang.dto.request.BulkHandoverRequest;
 import com.quanlybanhang.dto.request.DealerRequest;
 import com.quanlybanhang.dto.request.LockDealerRequest;
-import com.quanlybanhang.dto.response.ApiResponse;
-import com.quanlybanhang.dto.response.DealerOptionsResponse;
-import com.quanlybanhang.dto.response.DealerResponse;
+import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.CustomerGroup;
 import com.quanlybanhang.service.DealerService;
 import jakarta.validation.Valid;
@@ -12,19 +12,25 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Controller quản lý hồ sơ đại lý và khóa giao dịch (S3-03 & S3-07).
+ * Controller quản lý hồ sơ, phân công và khóa giao dịch đại lý (S3-03, S3-06, S3-07).
  * Bao gồm tính năng tìm kiếm nhanh khách trong tuyến cho Nhân viên kinh doanh (S3-08).
  *
  * Phân quyền:
- * - Xem danh sách, chi tiết, options, đơn đang dở: ACCOUNTANT, SALES_MANAGER, ADMIN, SALES, VIEWER
- * - Thêm, sửa, đổi trạng thái, xoá, khoá/mở giao dịch: ACCOUNTANT, SALES_MANAGER, ADMIN
+ * - Xem danh sách, chi tiết, options: ACCOUNTANT, SALES_MANAGER, ADMIN, SALES, VIEWER
+ *   (Lưu ý: SALES chỉ nhìn thấy đại lý do mình phụ trách)
+ * - Thêm, sửa, đổi trạng thái, xóa: ACCOUNTANT, SALES_MANAGER, ADMIN
+ * - Phân công phụ trách, bàn giao hàng loạt: SALES_MANAGER, ADMIN
+ * - Tra cứu lịch sử bàn giao: SALES_MANAGER, ADMIN, ACCOUNTANT, VIEWER
+ * - Khoá/mở giao dịch: ACCOUNTANT, SALES_MANAGER, ADMIN
  */
 @RestController
 @RequestMapping("/api/dealers")
@@ -167,5 +173,84 @@ public class DealerController {
         List<com.quanlybanhang.dto.response.OrderResponse> orders = dealerService.getInProgressOrders(id);
         return ApiResponse.success("Lấy danh sách đơn hàng đang dở dang của đại lý thành công", orders);
     }
-}
 
+    // ── Phân công & Chuyển giao địa bàn (S3-06) ──
+
+    /**
+     * Gán hoặc thay đổi một nhân viên phụ trách chính cho một đại lý (S3-06).
+     */
+    @PostMapping("/{id}/assign")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse assignDealer(
+            @PathVariable Long id,
+            @Valid @RequestBody AssignDealerRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        DealerResponse response = dealerService.assignDealer(id, request, username);
+        return ApiResponse.success("Phân công nhân viên phụ trách đại lý thành công", response);
+    }
+
+    /**
+     * Chuyển giao địa bàn / đại lý hàng loạt khi nhân viên nghỉ việc hoặc điều chuyển (S3-06).
+     */
+    @PostMapping("/handover/bulk")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse bulkHandover(
+            @Valid @RequestBody BulkHandoverRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        BulkHandoverResponse response = dealerService.bulkHandover(request, username);
+        return ApiResponse.success("Chuyển giao địa bàn hàng loạt thành công", response);
+    }
+
+    /**
+     * Lấy danh sách các đại lý đang cần bàn giao (nhân viên bị khoá hoặc có cờ handoverRequired) (S3-06).
+     */
+    @GetMapping("/handover/pending")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse getPendingHandoverDealers() {
+        List<DealerResponse> pendingDealers = dealerService.getPendingHandoverDealers();
+        return ApiResponse.success("Lấy danh sách đại lý cần bàn giao thành công", pendingDealers);
+    }
+
+    /**
+     * Tra cứu lịch sử chuyển giao địa bàn và đại lý (S3-06).
+     */
+    @GetMapping("/handover/history")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')")
+    public ApiResponse getHandoverHistory(
+            @RequestParam(required = false) Long fromUserId,
+            @RequestParam(required = false) Long toUserId,
+            @RequestParam(required = false) Long dealerId,
+            @RequestParam(required = false) Long territoryId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size) {
+
+        if (page < 0 || size < 1 || size > 200) {
+            throw new IllegalArgumentException("Trang phải không âm; số dòng mỗi trang phải từ 1 đến 200");
+        }
+
+        Page<DealerAssignmentHistoryResponse> historyPage = dealerService.getHandoverHistory(
+                fromUserId,
+                toUserId,
+                dealerId,
+                territoryId,
+                startDate,
+                endDate,
+                PageRequest.of(page, size));
+
+        return ApiResponse.success("Lấy lịch sử chuyển giao đại lý thành công", historyPage);
+    }
+
+    /**
+     * Lấy lịch sử phân công/chuyển giao của riêng một đại lý cụ thể (S3-06).
+     */
+    @GetMapping("/{id}/assignment-history")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'ACCOUNTANT', 'SALES', 'VIEWER')")
+    public ApiResponse getDealerAssignmentHistory(@PathVariable Long id) {
+        List<DealerAssignmentHistoryResponse> history = dealerService.getDealerAssignmentHistory(id);
+        return ApiResponse.success("Lấy lịch sử phân công của đại lý thành công", history);
+    }
+}

@@ -17,6 +17,7 @@ public class AuditLogResponse {
     private String action;
     private String oldValue;
     private String newValue;
+    private String reason;
     private String username;
     private LocalDateTime createdAt;
 }

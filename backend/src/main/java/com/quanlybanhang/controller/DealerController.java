@@ -19,7 +19,8 @@ import java.security.Principal;
 import java.util.List;
 
 /**
- * Controller quản lý hồ sơ đại lý (S3-03 & S3-07).
+ * Controller quản lý hồ sơ đại lý và khóa giao dịch (S3-03 & S3-07).
+ * Bao gồm tính năng tìm kiếm nhanh khách trong tuyến cho Nhân viên kinh doanh (S3-08).
  *
  * Phân quyền:
  * - Xem danh sách, chi tiết, options, đơn đang dở: ACCOUNTANT, SALES_MANAGER, ADMIN, SALES, VIEWER

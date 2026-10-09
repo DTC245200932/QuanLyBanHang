@@ -1,9 +1,17 @@
-/* dealers.css — S3-03 Quản lý hồ sơ đại lý
+/* dealers.css — S3-03, S3-07, S3-08 Quản lý hồ sơ và giao dịch đại lý
    Follows the same CSS variable system as dashboard.css */
 
 .main-area {
   min-width: 0;
 }
+
+.status-badge--locked, .dlr-action-btn--lock { color: var(--danger); background: var(--danger-soft); }
+.dlr-lock-reason { display: block; font-size: .75rem; max-width: 24ch; margin-top: 5px; white-space: normal; overflow-wrap: anywhere; }
+.lock-warning-banner { padding: 12px 14px; margin-bottom: 16px; border: 1px solid var(--amber); border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--ink-700); line-height: 1.5; }
+.btn--danger { background: var(--danger); color: var(--white); }
+.dealer-orders-table-wrap { max-width: 100%; overflow-x: auto; }
+.dealer-orders-table-wrap .dlr-table { min-width: 540px; }
+button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
 
 /* ── Page heading ───────────────────────────────────────── */
 
@@ -51,21 +59,28 @@
   height: 16px;
 }
 
-/* ── Toolbar ────────────────────────────────────────────── */
+/* ── Toolbar Card & Filter controls ─────────────────────── */
+
+.dlr-toolbar-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--line-light);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
 
 .dlr-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
 .dlr-search-wrap {
   position: relative;
-  flex: 1;
-  min-width: 200px;
-  max-width: 420px;
+  flex: 1 1 260px;
+  min-width: 220px;
 }
 
 .dlr-search-wrap svg {
@@ -80,45 +95,159 @@
 .dlr-search-wrap input {
   width: 100%;
   height: 40px;
-  padding: 0 12px 0 36px;
+  padding: 0 34px 0 36px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--surface-raised);
+  background: var(--surface);
   font: inherit;
   font-size: 0.875rem;
   color: var(--ink-900);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
   outline: none;
 }
 
 .dlr-search-wrap input:focus {
   border-color: var(--teal);
   box-shadow: 0 0 0 3px var(--teal-soft);
+  background: var(--surface-raised);
+}
+
+.dlr-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--ink-500);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  padding: 0;
+}
+
+.dlr-search-clear:hover {
+  background: var(--line);
+  color: var(--ink-900);
 }
 
 .dlr-filter-group {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
+.dlr-filter-item {
+  min-width: 135px;
+  flex: 1 1 135px;
+}
+
 .dlr-select {
+  width: 100%;
   height: 40px;
-  padding: 0 12px;
+  padding: 0 28px 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--surface-raised);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.84375rem;
   color: var(--ink-900);
   transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .dlr-select:focus {
   border-color: var(--teal);
   box-shadow: 0 0 0 3px var(--teal-soft);
+  background-color: var(--surface-raised);
+}
+
+.dlr-btn-reset {
+  height: 40px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--ink-600);
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+
+.dlr-btn-reset:hover {
+  background: var(--line-light);
+  color: var(--ink-900);
+}
+
+/* Meta status bar & quick chips */
+.dlr-toolbar-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-light);
+  flex-wrap: wrap;
+}
+
+.dlr-meta-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--ink-600);
+}
+
+.dlr-meta-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--teal);
+  flex-shrink: 0;
+}
+
+.dlr-quick-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dlr-chip {
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-600);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dlr-chip:hover {
+  background: var(--line-light);
+  color: var(--ink-900);
+}
+
+.dlr-chip--active {
+  background: var(--teal-deep);
+  border-color: var(--teal-deep);
+  color: #fff;
 }
 
 /* ── Table wrapper ──────────────────────────────────────── */
@@ -205,6 +334,70 @@
   font-size: 0.75rem;
   color: var(--ink-500);
   margin-top: 2px;
+}
+
+.dlr-phone-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--teal-deep);
+  text-decoration: none;
+  margin-top: 3px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(47, 184, 138, 0.1);
+  transition: background 0.15s, color 0.15s;
+  width: fit-content;
+}
+
+.dlr-phone-link:hover {
+  background: rgba(47, 184, 138, 0.22);
+  color: var(--teal-deep);
+  text-decoration: none;
+}
+
+.dlr-phone-link svg {
+  color: var(--teal-deep);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.dlr-phone-muted {
+  font-size: 0.75rem;
+  color: var(--ink-500);
+}
+
+.dlr-address {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--ink-500);
+  margin-top: 3px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dlr-address svg {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  color: var(--ink-500);
+}
+
+/* Mobile helper visibility on desktop */
+.dlr-mobile-status,
+.dlr-mobile-meta-label {
+  display: none;
+}
+
+.dlr-desktop-only {
+  display: inline;
 }
 
 /* Region / owner */
@@ -470,21 +663,137 @@
     gap: 12px;
   }
 
+  .dlr-toolbar-card {
+    padding: 12px;
+  }
+
   .dlr-toolbar {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
 
   .dlr-search-wrap {
     max-width: 100%;
+    min-width: 0;
   }
 
   .dlr-filter-group {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
   }
 
-  .dlr-select {
+  .dlr-filter-item {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .dlr-btn-reset {
+    grid-column: 1 / -1;
+    justify-content: center;
     width: 100%;
+  }
+
+  .dlr-toolbar-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .dlr-quick-chips {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Mobile cards transformation for road salespeople */
+  .dlr-table-wrap {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .dlr-table {
+    display: block;
+    min-width: 0;
+  }
+
+  .dlr-table thead {
+    display: none;
+  }
+
+  .dlr-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dlr-table tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--line-light);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .dlr-table td {
+    padding: 0;
+    border: none;
+  }
+
+  .dlr-mobile-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .dlr-mobile-name-area {
+    margin-top: 2px;
+  }
+
+  .dlr-mobile-name-area .dlr-name {
+    font-size: 1rem;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .dlr-mobile-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+    font-size: 0.8125rem;
+  }
+
+  .dlr-mobile-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .dlr-mobile-meta-label {
+    font-size: 0.6875rem;
+    color: var(--ink-500);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .dlr-mobile-actions-area {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line-light);
   }
 
   .form-grid {
@@ -501,8 +810,7 @@
 }
 
 @media (max-width: 480px) {
-  .dlr-table th,
-  .dlr-table td {
-    padding: 10px 12px;
+  .dlr-filter-group {
+    grid-template-columns: 1fr;
   }
 }

@@ -1,0 +1,397 @@
+{
+  "checkedAt": "2026-10-09 (Asia/Bangkok)",
+  "baseRevision": "3068154946d434af07320706a0076476208a6102",
+  "combinedRevision": "c595e5e00dd7c758556a9eabc6a6a40337f93239",
+  "environment": "MySQL riêng; mọi tên, giá, tài khoản và số điện thoại trong kiểm tra là dữ liệu thử",
+  "cases": [
+    {
+      "name": "frontend_discount_endpoint_exists",
+      "story": "S3-01",
+      "httpStatus": 403,
+      "passed": false,
+      "evidence": {
+        "frontendPath": "/api/discount-policies",
+        "backendPath": "/api/volume-discounts"
+      }
+    },
+    {
+      "name": "frontend_discount_payload_matches_backend",
+      "story": "S3-01",
+      "httpStatus": 400,
+      "passed": false,
+      "evidence": {
+        "frontendFields": [
+          "scope",
+          "targetId",
+          "discountType=PERCENT"
+        ],
+        "backendFields": [
+          "targetType",
+          "productId/categoryId",
+          "tiers[].discountType=PERCENTAGE/FIXED_AMOUNT"
+        ],
+        "message": "Dữ liệu không hợp lệ"
+      }
+    },
+    {
+      "name": "best_discount_between_sku_and_category",
+      "story": "S3-01",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "subtotal": 120000,
+        "discount": 12000.0,
+        "total": 108000.0,
+        "candidateCount": 2
+      }
+    },
+    {
+      "name": "category_discount_aggregates_multiple_skus",
+      "story": "S3-01",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "quantities": [
+          5,
+          5
+        ],
+        "discount": 10000.0
+      }
+    },
+    {
+      "name": "price_history_readable_by_sales_manager",
+      "story": "S3-02",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "history": [
+          {
+            "id": 2,
+            "productId": 9,
+            "oldPrice": 10000.0,
+            "newPrice": 11000.0,
+            "modifiedBy": "sales.manager",
+            "appliedAt": "2026-10-09T22:39:58.070772"
+          }
+        ]
+      }
+    },
+    {
+      "name": "price_history_has_no_delete_api",
+      "story": "S3-02",
+      "httpStatus": 500,
+      "passed": true,
+      "evidence": {
+        "historyPath": "/api/products/9/price-history"
+      }
+    },
+    {
+      "name": "frontend_price_history_api_accessible_to_manager",
+      "story": "S3-02",
+      "httpStatus": 403,
+      "passed": false,
+      "evidence": {
+        "frontendUses": "/api/admin/audit-logs",
+        "backendDedicatedHistoryStatus": 200
+      }
+    },
+    {
+      "name": "dealer_code_unique_case_insensitive",
+      "story": "S3-03",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {
+        "message": "Mã đại lý 'S3-RUN-1516-OWN' đã tồn tại"
+      }
+    },
+    {
+      "name": "dealer_group_selects_effective_price_list",
+      "story": "S3-03",
+      "httpStatus": 201,
+      "passed": true,
+      "evidence": {
+        "dealerGroup": "KHACH_LE",
+        "priceListId": 5,
+        "expectedPriceListId": 5,
+        "unitPrice": 15000.0
+      }
+    },
+    {
+      "name": "dealer_with_transactions_cannot_be_deleted",
+      "story": "S3-03",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {
+        "message": "Đại lý 'Đại lý kiểm thử S3-AUDIT-OWN' (S3-RUN-1516-OWN) đã phát sinh giao dịch không thể xoá, chỉ có thể chuyển sang trạng thái ngừng giao dịch."
+      }
+    },
+    {
+      "name": "delivery_points_response_matches_order_frontend",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "actualShape": "raw array",
+        "frontendExpects": "result.data array",
+        "pointId": 2
+      }
+    },
+    {
+      "name": "delivery_point_write_rejects_viewer",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "role": "VIEWER",
+        "otherDealerId": 6
+      }
+    },
+    {
+      "name": "order_rejects_other_dealer_delivery_point",
+      "story": "S3-04",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {
+        "message": "Điểm giao hàng không thuộc đại lý đã chọn"
+      }
+    },
+    {
+      "name": "dealer_keeps_one_default_delivery_point",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "defaultCount": 0
+      }
+    },
+    {
+      "name": "finance_debt_limit_requires_reason",
+      "story": "S3-05",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {
+        "message": "Dữ liệu không hợp lệ"
+      }
+    },
+    {
+      "name": "debt_limit_stores_amount_days_and_reason",
+      "story": "S3-05",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "debtLimit": 500000,
+        "maxDebtDays": 15,
+        "auditCount": 1
+      }
+    },
+    {
+      "name": "debt_edit_only_accountant_or_manager",
+      "story": "S3-05",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "unexpectedAllowedRole": "ADMIN"
+      }
+    },
+    {
+      "name": "dealer_profile_cannot_bypass_debt_reason_audit",
+      "story": "S3-05",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "submittedWithoutReason": true,
+        "storedDebtLimit": 700000,
+        "storedDays": 40,
+        "debtAuditBefore": 1,
+        "debtAuditAfter": 1
+      }
+    },
+    {
+      "name": "sales_list_forces_own_assigned_user",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "visibleDealerCodes": [
+          "S3-RUN-1516-OWN",
+          "S3-AUDIT-OWN"
+        ]
+      }
+    },
+    {
+      "name": "sales_cannot_read_other_dealer_profile",
+      "story": "S3-06",
+      "httpStatus": 403,
+      "passed": true,
+      "evidence": {
+        "otherDealerId": 6
+      }
+    },
+    {
+      "name": "sales_cannot_read_other_dealer_delivery_points",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "visiblePointCount": 1
+      }
+    },
+    {
+      "name": "sales_cannot_read_other_dealer_order",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "orderId": 3,
+        "dealerIdReturned": 6
+      }
+    },
+    {
+      "name": "bulk_handover_persists_assignment_history",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "transferred": 2,
+        "historyTypes": [
+          "BULK_HANDOVER",
+          "INITIAL_ASSIGNMENT"
+        ]
+      }
+    },
+    {
+      "name": "dealer_lock_requires_reason",
+      "story": "S3-07",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {
+        "message": "Dữ liệu không hợp lệ"
+      }
+    },
+    {
+      "name": "locked_dealer_cannot_create_order",
+      "story": "S3-07",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {
+        "message": "Đại lý 'Đại lý kiểm thử S3-AUDIT-OWN' (S3-RUN-1516-OWN) đã bị khoá giao dịch, không thể tạo đơn hàng mới. Lý do khoá: Khoá kiểm thử công nợ",
+        "inProgressOrderCount": 2
+      }
+    },
+    {
+      "name": "locked_dealer_excluded_from_sales_order_options",
+      "story": "S3-07",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "lockedDealerId": 5
+      }
+    },
+    {
+      "name": "unfinished_order_retains_lock_warning",
+      "story": "S3-07",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "orderCount": 2
+      }
+    },
+    {
+      "name": "pending_order_can_be_approved_after_dealer_lock",
+      "story": "S3-07",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "status": "RECORDED",
+        "warning": "Cảnh báo: Đại lý 'Đại lý kiểm thử S3-AUDIT-OWN' (S3-RUN-1516-OWN) đang bị khoá giao dịch. Lý do: Khoá kiểm thử công nợ. Đơn hàng đang dở dang vẫn được xử lý nhưng cần theo dõi thu hồi công nợ."
+      }
+    },
+    {
+      "name": "dealer_search_phone_and_all_filters",
+      "story": "S3-08",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "codes": [
+          "S3-RUN-1516-OWN",
+          "S3-AUDIT-OWN"
+        ]
+      }
+    },
+    {
+      "name": "frontend_order_total_equals_server_total",
+      "story": "S3-09",
+      "httpStatus": 201,
+      "passed": false,
+      "evidence": {
+        "submittedItemFields": [
+          "productId",
+          "unit",
+          "conversionFactor",
+          "quantity",
+          "unitPrice",
+          "discount"
+        ],
+        "frontendTotal": 527000,
+        "serverSubtotal": 720000.0,
+        "serverDiscount": 48000.0,
+        "serverTotal": 672000.0,
+        "serverUnitPrice": 360000.0,
+        "serverStatus": "RECORDED",
+        "unit": "thùng",
+        "conversionFactor": 24
+      }
+    },
+    {
+      "name": "order_persists_requested_delivery_date",
+      "story": "S3-09",
+      "httpStatus": 201,
+      "passed": false,
+      "evidence": {
+        "submitted": "2026-10-10",
+        "returned": null,
+        "backendDtoHasField": false
+      }
+    },
+    {
+      "name": "order_draft_has_database_api",
+      "story": "S3-09",
+      "httpStatus": 500,
+      "passed": false,
+      "evidence": {
+        "frontendStorage": "sessionStorage: order_draft_v1",
+        "draftApiStatus": 500
+      }
+    },
+    {
+      "name": "dealer_group_cannot_be_overridden_in_order",
+      "story": "S3-03",
+      "httpStatus": 201,
+      "passed": false,
+      "evidence": {
+        "dealerGroup": "KHACH_LE",
+        "submittedGroup": "DAI_LY_CAP_1",
+        "storedGroup": "DAI_LY_CAP_1",
+        "price": 11000.0
+      }
+    },
+    {
+      "name": "ui_submitted_order_amount_matches_confirmation",
+      "story": "S3-09",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "confirmationTotal": 527000,
+        "storedTotal": 672000.0,
+        "storedSubtotal": 720000.0,
+        "storedDiscount": 48000.0,
+        "storedQuantity": 2.0,
+        "storedBaseQuantity": 48.0,
+        "storedPrice": 360000.0,
+        "orderId": 8,
+        "source": "Tạo bằng thao tác trình duyệt, đọc lại từ API",
+        "screenshot": "evidence/sprint3-order-total-gap.jpg"
+      }
+    }
+  ]
+}

@@ -42,15 +42,18 @@ class FinanceControllerTest {
     }
 
     @Test
-    @DisplayName("Cập nhật hạn mức công nợ phải lưu DB và ghi nhật ký giá trị trước/sau")
+    @DisplayName("Cập nhật hạn mức công nợ và số ngày nợ tối đa phải lưu DB và ghi nhật ký kèm lý do (S3-05)")
     void updateDebtLimitWritesAuditLog() {
         Dealer dealer = Dealer.builder()
                 .id(7L)
                 .name("Đại lý Minh Anh")
                 .debtLimit(new BigDecimal("20000000"))
+                .maxDebtDays(30)
                 .build();
         DebtLimitRequest request = new DebtLimitRequest();
         request.setDebtLimit(new BigDecimal("50000000"));
+        request.setMaxDebtDays(45);
+        request.setReason("Tăng hạn mức quý 4");
 
         when(dealerRepository.findById(7L)).thenReturn(Optional.of(dealer));
         when(authentication.getName()).thenReturn("accountant01");
@@ -58,23 +61,50 @@ class FinanceControllerTest {
         ApiResponse response = financeController.updateDebtLimit(7L, request, authentication);
 
         assertEquals(new BigDecimal("50000000"), dealer.getDebtLimit());
+        assertEquals(45, dealer.getMaxDebtDays());
         assertEquals("Đã cập nhật hạn mức công nợ", response.getMessage());
         assertEquals(new BigDecimal("50000000"), ((Map<?, ?>) response.getData()).get("debtLimit"));
+        assertEquals(45, ((Map<?, ?>) response.getData()).get("maxDebtDays"));
+        assertEquals("Tăng hạn mức quý 4", ((Map<?, ?>) response.getData()).get("reason"));
         verify(dealerRepository).save(dealer);
         verify(auditLogService).logAction(
-                "DEBT_LIMIT", "7", "UPDATE", "20000000", "50000000", "accountant01");
+                "DEBT_LIMIT", "7", "UPDATE", "20000000 (30 ngày)", "50000000 (45 ngày)", "Tăng hạn mức quý 4", "accountant01");
     }
 
     @Test
-    @DisplayName("Không tạo nhật ký giả khi hạn mức không thay đổi")
+    @DisplayName("Bắt buộc nhập lý do khi thay đổi hạn mức công nợ (S3-05)")
+    void updateDebtLimitRequiresReason() {
+        Dealer dealer = Dealer.builder()
+                .id(7L)
+                .name("Đại lý Minh Anh")
+                .debtLimit(new BigDecimal("20000000"))
+                .maxDebtDays(30)
+                .build();
+        DebtLimitRequest request = new DebtLimitRequest();
+        request.setDebtLimit(new BigDecimal("50000000"));
+        request.setMaxDebtDays(45);
+        request.setReason("   "); // empty / blank
+
+        when(dealerRepository.findById(7L)).thenReturn(Optional.of(dealer));
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
+                financeController.updateDebtLimit(7L, request, authentication));
+        verify(dealerRepository, never()).save(dealer);
+    }
+
+    @Test
+    @DisplayName("Không tạo nhật ký giả khi hạn mức và số ngày nợ không thay đổi (S3-05)")
     void unchangedDebtLimitDoesNotWriteAuditLog() {
         Dealer dealer = Dealer.builder()
                 .id(7L)
                 .name("Đại lý Minh Anh")
                 .debtLimit(new BigDecimal("50000000.00"))
+                .maxDebtDays(30)
                 .build();
         DebtLimitRequest request = new DebtLimitRequest();
         request.setDebtLimit(new BigDecimal("50000000"));
+        request.setMaxDebtDays(30);
+        request.setReason("Kiểm tra không đổi");
 
         when(dealerRepository.findById(7L)).thenReturn(Optional.of(dealer));
 
@@ -88,6 +118,30 @@ class FinanceControllerTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    @DisplayName("API xem công nợ trả về cả hạn mức tiền và số ngày nợ tối đa (S3-05)")
+    void getDebtReturnsMaxDebtDays() {
+        Dealer dealer = Dealer.builder()
+                .id(1L)
+                .name("Đại lý Cấp 1")
+                .debtLimit(new BigDecimal("100000000"))
+                .maxDebtDays(60)
+                .build();
+        when(dealerRepository.findAll()).thenReturn(java.util.List.of(dealer));
+
+        ApiResponse response = financeController.getDebt();
+        assertEquals(true, response.isSuccess());
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> list = (java.util.List<Map<String, Object>>) response.getData();
+        assertEquals(1, list.size());
+        assertEquals(1L, list.get(0).get("dealerId"));
+        assertEquals("Đại lý Cấp 1", list.get(0).get("customerName"));
+        assertEquals(new BigDecimal("100000000"), list.get(0).get("debtLimit"));
+        assertEquals(60, list.get(0).get("maxDebtDays"));
     }
 }

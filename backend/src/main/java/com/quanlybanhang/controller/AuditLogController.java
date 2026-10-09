@@ -43,6 +43,7 @@ public class AuditLogController {
                 .action(log.getAction())
                 .oldValue(log.getOldValue())
                 .newValue(log.getNewValue())
+                .reason(log.getReason())
                 .username(log.getUsername())
                 .createdAt(log.getCreatedAt())
                 .build());

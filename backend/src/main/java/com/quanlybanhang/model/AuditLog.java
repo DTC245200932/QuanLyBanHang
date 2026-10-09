@@ -31,6 +31,9 @@ public class AuditLog {
     @Column(columnDefinition = "TEXT")
     private String newValue;
 
+    @Column(columnDefinition = "TEXT")
+    private String reason;
+
     @Column(nullable = false, length = 50)
     private String username;
 

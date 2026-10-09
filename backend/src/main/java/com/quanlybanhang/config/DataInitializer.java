@@ -403,6 +403,7 @@ public class DataInitializer implements CommandLineRunner {
                     .address("123 Lê Lợi, Quận 1, TP.HCM")
                     .active(true)
                     .debtLimit(new java.math.BigDecimal("100000000"))
+                    .maxDebtDays(30)
                     .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_1)
                     .handoverRequired(false)
                     .build());
@@ -415,6 +416,7 @@ public class DataInitializer implements CommandLineRunner {
                     .address("456 Hoàng Văn Thụ, Tân Bình, TP.HCM")
                     .active(true)
                     .debtLimit(new java.math.BigDecimal("50000000"))
+                    .maxDebtDays(15)
                     .customerGroup(com.quanlybanhang.model.CustomerGroup.DAI_LY_CAP_2)
                     .handoverRequired(false)
                     .build());

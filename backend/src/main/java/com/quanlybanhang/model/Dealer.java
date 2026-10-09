@@ -52,6 +52,33 @@ public class Dealer {
     @Builder.Default
     private Boolean active = true;
 
+    /**
+     * Trạng thái khoá giao dịch (S3-07):
+     * true = Khoá giao dịch với đại lý (dừng bán ngay do có dấu hiệu mất khả năng thanh toán)
+     * false = Mở giao dịch bình thường
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean locked = false;
+
+    /**
+     * Lý do khoá giao dịch (S3-07) - Bắt buộc nhập khi khoá.
+     */
+    @Column(name = "lock_reason", length = 500)
+    private String lockReason;
+
+    /**
+     * Thời điểm khoá giao dịch (S3-07).
+     */
+    @Column(name = "locked_at")
+    private LocalDateTime lockedAt;
+
+    /**
+     * Người thực hiện khoá giao dịch (S3-07).
+     */
+    @Column(name = "locked_by", length = 100)
+    private String lockedBy;
+
     @Column(nullable = false)
     @Builder.Default
     private Boolean handoverRequired = false;
@@ -101,6 +128,9 @@ public class Dealer {
         }
         if (customerGroup == null) {
             customerGroup = CustomerGroup.DAI_LY_CAP_1;
+        }
+        if (locked == null) {
+            locked = false;
         }
     }
 

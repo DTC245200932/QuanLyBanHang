@@ -41,6 +41,7 @@ public class DealerServiceImpl implements DealerService {
             Long territoryId,
             Long assignedUserId,
             Boolean active,
+            Boolean locked,
             Pageable pageable) {
 
         Long effectiveAssignedUserId = assignedUserId;
@@ -58,6 +59,7 @@ public class DealerServiceImpl implements DealerService {
                 territoryId,
                 effectiveAssignedUserId,
                 active,
+                locked,
                 pageable);
 
         return page.map(this::mapToResponse);
@@ -70,11 +72,13 @@ public class DealerServiceImpl implements DealerService {
             User currentUser = getCurrentUser();
             if (currentUser != null) {
                 return dealerRepository.findByAssignedUserIdAndActiveTrueOrderByNameAsc(currentUser.getId()).stream()
+                        .filter(d -> !Boolean.TRUE.equals(d.getLocked()))
                         .map(this::mapToResponse)
                         .toList();
             }
         }
         return dealerRepository.findByActiveTrueOrderByNameAsc().stream()
+                .filter(d -> !Boolean.TRUE.equals(d.getLocked()))
                 .map(this::mapToResponse)
                 .toList();
     }
@@ -232,6 +236,76 @@ public class DealerServiceImpl implements DealerService {
                 currentUsername);
 
         return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public DealerResponse lockDealer(Long id, String reason, String currentUsername) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Bắt buộc nhập lý do khoá");
+        }
+        String normalizedReason = reason.trim();
+        if (normalizedReason.length() > 500) {
+            throw new IllegalArgumentException("Lý do khoá tối đa 500 ký tự");
+        }
+
+        Dealer dealer = dealerRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + id));
+
+        dealer.setLocked(true);
+        dealer.setLockReason(normalizedReason);
+        dealer.setLockedAt(java.time.LocalDateTime.now());
+        dealer.setLockedBy(currentUsername != null ? currentUsername : "system");
+
+        Dealer saved = dealerRepository.save(dealer);
+        auditLogService.logAction(
+                "DEALER",
+                saved.getId().toString(),
+                "LOCK_DEALER",
+                null,
+                "Khoá giao dịch đại lý: " + saved.getCode() + ". Lý do: " + normalizedReason,
+                currentUsername != null ? currentUsername : "system");
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public DealerResponse unlockDealer(Long id, String currentUsername) {
+        Dealer dealer = dealerRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + id));
+
+        String oldReason = dealer.getLockReason();
+        dealer.setLocked(false);
+        dealer.setLockReason(null);
+        dealer.setLockedAt(null);
+        dealer.setLockedBy(null);
+
+        Dealer saved = dealerRepository.save(dealer);
+        auditLogService.logAction(
+                "DEALER",
+                saved.getId().toString(),
+                "UNLOCK_DEALER",
+                oldReason,
+                "Mở khoá giao dịch cho đại lý: " + saved.getCode(),
+                currentUsername != null ? currentUsername : "system");
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getInProgressOrders(Long dealerId) {
+        if (isSalesOnlyUser()) {
+            getDealerById(dealerId);
+        } else if (!dealerRepository.existsById(dealerId)) {
+            throw new IllegalArgumentException("Không tìm thấy đại lý với ID: " + dealerId);
+        }
+        return orderRepository.findByDealerIdAndStatusNotInOrderByCreatedAtDesc(
+                        dealerId, List.of("CANCELLED", "REJECTED"))
+                .stream()
+                .map(this::mapOrderToResponse)
+                .toList();
     }
 
     @Override
@@ -540,6 +614,8 @@ public class DealerServiceImpl implements DealerService {
 
     private DealerResponse mapToResponse(Dealer dealer) {
         boolean hasTransactions = orderRepository.existsByDealerId(dealer.getId());
+        long inProgressOrderCount = orderRepository.countByDealerIdAndStatusNotIn(
+                dealer.getId(), List.of("CANCELLED", "REJECTED"));
 
         return DealerResponse.builder()
                 .id(dealer.getId())
@@ -557,12 +633,74 @@ public class DealerServiceImpl implements DealerService {
                 .active(dealer.getActive())
                 .handoverRequired(dealer.getHandoverRequired())
                 .debtLimit(dealer.getDebtLimit())
+                .locked(dealer.getLocked())
+                .lockReason(dealer.getLockReason())
+                .lockedAt(dealer.getLockedAt())
+                .lockedBy(dealer.getLockedBy())
+                .inProgressOrderCount(inProgressOrderCount)
                 .phone(dealer.getPhone())
                 .email(dealer.getEmail())
                 .address(dealer.getAddress())
                 .hasTransactions(hasTransactions)
                 .createdAt(dealer.getCreatedAt())
                 .updatedAt(dealer.getUpdatedAt())
+                .build();
+    }
+
+    private OrderResponse mapOrderToResponse(Order order) {
+        List<OrderItemResponse> items = order.getItems() != null
+                ? order.getItems().stream().map(this::mapOrderItemToResponse).toList()
+                : java.util.Collections.emptyList();
+
+        Dealer dealer = order.getDealer();
+        boolean dealerLocked = dealer != null && Boolean.TRUE.equals(dealer.getLocked());
+        String dealerLockWarning = dealerLocked
+                ? String.format("Cảnh báo: Đại lý '%s' (%s) đang bị khoá giao dịch. Lý do: %s. Đơn hàng đang dở dang vẫn được xử lý nhưng cần theo dõi thu hồi công nợ.",
+                        dealer.getName(), dealer.getCode(), dealer.getLockReason() != null ? dealer.getLockReason() : "Không nêu rõ")
+                : null;
+
+        return OrderResponse.builder()
+                .id(order.getId())
+                .orderCode(order.getOrderCode())
+                .customerName(order.getCustomerName())
+                .customerGroup(order.getCustomerGroup())
+                .dealerId(order.getDealer() != null ? order.getDealer().getId() : null)
+                .deliveryPointId(order.getDeliveryPoint() != null ? order.getDeliveryPoint().getId() : null)
+                .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
+                .priceListCode(order.getPriceList() != null ? order.getPriceList().getCode() : null)
+                .status(order.getStatus())
+                .requiresApproval(order.getRequiresApproval())
+                .approvalReason(order.getApprovalReason())
+                .approvedBy(order.getApprovedBy())
+                .approvedAt(order.getApprovedAt())
+                .totalAmount(order.getTotalAmount())
+                .note(order.getNote())
+                .createdBy(order.getCreatedBy())
+                .createdAt(order.getCreatedAt())
+                .recordedAt(order.getRecordedAt())
+                .items(items)
+                .dealerLocked(dealerLocked)
+                .dealerLockWarning(dealerLockWarning)
+                .warning(dealerLockWarning)
+                .build();
+    }
+
+    private OrderItemResponse mapOrderItemToResponse(OrderItem item) {
+        return OrderItemResponse.builder()
+                .id(item.getId())
+                .productId(item.getProduct() != null ? item.getProduct().getId() : null)
+                .productCode(item.getProduct() != null ? item.getProduct().getCode() : null)
+                .productName(item.getProduct() != null ? item.getProduct().getName() : null)
+                .unit(item.getUnit())
+                .quantity(item.getQuantity())
+                .conversionFactor(item.getConversionFactor())
+                .baseUnit(item.getBaseUnit())
+                .baseQuantity(item.getBaseQuantity())
+                .price(item.getPrice())
+                .floorPrice(item.getFloorPrice())
+                .belowFloorPrice(item.getBelowFloorPrice())
+                .totalAmount(item.getTotalAmount())
+                .note(item.getNote())
                 .build();
     }
 

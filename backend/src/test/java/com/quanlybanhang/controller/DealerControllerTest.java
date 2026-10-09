@@ -70,7 +70,7 @@ class DealerControllerTest {
     @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES", "VIEWER"})
     @DisplayName("Các vai trò hợp lệ được phép xem danh sách đại lý (200 OK)")
     void allowedRolesCanReadDealers(String role) throws Exception {
-        when(dealerService.getAllDealers(any(), any(), any(), any(), any(), any())).thenReturn(
+        when(dealerService.getAllDealers(any(), any(), any(), any(), any(), any(), any())).thenReturn(
                 new PageImpl<>(List.of(DealerResponse.builder()
                         .id(1L)
                         .code("DL001")
@@ -218,6 +218,113 @@ class DealerControllerTest {
         mvc.perform(get("/api/dealers/options").with(user("accountant").roles("ACCOUNTANT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.customerGroups[0].value").value("DAI_LY_CAP_1"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN"})
+    @DisplayName("Kế toán công nợ, Quản lý KD và Admin được phép khoá giao dịch đại lý kèm cảnh báo đơn dở (S3-07)")
+    void allowedRolesCanLockDealer(String role) throws Exception {
+        DealerResponse lockedDealer = DealerResponse.builder()
+                .id(1L)
+                .code("DL001")
+                .name("Đại lý Minh Phát")
+                .locked(true)
+                .lockReason("Mất khả năng thanh toán")
+                .inProgressOrderCount(3L)
+                .build();
+
+        when(dealerService.lockDealer(eq(1L), eq("Mất khả năng thanh toán"), any())).thenReturn(lockedDealer);
+
+        mvc.perform(post("/api/dealers/1/lock").with(user("accountant").roles(role))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                          "reason": "Mất khả năng thanh toán"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.locked").value(true))
+                .andExpect(jsonPath("$.data.lockReason").value("Mất khả năng thanh toán"))
+                .andExpect(jsonPath("$.message").value(
+                        "Đã khoá giao dịch với đại lý 'Đại lý Minh Phát'. Cảnh báo: Đại lý hiện có 3 đơn hàng đang dở dang cần theo dõi xử lý."));
+    }
+
+    @Test
+    @DisplayName("Khoá giao dịch đại lý bắt buộc phải nhập lý do (S3-07)")
+    void lockDealerRequiresReason() throws Exception {
+        mvc.perform(post("/api/dealers/1/lock").with(user("accountant").roles("ACCOUNTANT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                          "reason": ""
+                        }
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data.reason").value("Bắt buộc nhập lý do khoá"));
+
+        verify(dealerService, never()).lockDealer(any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SALES", "VIEWER", "WAREHOUSE_STAFF", "WAREHOUSE_MANAGER"})
+    @DisplayName("Các vai trò không đủ quyền bị chặn khi khoá hoặc mở khoá đại lý (403 Forbidden - S3-07)")
+    void unauthorizedRolesCannotLockOrUnlockDealer(String role) throws Exception {
+        mvc.perform(post("/api/dealers/1/lock").with(user("user").roles(role))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                          "reason": "Test lý do"
+                        }
+                        """))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/dealers/1/unlock").with(user("user").roles(role)))
+                .andExpect(status().isForbidden());
+
+        verify(dealerService, never()).lockDealer(any(), any(), any());
+        verify(dealerService, never()).unlockDealer(any(), any());
+    }
+
+    @Test
+    @DisplayName("Kế toán công nợ mở khoá giao dịch cho đại lý thành công (S3-07)")
+    void unlockDealerSuccess() throws Exception {
+        DealerResponse unlockedDealer = DealerResponse.builder()
+                .id(1L)
+                .code("DL001")
+                .name("Đại lý Minh Phát")
+                .locked(false)
+                .lockReason(null)
+                .build();
+
+        when(dealerService.unlockDealer(eq(1L), any())).thenReturn(unlockedDealer);
+
+        mvc.perform(post("/api/dealers/1/unlock").with(user("accountant").roles("ACCOUNTANT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.locked").value(false))
+                .andExpect(jsonPath("$.message").value("Đã mở khoá giao dịch cho đại lý 'Đại lý Minh Phát'"));
+    }
+
+    @Test
+    @DisplayName("Xem danh sách đơn hàng đang dở dang của đại lý (S3-07)")
+    void getInProgressOrdersSuccess() throws Exception {
+        when(dealerService.getInProgressOrders(1L)).thenReturn(List.of(
+                com.quanlybanhang.dto.response.OrderResponse.builder()
+                        .id(10L)
+                        .orderCode("DH-100")
+                        .status("PENDING_APPROVAL")
+                        .dealerLocked(true)
+                        .dealerLockWarning("Cảnh báo: Đại lý đang bị khoá giao dịch")
+                        .build()
+        ));
+
+        mvc.perform(get("/api/dealers/1/in-progress-orders").with(user("accountant").roles("ACCOUNTANT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].orderCode").value("DH-100"))
+                .andExpect(jsonPath("$.data[0].dealerLocked").value(true));
     }
 
     // ═════════════════════════════════════════════════════════════════════

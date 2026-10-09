@@ -38,6 +38,7 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
     List<Dealer> findByAssignedUserIdAndTerritoryId(Long userId, Long territoryId);
 
     List<Dealer> findByAssignedUserIdAndIdIn(Long userId, List<Long> ids);
+    List<Dealer> findByActiveTrueAndLockedFalseOrderByNameAsc();
 
     List<Dealer> findByCustomerGroupAndActiveTrue(CustomerGroup customerGroup);
 
@@ -46,12 +47,24 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
            "AND (:customerGroup IS NULL OR d.customerGroup = :customerGroup) " +
            "AND (:territoryId IS NULL OR d.territory.id = :territoryId) " +
            "AND (:assignedUserId IS NULL OR d.assignedUser.id = :assignedUserId) " +
-           "AND (:active IS NULL OR d.active = :active)")
+           "AND (:active IS NULL OR d.active = :active) " +
+           "AND (:locked IS NULL OR d.locked = :locked)")
     Page<Dealer> searchDealers(
             @Param("keyword") String keyword,
             @Param("customerGroup") CustomerGroup customerGroup,
             @Param("territoryId") Long territoryId,
             @Param("assignedUserId") Long assignedUserId,
             @Param("active") Boolean active,
+            @Param("locked") Boolean locked,
             Pageable pageable);
+
+    default Page<Dealer> searchDealers(
+            String keyword,
+            CustomerGroup customerGroup,
+            Long territoryId,
+            Long assignedUserId,
+            Boolean active,
+            Pageable pageable) {
+        return searchDealers(keyword, customerGroup, territoryId, assignedUserId, active, null, pageable);
+    }
 }

@@ -48,6 +48,13 @@ const MenuConfig = (() => {
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_VIEWER"],
     },
     {
+      id: "create-order",
+      label: "Tạo đơn hàng",
+      icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/><line x1="6" y1="10" x2="10" y2="10"/>',
+      href: "/create-order",
+      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_SALES", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF"],
+    },
+    {
       id: "price-lists",
       label: "Bảng giá",
       icon: '<path d="M20 12V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14l4-3 4 3 4-3 4 3v-7"/><path d="M8 8h8M8 12h5"/>',

@@ -3,6 +3,7 @@ package com.quanlybanhang.controller;
 import com.quanlybanhang.dto.request.AssignDealerRequest;
 import com.quanlybanhang.dto.request.BulkHandoverRequest;
 import com.quanlybanhang.dto.request.DealerRequest;
+import com.quanlybanhang.dto.request.LockDealerRequest;
 import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.CustomerGroup;
 import com.quanlybanhang.service.DealerService;
@@ -28,6 +29,7 @@ import java.util.List;
  * - Thêm, sửa, đổi trạng thái, xóa: ACCOUNTANT, SALES_MANAGER, ADMIN
  * - Phân công phụ trách, bàn giao hàng loạt: SALES_MANAGER, ADMIN
  * - Tra cứu lịch sử bàn giao: SALES_MANAGER, ADMIN, ACCOUNTANT, VIEWER
+ * - Khoá/mở giao dịch: ACCOUNTANT, SALES_MANAGER, ADMIN
  */
 @RestController
 @RequestMapping("/api/dealers")
@@ -44,6 +46,7 @@ public class DealerController {
             @RequestParam(required = false) Long territoryId,
             @RequestParam(required = false) Long assignedUserId,
             @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) Boolean locked,
             @RequestParam(required = false, defaultValue = "0") int page,
             @RequestParam(required = false, defaultValue = "10") int size) {
 
@@ -57,6 +60,7 @@ public class DealerController {
                 territoryId,
                 assignedUserId,
                 active,
+                locked,
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
 
         return ApiResponse.success("Lấy danh sách đại lý thành công", dealers);
@@ -125,6 +129,48 @@ public class DealerController {
         String username = principal != null ? principal.getName() : "system";
         dealerService.deleteDealer(id, username);
         return ApiResponse.success("Xóa hồ sơ đại lý thành công (nếu chưa có giao dịch)", null);
+    }
+
+    /**
+     * Khoá giao dịch với một đại lý (S3-07).
+     * Bắt buộc có lý do khoá. Cảnh báo nếu có đơn hàng đang dở dang.
+     */
+    @RequestMapping(value = "/{id}/lock", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    public ApiResponse lockDealer(
+            @PathVariable Long id,
+            @Valid @RequestBody LockDealerRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        DealerResponse dealer = dealerService.lockDealer(id, request.getReason(), username);
+        String message = dealer.getInProgressOrderCount() != null && dealer.getInProgressOrderCount() > 0
+                ? String.format("Đã khoá giao dịch với đại lý '%s'. Cảnh báo: Đại lý hiện có %d đơn hàng đang dở dang cần theo dõi xử lý.",
+                        dealer.getName(), dealer.getInProgressOrderCount())
+                : String.format("Đã khoá giao dịch với đại lý '%s' thành công", dealer.getName());
+        return ApiResponse.success(message, dealer);
+    }
+
+    /**
+     * Mở khoá giao dịch với một đại lý (S3-07).
+     */
+    @RequestMapping(value = "/{id}/unlock", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    public ApiResponse unlockDealer(
+            @PathVariable Long id,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        DealerResponse dealer = dealerService.unlockDealer(id, username);
+        return ApiResponse.success(String.format("Đã mở khoá giao dịch cho đại lý '%s'", dealer.getName()), dealer);
+    }
+
+    /**
+     * Xem danh sách các đơn hàng đang dở dang của một đại lý (S3-07).
+     */
+    @GetMapping("/{id}/in-progress-orders")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
+    public ApiResponse getInProgressOrders(@PathVariable Long id) {
+        List<com.quanlybanhang.dto.response.OrderResponse> orders = dealerService.getInProgressOrders(id);
+        return ApiResponse.success("Lấy danh sách đơn hàng đang dở dang của đại lý thành công", orders);
     }
 
     // ── Phân công & Chuyển giao địa bàn (S3-06) ──

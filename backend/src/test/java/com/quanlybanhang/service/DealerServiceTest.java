@@ -267,7 +267,7 @@ class DealerServiceTest {
         Dealer d1 = Dealer.builder().id(1L).code("DL001").name("Đại lý 1").customerGroup(CustomerGroup.DAI_LY_CAP_1).active(true).build();
         Page<Dealer> page = new PageImpl<>(List.of(d1));
 
-        when(dealerRepository.searchDealers(eq("DL"), eq(CustomerGroup.DAI_LY_CAP_1), isNull(), isNull(), eq(true), any()))
+        when(dealerRepository.searchDealers(eq("DL"), eq(CustomerGroup.DAI_LY_CAP_1), isNull(), isNull(), eq(true), isNull(), any()))
                 .thenReturn(page);
         when(orderRepository.existsByDealerId(1L)).thenReturn(false);
 
@@ -303,6 +303,110 @@ class DealerServiceTest {
         // Chỉ lấy user active và có vai trò sales
         assertThat(options.getAssignedUsers()).hasSize(1);
         assertThat(options.getAssignedUsers().get(0).username()).isEqualTo("sales1");
+    }
+
+    @Test
+    @DisplayName("Khoá giao dịch đại lý thành công: cập nhật cờ locked, lý do, và ghi nhật ký (S3-07)")
+    void lockDealer_success() {
+        Dealer existing = Dealer.builder()
+                .id(1L)
+                .code("DL001")
+                .name("Đại lý Minh Phát")
+                .locked(false)
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.countByDealerIdAndStatusNotIn(eq(1L), any())).thenReturn(2L);
+
+        DealerResponse res = dealerService.lockDealer(1L, "Nợ quá hạn 90 ngày, có dấu hiệu mất khả năng thanh toán", "accountant01");
+
+        assertThat(res.getLocked()).isTrue();
+        assertThat(res.getLockReason()).isEqualTo("Nợ quá hạn 90 ngày, có dấu hiệu mất khả năng thanh toán");
+        assertThat(res.getLockedBy()).isEqualTo("accountant01");
+        assertThat(res.getLockedAt()).isNotNull();
+        assertThat(res.getInProgressOrderCount()).isEqualTo(2L);
+
+        verify(auditLogService).logAction(eq("DEALER"), eq("1"), eq("LOCK_DEALER"), isNull(),
+                contains("Khoá giao dịch đại lý: DL001"), eq("accountant01"));
+    }
+
+    @Test
+    @DisplayName("Khoá giao dịch không có lý do hoặc để trắng phải ném ngoại lệ (S3-07)")
+    void lockDealer_withoutReason_throwsException() {
+        assertThatThrownBy(() -> dealerService.lockDealer(1L, null, "accountant01"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Bắt buộc nhập lý do khoá");
+
+        assertThatThrownBy(() -> dealerService.lockDealer(1L, "   ", "accountant01"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Bắt buộc nhập lý do khoá");
+
+        verify(dealerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Mở khoá giao dịch cho đại lý: reset trạng thái khoá và ghi nhật ký (S3-07)")
+    void unlockDealer_success() {
+        Dealer existing = Dealer.builder()
+                .id(1L)
+                .code("DL001")
+                .name("Đại lý Minh Phát")
+                .locked(true)
+                .lockReason("Mất khả năng thanh toán")
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.countByDealerIdAndStatusNotIn(eq(1L), any())).thenReturn(0L);
+
+        DealerResponse res = dealerService.unlockDealer(1L, "accountant01");
+
+        assertThat(res.getLocked()).isFalse();
+        assertThat(res.getLockReason()).isNull();
+        assertThat(res.getLockedAt()).isNull();
+        assertThat(res.getLockedBy()).isNull();
+
+        verify(auditLogService).logAction(eq("DEALER"), eq("1"), eq("UNLOCK_DEALER"), eq("Mất khả năng thanh toán"),
+                contains("Mở khoá giao dịch cho đại lý: DL001"), eq("accountant01"));
+    }
+
+    @Test
+    @DisplayName("Danh sách đại lý đang hoạt động (getActiveDealers) loại trừ các đại lý đã bị khoá giao dịch (S3-07)")
+    void getActiveDealers_excludesLockedDealers() {
+        Dealer d1 = Dealer.builder().id(1L).code("DL001").name("Đại lý Mở").active(true).locked(false).build();
+        Dealer d2 = Dealer.builder().id(2L).code("DL002").name("Đại lý Khoá").active(true).locked(true).build();
+
+        when(dealerRepository.findByActiveTrueOrderByNameAsc()).thenReturn(List.of(d1, d2));
+        when(orderRepository.countByDealerIdAndStatusNotIn(eq(1L), any())).thenReturn(0L);
+
+        List<DealerResponse> activeDealers = dealerService.getActiveDealers();
+
+        assertThat(activeDealers).hasSize(1);
+        assertThat(activeDealers.get(0).getCode()).isEqualTo("DL001");
+    }
+
+    @Test
+    @DisplayName("Lấy danh sách đơn hàng đang dở dang của đại lý (S3-07)")
+    void getInProgressOrders_success() {
+        when(dealerRepository.existsById(1L)).thenReturn(true);
+        com.quanlybanhang.model.Order pendingOrder = com.quanlybanhang.model.Order.builder()
+                .id(100L)
+                .orderCode("DH-100")
+                .status("PENDING_APPROVAL")
+                .dealer(Dealer.builder().id(1L).code("DL001").name("Đại lý Minh Phát").locked(true).lockReason("Nợ xấu").build())
+                .items(new java.util.ArrayList<>())
+                .build();
+
+        when(orderRepository.findByDealerIdAndStatusNotInOrderByCreatedAtDesc(eq(1L), any()))
+                .thenReturn(List.of(pendingOrder));
+
+        List<com.quanlybanhang.dto.response.OrderResponse> inProgress = dealerService.getInProgressOrders(1L);
+
+        assertThat(inProgress).hasSize(1);
+        assertThat(inProgress.get(0).getOrderCode()).isEqualTo("DH-100");
+        assertThat(inProgress.get(0).getDealerLocked()).isTrue();
+        assertThat(inProgress.get(0).getDealerLockWarning()).contains("Cảnh báo: Đại lý 'Đại lý Minh Phát'");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -431,13 +535,13 @@ class DealerServiceTest {
         );
 
         when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(salesUser));
-        when(dealerRepository.searchDealers(isNull(), isNull(), isNull(), eq(15L), isNull(), any()))
+        when(dealerRepository.searchDealers(isNull(), isNull(), isNull(), eq(15L), isNull(), isNull(), any()))
                 .thenReturn(new PageImpl<>(List.of(Dealer.builder().id(1L).code("DL01").name("Đại lý").build())));
 
         Page<DealerResponse> res = dealerService.getAllDealers(null, null, null, 999L, null, PageRequest.of(0, 10));
 
         // Phải bị ép gán sang 15L (ID của sales01) thay vì 999L do client truyền
-        verify(dealerRepository).searchDealers(isNull(), isNull(), isNull(), eq(15L), isNull(), any());
+        verify(dealerRepository).searchDealers(isNull(), isNull(), isNull(), eq(15L), isNull(), isNull(), any());
         assertThat(res.getTotalElements()).isEqualTo(1);
     }
 
@@ -464,6 +568,24 @@ class DealerServiceTest {
         assertThatThrownBy(() -> dealerService.getDealerById(200L))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("Bạn chỉ có quyền xem đại lý do mình phụ trách");
+
+        assertThatThrownBy(() -> dealerService.getInProgressOrders(200L))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(orderRepository, never()).findByDealerIdAndStatusNotInOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("[S3-06 & S3-07] Danh sách đặt hàng của sales loại bỏ đại lý đang khoá")
+    void getActiveDealers_asSalesUser_excludesLockedDealers() {
+        User salesUser = buildSalesUser(15L, "sales01", "Nhân viên 01");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("sales01", "pass", List.of(new SimpleGrantedAuthority("ROLE_SALES"))));
+        Dealer open = Dealer.builder().id(1L).code("DL01").name("Đại lý đang mở").assignedUser(salesUser).build();
+        Dealer locked = Dealer.builder().id(2L).code("DL02").name("Đại lý khoá").assignedUser(salesUser).locked(true).build();
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(salesUser));
+        when(dealerRepository.findByAssignedUserIdAndActiveTrueOrderByNameAsc(15L)).thenReturn(List.of(open, locked));
+
+        assertThat(dealerService.getActiveDealers()).extracting(DealerResponse::getId).containsExactly(1L);
     }
 
     @Test

@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -133,5 +134,71 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.orderCode").value("DH-001"))
                 .andExpect(jsonPath("$.data.items[0].unit").value("thùng"))
                 .andExpect(jsonPath("$.data.items[0].baseQuantity").value(48.0));
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = "SALES")
+    @DisplayName("Tạo đơn hàng cho đại lý bị khoá giao dịch bị từ chối 400 Bad Request (S3-07)")
+    void createOrder_LockedDealer_Returns400() throws Exception {
+        OrderRequest req = OrderRequest.builder()
+                .dealerId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .quantity(new BigDecimal("2"))
+                        .build()))
+                .build();
+
+        when(orderService.createOrder(any(), any()))
+                .thenThrow(new com.quanlybanhang.exception.DealerLockedException("DL001", "Đại lý Minh Phát", "Mất khả năng thanh toán"));
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value(
+                        "Đại lý 'Đại lý Minh Phát' (DL001) đã bị khoá giao dịch, không thể tạo đơn hàng mới. Lý do khoá: Mất khả năng thanh toán"));
+    }
+
+    @Test
+    @WithMockUser(username = "manager_user", roles = "SALES_MANAGER")
+    @DisplayName("Phê duyệt đơn hàng của đại lý bị khoá vẫn xử lý tiếp được kèm cảnh báo (S3-07)")
+    void approveOrder_LockedDealer_Returns200WithWarning() throws Exception {
+        OrderResponse resp = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .status("RECORDED")
+                .dealerLocked(true)
+                .dealerLockWarning("Cảnh báo: Đại lý 'Đại lý Minh Phát' đang bị khoá giao dịch")
+                .build();
+
+        when(orderService.approveOrder(eq(1L), any())).thenReturn(resp);
+
+        mockMvc.perform(put("/api/orders/1/approve"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Phê duyệt đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"))
+                .andExpect(jsonPath("$.data.dealerLocked").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = "SALES")
+    @DisplayName("Huỷ đơn hàng của đại lý bị khoá vẫn xử lý tiếp được kèm cảnh báo (S3-07)")
+    void cancelOrder_LockedDealer_Returns200WithWarning() throws Exception {
+        OrderResponse resp = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .status("CANCELLED")
+                .dealerLocked(true)
+                .dealerLockWarning("Cảnh báo: Đại lý 'Đại lý Minh Phát' đang bị khoá giao dịch")
+                .build();
+
+        when(orderService.cancelOrder(eq(1L), any())).thenReturn(resp);
+
+        mockMvc.perform(put("/api/orders/1/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Hủy đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"))
+                .andExpect(jsonPath("$.data.dealerLocked").value(true));
     }
 }

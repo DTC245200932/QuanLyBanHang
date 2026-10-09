@@ -53,22 +53,30 @@ public class OrderController {
     public ApiResponse cancelOrder(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderResponse response = orderService.cancelOrder(id, username);
-        return ApiResponse.success("Hủy đơn hàng thành công", response);
+        String message = Boolean.TRUE.equals(response.getDealerLocked())
+                ? "Hủy đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
+                : "Hủy đơn hàng thành công";
+        return ApiResponse.success(message, response);
     }
 
     /**
      * Quản lý kinh doanh phê duyệt đơn hàng bán dưới giá sàn (S2-10).
+     * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
     public ApiResponse approveOrder(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderResponse response = orderService.approveOrder(id, username);
-        return ApiResponse.success("Phê duyệt đơn hàng thành công", response);
+        String message = Boolean.TRUE.equals(response.getDealerLocked())
+                ? "Phê duyệt đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
+                : "Phê duyệt đơn hàng thành công";
+        return ApiResponse.success(message, response);
     }
 
     /**
      * Quản lý kinh doanh từ chối đơn hàng bán dưới giá sàn (S2-10).
+     * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/reject")
     @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
@@ -78,6 +86,9 @@ public class OrderController {
             Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderResponse response = orderService.rejectOrder(id, reason, username);
-        return ApiResponse.success("Từ chối đơn hàng thành công", response);
+        String message = Boolean.TRUE.equals(response.getDealerLocked())
+                ? "Từ chối đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
+                : "Từ chối đơn hàng thành công";
+        return ApiResponse.success(message, response);
     }
 }

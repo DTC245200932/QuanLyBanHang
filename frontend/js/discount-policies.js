@@ -6,11 +6,11 @@
  *  - Chiết khấu tính theo phần trăm (%) hoặc số tiền cố định (đ) trên đơn vị.
  *  - Nhiều chính sách cùng áp dụng → hệ thống lấy bậc có lợi nhất cho khách.
  *
- * API (sẽ có ở Sprint 3 backend):
- *  GET    /discount-policies
- *  POST   /discount-policies
- *  PUT    /discount-policies/{id}
- *  DELETE /discount-policies/{id}
+ * API:
+ *  GET    /volume-discounts
+ *  POST   /volume-discounts
+ *  PUT    /volume-discounts/{id}
+ *  DELETE /volume-discounts/{id}
  *  GET    /products          (dùng lại, lấy danh sách SKU)
  *  GET    /categories        (dùng lại, lấy nhóm hàng)
  */
@@ -58,9 +58,44 @@
     expired: 'Đã hết hiệu lực',
     inactive: 'Ngừng áp dụng',
   };
-  const SCOPE_LABELS = { SKU: 'SKU cụ thể', CATEGORY: 'Nhóm hàng' };
-  const TYPE_LABELS  = { PERCENT: 'Phần trăm (%)', FIXED: 'Số tiền cố định (đ)' };
+  const SCOPE_LABELS = { PRODUCT: 'SKU cụ thể', CATEGORY: 'Nhóm hàng' };
+  const TYPE_LABELS  = { PERCENTAGE: 'Phần trăm (%)', FIXED_AMOUNT: 'Số tiền cố định (đ)' };
   const CG_LABELS    = { DAI_LY_CAP_1: 'Đại lý cấp 1', DAI_LY_CAP_2: 'Đại lý cấp 2', KHACH_LE: 'Khách lẻ' };
+
+  function normalizeTargetType(value) {
+    return value === 'SKU' ? 'PRODUCT' : value;
+  }
+
+  function normalizeDiscountType(value) {
+    if (value === 'PERCENT') return 'PERCENTAGE';
+    if (value === 'FIXED') return 'FIXED_AMOUNT';
+    return value;
+  }
+
+  function normalizePolicy(policy) {
+    const targetType = normalizeTargetType(policy.targetType || policy.scope);
+    const tiers = Array.isArray(policy.tiers)
+      ? policy.tiers.map((tier, index) => ({
+        ...tier,
+        discountType: normalizeDiscountType(tier.discountType),
+        tierOrder: tier.tierOrder ?? index + 1,
+      }))
+      : [];
+    const discountType = normalizeDiscountType(policy.discountType || tiers[0]?.discountType);
+    const targetId = targetType === 'CATEGORY' ? policy.categoryId : policy.productId;
+    const targetName = targetType === 'CATEGORY' ? policy.categoryName : policy.productName;
+
+    return {
+      ...policy,
+      scope: targetType,
+      targetType,
+      targetId,
+      targetName: targetName || policy.targetName || '',
+      note: policy.description || '',
+      discountType,
+      tiers,
+    };
+  }
 
   function policyStatus(p) {
     if (p.active === false) return 'inactive';
@@ -122,8 +157,8 @@
     state.loadError = '';
     renderTable();
     try {
-      const body = await apiFetch('/discount-policies');
-      state.policies = Array.isArray(body.data) ? body.data : [];
+      const body = await apiFetch('/volume-discounts');
+      state.policies = Array.isArray(body.data) ? body.data.map(normalizePolicy) : [];
     } catch (err) {
       state.policies = [];
       state.loadError = err.message || 'Không tải được chính sách chiết khấu.';
@@ -138,7 +173,7 @@
   function updateOverview() {
     $('disc-total-count').textContent  = state.policies.length;
     $('disc-active-count').textContent = state.policies.filter((p) => policyStatus(p) === 'active').length;
-    $('disc-sku-count').textContent    = state.policies.filter((p) => p.scope === 'SKU').length;
+    $('disc-sku-count').textContent    = state.policies.filter((p) => p.scope === 'PRODUCT').length;
     $('disc-group-count').textContent  = state.policies.filter((p) => p.scope === 'CATEGORY').length;
   }
 
@@ -203,11 +238,11 @@
       const status    = policyStatus(p);
       const tiers     = Array.isArray(p.tiers) ? p.tiers : [];
       const scopeLabel = SCOPE_LABELS[p.scope] || p.scope;
-      const typeClass  = p.discountType === 'PERCENT' ? 'disc-type-badge--percent' : 'disc-type-badge--fixed';
+      const typeClass  = p.discountType === 'PERCENTAGE' ? 'disc-type-badge--percent' : 'disc-type-badge--fixed';
       const typeLabel  = TYPE_LABELS[p.discountType] || p.discountType;
       const cgLabel    = p.customerGroup ? CG_LABELS[p.customerGroup] || p.customerGroup : '';
       const bestTier   = tiers.length
-        ? (p.discountType === 'PERCENT'
+        ? (p.discountType === 'PERCENTAGE'
             ? `Tối đa ${Math.max(...tiers.map((t) => Number(t.discountValue)))}%`
             : `Tối đa ${formatCurrency(Math.max(...tiers.map((t) => Number(t.discountValue))))} / đơn vị`)
         : '—';
@@ -278,8 +313,8 @@
     const body  = $('disc-tiers-body');
     const hint  = $('disc-tiers-hint');
     const type  = $('disc-type').value;
-    const unit  = type === 'PERCENT' ? '%' : 'đ';
-    $('disc-value-header').textContent = type === 'PERCENT' ? 'Chiết khấu (%)' : 'Chiết khấu (đ/đơn vị)';
+    const unit  = type === 'PERCENTAGE' ? '%' : 'đ';
+    $('disc-value-header').textContent = type === 'PERCENTAGE' ? 'Chiết khấu (%)' : 'Chiết khấu (đ/đơn vị)';
 
     if (!state.tiers.length) {
       body.innerHTML = '';
@@ -303,12 +338,23 @@
         </td>
         <td>
           <input
+            class="disc-tier-input tier-max"
+            type="number"
+            min="1"
+            step="1"
+            value="${escHtml(tier.maxQuantity ?? '')}"
+            placeholder="Không giới hạn"
+            aria-label="Số lượng tối đa bậc ${i + 1}"
+          />
+        </td>
+        <td>
+          <input
             class="disc-tier-input tier-val"
             type="number"
             min="0"
-            step="${type === 'PERCENT' ? '0.01' : '1000'}"
+            step="${type === 'PERCENTAGE' ? '0.01' : '1000'}"
             value="${escHtml(tier.discountValue)}"
-            placeholder="${type === 'PERCENT' ? 'VD: 5' : 'VD: 2000'}"
+            placeholder="${type === 'PERCENTAGE' ? 'VD: 5' : 'VD: 2000'}"
             aria-label="Chiết khấu bậc ${i + 1} (${unit})"
           />
         </td>
@@ -321,10 +367,12 @@
   }
 
   function addTier() {
-    const lastQty = state.tiers.length
-      ? Number(state.tiers[state.tiers.length - 1].minQuantity) + 100
-      : 50;
-    state.tiers.push({ minQuantity: lastQty, discountValue: '' });
+    const previous = state.tiers[state.tiers.length - 1];
+    const previousMin = previous ? Number(previous.minQuantity) || 0 : 0;
+    const previousMax = previous ? Number(previous.maxQuantity) || 0 : 0;
+    const nextMin = previousMax > previousMin ? previousMax + 1 : previousMin + 100 || 50;
+    if (previous && !previous.maxQuantity) previous.maxQuantity = nextMin - 1;
+    state.tiers.push({ minQuantity: nextMin, maxQuantity: '', discountValue: '' });
     renderTiersEditor();
     // focus new qty input
     const rows = $('disc-tiers-body').querySelectorAll('tr');
@@ -341,6 +389,7 @@
     const rows = [...$('disc-tiers-body').querySelectorAll('tr[data-tier-index]')];
     state.tiers = rows.map((row) => ({
       minQuantity:   row.querySelector('.tier-qty')?.value ?? '',
+      maxQuantity:   row.querySelector('.tier-max')?.value ?? '',
       discountValue: row.querySelector('.tier-val')?.value ?? '',
     }));
   }
@@ -363,14 +412,14 @@
     $('disc-policy-id').value = policy?.id ?? '';
     $('disc-code').value      = policy?.code ?? '';
     $('disc-name').value      = policy?.name ?? '';
-    $('disc-scope').value     = policy?.scope ?? '';
+    $('disc-scope').value     = policy?.targetType ?? policy?.scope ?? '';
     rebuildTargetOptions();
     $('disc-target').value          = policy?.targetId ?? '';
-    $('disc-type').value            = policy?.discountType ?? '';
+    $('disc-type').value            = normalizeDiscountType(policy?.discountType) ?? '';
     $('disc-customer-group').value  = policy?.customerGroup ?? '';
     $('disc-start-date').value      = policy?.startDate ?? localDate();
     $('disc-end-date').value        = policy?.endDate   ?? defaultEndDate();
-    $('disc-note').value            = policy?.note ?? '';
+    $('disc-note').value            = policy?.description ?? policy?.note ?? '';
     $('save-disc-policy').textContent = policy ? 'Lưu thay đổi' : 'Tạo chính sách';
     renderTiersEditor();
 
@@ -395,19 +444,20 @@
     $('disc-tiers-modal-subtitle').textContent =
       `${SCOPE_LABELS[policy.scope] || policy.scope} · ${TYPE_LABELS[policy.discountType] || policy.discountType}`;
 
-    const isPercent = policy.discountType === 'PERCENT';
+    const isPercent = policy.discountType === 'PERCENTAGE';
     $('disc-view-value-header').textContent = isPercent ? 'Chiết khấu (%)' : 'Chiết khấu (đ/đơn vị)';
 
     $('disc-tiers-view-body').innerHTML = tiers.length
       ? tiers.map((t, i) => `
           <tr>
             <td><span class="disc-tier-num">${i + 1}</span></td>
-            <td style="font-variant-numeric:tabular-nums">${Number(t.minQuantity).toLocaleString('vi-VN')} ${escHtml(policy.unit || 'đơn vị')} trở lên</td>
+            <td style="font-variant-numeric:tabular-nums">${Number(t.minQuantity).toLocaleString('vi-VN')} ${escHtml(policy.productUnit || 'đơn vị')} trở lên</td>
+            <td style="font-variant-numeric:tabular-nums">${t.maxQuantity == null ? 'Không giới hạn' : Number(t.maxQuantity).toLocaleString('vi-VN')}</td>
             <td style="font-variant-numeric:tabular-nums;font-weight:650;color:var(--teal-deep)">
               ${isPercent ? `${t.discountValue}%` : formatCurrency(t.discountValue)}
             </td>
           </tr>`).join('')
-      : `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--ink-500)">Chưa có bậc nào.</td></tr>`;
+      : `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--ink-500)">Chưa có bậc nào.</td></tr>`;
 
     tiersModal.hidden = false;
     document.body.style.overflow = 'hidden';
@@ -441,10 +491,11 @@
 
     // Validate tiers
     if (!state.tiers.length) { showFormMsg('Thêm ít nhất một bậc chiết khấu.'); return; }
-    const isPercent = $('disc-type').value === 'PERCENT';
+    const isPercent = $('disc-type').value === 'PERCENTAGE';
     for (let i = 0; i < state.tiers.length; i++) {
       const t   = state.tiers[i];
       const qty = Number(t.minQuantity);
+      const max = t.maxQuantity === '' || t.maxQuantity == null ? null : Number(t.maxQuantity);
       const val = Number(t.discountValue);
       if (!t.minQuantity || !Number.isFinite(qty) || qty <= 0) {
         showFormMsg(`Bậc ${i + 1}: Số lượng tối thiểu phải là số nguyên dương.`);
@@ -452,6 +503,14 @@
       }
       if (t.discountValue === '' || !Number.isFinite(val) || val < 0) {
         showFormMsg(`Bậc ${i + 1}: Giá trị chiết khấu không hợp lệ.`);
+        return;
+      }
+      if (max !== null && (!Number.isFinite(max) || max < qty)) {
+        showFormMsg(`Bậc ${i + 1}: Số lượng tối đa phải lớn hơn hoặc bằng số lượng tối thiểu.`);
+        return;
+      }
+      if (i < state.tiers.length - 1 && max === null) {
+        showFormMsg(`Bậc ${i + 1}: Cần nhập số lượng tối đa vì còn bậc tiếp theo.`);
         return;
       }
       if (isPercent && val > 100) {
@@ -462,29 +521,34 @@
         showFormMsg(`Bậc ${i + 1}: Số lượng phải lớn hơn bậc trước (${state.tiers[i - 1].minQuantity}).`);
         return;
       }
+      if (i > 0 && state.tiers[i - 1].maxQuantity !== '' && state.tiers[i - 1].maxQuantity != null
+        && qty <= Number(state.tiers[i - 1].maxQuantity)) {
+        showFormMsg(`Bậc ${i + 1}: Số lượng bắt đầu phải lớn hơn bậc trước.`);
+        return;
+      }
     }
 
-    // Resolve target name for local display
-    const scope    = $('disc-scope').value;
+    const targetType = $('disc-scope').value;
     const targetId = $('disc-target').value;
-    const targetName = scope === 'CATEGORY'
-      ? (state.categories.find((c) => String(c.id) === targetId)?.name || '')
-      : (state.products.find((p) => String(p.id) === targetId)?.name || '');
+    const editingPolicy = state.editingId
+      ? state.policies.find((policy) => String(policy.id) === String(state.editingId))
+      : null;
 
     const payload = {
       code:          $('disc-code').value.trim().toUpperCase(),
       name:          $('disc-name').value.trim(),
-      scope,
-      targetId:      Number(targetId) || null,
-      targetName,
-      discountType:  $('disc-type').value,
+      description:   $('disc-note').value.trim(),
+      targetType,
+      productId:      targetType === 'PRODUCT' ? Number(targetId) : null,
+      categoryId:     targetType === 'CATEGORY' ? Number(targetId) : null,
       customerGroup: $('disc-customer-group').value || null,
       startDate:     $('disc-start-date').value,
       endDate:       $('disc-end-date').value,
-      note:          $('disc-note').value.trim(),
-      active:        true,
+      active:        editingPolicy?.active ?? true,
       tiers:         state.tiers.map((t) => ({
         minQuantity:   Number(t.minQuantity),
+        maxQuantity:   t.maxQuantity === '' ? null : Number(t.maxQuantity),
+        discountType:  $('disc-type').value,
         discountValue: Number(t.discountValue),
       })),
     };
@@ -497,12 +561,12 @@
     try {
       let result;
       if (state.editingId) {
-        result = await apiFetch(`/discount-policies/${state.editingId}`, {
+        result = await apiFetch(`/volume-discounts/${state.editingId}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
       } else {
-        result = await apiFetch('/discount-policies', {
+        result = await apiFetch('/volume-discounts', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
@@ -525,7 +589,7 @@
     btn.disabled   = true;
     btn.textContent = 'Đang xóa…';
     try {
-      const result = await apiFetch(`/discount-policies/${policy.id}`, { method: 'DELETE' });
+      const result = await apiFetch(`/volume-discounts/${policy.id}`, { method: 'DELETE' });
       await loadPolicies();
       showToast(result.message || 'Đã xóa chính sách.', 'success');
     } catch (err) {

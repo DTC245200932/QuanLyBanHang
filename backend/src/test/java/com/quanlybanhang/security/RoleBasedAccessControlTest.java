@@ -92,6 +92,9 @@ class RoleBasedAccessControlTest {
     private com.quanlybanhang.repository.DealerRepository dealerRepository;
 
     @MockBean
+    private com.quanlybanhang.repository.ProductRepository productRepository;
+
+    @MockBean
     private com.quanlybanhang.service.AuditLogService auditLogService;
 
     @org.junit.jupiter.api.BeforeEach

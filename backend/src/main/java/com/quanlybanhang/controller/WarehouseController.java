@@ -6,13 +6,13 @@ import com.quanlybanhang.dto.response.WarehouseInventoryResponse;
 import com.quanlybanhang.dto.response.WarehouseVoucherResponse;
 import com.quanlybanhang.model.WarehouseVoucherType;
 import com.quanlybanhang.service.WarehouseService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Controller Quản lý Kho & Tồn kho (S1-05 & S2-07).
@@ -46,14 +46,11 @@ public class WarehouseController {
     @PostMapping("/adjust")
     @PreAuthorize("hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
     public ApiResponse adjustInventory(
-            @RequestBody(required = false) WarehouseVoucherRequest request,
+            @Valid @RequestBody WarehouseVoucherRequest request,
             Principal principal) {
         String username = principal != null ? principal.getName() : "system";
-        if (request != null && (request.getItems() != null || request.getProductId() != null || request.getDelta() != null)) {
-            WarehouseVoucherResponse response = warehouseService.adjustInventory(request, username);
-            return ApiResponse.success("Điều chỉnh tồn kho thành công", response);
-        }
-        return ApiResponse.success("Điều chỉnh tồn kho thành công", Map.of("status", "ADJUSTED"));
+        WarehouseVoucherResponse response = warehouseService.adjustInventory(request, username);
+        return ApiResponse.success("Điều chỉnh tồn kho thành công", response);
     }
 
     /**
@@ -63,14 +60,11 @@ public class WarehouseController {
     @PostMapping("/import")
     @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
     public ApiResponse importGoods(
-            @RequestBody(required = false) WarehouseVoucherRequest request,
+            @Valid @RequestBody WarehouseVoucherRequest request,
             Principal principal) {
         String username = principal != null ? principal.getName() : "system";
-        if (request != null && (request.getItems() != null || request.getProductId() != null)) {
-            WarehouseVoucherResponse response = warehouseService.importGoods(request, username);
-            return ApiResponse.success("Tạo phiếu nhập kho thành công", response);
-        }
-        return ApiResponse.success("Tạo phiếu nhập kho thành công", Map.of("status", "IMPORTED"));
+        WarehouseVoucherResponse response = warehouseService.importGoods(request, username);
+        return ApiResponse.success("Tạo phiếu nhập kho thành công", response);
     }
 
     /**
@@ -80,14 +74,11 @@ public class WarehouseController {
     @PostMapping("/export")
     @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
     public ApiResponse exportGoods(
-            @RequestBody(required = false) WarehouseVoucherRequest request,
+            @Valid @RequestBody WarehouseVoucherRequest request,
             Principal principal) {
         String username = principal != null ? principal.getName() : "system";
-        if (request != null && (request.getItems() != null || request.getProductId() != null)) {
-            WarehouseVoucherResponse response = warehouseService.exportGoods(request, username);
-            return ApiResponse.success("Tạo phiếu xuất kho thành công", response);
-        }
-        return ApiResponse.success("Tạo phiếu xuất kho thành công", Map.of("status", "EXPORTED"));
+        WarehouseVoucherResponse response = warehouseService.exportGoods(request, username);
+        return ApiResponse.success("Tạo phiếu xuất kho thành công", response);
     }
 
     /**

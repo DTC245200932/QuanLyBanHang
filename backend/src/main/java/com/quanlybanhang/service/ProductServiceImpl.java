@@ -13,6 +13,8 @@ import com.quanlybanhang.model.ProductPriceHistory;
 import com.quanlybanhang.repository.CategoryRepository;
 import com.quanlybanhang.repository.ProductPriceHistoryRepository;
 import com.quanlybanhang.repository.ProductRepository;
+import com.quanlybanhang.repository.OrderItemRepository;
+import com.quanlybanhang.repository.WarehouseVoucherItemRepository;
 import com.quanlybanhang.dto.response.ProductPriceHistoryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -45,6 +47,8 @@ public class ProductServiceImpl implements ProductService {
     private final ProductPriceHistoryRepository productPriceHistoryRepository;
     private final AuditLogService auditLogService;
     private final ProductExcelService productExcelService;
+    private final OrderItemRepository orderItemRepository;
+    private final WarehouseVoucherItemRepository warehouseVoucherItemRepository;
 
     @Override
     @Transactional
@@ -68,8 +72,6 @@ public class ProductServiceImpl implements ProductService {
                 : BigDecimal.ZERO;
 
         BigDecimal price = request.getPrice() != null ? request.getPrice() : BigDecimal.ZERO;
-        BigDecimal revenue = request.getRevenue() != null ? request.getRevenue() : BigDecimal.ZERO;
-        boolean hasTrans = Boolean.TRUE.equals(request.getHasTransactions()) || revenue.compareTo(BigDecimal.ZERO) > 0;
 
         Product product = Product.builder()
                 .code(sku)
@@ -78,12 +80,10 @@ public class ProductServiceImpl implements ProductService {
                 .category(category)
                 .price(price)
                 .costPrice(costPrice)
-                .revenue(revenue)
                 .unit(request.getUnit() != null && !request.getUnit().isBlank() ? request.getUnit().trim() : "cái")
                 .packingSpecification(request.getPackingSpecification() != null ? request.getPackingSpecification().trim() : null)
                 .imageUrl(request.getImageUrl() != null ? request.getImageUrl().trim() : null)
                 .active(request.getActive() != null ? request.getActive() : true)
-                .hasTransactions(hasTrans)
                 .build();
 
         if (request.getUnitConversions() != null && !request.getUnitConversions().isEmpty()) {
@@ -164,9 +164,6 @@ public class ProductServiceImpl implements ProductService {
         }
         // Nếu không phải Quản lý kinh doanh thì giữ nguyên giá vốn hiện tại
 
-        if (request.getRevenue() != null) {
-            product.setRevenue(request.getRevenue());
-        }
         if (request.getUnit() != null && !request.getUnit().isBlank()) {
             product.setUnit(request.getUnit().trim());
         }
@@ -178,9 +175,6 @@ public class ProductServiceImpl implements ProductService {
         }
         if (request.getActive() != null) {
             product.setActive(request.getActive());
-        }
-        if (request.getHasTransactions() != null) {
-            product.setHasTransactions(request.getHasTransactions());
         }
 
         Product saved = productRepository.save(product);
@@ -221,7 +215,7 @@ public class ProductServiceImpl implements ProductService {
             products = productRepository.findAll();
         }
 
-        return products.stream()
+        List<Product> filtered = products.stream()
                 .filter(p -> {
                     if (active != null && !active.equals(p.getActive())) {
                         return false;
@@ -234,8 +228,19 @@ public class ProductServiceImpl implements ProductService {
                     }
                     return true;
                 })
-                .map(this::mapToResponse)
                 .collect(Collectors.toList());
+        if (filtered.isEmpty()) return List.of();
+
+        // Tổng hợp theo lô để danh mục lớn không phát sinh truy vấn thống kê cho từng SKU.
+        List<Long> ids = filtered.stream().map(Product::getId).toList();
+        Map<Long, BigDecimal> revenues = productRepository.sumRevenueByProductIds(ids).stream()
+                .collect(Collectors.toMap(ProductRepository.ProductRevenue::getProductId,
+                        ProductRepository.ProductRevenue::getRevenue));
+        Set<Long> transactionIds = new HashSet<>(orderItemRepository.findProductIdsWithTransactions(ids));
+        transactionIds.addAll(warehouseVoucherItemRepository.findProductIdsWithTransactions(ids));
+        return filtered.stream().map(product -> mapToResponse(product,
+                revenues.getOrDefault(product.getId(), BigDecimal.ZERO), transactionIds.contains(product.getId())))
+                .toList();
     }
 
     @Override
@@ -245,7 +250,7 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + id));
 
         // Quy tắc S2-05: Sản phẩm đã phát sinh giao dịch thì không xoá được, chỉ ngừng kinh doanh
-        if (product.hasTransactions()) {
+        if (hasRecordedTransactions(product.getId())) {
             throw new ProductHasTransactionsException(product.getCode(), product.getName());
         }
 
@@ -638,6 +643,11 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private ProductResponse mapToResponse(Product product) {
+        BigDecimal revenue = productRepository.sumRevenueByProductId(product.getId());
+        return mapToResponse(product, revenue, hasRecordedTransactions(product.getId()));
+    }
+
+    private ProductResponse mapToResponse(Product product, BigDecimal revenue, boolean hasTrans) {
         boolean canViewCostPrice = isSalesManager();
         java.util.List<com.quanlybanhang.dto.response.UnitConversionResponse> conversions = null;
         if (product.getUnitConversions() != null) {
@@ -660,8 +670,6 @@ public class ProductServiceImpl implements ProductService {
                             .build())
                     .collect(Collectors.toList());
         }
-        boolean hasTrans = product.hasTransactions();
-
         return ProductResponse.builder()
                 .id(product.getId())
                 .code(product.getCode())
@@ -674,7 +682,7 @@ public class ProductServiceImpl implements ProductService {
                 .categoryLevel(product.getCategory() != null ? product.getCategory().getLevel() : null)
                 .price(product.getPrice())
                 .costPrice(canViewCostPrice ? product.getCostPrice() : null)
-                .revenue(product.getRevenue())
+                .revenue(revenue != null ? revenue : BigDecimal.ZERO)
                 .unit(product.getUnit())
                 .packingSpecification(product.getPackingSpecification())
                 .imageUrl(product.getImageUrl())
@@ -686,6 +694,11 @@ public class ProductServiceImpl implements ProductService {
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
+    }
+
+    private boolean hasRecordedTransactions(Long productId) {
+        return productId != null && (orderItemRepository.existsByProductId(productId)
+                || warehouseVoucherItemRepository.existsByProductId(productId));
     }
 }
 

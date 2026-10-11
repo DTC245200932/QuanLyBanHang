@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +46,10 @@ public class Order {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "delivery_point_id")
     private DealerDeliveryPoint deliveryPoint;
+
+    /** Ngày giao mong muốn của đơn hàng (S3-09). */
+    @Column(name = "expected_delivery_date")
+    private LocalDate expectedDeliveryDate;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "price_list_id")

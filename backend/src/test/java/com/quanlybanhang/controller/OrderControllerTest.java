@@ -7,6 +7,7 @@ import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.OrderItemResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.exception.GlobalExceptionHandler;
+import com.quanlybanhang.repository.OrderDraftRepository;
 import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.JwtUtils;
@@ -51,6 +52,9 @@ class OrderControllerTest {
 
     @MockBean
     private OrderService orderService;
+
+    @MockBean
+    private OrderDraftRepository orderDraftRepository;
 
     @MockBean
     private UserDetailsServiceImpl userDetailsService;

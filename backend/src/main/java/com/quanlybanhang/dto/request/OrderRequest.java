@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Getter
@@ -32,6 +33,9 @@ public class OrderRequest {
      * ID điểm giao hàng của đại lý (S3-04).
      */
     private Long deliveryPointId;
+
+    /** Ngày giao mong muốn do nhân viên kinh doanh chọn khi tạo đơn (S3-09). */
+    private LocalDate expectedDeliveryDate;
 
     /**
      * Chỉ định rõ ID bảng giá (nếu không truyền, hệ thống tự động tìm bảng giá hiệu lực).

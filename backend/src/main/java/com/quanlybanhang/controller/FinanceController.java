@@ -4,6 +4,7 @@ import com.quanlybanhang.dto.request.DebtLimitRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.model.Dealer;
 import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.ProductRepository;
 import com.quanlybanhang.service.AuditLogService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +41,7 @@ public class FinanceController {
 
     private final DealerRepository dealerRepository;
     private final AuditLogService auditLogService;
+    private final ProductRepository productRepository;
 
     /**
      * API xem giá vốn — CHỈ Quản lý kinh doanh.
@@ -46,10 +49,16 @@ public class FinanceController {
     @GetMapping("/cost-price")
     @PreAuthorize("hasRole('SALES_MANAGER')")
     public ApiResponse getCostPrice() {
-        List<Map<String, Object>> costPrices = List.of(
-                Map.of("productCode", "SP001", "productName", "Sản phẩm A", "costPrice", 120000),
-                Map.of("productCode", "SP002", "productName", "Sản phẩm B", "costPrice", 250000)
-        );
+        List<Map<String, Object>> costPrices = productRepository.findAll().stream()
+                .map(product -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("productId", product.getId());
+                    item.put("productCode", product.getCode());
+                    item.put("productName", product.getName());
+                    item.put("unit", product.getUnit());
+                    item.put("costPrice", product.getCostPrice());
+                    return item;
+                }).toList();
         return ApiResponse.success("Dữ liệu giá vốn sản phẩm", costPrices);
     }
 
@@ -59,10 +68,24 @@ public class FinanceController {
     @GetMapping("/profit-margin")
     @PreAuthorize("hasRole('SALES_MANAGER')")
     public ApiResponse getProfitMargin() {
-        List<Map<String, Object>> margins = List.of(
-                Map.of("productCode", "SP001", "sellingPrice", 180000, "costPrice", 120000, "marginPercent", 33.33),
-                Map.of("productCode", "SP002", "sellingPrice", 350000, "costPrice", 250000, "marginPercent", 28.57)
-        );
+        List<Map<String, Object>> margins = productRepository.findAll().stream()
+                .map(product -> {
+                    BigDecimal sellingPrice = product.getPrice();
+                    BigDecimal costPrice = product.getCostPrice();
+                    BigDecimal margin = sellingPrice != null && sellingPrice.signum() > 0 && costPrice != null
+                            ? sellingPrice.subtract(costPrice).multiply(new BigDecimal("100"))
+                                    .divide(sellingPrice, 2, RoundingMode.HALF_UP)
+                            : null;
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("productId", product.getId());
+                    item.put("productCode", product.getCode());
+                    item.put("productName", product.getName());
+                    item.put("unit", product.getUnit());
+                    item.put("sellingPrice", sellingPrice);
+                    item.put("costPrice", costPrice);
+                    item.put("marginPercent", margin);
+                    return item;
+                }).toList();
         return ApiResponse.success("Dữ liệu biên lợi nhuận", margins);
     }
 
@@ -77,13 +100,15 @@ public class FinanceController {
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("dealerId", dealer.getId());
                     item.put("customerName", dealer.getName());
-                    item.put("debtAmount", BigDecimal.ZERO);
+                    // Chưa có sổ công nợ/phiếu thu: không suy diễn số dư từ tổng đơn hàng.
+                    item.put("debtAmount", null);
+                    item.put("debtAmountAvailable", false);
                     item.put("debtLimit", normalizeDebtLimit(dealer.getDebtLimit()));
                     item.put("maxDebtDays", dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0);
                     return item;
                 })
                 .toList();
-        return ApiResponse.success("Dữ liệu công nợ", debts);
+        return ApiResponse.success("Hạn mức công nợ; chưa có dữ liệu số dư công nợ", debts);
     }
 
     /**

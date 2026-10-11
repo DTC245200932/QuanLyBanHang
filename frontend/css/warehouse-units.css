@@ -30,28 +30,14 @@
 }
 
 .units-main {
+  width: 100%;
+  min-width: 0;
   max-width: 1360px;
   margin: 0 auto;
   padding: 24px 28px 60px;
 }
 
 /* ── Topbar Warehouse Selector & Crumb ── */
-.topbar__crumb-link {
-  color: var(--ink-500);
-  transition: color 0.15s ease;
-}
-.topbar__crumb-link:hover {
-  color: var(--teal-deep);
-}
-.topbar__crumb-sep {
-  margin: 0 6px;
-  color: var(--ink-400);
-}
-.topbar__crumb-current {
-  font-weight: 600;
-  color: var(--navy-900);
-}
-
 .warehouse-select-wrap {
   display: flex;
   align-items: center;
@@ -1361,6 +1347,10 @@
   .receipt-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+  .receipt-summary-box {
+    min-width: 0;
+    width: 100%;
   }
   .action-buttons {
     flex-direction: column;

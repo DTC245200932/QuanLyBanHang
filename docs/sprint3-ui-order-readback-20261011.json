@@ -1,0 +1,107 @@
+{
+  "checkedAt": "2026-10-11T20:53:10.602770+07:00",
+  "order": {
+    "id": 6,
+    "orderCode": "DH-20261011205227509",
+    "dealerId": 3,
+    "deliveryPointId": 1,
+    "expectedDeliveryDate": "2026-10-13",
+    "subtotalAmount": 720000.0,
+    "discountAmount": 144000.0,
+    "totalAmount": 576000.0,
+    "createdBy": "sales.manager",
+    "note": "Đơn kiểm thử từ giao diện"
+  },
+  "items": [
+    {
+      "id": 6,
+      "productId": 7,
+      "productCode": "AUDIT-233E60-LON",
+      "productName": "Lon kiểm thử Sprint 3",
+      "unit": "thùng",
+      "quantity": 2.0,
+      "conversionFactor": 24.0,
+      "baseUnit": "lon",
+      "baseQuantity": 48.0,
+      "price": 360000.0,
+      "floorPrice": 312000.0,
+      "belowFloorPrice": false,
+      "subtotalAmount": 720000.0,
+      "discountAmount": 144000.0,
+      "discountPercent": 20.0,
+      "appliedPolicyId": 4,
+      "appliedPolicyCode": "UI-AUDIT-233E60-LON",
+      "appliedPolicyName": "Chiết khấu tạo qua giao diện",
+      "totalAmount": 576000.0,
+      "note": null
+    }
+  ],
+  "checks": [
+    {
+      "story": "S3-09",
+      "name": "ui_confirmed_total_equals_database_order",
+      "passed": true,
+      "confirmedTotal": 576000,
+      "savedTotal": 576000.0
+    },
+    {
+      "story": "S3-09",
+      "name": "ui_order_saved_requested_delivery_date_and_point",
+      "passed": true
+    },
+    {
+      "story": "S3-09",
+      "name": "draft_does_not_reappear_after_order_creation",
+      "passed": true
+    },
+    {
+      "story": "S3-09",
+      "name": "ui_reopened_draft_uses_current_conversion_and_matches_database_total",
+      "passed": true,
+      "confirmedTotal": 720000,
+      "savedTotal": 720000.0
+    },
+    {
+      "story": "S2-07 / S3-09",
+      "name": "conversion_change_does_not_mutate_previously_recorded_order",
+      "passed": true,
+      "oldOrderTotal": 576000.0,
+      "oldConversionFactor": 24.0
+    }
+  ],
+  "refreshedConversionOrder": {
+    "id": 7,
+    "orderCode": "DH-20261011211419009",
+    "dealerId": 3,
+    "deliveryPointId": 1,
+    "expectedDeliveryDate": "2026-10-13",
+    "subtotalAmount": 900000.0,
+    "discountAmount": 180000.0,
+    "totalAmount": 720000.0,
+    "items": [
+      {
+        "id": 7,
+        "productId": 7,
+        "productCode": "AUDIT-233E60-LON",
+        "productName": "Lon kiểm thử Sprint 3",
+        "unit": "thùng",
+        "quantity": 2.0,
+        "conversionFactor": 30.0,
+        "baseUnit": "lon",
+        "baseQuantity": 60.0,
+        "price": 450000.0,
+        "floorPrice": 390000.0,
+        "belowFloorPrice": false,
+        "subtotalAmount": 900000.0,
+        "discountAmount": 180000.0,
+        "discountPercent": 20.0,
+        "appliedPolicyId": 4,
+        "appliedPolicyCode": "UI-AUDIT-233E60-LON",
+        "appliedPolicyName": "Chiết khấu tạo qua giao diện",
+        "totalAmount": 720000.0,
+        "note": null
+      }
+    ]
+  },
+  "verifiedCodeRevision": "1b343219afb78ccb003b414d180d765d7f0d719a"
+}

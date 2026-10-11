@@ -1,5 +1,9 @@
 # Kiểm tra Sprint 3 — Chiết khấu và hồ sơ đại lý
 
+> Đây là báo cáo lịch sử ngày 09/10/2026. Xem
+> [kết quả kiểm tra mới ngày 11/10/2026](SPRINT_3_AUDIT_20261011.md) để biết
+> trạng thái sau các PR sửa frontend và lần xử lý conflict tiếp theo.
+
 Ngày kiểm tra: **09/10/2026, Asia/Bangkok**. Phạm vi: **S3-01 đến S3-09**, 9 story,
 44 point trong backlog được cung cấp.
 

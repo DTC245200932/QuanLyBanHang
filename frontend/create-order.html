@@ -7,7 +7,8 @@
     <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/dashboard.css" />
     <link rel="stylesheet" href="/css/create-order.css" />
-  </head>
+  <link rel="stylesheet" href="/css/app-navigation.css">
+</head>
   <body>
     <div class="app-shell">
       <!-- ── Sidebar ── -->
@@ -50,11 +51,7 @@
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <div class="topbar__breadcrumb">
-            <a href="/dashboard" class="topbar__crumb-link">Kinh doanh</a>
-            <span class="topbar__crumb-sep">›</span>
-            <span>Tạo đơn hàng</span>
-          </div>
+          <div class="topbar__breadcrumb"></div>
           <div class="topbar__actions">
             <button class="topbar__btn topbar__btn--logout" id="btn-logout-topbar" title="Đăng xuất">
               <svg viewBox="0 0 24 24">
@@ -121,7 +118,7 @@
 
                 <!-- Ngày giao -->
                 <div class="form-field">
-                  <label for="co-delivery-date">Ngày giao mong muốn</label>
+                  <label for="co-delivery-date">Ngày giao mong muốn <span class="req">*</span></label>
                   <div class="co-input-wrap">
                     <svg viewBox="0 0 24 24" width="16" height="16" class="co-input-icon">
                       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -129,10 +126,12 @@
                       <line x1="8" y1="2" x2="8" y2="6"/>
                       <line x1="3" y1="10" x2="21" y2="10"/>
                     </svg>
-                    <input type="date" id="co-delivery-date" />
+                    <input type="date" id="co-delivery-date" required />
                   </div>
                 </div>
               </div>
+
+              <p class="co-field-hint" id="co-delivery-status" hidden></p>
 
               <!-- Dealer info strip -->
               <div class="co-dealer-info" id="co-dealer-info" hidden>
@@ -212,6 +211,7 @@
                   <span>Tổng phải thu</span>
                   <strong id="co-grand-total">0 ₫</strong>
                 </div>
+                <p class="co-pricing-status" id="co-pricing-status" role="status" hidden></p>
               </div>
 
               <!-- Ghi chú đơn hàng -->
@@ -266,7 +266,7 @@
           <div class="co-confirm-msg" id="confirm-msg" hidden></div>
           <div class="modal__actions">
             <button class="btn btn--secondary" id="btn-cancel-confirm" type="button">Quay lại</button>
-            <button class="btn btn--primary" id="btn-confirm-order" type="button">Xác nhận ghi nhận</button>
+            <button class="btn btn--primary" id="btn-confirm-order" type="button">Xác nhận tạo đơn</button>
           </div>
         </div>
       </div>
@@ -274,6 +274,7 @@
 
     <script src="/js/auth.js"></script>
     <script src="/js/menu-config.js"></script>
+<script src="/js/app-navigation.js"></script>
     <script src="/js/create-order.js"></script>
   </body>
 </html>

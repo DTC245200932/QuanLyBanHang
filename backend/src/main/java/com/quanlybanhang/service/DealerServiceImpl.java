@@ -671,6 +671,7 @@ public class DealerServiceImpl implements DealerService {
                 .customerGroup(order.getCustomerGroup())
                 .dealerId(order.getDealer() != null ? order.getDealer().getId() : null)
                 .deliveryPointId(order.getDeliveryPoint() != null ? order.getDeliveryPoint().getId() : null)
+                .expectedDeliveryDate(order.getExpectedDeliveryDate())
                 .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
                 .priceListCode(order.getPriceList() != null ? order.getPriceList().getCode() : null)
                 .status(order.getStatus())

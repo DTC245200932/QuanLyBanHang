@@ -25,17 +25,10 @@
   let previousOverflow;
 
   document.title = "Hạn mức công nợ | SaleStock";
-  $("page-title").textContent = "Hạn mức công nợ";
   $("welcome-card").hidden = true;
   document.querySelector(".dashboard-work").hidden = true;
   $("debt-limits-view").hidden = false;
   $("debt-limits-readonly").hidden = canDeclare;
-  document.querySelectorAll(".sidebar__link").forEach(link => {
-    const active = link.dataset.page === "debt-limits";
-    link.classList.toggle("sidebar__link--active", active);
-    if (active) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
-  });
 
   function amountNumber(value) {
     if (value == null || String(value).trim() === "") return null;

@@ -1,0 +1,753 @@
+{
+  "checkedAt": "2026-10-11T15:19:19.431Z",
+  "environment": "Frontend repo hiện tại, backend Spring Boot + MySQL riêng; origin 127.0.0.1:5501",
+  "desktop": [
+    {
+      "activeIds": [
+        "dashboard"
+      ],
+      "crumbs": [
+        "Tổng quan"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "dashboard"
+      ],
+      "path": "/dashboard",
+      "query": "",
+      "scrollWidth": 1280,
+      "width": 1280,
+      "route": "/dashboard",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "profile"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Hồ sơ cá nhân"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "profile"
+      ],
+      "path": "/profile",
+      "query": "",
+      "scrollWidth": 1280,
+      "width": 1280,
+      "route": "/profile",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "products"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Sản phẩm"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "products"
+      ],
+      "path": "/products",
+      "query": "",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/products",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "product-groups"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Nhóm hàng"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "product-groups"
+      ],
+      "path": "/product-groups",
+      "query": "",
+      "scrollWidth": 1280,
+      "width": 1280,
+      "route": "/product-groups",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "create-order"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Tạo đơn hàng"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "create-order"
+      ],
+      "path": "/create-order",
+      "query": "",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/create-order",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "price-lists"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Bảng giá"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "price-lists"
+      ],
+      "path": "/price-lists",
+      "query": "",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/price-lists",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "discount-policies"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Chiết khấu sản lượng"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "discount-policies"
+      ],
+      "path": "/discount-policies",
+      "query": "",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/discount-policies",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "dealers"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Đại lý"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "dealers"
+      ],
+      "path": "/dealers",
+      "query": "",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/dealers",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "suppliers"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Nhà cung cấp"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "suppliers"
+      ],
+      "path": "/suppliers",
+      "query": "",
+      "scrollWidth": 1280,
+      "width": 1280,
+      "route": "/suppliers",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "product-units"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Đơn vị tính"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "product-units"
+      ],
+      "path": "/warehouse/units",
+      "query": "?tab=units",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/warehouse/units?tab=units",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "import-export"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Nhập / Xuất kho"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "import-export"
+      ],
+      "path": "/warehouse/units",
+      "query": "?tab=receipts",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/warehouse/units?tab=receipts",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "warehouse-ledger"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Sổ cái kho"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "warehouse-ledger"
+      ],
+      "path": "/warehouse/units",
+      "query": "?tab=ledger",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/warehouse/units?tab=ledger",
+      "passed": true,
+      "beforeLayoutFix": {
+        "scrollWidth": 1506,
+        "width": 1265,
+        "passed": false
+      }
+    },
+    {
+      "activeIds": [
+        "warehouse"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Tồn kho"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "warehouse"
+      ],
+      "path": "/warehouse/units",
+      "query": "?tab=inventory",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/warehouse/units?tab=inventory",
+      "passed": true,
+      "beforeLayoutFix": {
+        "scrollWidth": 1282,
+        "width": 1265,
+        "passed": false
+      }
+    },
+    {
+      "activeIds": [
+        "debt-limits"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Tài chính",
+        "Hạn mức công nợ"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "debt-limits"
+      ],
+      "path": "/dashboard",
+      "query": "?view=debt-limits",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/dashboard?view=debt-limits",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "users"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Hệ thống",
+        "Quản lý tài khoản"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "users"
+      ],
+      "path": "/admin/users",
+      "query": "",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/admin/users",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "audit-logs"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Hệ thống",
+        "Nhật ký thao tác"
+      ],
+      "currentCrumbCount": 1,
+      "highlightedIds": [
+        "audit-logs"
+      ],
+      "path": "/admin/audit-logs",
+      "query": "",
+      "scrollWidth": 1265,
+      "width": 1265,
+      "route": "/admin/audit-logs",
+      "passed": true
+    }
+  ],
+  "mobile": [
+    {
+      "activeIds": [
+        "dashboard"
+      ],
+      "crumbs": [
+        "Tổng quan"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 60,
+      "path": "/dashboard",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/dashboard",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "profile"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Hồ sơ cá nhân"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 60,
+      "path": "/profile",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/profile",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "products"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Sản phẩm"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/products",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/products",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "product-groups"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Nhóm hàng"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/product-groups",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/product-groups",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "create-order"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Tạo đơn hàng"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/create-order",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/create-order",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "price-lists"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Bảng giá"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/price-lists",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/price-lists",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "discount-policies"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Chiết khấu sản lượng"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/discount-policies",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/discount-policies",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "dealers"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Đại lý"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 60,
+      "path": "/dealers",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/dealers",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "suppliers"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Nhà cung cấp"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 60,
+      "path": "/suppliers",
+      "query": "",
+      "scrollWidth": 360,
+      "width": 360,
+      "route": "/suppliers",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "product-units"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Đơn vị tính"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 102.8000030517578,
+      "path": "/warehouse/units",
+      "query": "?tab=units",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/warehouse/units?tab=units",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "import-export"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Nhập / Xuất kho"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 102.8000030517578,
+      "path": "/warehouse/units",
+      "query": "?tab=receipts",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/warehouse/units?tab=receipts",
+      "passed": true,
+      "beforeLayoutFix": {
+        "scrollWidth": 384,
+        "width": 345,
+        "passed": false
+      }
+    },
+    {
+      "activeIds": [
+        "warehouse-ledger"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Sổ cái kho"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 102.8000030517578,
+      "path": "/warehouse/units",
+      "query": "?tab=ledger",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/warehouse/units?tab=ledger",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "warehouse"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Tồn kho"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 102.8000030517578,
+      "path": "/warehouse/units",
+      "query": "?tab=inventory",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/warehouse/units?tab=inventory",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "debt-limits"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Tài chính",
+        "Hạn mức công nợ"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/dashboard",
+      "query": "?view=debt-limits",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/dashboard?view=debt-limits",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "users"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Hệ thống",
+        "Quản lý tài khoản"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/admin/users",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/admin/users",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "audit-logs"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Hệ thống",
+        "Nhật ký thao tác"
+      ],
+      "currentCrumbCount": 1,
+      "headerHeight": 61.20000076293945,
+      "path": "/admin/audit-logs",
+      "query": "",
+      "scrollWidth": 345,
+      "width": 345,
+      "route": "/admin/audit-logs",
+      "passed": true
+    }
+  ],
+  "warehouseTabSwitch": [
+    {
+      "activeIds": [
+        "product-units"
+      ],
+      "currentCrumb": "Đơn vị tính",
+      "query": "?tab=units",
+      "selectedTab": "sku-units",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "import-export"
+      ],
+      "currentCrumb": "Nhập / Xuất kho",
+      "query": "?tab=receipts",
+      "selectedTab": "create-receipt",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "warehouse-ledger"
+      ],
+      "currentCrumb": "Sổ cái kho",
+      "query": "?tab=ledger",
+      "selectedTab": "ledger-audit",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "warehouse"
+      ],
+      "currentCrumb": "Tồn kho",
+      "query": "?tab=inventory",
+      "selectedTab": "inventory-report",
+      "passed": true
+    }
+  ],
+  "aliases": [
+    {
+      "activeIds": [
+        "product-units"
+      ],
+      "currentCrumb": "Đơn vị tính",
+      "path": "/warehouse/units",
+      "query": "?tab=units",
+      "route": "/warehouse/units",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "product-units"
+      ],
+      "currentCrumb": "Đơn vị tính",
+      "path": "/warehouse/units",
+      "query": "?tab=units",
+      "route": "/warehouse/units?tab=unknown",
+      "passed": true
+    },
+    {
+      "activeIds": [
+        "product-units"
+      ],
+      "currentCrumb": "Đơn vị tính",
+      "path": "/warehouse/units",
+      "query": "?tab=units",
+      "route": "/product-units",
+      "passed": true
+    }
+  ],
+  "roleChecks": [
+    {
+      "active": [
+        "create-order"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kinh doanh",
+        "Tạo đơn hàng"
+      ],
+      "menu": [
+        "dashboard",
+        "profile",
+        "products",
+        "create-order",
+        "dealers"
+      ],
+      "passed": true
+    },
+    {
+      "active": [
+        "product-units"
+      ],
+      "crumbs": [
+        "Tổng quan",
+        "Kho hàng",
+        "Đơn vị tính"
+      ],
+      "menu": [
+        "dashboard",
+        "profile",
+        "products",
+        "product-groups",
+        "dealers",
+        "warehouse",
+        "suppliers",
+        "product-units",
+        "warehouse-ledger"
+      ],
+      "receiptTabHidden": true,
+      "unitCreateHidden": true,
+      "passed": true
+    }
+  ],
+  "mobileMenu": {
+    "current": "Tạo đơn hàng",
+    "passed": true
+  },
+  "summary": {
+    "desktopViews": 16,
+    "desktopPassed": 16,
+    "mobileViews": 16,
+    "mobilePassed": 16,
+    "tabSwitchesPassed": 4,
+    "aliasesPassed": 3,
+    "roleChecksPassed": 2,
+    "mobileMenuPassed": true
+  }
+}

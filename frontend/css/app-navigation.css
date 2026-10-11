@@ -1,0 +1,17 @@
+.topbar__breadcrumb { min-width: 0; }
+.app-breadcrumb { color: var(--ink-600); font-size: .9375rem; font-weight: 400; line-height: 1.4; }
+.app-breadcrumb ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 0; list-style: none; }
+.app-breadcrumb li { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+.app-breadcrumb a:hover { color: var(--teal-deep); }
+.app-breadcrumb a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 2px; }
+.app-breadcrumb [aria-current="page"] { color: var(--ink-900); font-weight: 600; }
+.app-breadcrumb__separator { color: var(--ink-400); }
+@media (max-width: 640px) {
+  .topbar { height: auto; min-height: var(--topbar-height); padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .topbar__actions { flex-shrink: 0; }
+  .app-breadcrumb { font-size: .8125rem; }
+  .app-breadcrumb ol, .app-breadcrumb li { column-gap: 6px; }
+  .topbar:has(.warehouse-select-wrap) .topbar__actions { flex-basis: 100%; }
+  .topbar .warehouse-select-wrap { flex: 1; min-width: 0; }
+  .topbar .warehouse-selector { width: 100%; min-width: 0; }
+}

@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-12",
+  "environment": "MySQL và máy chủ riêng 8081/5501",
+  "checks": [
+    {
+      "name": "Thiếu kho: phiếu nhập bị khoá và có thông báo",
+      "passed": true
+    },
+    {
+      "name": "Thiếu kho vẫn cho phép lập đơn hàng bán",
+      "passed": true
+    },
+    {
+      "name": "Thiếu kho không hiển thị số dư tồn kho giả",
+      "passed": true
+    },
+    {
+      "name": "Tải lại lấy tồn kho và chứng từ từ API",
+      "passed": true
+    },
+    {
+      "name": "Không gán nhãn an toàn hoặc ngưỡng 200",
+      "passed": true
+    }
+  ]
+}

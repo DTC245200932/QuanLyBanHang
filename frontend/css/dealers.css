@@ -596,6 +596,157 @@ button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
   width: min(640px, calc(100% - 32px));
 }
 
+.delivery-points-modal {
+  width: min(760px, calc(100% - 32px));
+}
+
+.delivery-points-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.delivery-points-toolbar .btn {
+  flex: 0 0 auto;
+}
+
+.delivery-points-toolbar .btn svg {
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
+.delivery-points-hint {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.delivery-points-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.delivery-point-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.delivery-point-card__main {
+  min-width: 0;
+}
+
+.delivery-point-card__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--ink-900);
+  font-size: 0.9375rem;
+}
+
+.delivery-point-card__meta {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-600);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.delivery-point-card__meta strong {
+  color: var(--ink-700);
+  font-weight: 600;
+}
+
+.delivery-point-card__note {
+  color: var(--ink-500);
+  font-style: italic;
+}
+
+.delivery-point-card__actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.delivery-point-card__actions .btn {
+  white-space: nowrap;
+}
+
+.delivery-point-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--teal-deep);
+  background: var(--teal-soft);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.delivery-points-empty,
+.delivery-points-loading {
+  padding: 24px 16px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink-500);
+  text-align: center;
+  font-size: 0.875rem;
+}
+
+.delivery-point-form {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.delivery-point-form__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.delivery-point-form__heading h3 {
+  margin: 0;
+  color: var(--ink-900);
+  font-size: 1rem;
+}
+
+.delivery-point-form__heading p {
+  margin: 4px 0 0;
+  color: var(--ink-500);
+  font-size: 0.8125rem;
+}
+
+.delivery-point-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  grid-column: 1 / -1;
+  color: var(--ink-700);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.delivery-point-default input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--teal);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -806,6 +957,24 @@ button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
 
   .modal--wide {
     width: calc(100% - 32px);
+  }
+
+  .delivery-points-toolbar,
+  .delivery-point-form__heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .delivery-points-toolbar .btn {
+    align-self: flex-start;
+  }
+
+  .delivery-point-card {
+    grid-template-columns: 1fr;
+  }
+
+  .delivery-point-card__actions {
+    justify-content: flex-start;
   }
 }
 

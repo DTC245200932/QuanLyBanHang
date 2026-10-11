@@ -189,29 +189,36 @@
   });
 
   async function loadDeliveryPoints(dealerId) {
+    const dpSel = $('co-delivery-point');
     try {
       const res = await Auth.apiFetch(`/dealers/${dealerId}/delivery-points`);
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.message || 'Không tải được điểm giao hàng');
-      const points = Array.isArray(result) ? result : (Array.isArray(result.data) ? result.data : []);
+      const result = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(result?.message || 'Không tải được điểm giao hàng.');
+      const points = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
       state.deliveryPoints = points;
-      const dpSel = $('co-delivery-point');
+      dpSel.innerHTML = '<option value="">— Chọn điểm giao hàng —</option>';
+      if (!points.length) {
+        dpSel.innerHTML = '<option value="">— Chưa khai báo điểm giao hàng —</option>';
+        return;
+      }
+
       points.forEach((p) => {
         const opt = document.createElement('option');
         opt.value = p.id;
-        opt.textContent = p.name || p.address || `Điểm #${p.id}`;
+        opt.textContent = `${p.receiverName || `Điểm #${p.id}`} — ${p.address || 'Chưa có địa chỉ'}${p.isDefault ? ' (Mặc định)' : ''}`;
         dpSel.appendChild(opt);
       });
-      if (state.pendingDeliveryPointId) {
-        dpSel.value = String(state.pendingDeliveryPointId);
-        state.pendingDeliveryPointId = null;
-      }
-      setDeliveryStatus(points.length
-        ? 'Có thể chọn điểm giao hàng của đại lý cho đơn này.'
-        : 'Đại lý chưa có điểm giao hàng riêng; hệ thống sẽ dùng điểm mặc định nếu có.');
-    } catch (e) {
-      setDeliveryStatus(e.message || 'Không tải được điểm giao hàng.', true);
-      showToast(e.message || 'Không tải được điểm giao hàng', 'error');
+      const defaultPoint = points.find((point) => point.isDefault);
+      const requestedPoint = points.find((point) => String(point.id) === String(state.pendingDeliveryPointId));
+      if (requestedPoint || defaultPoint) dpSel.value = String((requestedPoint || defaultPoint).id);
+      state.pendingDeliveryPointId = null;
+      setDeliveryStatus('Có thể chọn điểm giao hàng của đại lý cho đơn này.');
+    } catch (error) {
+      state.deliveryPoints = [];
+      dpSel.innerHTML = '<option value="">— Không tải được điểm giao hàng —</option>';
+      dpSel.disabled = true;
+      setDeliveryStatus(error.message || 'Không tải được điểm giao hàng.', true);
+      showToast(error.message || 'Không tải được điểm giao hàng.', 'error');
     }
   }
 

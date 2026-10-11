@@ -74,24 +74,6 @@
       ?.map((r) => MenuConfig.getRoleDisplayName(r))
       .join(', ') ?? '';
 
-    const nav = $('sidebar-nav');
-    const items = MenuConfig.getMenuForUser(user);
-    let lastSection = null;
-    items.forEach((item) => {
-      if (item.section && item.section !== lastSection) {
-        lastSection = item.section;
-        const label = document.createElement('div');
-        label.className = 'sidebar__section-label';
-        label.textContent = item.section;
-        nav.appendChild(label);
-      }
-      const a = document.createElement('a');
-      a.className = 'sidebar__link';
-      a.href = item.href;
-      a.innerHTML = `<svg viewBox="0 0 24 24">${item.icon}</svg><span>${escHtml(item.label)}</span>`;
-      nav.appendChild(a);
-    });
-
     const doLogout = () => Auth.logout?.();
     $('btn-logout')?.addEventListener('click', doLogout);
     $('btn-logout-topbar')?.addEventListener('click', doLogout);

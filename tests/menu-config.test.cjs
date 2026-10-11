@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const { test } = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '../frontend/js/menu-config.js'), 'utf8');
-const menu = vm.runInNewContext(`${source}\nMenuConfig;`);
+const menu = vm.runInNewContext(`${source}\nMenuConfig;`, { URLSearchParams });
 const ids = user => Array.from(menu.getMenuForUser(user), item => item.id);
 
 test('admin can reach implemented account, audit and catalog pages', () => {
@@ -52,4 +52,44 @@ test('debt limit menu follows finance roles and view permission', () => {
 test('debt limit menu uses the existing dashboard route', () => {
   const item = menu.menuItems.find(item => item.id === 'debt-limits');
   assert.equal(item.href, '/dashboard?view=debt-limits');
+});
+
+const pageAt = href => menu.getPageForLocation(new URL(href, 'http://127.0.0.1:5500'));
+
+test('special dashboard view wins over the generic dashboard, independent of unrelated query values', () => {
+  assert.equal(pageAt('/dashboard?other=1&view=debt-limits').id, 'debt-limits');
+  assert.equal(pageAt('/dashboard?view=unknown').id, 'dashboard');
+  assert.equal(pageAt('/dashboard/').id, 'dashboard');
+});
+
+test('warehouse views resolve distinct sidebar entries with a stable default', () => {
+  for (const [tab, expected] of [['units', 'product-units'], ['receipts', 'import-export'], ['ledger', 'warehouse-ledger'], ['inventory', 'warehouse']]) {
+    assert.equal(pageAt(`/warehouse/units?warehouseId=4&tab=${tab}`).id, expected);
+  }
+  assert.equal(pageAt('/warehouse/units').id, 'product-units');
+  assert.equal(pageAt('/warehouse/units/?tab=invalid').id, 'product-units');
+});
+
+test('all menu links resolve back to their own page instead of another view on the same path', () => {
+  for (const item of menu.menuItems) assert.equal(pageAt(item.href).id, item.id, item.href);
+  assert.equal(pageAt('/not-a-page'), null);
+});
+
+test('breadcrumbs use home, actual section and current page; section labels have no misleading destination', () => {
+  const crumbs = menu.getBreadcrumbs(pageAt('/create-order'));
+  assert.deepEqual(Array.from(crumbs, crumb => crumb.label), ['Tổng quan', 'Kinh doanh', 'Tạo đơn hàng']);
+  assert.equal(crumbs[0].href, '/dashboard');
+  assert.equal(crumbs[1].href, undefined);
+  assert.equal(crumbs[2].current, true);
+  assert.deepEqual(Array.from(menu.getBreadcrumbs(pageAt('/profile')), crumb => crumb.label), ['Tổng quan', 'Hồ sơ cá nhân']);
+  assert.deepEqual(Array.from(menu.getBreadcrumbs(pageAt('/dashboard')), crumb => crumb.label), ['Tổng quan']);
+});
+
+test('group labels remain correct when earlier menu items are hidden by permissions', () => {
+  const sales = menu.getMenuForUser({ roles: ['ROLE_SALES'], permissions: [] });
+  assert.equal(sales.find(item => item.id === 'create-order').section, 'Kinh doanh');
+  const warehouse = menu.getMenuForUser({ roles: ['ROLE_VIEWER'], permissions: ['WAREHOUSE_VIEW'] });
+  assert.ok(warehouse.some(item => item.id === 'product-units'));
+  assert.equal(warehouse.find(item => item.id === 'warehouse-ledger').section, 'Kho hàng');
+  assert.ok(!warehouse.some(item => item.id === 'import-export'));
 });

@@ -575,20 +575,6 @@
 
 /* ── Topbar breadcrumb ───────────────────────────────── */
 
-.topbar__crumb-link {
-  color: var(--ink-600);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  transition: color 0.15s;
-}
-
-.topbar__crumb-link:hover { color: var(--teal); }
-
-.topbar__crumb-sep {
-  color: var(--ink-400);
-  margin: 0 6px;
-}
-
 /* ── Confirm modal summary ───────────────────────────── */
 
 .co-confirm-summary {

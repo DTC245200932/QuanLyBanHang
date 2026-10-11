@@ -298,11 +298,7 @@
   // 2. UI SHELL & NAVIGATION SETUP
   // ══════════════════════════════════════════════════
   const sidebar = $("sidebar");
-  const nav = $("sidebar-nav");
   const initialTabParam = new URLSearchParams(window.location.search).get("tab");
-  const initialMenuId = ["receipts", "ledger", "inventory"].includes(initialTabParam)
-    ? "import-export"
-    : "product-units";
   const overlay = document.createElement("div");
   overlay.className = "sidebar-overlay";
   document.body.appendChild(overlay);
@@ -315,21 +311,6 @@
   $("sidebar-toggle")?.addEventListener("click", () => openSidebar(true));
   $("sidebar-close")?.addEventListener("click", () => openSidebar(false));
   overlay.addEventListener("click", () => openSidebar(false));
-
-  // Render Sidebar Links dynamically via MenuConfig
-  let lastSection = null;
-  nav.innerHTML = MenuConfig.getMenuForUser(user).map((item) => {
-    const section = item.section && item.section !== lastSection
-      ? `<div class="sidebar__section-label">${escapeHtml(item.section)}</div>` : "";
-    if (item.section) lastSection = item.section;
-    const resolvedHref = MenuConfig.resolveHref ? MenuConfig.resolveHref(item.href) : item.href;
-    const isActive = item.id === initialMenuId;
-    return `${section}<a class="sidebar__link ${isActive ? "sidebar__link--active" : ""}"
-      href="${resolvedHref}" data-page="${item.id}">
-      <svg viewBox="0 0 24 24">${item.icon}</svg>
-      <span>${escapeHtml(item.label)}</span>
-    </a>`;
-  }).join("");
 
   // User Header info
   $("user-name").textContent = user.fullName || user.username;
@@ -382,13 +363,6 @@
   const tabs = document.querySelectorAll(".nav-tab");
   const panels = document.querySelectorAll(".tab-panel");
 
-  function updateWarehouseMenuState(tabId) {
-    const activeMenuId = tabId === "sku-units" ? "product-units" : tabId === "inventory-report" ? "warehouse" : "import-export";
-    nav.querySelectorAll("[data-page]").forEach((link) => {
-      link.classList.toggle("sidebar__link--active", link.dataset.page === activeMenuId);
-    });
-  }
-
   function switchTab(tabId) {
     tabs.forEach((tab) => {
       const active = tab.dataset.tab === tabId;
@@ -405,7 +379,6 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") renderLedgerTable();
     if (tabId === "inventory-report") renderInventoryTable();
-    updateWarehouseMenuState(tabId);
     const tabParam = {
       "sku-units": "units",
       "create-receipt": "receipts",
@@ -417,6 +390,7 @@
       currentUrl.searchParams.set("tab", tabParam);
       window.history.replaceState(null, "", currentUrl);
     }
+    AppNavigation.refresh();
     updateMetrics();
   }
 

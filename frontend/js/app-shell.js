@@ -73,29 +73,6 @@
   $('user-scope').hidden = !$('user-scope').textContent;
   $('shell-avatar-fallback').textContent = displayName.trim().split(/\s+/)
     .slice(0, 2).map((word) => word[0]).join('').toUpperCase();
-  $('shell-page-title').textContent = document.title.split('|')[0].trim();
-
-  let section = null;
-  for (const item of MenuConfig.getMenuForUser(user)) {
-    if (item.section && item.section !== section) {
-      section = item.section;
-      const heading = document.createElement('div');
-      heading.className = 'sidebar__section-label';
-      heading.textContent = section;
-      $('sidebar-nav').append(heading);
-    }
-    const link = document.createElement('a');
-    link.className = 'sidebar__link';
-    link.href = item.href;
-    link.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${item.icon}</svg><span></span>`;
-    link.querySelector('span').textContent = item.label;
-    if (new URL(item.href, location.origin).pathname === location.pathname) {
-      link.classList.add('sidebar__link--active');
-      link.setAttribute('aria-current', 'page');
-    }
-    $('sidebar-nav').append(link);
-  }
-
   const toggle = $('sidebar-toggle');
   const mobileMenu = matchMedia('(max-width: 1024px)');
   function syncMenuAccess(open) {

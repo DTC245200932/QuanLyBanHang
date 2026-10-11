@@ -1,4 +1,4 @@
-/** S3-05: read real limits and validate declarations; saving awaits a complete backend contract. */
+/** S3-05: tra cứu và khai báo hạn mức công nợ theo đại lý. */
 (() => {
   "use strict";
   if (new URLSearchParams(location.search).get("view") !== "debt-limits") return;
@@ -15,7 +15,10 @@
   })[char]);
   const currency = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 2 });
   const pageSize = 10;
-  const state = { rows: [], page: 0, loading: false, error: "", selected: null };
+  const state = {
+    rows: [], page: 0, loading: false, error: "", selected: null,
+    pendingDeclaration: null, saving: false,
+  };
   const modal = $("debt-limit-modal");
   const form = $("debt-limit-form");
   let previousFocus;
@@ -43,6 +46,33 @@
   function formatAmount(value) {
     const number = amountNumber(value);
     return number === null ? "Chưa có dữ liệu" : currency.format(number);
+  }
+
+  function formatDays(value) {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 0
+      ? `${number.toLocaleString("vi-VN")} ngày`
+      : "Chưa có dữ liệu";
+  }
+
+  function showToast(message, type = "error") {
+    let container = $("toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "toast-container";
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement("div");
+    toast.className = `toast toast--${type}`;
+    toast.setAttribute("role", "alert");
+    toast.textContent = String(message ?? "");
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add("toast--visible"));
+    setTimeout(() => {
+      toast.classList.remove("toast--visible");
+      toast.classList.add("toast--exit");
+      setTimeout(() => toast.remove(), 300);
+    }, 4200);
   }
 
   function filteredRows() {
@@ -83,7 +113,7 @@
     $("debt-limits-rows").innerHTML = rows.slice(start, end).map(row => `<tr>
       <td><span class="debt-limits__name">${escapeHtml(row.customerName || "Chưa có tên đại lý")}</span><span class="debt-limits__id">ID: ${escapeHtml(row.dealerId)}</span></td>
       <td><span class="debt-limits__amount">${escapeHtml(formatAmount(row.debtLimit))}</span></td>
-      <td><span class="debt-limits__missing">Chưa có dữ liệu</span></td>
+      <td><span class="debt-limits__days">${escapeHtml(formatDays(row.maxDebtDays))}</span></td>
       <td>${canDeclare ? `<button class="btn btn--secondary" type="button" data-declare-debt-limit="${escapeHtml(row.dealerId)}" aria-label="${escapeHtml(`Khai báo hạn mức cho ${row.customerName || row.dealerId}`)}">Khai báo</button>` : '<span class="debt-limits__missing">Chỉ xem</span>'}</td>
     </tr>`).join("");
   }
@@ -102,7 +132,6 @@
         || result.data.some(row => !row || row.dealerId == null)) {
         throw new Error(result?.message || "Máy chủ không trả về danh sách hạn mức hợp lệ.");
       }
-      // debtAmount is currently a backend placeholder; do not turn it into a risk metric.
       state.rows = result.data;
     } catch (error) {
       state.error = error.message || "Không thể kết nối máy chủ. Vui lòng thử lại.";
@@ -115,7 +144,9 @@
   function clearDeclarationCheck() {
     $("debt-limit-form-message").hidden = true;
     $("debt-limit-preview").hidden = true;
+    $("save-debt-limit").disabled = true;
     form.querySelectorAll('[aria-invalid="true"]').forEach(field => field.removeAttribute("aria-invalid"));
+    state.pendingDeclaration = null;
   }
 
   function openDeclaration(row) {
@@ -126,10 +157,10 @@
     form.reset();
     clearDeclarationCheck();
     $("debt-limit-modal-dealer").textContent = `${row.customerName || "Đại lý"} · ID ${row.dealerId}`;
-    $("debt-limit-current").textContent = `Hạn mức tiền hiện tại: ${formatAmount(row.debtLimit)}`;
+    $("debt-limit-current").textContent = `Hạn mức hiện tại: ${formatAmount(row.debtLimit)} · Số ngày nợ: ${formatDays(row.maxDebtDays)}`;
     $("debt-limit-amount").value = amountNumber(row.debtLimit) === null ? "" : String(row.debtLimit);
-    // No debt-day value is returned by the existing API; never substitute a guessed default.
-    $("debt-limit-days").value = "";
+    $("debt-limit-days").value = Number.isInteger(Number(row.maxDebtDays)) ? String(row.maxDebtDays) : "";
+    $("debt-limit-days-help").textContent = `Giá trị hiện tại: ${formatDays(row.maxDebtDays)}. Nhập số ngày nguyên không âm.`;
     modal.hidden = false;
     document.querySelector(".app-shell").inert = true;
     document.body.style.overflow = "hidden";
@@ -142,6 +173,8 @@
     document.querySelector(".app-shell").inert = false;
     document.body.style.overflow = previousOverflow;
     state.selected = null;
+    state.pendingDeclaration = null;
+    state.saving = false;
     form.reset();
     clearDeclarationCheck();
     previousFocus?.focus();
@@ -180,8 +213,49 @@
     $("debt-limit-preview-values").innerHTML = values.map(([label, value]) =>
       `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
     $("debt-limit-preview").hidden = false;
-    // Do not POST/PUT an incomplete declaration: the current DTO accepts only debtLimit.
-    // Saving and audit of reason/debt days must be connected once the backend supports S3-05.
+    state.pendingDeclaration = {
+      debtLimit: Number(amount),
+      maxDebtDays: Number(days),
+      reason,
+    };
+    $("save-debt-limit").disabled = false;
+  });
+
+  $("save-debt-limit").addEventListener("click", async () => {
+    if (!canDeclare || !state.selected || !state.pendingDeclaration || state.saving) return;
+    const button = $("save-debt-limit");
+    state.saving = true;
+    button.disabled = true;
+    button.textContent = "Đang lưu…";
+    $("debt-limit-form-message").hidden = true;
+
+    try {
+      const response = await Auth.apiFetch(`/finance/debt/${state.selected.dealerId}/limit`, {
+        method: "PUT",
+        body: JSON.stringify(state.pendingDeclaration),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || "Không lưu được hạn mức công nợ.");
+      }
+
+      const saved = result.data || state.pendingDeclaration;
+      const row = state.rows.find(item => String(item.dealerId) === String(state.selected.dealerId));
+      if (row) {
+        row.debtLimit = saved.debtLimit;
+        row.maxDebtDays = saved.maxDebtDays;
+      }
+      closeDeclaration();
+      render();
+      showToast(result.message || "Đã cập nhật hạn mức công nợ.", "success");
+    } catch (error) {
+      $("debt-limit-form-message").textContent = error.message || "Không thể lưu hạn mức công nợ.";
+      $("debt-limit-form-message").hidden = false;
+    } finally {
+      state.saving = false;
+      button.disabled = !state.pendingDeclaration;
+      button.textContent = "Lưu khai báo";
+    }
   });
 
   form.addEventListener("input", clearDeclarationCheck);

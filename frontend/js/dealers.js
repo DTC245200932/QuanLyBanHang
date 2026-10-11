@@ -1,5 +1,5 @@
 /**
- * dealers.js — S3-03 / S3-04 / S3-08 Quản lý đại lý và điểm giao hàng.
+ * dealers.js — S3-03 đến S3-08: hồ sơ, điểm giao và phân công đại lý.
  *
  * Tính năng:
  * - Dành cho Nhân viên kinh doanh (ROLE_SALES), Quản lý kinh doanh, Kế toán, Admin, Viewer
@@ -7,6 +7,7 @@
  * - Lọc theo khu vực, nhóm khách hàng, người phụ trách, trạng thái
  * - Quick chips: Tất cả, Khách của tôi, Đang giao dịch
  * - Thêm / Sửa đại lý & Ngừng / Khôi phục giao dịch (ROLE_ADMIN, ROLE_SALES_MANAGER, ROLE_ACCOUNTANT)
+ * - Phân công từng đại lý, bàn giao hàng loạt và tra cứu lịch sử (S3-06)
  * - Khai báo nhiều điểm giao hàng, chọn mặc định và gắn vào đơn hàng (S3-04)
  * - Phân trang phía client, tải danh mục tham chiếu từ /dealers/options
  */
@@ -19,6 +20,10 @@
     return;
   }
   const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT');
+  const CAN_ASSIGN = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
+  const CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyRole(
+    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_VIEWER',
+  );
   const CAN_MANAGE_DELIVERY_POINTS = Auth.hasAnyRole(
     'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_SALES',
   );
@@ -65,6 +70,11 @@
     ownerFilter: '',
     statusFilter: '',
     activeChip: 'all',
+    assignment: {
+      pending: [],
+      historyPage: 0,
+      historyTotalPages: 0,
+    },
     deliveryPoints: [],
     deliveryDealerId: null,
     editingDeliveryPointId: null,
@@ -155,6 +165,7 @@
     }
     populateFilterDropdowns();
     populateModalDropdowns();
+    populateAssignmentReferenceSelects();
   }
 
   /* ── Populate filter dropdowns ──────────────────────────── */
@@ -444,6 +455,10 @@
             <button class="dlr-action-btn" data-action="orders" data-id="${dlr.id}" title="Đơn đang dở" aria-label="Đơn đang dở của ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><path d="M9 5H5v16h14V5h-4M9 3h6v4H9zM8 12h8M8 16h5"/></svg>
             </button>
+            ${CAN_ASSIGN ? `
+            <button class="dlr-action-btn dlr-action-btn--assign" data-action="assign" data-id="${dlr.id}" title="Phân công người phụ trách" aria-label="Phân công người phụ trách cho ${escHtml(dlr.name)}">
+              <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M19 8v6M22 11h-6"/></svg>
+            </button>` : ''}
             <button class="dlr-action-btn" data-action="delivery-points" data-id="${dlr.id}" title="Điểm giao hàng" aria-label="Điểm giao hàng của ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
             </button>
@@ -554,6 +569,12 @@
     tbody.querySelectorAll('[data-action="orders"]').forEach((btn) => {
       btn.addEventListener('click', () => openInProgressOrders(Number(btn.dataset.id)));
     });
+    tbody.querySelectorAll('[data-action="assign"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const dlr = state.all.find((d) => d.id === Number(btn.dataset.id));
+        if (dlr) openAssignmentModal(dlr);
+      });
+    });
     tbody.querySelectorAll('[data-action="delivery-points"]').forEach((btn) => {
       btn.addEventListener('click', () => openDeliveryPointsModal(Number(btn.dataset.id)));
     });
@@ -598,6 +619,247 @@
     });
   }
 
+  /* ── S3-06: Assignment & handover ─────────────────────── */
+  function userLabel(user) {
+    return user?.fullName || user?.username || `Nhân viên #${user?.id ?? ''}`;
+  }
+
+  function salesUsers() {
+    return (state.options.assignedUsers || []).filter((user) => user?.id != null);
+  }
+
+  function fillUserSelect(select, placeholder, includeAll = false) {
+    if (!select) return;
+    const selected = select.value;
+    const options = [`<option value="">${escHtml(placeholder)}</option>`];
+    salesUsers().forEach((user) => {
+      options.push(`<option value="${escHtml(user.id)}">${escHtml(userLabel(user))} · ${escHtml(user.username || '')}</option>`);
+    });
+    if (includeAll) options[0] = `<option value="">${escHtml(placeholder)}</option>`;
+    select.innerHTML = options.join('');
+    if (selected && [...select.options].some((option) => option.value === selected)) {
+      select.value = selected;
+    }
+  }
+
+  function populateAssignmentReferenceSelects() {
+    fillUserSelect($('assignment-owner'), '— Chọn người phụ trách —');
+    fillUserSelect($('handover-from-user'), '— Chọn nhân viên bàn giao —');
+    fillUserSelect($('handover-to-user'), '— Chọn nhân viên tiếp nhận —');
+    fillUserSelect($('history-from-user'), 'Tất cả người bàn giao', true);
+    fillUserSelect($('history-to-user'), 'Tất cả người tiếp nhận', true);
+
+    const territoryOptions = ['<option value="">— Chọn khu vực —</option>'];
+    (state.options.territories || []).forEach((territory) => {
+      territoryOptions.push(`<option value="${escHtml(territory.id)}">${escHtml(territory.name)}</option>`);
+    });
+    const historyTerritoryOptions = ['<option value="">Tất cả khu vực</option>', ...territoryOptions.slice(1)];
+    if ($('handover-territory')) $('handover-territory').innerHTML = territoryOptions.join('');
+    if ($('history-territory')) $('history-territory').innerHTML = historyTerritoryOptions.join('');
+  }
+
+  function renderPendingHandover() {
+    const list = $('assignment-pending-list');
+    const count = $('assignment-pending-count');
+    if (!list || !count) return;
+
+    const pending = state.assignment.pending;
+    count.textContent = String(pending.length);
+    if (!pending.length) {
+      list.innerHTML = '<p class="assignment-empty">Không có đại lý nào đang chờ bàn giao.</p>';
+      return;
+    }
+
+    list.innerHTML = pending.map((dealer) => `
+      <div class="assignment-pending__item">
+        <div>
+          <strong>${escHtml(dealer.name || dealer.code)}</strong>
+          <span>${escHtml(dealer.code || `ID ${dealer.id}`)} · ${escHtml(dealer.territoryName || 'Chưa có khu vực')}</span>
+          <small>Đang phụ trách: ${escHtml(dealer.assignedUserFullName || dealer.assignedUsername || 'Chưa phân công')}</small>
+        </div>
+        <button type="button" class="btn btn--secondary btn--compact" data-pending-assign="${escHtml(dealer.id)}">Phân công</button>
+      </div>`).join('');
+
+    list.querySelectorAll('[data-pending-assign]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const dealer = state.all.find((item) => item.id === Number(button.dataset.pendingAssign))
+          || pending.find((item) => item.id === Number(button.dataset.pendingAssign));
+        if (dealer) openAssignmentModal(dealer);
+      });
+    });
+  }
+
+  async function loadAssignmentPanel() {
+    if (!CAN_ASSIGN) return;
+    const message = $('assignment-panel-message');
+    if (message) message.hidden = true;
+    try {
+      const response = await Auth.apiFetch('/dealers/handover/pending');
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success || !Array.isArray(result.data)) {
+        throw new Error(result.message || 'Không tải được danh sách đại lý cần bàn giao');
+      }
+      state.assignment.pending = result.data;
+      renderPendingHandover();
+    } catch (error) {
+      state.assignment.pending = [];
+      renderPendingHandover();
+      if (message) {
+        message.hidden = false;
+        message.textContent = error.message || 'Không tải được danh sách cần bàn giao.';
+      }
+    }
+  }
+
+  function openAssignmentModal(dealer) {
+    if (!CAN_ASSIGN) return;
+    populateAssignmentReferenceSelects();
+    $('assignment-dealer-id').value = dealer.id;
+    $('dealer-assignment-modal-sub').textContent = `${dealer.name || 'Đại lý'} · ${dealer.code || `ID ${dealer.id}`}`;
+    $('assignment-current-owner').textContent = `Người phụ trách hiện tại: ${dealer.assignedUserFullName || dealer.assignedUsername || 'Chưa phân công'}`;
+    $('assignment-owner').value = dealer.assignedUserId ? String(dealer.assignedUserId) : '';
+    $('assignment-reason').value = '';
+    $('assignment-form-message').hidden = true;
+    $('dealer-assignment-modal').hidden = false;
+    setTimeout(() => $('assignment-owner').focus(), 50);
+  }
+
+  function closeAssignmentModal() {
+    if ($('dealer-assignment-modal')) $('dealer-assignment-modal').hidden = true;
+  }
+
+  function updateHandoverDealers() {
+    const fromId = Number($('handover-from-user')?.value || 0);
+    const select = $('handover-dealers');
+    if (!select) return;
+    const dealers = state.all
+      .filter((dealer) => Number(dealer.assignedUserId) === fromId)
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'vi'));
+    select.innerHTML = dealers.length
+      ? dealers.map((dealer) => `<option value="${escHtml(dealer.id)}">${escHtml(dealer.name)} · ${escHtml(dealer.code || `ID ${dealer.id}`)}</option>`).join('')
+      : '<option value="" disabled>Nhân viên này chưa có đại lý</option>';
+    updateHandoverPreview();
+  }
+
+  function updateHandoverScopeFields() {
+    const scope = $('handover-scope')?.value || 'all';
+    if ($('handover-territory-field')) $('handover-territory-field').hidden = scope !== 'territory';
+    if ($('handover-dealers-field')) $('handover-dealers-field').hidden = scope !== 'selected';
+    updateHandoverPreview();
+  }
+
+  function updateHandoverPreview() {
+    const preview = $('handover-preview');
+    if (!preview) return;
+    const fromId = Number($('handover-from-user')?.value || 0);
+    const scope = $('handover-scope')?.value || 'all';
+    const ownedDealers = state.all.filter((dealer) => Number(dealer.assignedUserId) === fromId);
+    let count = ownedDealers.length;
+    let description = 'toàn bộ đại lý của nhân viên bàn giao';
+    if (scope === 'territory') {
+      const territoryId = Number($('handover-territory')?.value || 0);
+      count = ownedDealers.filter((dealer) => Number(dealer.territoryId) === territoryId).length;
+      description = $('handover-territory')?.selectedOptions[0]?.textContent || 'khu vực đã chọn';
+    } else if (scope === 'selected') {
+      count = [...($('handover-dealers')?.selectedOptions || [])].length;
+      description = 'danh sách đại lý đã chọn';
+    }
+    preview.textContent = fromId ? `Sẽ chuyển ${count} đại lý theo ${description}.` : 'Chưa chọn nhân viên bàn giao.';
+  }
+
+  function openBulkHandoverModal() {
+    if (!CAN_ASSIGN) return;
+    $('bulk-handover-form').reset();
+    $('bulk-handover-message').hidden = true;
+    populateAssignmentReferenceSelects();
+    updateHandoverDealers();
+    updateHandoverScopeFields();
+    $('bulk-handover-modal').hidden = false;
+    setTimeout(() => $('handover-from-user').focus(), 50);
+  }
+
+  function closeBulkHandoverModal() {
+    if ($('bulk-handover-modal')) $('bulk-handover-modal').hidden = true;
+  }
+
+  function formatAssignmentDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  function assignmentTypeLabel(value) {
+    return value === 'BULK_HANDOVER' ? 'Bàn giao hàng loạt' : 'Phân công';
+  }
+
+  function renderAssignmentHistory(page) {
+    const body = $('assignment-history-body');
+    const summary = $('assignment-history-summary');
+    const pagination = $('assignment-history-pagination');
+    if (!body || !summary || !pagination) return;
+    const rows = page?.content || [];
+    summary.textContent = `${page?.totalElements || 0} bản ghi`;
+    body.innerHTML = rows.length ? rows.map((row) => `
+      <tr>
+        <td>${escHtml(formatAssignmentDate(row.transferredAt))}</td>
+        <td><strong>${escHtml(row.dealerName || '—')}</strong><small>${escHtml(row.dealerCode || `ID ${row.dealerId || '—'}`)}</small></td>
+        <td>${escHtml(row.fromUserFullName || row.fromUsername || 'Chưa có')}</td>
+        <td>${escHtml(row.toUserFullName || row.toUsername || 'Chưa có')}</td>
+        <td><span class="assignment-type">${escHtml(assignmentTypeLabel(row.transferType))}</span></td>
+        <td>${escHtml(row.reason || '—')}</td>
+      </tr>`).join('') : '<tr><td colspan="6" class="assignment-empty-cell">Chưa có lịch sử phù hợp.</td></tr>';
+
+    const totalPages = Number(page?.totalPages || 0);
+    state.assignment.historyPage = Number(page?.number || 0);
+    state.assignment.historyTotalPages = totalPages;
+    pagination.innerHTML = totalPages > 1 ? `
+      <button type="button" class="dlr-page-btn" data-history-page="${state.assignment.historyPage - 1}" ${state.assignment.historyPage === 0 ? 'disabled' : ''}>‹</button>
+      <span>Trang ${state.assignment.historyPage + 1} / ${totalPages}</span>
+      <button type="button" class="dlr-page-btn" data-history-page="${state.assignment.historyPage + 1}" ${state.assignment.historyPage >= totalPages - 1 ? 'disabled' : ''}>›</button>` : '';
+    pagination.querySelectorAll('[data-history-page]').forEach((button) => {
+      button.addEventListener('click', () => loadAssignmentHistory(Number(button.dataset.historyPage)));
+    });
+  }
+
+  async function loadAssignmentHistory(pageNumber = 0) {
+    if (!CAN_VIEW_ASSIGNMENT_HISTORY) return;
+    const message = $('assignment-history-message');
+    if (message) message.hidden = true;
+    const params = new URLSearchParams({ page: String(pageNumber), size: '10' });
+    const fromUser = $('history-from-user')?.value;
+    const toUser = $('history-to-user')?.value;
+    const territory = $('history-territory')?.value;
+    if (fromUser) params.set('fromUserId', fromUser);
+    if (toUser) params.set('toUserId', toUser);
+    if (territory) params.set('territoryId', territory);
+    $('assignment-history-body').innerHTML = '<tr><td colspan="6">Đang tải lịch sử…</td></tr>';
+    try {
+      const response = await Auth.apiFetch(`/dealers/handover/history?${params.toString()}`);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success || !result.data) {
+        throw new Error(result.message || 'Không tải được lịch sử phân công');
+      }
+      renderAssignmentHistory(result.data);
+    } catch (error) {
+      $('assignment-history-body').innerHTML = '<tr><td colspan="6" class="assignment-empty-cell">Không tải được lịch sử.</td></tr>';
+      if (message) {
+        message.hidden = false;
+        message.textContent = error.message || 'Không tải được lịch sử phân công.';
+      }
+    }
+  }
+
+  function openAssignmentHistoryModal() {
+    if (!CAN_VIEW_ASSIGNMENT_HISTORY) return;
+    populateAssignmentReferenceSelects();
+    $('assignment-history-modal').hidden = false;
+    loadAssignmentHistory(0);
+  }
+
+  function closeAssignmentHistoryModal() {
+    if ($('assignment-history-modal')) $('assignment-history-modal').hidden = true;
+  }
+
   /* ── Load all dealers ───────────────────────────────────── */
   async function loadDealers() {
     $('dlr-tbody').innerHTML = `<tr class="dlr-loading-row"><td colspan="8"><div class="dlr-loading">Đang tải dữ liệu…</div></td></tr>`;
@@ -621,6 +883,7 @@
       populateFilterDropdowns();
       populateModalDropdowns();
       applyFilter();
+      await loadAssignmentPanel();
     } catch (e) {
       $('dlr-tbody').innerHTML = `
         <tr><td colspan="8"><div class="dlr-empty">
@@ -718,6 +981,100 @@
     } finally {
       btn.disabled    = false;
       btn.textContent = 'Lưu';
+    }
+  });
+
+  $('dealer-assignment-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!CAN_ASSIGN) return;
+    const dealerId = Number($('assignment-dealer-id').value);
+    const assignedUserId = Number($('assignment-owner').value);
+    const reason = $('assignment-reason').value.trim();
+    if (!dealerId || !assignedUserId) {
+      showFormError('assignment-form-message', 'Vui lòng chọn nhân viên phụ trách mới.');
+      return;
+    }
+
+    const button = $('btn-save-assignment');
+    button.disabled = true;
+    button.textContent = 'Đang lưu…';
+    $('assignment-form-message').hidden = true;
+    try {
+      const response = await Auth.apiFetch(`/dealers/${dealerId}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ assignedUserId, reason: reason || null }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.message || 'Không lưu được phân công');
+      closeAssignmentModal();
+      showToast('Đã cập nhật người phụ trách và lưu lịch sử.', 'success');
+      await loadDealers();
+    } catch (error) {
+      showFormError('assignment-form-message', error.message || 'Không lưu được phân công.');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Lưu phân công';
+    }
+  });
+
+  $('bulk-handover-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!CAN_ASSIGN) return;
+    const fromUserId = Number($('handover-from-user').value);
+    const toUserId = Number($('handover-to-user').value);
+    const scope = $('handover-scope').value;
+    const reason = $('handover-reason').value.trim();
+    const notes = $('handover-notes').value.trim();
+    if (!fromUserId || !toUserId) {
+      showFormError('bulk-handover-message', 'Vui lòng chọn đủ nhân viên bàn giao và tiếp nhận.');
+      return;
+    }
+    if (fromUserId === toUserId) {
+      showFormError('bulk-handover-message', 'Nhân viên tiếp nhận phải khác nhân viên bàn giao.');
+      return;
+    }
+    if (!reason) {
+      showFormError('bulk-handover-message', 'Vui lòng nhập lý do chuyển giao.');
+      return;
+    }
+
+    const payload = { fromUserId, toUserId, reason, notes: notes || null };
+    if (scope === 'territory') {
+      const territoryId = Number($('handover-territory').value);
+      if (!territoryId) {
+        showFormError('bulk-handover-message', 'Vui lòng chọn khu vực cần chuyển giao.');
+        return;
+      }
+      payload.territoryId = territoryId;
+    } else if (scope === 'selected') {
+      const dealerIds = [...$('handover-dealers').selectedOptions].map((option) => Number(option.value)).filter(Boolean);
+      if (!dealerIds.length) {
+        showFormError('bulk-handover-message', 'Vui lòng chọn ít nhất một đại lý.');
+        return;
+      }
+      payload.dealerIds = dealerIds;
+    }
+
+    const button = $('btn-save-bulk-handover');
+    button.disabled = true;
+    button.textContent = 'Đang chuyển giao…';
+    $('bulk-handover-message').hidden = true;
+    try {
+      const response = await Auth.apiFetch('/dealers/handover/bulk', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.message || 'Không chuyển giao được đại lý');
+      closeBulkHandoverModal();
+      const transferred = Number(result.data?.totalTransferred || 0);
+      showToast(`Đã chuyển giao ${transferred} đại lý và lưu lịch sử.`, 'success');
+      await loadDealers();
+    } catch (error) {
+      showFormError('bulk-handover-message', error.message || 'Không chuyển giao được đại lý.');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Chuyển giao';
     }
   });
 
@@ -1110,10 +1467,29 @@
     const addBtn = $('btn-add-dealer');
     if (addBtn) addBtn.hidden = false;
   }
+  if (CAN_ASSIGN) {
+    const panel = $('dealer-assignment-panel');
+    if (panel) panel.hidden = false;
+  }
 
   /* ── Event bindings ─────────────────────────────────────── */
 
   $('btn-add-dealer')?.addEventListener('click', () => openDealerModal(null));
+  $('btn-open-bulk-handover')?.addEventListener('click', openBulkHandoverModal);
+  $('btn-open-assignment-history')?.addEventListener('click', openAssignmentHistoryModal);
+  $('btn-refresh-assignment')?.addEventListener('click', async () => {
+    await loadAssignmentPanel();
+    showToast('Đã làm mới danh sách cần bàn giao.', 'success');
+  });
+
+  $('handover-from-user')?.addEventListener('change', updateHandoverDealers);
+  $('handover-scope')?.addEventListener('change', updateHandoverScopeFields);
+  $('handover-territory')?.addEventListener('change', updateHandoverPreview);
+  $('handover-dealers')?.addEventListener('change', updateHandoverPreview);
+  $('assignment-history-filters')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    loadAssignmentHistory(0);
+  });
 
   // Quick search
   let searchTimer;
@@ -1240,6 +1616,27 @@
     if (e.target === $('dealer-modal')) closeDealerModal();
   });
 
+  document.querySelectorAll('[data-close-assignment]').forEach((button) =>
+    button.addEventListener('click', closeAssignmentModal),
+  );
+  $('dealer-assignment-modal')?.addEventListener('click', (event) => {
+    if (event.target === $('dealer-assignment-modal')) closeAssignmentModal();
+  });
+
+  document.querySelectorAll('[data-close-bulk-handover]').forEach((button) =>
+    button.addEventListener('click', closeBulkHandoverModal),
+  );
+  $('bulk-handover-modal')?.addEventListener('click', (event) => {
+    if (event.target === $('bulk-handover-modal')) closeBulkHandoverModal();
+  });
+
+  document.querySelectorAll('[data-close-assignment-history]').forEach((button) =>
+    button.addEventListener('click', closeAssignmentHistoryModal),
+  );
+  $('assignment-history-modal')?.addEventListener('click', (event) => {
+    if (event.target === $('assignment-history-modal')) closeAssignmentHistoryModal();
+  });
+
   // Modal close — status
   document.querySelectorAll('[data-close-dlr-status]').forEach((btn) =>
     btn.addEventListener('click', closeStatusModal),
@@ -1253,6 +1650,9 @@
     if (e.key === 'Escape') {
       if ($('dealer-modal') && !$('dealer-modal').hidden) closeDealerModal();
       if ($('dlr-status-modal') && !$('dlr-status-modal').hidden) closeStatusModal();
+      if ($('dealer-assignment-modal') && !$('dealer-assignment-modal').hidden) closeAssignmentModal();
+      if ($('bulk-handover-modal') && !$('bulk-handover-modal').hidden) closeBulkHandoverModal();
+      if ($('assignment-history-modal') && !$('assignment-history-modal').hidden) closeAssignmentHistoryModal();
     }
   });
 

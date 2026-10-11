@@ -167,6 +167,55 @@
             </div>
           </div>
 
+          <!-- S3-06: Phân công và chuyển giao đại lý -->
+          <section class="assignment-panel" id="dealer-assignment-panel" aria-labelledby="dealer-assignment-title" hidden>
+            <div class="assignment-panel__header">
+              <div>
+                <p class="assignment-panel__eyebrow">S3-06 · Phân công phụ trách</p>
+                <h2 id="dealer-assignment-title">Phân công nhân viên theo đại lý</h2>
+                <p class="assignment-panel__desc">
+                  Mỗi đại lý có một người phụ trách chính. Khi có nhân sự nghỉ hoặc điều chuyển, bạn có thể bàn giao theo khu vực hoặc danh sách đại lý.
+                </p>
+              </div>
+              <div class="assignment-panel__actions">
+                <button type="button" class="btn btn--secondary" id="btn-refresh-assignment">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/>
+                  </svg>
+                  Làm mới
+                </button>
+                <button type="button" class="btn btn--secondary" id="btn-open-assignment-history">
+                  Xem lịch sử
+                </button>
+                <button type="button" class="btn btn--primary" id="btn-open-bulk-handover">
+                  Chuyển giao hàng loạt
+                </button>
+              </div>
+            </div>
+            <div id="assignment-panel-message" class="form-message" role="alert" hidden></div>
+            <div class="assignment-panel__grid">
+              <div class="assignment-pending">
+                <div class="assignment-section-heading">
+                  <div>
+                    <h3>Đại lý cần bàn giao</h3>
+                    <p>Những đại lý đang chờ Quản lý kinh doanh phân công lại.</p>
+                  </div>
+                  <span class="assignment-count" id="assignment-pending-count">0</span>
+                </div>
+                <div class="assignment-pending__list" id="assignment-pending-list">
+                  <p class="assignment-empty">Đang tải danh sách cần bàn giao…</p>
+                </div>
+              </div>
+              <div class="assignment-guide">
+                <span class="assignment-guide__icon" aria-hidden="true">↗</span>
+                <div>
+                  <h3>Gán người phụ trách</h3>
+                  <p>Dùng nút phân công trên từng dòng đại lý để thay đổi một người. Mọi thay đổi đều được lưu lịch sử.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- Table -->
           <div class="dlr-table-wrap">
             <table class="dlr-table" id="dlr-table">
@@ -362,6 +411,131 @@
             <table class="dlr-table"><thead><tr><th>Mã đơn</th><th>Trạng thái</th><th>Tổng phải thu</th><th>Thao tác</th></tr></thead><tbody id="dealer-orders-body"></tbody></table>
           </div>
           <div id="dealer-orders-message" class="form-message" role="alert" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: Phân công một đại lý (S3-06) ── -->
+    <div class="modal-overlay" id="dealer-assignment-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="dealer-assignment-modal-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="dealer-assignment-modal-title">Phân công người phụ trách</h2>
+            <p class="modal-subtitle" id="dealer-assignment-modal-sub"></p>
+          </div>
+          <button class="modal__close" type="button" data-close-assignment aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <form class="modal__body" id="dealer-assignment-form" novalidate>
+          <input type="hidden" id="assignment-dealer-id" />
+          <div class="assignment-current" id="assignment-current-owner"></div>
+          <div class="form-field">
+            <label for="assignment-owner">Nhân viên phụ trách mới <span class="req">*</span></label>
+            <select id="assignment-owner" class="dlr-select" required></select>
+          </div>
+          <div class="form-field">
+            <label for="assignment-reason">Lý do thay đổi</label>
+            <textarea id="assignment-reason" rows="3" maxlength="500" placeholder="Ví dụ: Điều chỉnh tuyến chăm sóc khu vực Quận 1"></textarea>
+            <small>Lý do sẽ được lưu cùng lịch sử phân công.</small>
+          </div>
+          <div id="assignment-form-message" class="form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-assignment>Huỷ</button>
+            <button type="submit" class="btn btn--primary" id="btn-save-assignment">Lưu phân công</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Modal: Chuyển giao hàng loạt (S3-06) ── -->
+    <div class="modal-overlay" id="bulk-handover-modal" hidden>
+      <div class="modal modal--wide" role="dialog" aria-labelledby="bulk-handover-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="bulk-handover-title">Chuyển giao đại lý hàng loạt</h2>
+            <p class="modal-subtitle">Chọn nhân viên bàn giao và nhân viên tiếp nhận. Hệ thống sẽ ghi lịch sử cho từng đại lý.</p>
+          </div>
+          <button class="modal__close" type="button" data-close-bulk-handover aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <form class="modal__body" id="bulk-handover-form" novalidate>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="handover-from-user">Nhân viên bàn giao <span class="req">*</span></label>
+              <select id="handover-from-user" class="dlr-select" required></select>
+            </div>
+            <div class="form-field">
+              <label for="handover-to-user">Nhân viên tiếp nhận <span class="req">*</span></label>
+              <select id="handover-to-user" class="dlr-select" required></select>
+            </div>
+            <div class="form-field form-field--full">
+              <label for="handover-scope">Phạm vi chuyển giao <span class="req">*</span></label>
+              <select id="handover-scope" class="dlr-select">
+                <option value="all">Toàn bộ đại lý của nhân viên bàn giao</option>
+                <option value="territory">Theo khu vực</option>
+                <option value="selected">Chọn danh sách đại lý</option>
+              </select>
+            </div>
+            <div class="form-field form-field--full" id="handover-territory-field" hidden>
+              <label for="handover-territory">Khu vực</label>
+              <select id="handover-territory" class="dlr-select"></select>
+            </div>
+            <div class="form-field form-field--full" id="handover-dealers-field" hidden>
+              <label for="handover-dealers">Đại lý cần chuyển giao</label>
+              <select id="handover-dealers" class="dlr-select assignment-multi-select" multiple size="6"></select>
+              <small>Giữ Ctrl hoặc Cmd để chọn nhiều đại lý.</small>
+            </div>
+            <div class="form-field form-field--full">
+              <label for="handover-reason">Lý do chuyển giao <span class="req">*</span></label>
+              <textarea id="handover-reason" rows="3" maxlength="500" required placeholder="Ví dụ: Nhân viên nghỉ việc, bàn giao tuyến cho nhân viên mới"></textarea>
+            </div>
+            <div class="form-field form-field--full">
+              <label for="handover-notes">Ghi chú</label>
+              <textarea id="handover-notes" rows="2" maxlength="1000" placeholder="Thông tin cần lưu ý khi bàn giao hồ sơ…"></textarea>
+            </div>
+          </div>
+          <p class="assignment-preview" id="handover-preview" role="status">Chưa chọn phạm vi chuyển giao.</p>
+          <div id="bulk-handover-message" class="form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-bulk-handover>Huỷ</button>
+            <button type="submit" class="btn btn--primary" id="btn-save-bulk-handover">Chuyển giao</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Modal: Lịch sử phân công (S3-06) ── -->
+    <div class="modal-overlay" id="assignment-history-modal" hidden>
+      <div class="modal modal--wide assignment-history-modal" role="dialog" aria-labelledby="assignment-history-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="assignment-history-title">Lịch sử phân công</h2>
+            <p class="modal-subtitle">Tra cứu các lần phân công và chuyển giao đại lý.</p>
+          </div>
+          <button class="modal__close" type="button" data-close-assignment-history aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <form class="assignment-history-filters" id="assignment-history-filters">
+            <select id="history-from-user" class="dlr-select" aria-label="Lọc theo người bàn giao"><option value="">Tất cả người bàn giao</option></select>
+            <select id="history-to-user" class="dlr-select" aria-label="Lọc theo người tiếp nhận"><option value="">Tất cả người tiếp nhận</option></select>
+            <select id="history-territory" class="dlr-select" aria-label="Lọc theo khu vực"><option value="">Tất cả khu vực</option></select>
+            <button type="submit" class="btn btn--secondary">Lọc</button>
+          </form>
+          <div id="assignment-history-message" class="form-message" role="alert" hidden></div>
+          <div class="assignment-history-table-wrap">
+            <table class="dlr-table assignment-history-table">
+              <thead><tr><th>Thời điểm</th><th>Đại lý</th><th>Bàn giao từ</th><th>Tiếp nhận</th><th>Loại</th><th>Lý do</th></tr></thead>
+              <tbody id="assignment-history-body"><tr><td colspan="6">Chưa tải dữ liệu.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="assignment-history-footer">
+            <span id="assignment-history-summary">0 bản ghi</span>
+            <div class="assignment-history-pagination" id="assignment-history-pagination"></div>
+          </div>
         </div>
       </div>
     </div>

@@ -5,7 +5,7 @@
  * - Chọn đại lý (load từ /dealers/active), điểm giao hàng, ngày giao
  * - Thêm dòng hàng: tìm kiếm sản phẩm theo SKU/tên, chọn đơn vị tính & số lượng
  * - Hiển thị tổng tiền hàng, chiết khấu, tổng phải thu theo thời gian thực
- * - Lưu nháp vào sessionStorage, mở lại tiếp tục
+ * - Lưu bản nháp vào database qua /orders/draft, mở lại tiếp tục
  * - Responsive xuống 360px
  *
  * API:
@@ -37,17 +37,24 @@
   const fmtMoney = (v) =>
     Number(v || 0).toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
 
-  /* ── DRAFT KEY ─────────────────────────────────────────── */
-  const DRAFT_KEY = 'order_draft_v1';
+  const todayInputValue = () => {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  };
 
   /* ── State ──────────────────────────────────────────────── */
   const state = {
     dealers: [],        // list of active dealers
     deliveryPoints: [], // list of delivery points for selected dealer
     selectedDealer: null,
-    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, discount }
+    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, discountAmount }
     productCache: {},   // productId → { unitConversions }
+    priceList: null,    // bảng giá hiệu lực theo nhóm đại lý
+    pendingDeliveryPointId: null,
   };
+
+  let pricingRequestId = 0;
 
   /* ── Layout: Sidebar ─────────────────────────────────────── */
   (function initLayout() {
@@ -168,18 +175,25 @@
     dpSel.innerHTML = '<option value="">— Chọn điểm giao hàng —</option>';
     dpSel.disabled = !dealerData;
     state.deliveryPoints = [];
+    state.priceList = null;
+    setDeliveryStatus('');
 
     if (dealerData) {
-      await loadDeliveryPoints(dealerData.id);
+      await Promise.all([
+        loadDeliveryPoints(dealerData.id),
+        loadEffectivePriceList(dealerData.customerGroup),
+      ]);
+      syncItemPrices();
+      refreshPricingPreview();
     }
   });
 
   async function loadDeliveryPoints(dealerId) {
     try {
       const res = await Auth.apiFetch(`/dealers/${dealerId}/delivery-points`);
-      if (!res.ok) return;
       const result = await res.json();
-      const points = Array.isArray(result.data) ? result.data : [];
+      if (!res.ok) throw new Error(result.message || 'Không tải được điểm giao hàng');
+      const points = Array.isArray(result) ? result : (Array.isArray(result.data) ? result.data : []);
       state.deliveryPoints = points;
       const dpSel = $('co-delivery-point');
       points.forEach((p) => {
@@ -188,9 +202,42 @@
         opt.textContent = p.name || p.address || `Điểm #${p.id}`;
         dpSel.appendChild(opt);
       });
-    } catch {
-      // Delivery points API may not exist yet; fail silently
+      if (state.pendingDeliveryPointId) {
+        dpSel.value = String(state.pendingDeliveryPointId);
+        state.pendingDeliveryPointId = null;
+      }
+      setDeliveryStatus(points.length
+        ? 'Có thể chọn điểm giao hàng của đại lý cho đơn này.'
+        : 'Đại lý chưa có điểm giao hàng riêng; hệ thống sẽ dùng điểm mặc định nếu có.');
+    } catch (e) {
+      setDeliveryStatus(e.message || 'Không tải được điểm giao hàng.', true);
+      showToast(e.message || 'Không tải được điểm giao hàng', 'error');
     }
+  }
+
+  async function loadEffectivePriceList(customerGroup) {
+    if (!customerGroup) return;
+    try {
+      const res = await Auth.apiFetch(`/price-lists/effective?customerGroup=${encodeURIComponent(customerGroup)}`);
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        state.priceList = null;
+        return;
+      }
+      state.priceList = result.data || null;
+    } catch {
+      // Giá cuối cùng vẫn được backend tự xác định khi ghi nhận đơn.
+      state.priceList = null;
+    }
+  }
+
+  function setDeliveryStatus(message, isError = false) {
+    const el = $('co-delivery-status');
+    if (!el) return;
+    el.textContent = message;
+    el.hidden = !message;
+    el.classList.toggle('co-field-hint--error', isError);
+    el.classList.toggle('co-field-hint--info', !isError && !!message);
   }
 
   /* ── Group badge ─────────────────────────────────────────── */
@@ -293,6 +340,7 @@
       existing.qty += 1;
       renderItems();
       updateSummary();
+      refreshPricingPreview();
       showToast(`Đã tăng số lượng «${product.name}» lên ${existing.qty}.`, 'success');
       return;
     }
@@ -322,18 +370,22 @@
       unitConversions: units,
       selectedUnit: units[0],
       qty: 1,
-      unitPrice: Number(product.sellingPrice || product.price || 0),
-      discount: 0,
+      basePrice: Number(product.sellingPrice || product.price || 0),
+      unitPrice: 0,
+      discountAmount: 0,
     };
+    item.unitPrice = getUnitPrice(item);
     state.items.push(item);
     renderItems();
     updateSummary();
+    refreshPricingPreview();
   }
 
   function removeItem(key) {
     state.items = state.items.filter((it) => it._key !== key);
     renderItems();
     updateSummary();
+    refreshPricingPreview();
   }
 
   function renderItems() {
@@ -374,12 +426,8 @@
         <td style="text-align:right">
           <input class="co-qty-input" type="number" data-field="qty" min="1" step="1" value="${item.qty}" />
         </td>
-        <td style="text-align:right">
-          <input class="co-price-input" type="number" data-field="price" min="0" step="1000" value="${item.unitPrice}" />
-        </td>
-        <td style="text-align:right">
-          <input class="co-discount-input" type="number" data-field="discount" min="0" step="1000" value="${item.discount}" />
-        </td>
+        <td style="text-align:right"><span class="co-price-value" data-price>${fmtMoney(item.unitPrice)}</span></td>
+        <td style="text-align:right"><span class="co-discount-value" data-discount>${item.discountAmount > 0 ? '−' + fmtMoney(item.discountAmount) : '—'}</span></td>
         <td style="text-align:right">
           <span class="co-item-total" data-total>${fmtMoney(lineTotal)}</span>
         </td>
@@ -400,24 +448,7 @@
         refreshRowTotal(row, item);
         updateSummary();
         saveDraftSilently();
-      });
-
-      // Price
-      row.querySelector('[data-field="price"]').addEventListener('change', (e) => {
-        item.unitPrice = Math.max(0, Number(e.target.value) || 0);
-        e.target.value = item.unitPrice;
-        refreshRowTotal(row, item);
-        updateSummary();
-        saveDraftSilently();
-      });
-
-      // Discount
-      row.querySelector('[data-field="discount"]').addEventListener('change', (e) => {
-        item.discount = Math.max(0, Number(e.target.value) || 0);
-        e.target.value = item.discount;
-        refreshRowTotal(row, item);
-        updateSummary();
-        saveDraftSilently();
+        refreshPricingPreview();
       });
 
       // Unit
@@ -425,7 +456,13 @@
         const selected = item.unitConversions.find(
           (u) => String(u.id ?? u.unitName) === e.target.value,
         );
-        if (selected) item.selectedUnit = selected;
+        if (selected) {
+          item.selectedUnit = selected;
+          item.unitPrice = getUnitPrice(item);
+          renderItems();
+          updateSummary();
+          refreshPricingPreview();
+        }
         saveDraftSilently();
       });
 
@@ -437,11 +474,30 @@
     const total = calcLineTotal(item);
     const el = row.querySelector('[data-total]');
     if (el) el.textContent = fmtMoney(total);
+    const priceEl = row.querySelector('[data-price]');
+    if (priceEl) priceEl.textContent = fmtMoney(item.unitPrice);
+    const discountEl = row.querySelector('[data-discount]');
+    if (discountEl) discountEl.textContent = item.discountAmount > 0 ? `−${fmtMoney(item.discountAmount)}` : '—';
   }
 
   function calcLineTotal(item) {
-    const factor = item.selectedUnit?.conversionFactor ?? 1;
-    return Math.max(0, item.qty * factor * item.unitPrice - item.discount);
+    return Math.max(0, item.qty * item.unitPrice - item.discountAmount);
+  }
+
+  function getUnitPrice(item) {
+    const factor = Number(item.selectedUnit?.conversionFactor ?? 1) || 1;
+    const priceLine = state.priceList?.items?.find((line) => Number(line.productId) === Number(item.productId));
+    if (priceLine?.sellingPrice != null) return Number(priceLine.sellingPrice) * factor;
+    if (item.selectedUnit?.price != null) return Number(item.selectedUnit.price);
+    return Number(item.basePrice || 0) * factor;
+  }
+
+  function syncItemPrices() {
+    state.items.forEach((item) => {
+      item.unitPrice = getUnitPrice(item);
+    });
+    renderItems();
+    updateSummary();
   }
 
   /* ── Summary ─────────────────────────────────────────────── */
@@ -449,15 +505,63 @@
     let subtotal = 0;
     let totalDiscount = 0;
     state.items.forEach((item) => {
-      const factor = item.selectedUnit?.conversionFactor ?? 1;
-      subtotal += item.qty * factor * item.unitPrice;
-      totalDiscount += item.discount;
+      subtotal += item.qty * item.unitPrice;
+      totalDiscount += item.discountAmount || 0;
     });
     const grandTotal = Math.max(0, subtotal - totalDiscount);
 
     $('co-subtotal').textContent = fmtMoney(subtotal);
     $('co-total-discount').textContent = totalDiscount > 0 ? `−${fmtMoney(totalDiscount)}` : '−0 ₫';
     $('co-grand-total').textContent = fmtMoney(grandTotal);
+  }
+
+  async function refreshPricingPreview() {
+    if (!state.items.length) {
+      $('co-pricing-status').hidden = true;
+      return;
+    }
+
+    const requestId = ++pricingRequestId;
+    const statusEl = $('co-pricing-status');
+    statusEl.hidden = false;
+    statusEl.className = 'co-pricing-status co-pricing-status--info';
+    statusEl.textContent = 'Đang cập nhật chiết khấu…';
+
+    try {
+      const payload = {
+        dealerId: state.selectedDealer?.id ? Number(state.selectedDealer.id) : null,
+        customerGroup: state.selectedDealer?.customerGroup || null,
+        orderDate: todayInputValue(),
+        items: state.items.map((item) => ({
+          productId: Number(item.productId),
+          unit: item.selectedUnit?.unitName || item.selectedUnit?.unit || 'cái',
+          quantity: item.qty,
+          price: item.unitPrice,
+        })),
+      };
+      const res = await Auth.apiFetch('/volume-discounts/calculate', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.message || 'Không tính được chiết khấu');
+      if (requestId !== pricingRequestId) return;
+
+      const calculatedItems = Array.isArray(result.data?.items) ? result.data.items : [];
+      state.items.forEach((item, index) => {
+        item.discountAmount = Number(calculatedItems[index]?.discountAmount || 0);
+      });
+      renderItems();
+      updateSummary();
+      statusEl.hidden = true;
+    } catch {
+      if (requestId !== pricingRequestId) return;
+      state.items.forEach((item) => { item.discountAmount = 0; });
+      renderItems();
+      updateSummary();
+      statusEl.className = 'co-pricing-status co-pricing-status--error';
+      statusEl.textContent = 'Chưa cập nhật được chiết khấu; tổng tiền đang hiển thị theo giá tạm tính.';
+    }
   }
 
   /* ── Draft: save / load ─────────────────────────────────── */
@@ -476,27 +580,55 @@
         selectedUnitId: it.selectedUnit?.id ?? it.selectedUnit?.unitName ?? null,
         qty: it.qty,
         unitPrice: it.unitPrice,
-        discount: it.discount,
+        discountAmount: it.discountAmount || 0,
       })),
       _seq: itemSeq,
     };
   }
 
+  let draftSaveTimer = null;
+  let draftSaveInFlight = false;
+
+  async function saveDraft() {
+    const res = await Auth.apiFetch('/orders/draft', {
+      method: 'PUT',
+      body: JSON.stringify(buildDraftPayload()),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) throw new Error(result.message || 'Không lưu được bản nháp');
+  }
+
   function saveDraftSilently() {
-    try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(buildDraftPayload()));
-    } catch { /* quota exceeded, ignore */ }
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(async () => {
+      if (draftSaveInFlight) return;
+      draftSaveInFlight = true;
+      try {
+        await saveDraft();
+      } catch {
+        // Không chặn việc nhập đơn; nút Lưu nháp sẽ báo lỗi rõ ràng nếu cần.
+      } finally {
+        draftSaveInFlight = false;
+      }
+    }, 350);
   }
 
-  function hasDraft() {
-    return !!sessionStorage.getItem(DRAFT_KEY);
+  async function hasDraft() {
+    try {
+      const res = await Auth.apiFetch('/orders/draft');
+      const result = await res.json();
+      return res.ok && result.success && !!result.data;
+    } catch {
+      return false;
+    }
   }
 
-  function loadDraft() {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
-    if (!raw) return false;
+  async function loadDraft() {
     try {
-      const draft = JSON.parse(raw);
+      const res = await Auth.apiFetch('/orders/draft');
+      const result = await res.json();
+      if (!res.ok || !result.success || !result.data) return false;
+      const draft = result.data;
       // Restore form fields
       if (draft.dealerId) $('co-dealer').value = draft.dealerId;
       if (draft.deliveryDate) $('co-delivery-date').value = draft.deliveryDate;
@@ -504,13 +636,8 @@
 
       // Trigger dealer change to load delivery points
       if (draft.dealerId) {
+        state.pendingDeliveryPointId = draft.deliveryPointId || null;
         $('co-dealer').dispatchEvent(new Event('change'));
-        // Try set delivery point after brief delay (to allow async load)
-        if (draft.deliveryPointId) {
-          setTimeout(() => {
-            $('co-delivery-point').value = draft.deliveryPointId;
-          }, 800);
-        }
       }
 
       // Restore items
@@ -527,21 +654,27 @@
           unitConversions: it.unitConversions || [selected],
           selectedUnit: selected,
           qty: it.qty,
-          unitPrice: it.unitPrice,
-          discount: it.discount,
+          basePrice: Number(it.unitPrice || 0) / (Number(selected.conversionFactor || 1) || 1),
+          unitPrice: Number(it.unitPrice || 0),
+          discountAmount: Number(it.discountAmount || it.discount || 0),
         };
       });
 
       renderItems();
       updateSummary();
+      refreshPricingPreview();
       return true;
     } catch {
       return false;
     }
   }
 
-  function clearDraft() {
-    sessionStorage.removeItem(DRAFT_KEY);
+  async function clearDraft() {
+    try {
+      await Auth.apiFetch('/orders/draft', { method: 'DELETE' });
+    } catch {
+      // Không làm gián đoạn luồng tạo đơn nếu thao tác dọn bản nháp thất bại.
+    }
   }
 
   /* ── Draft banner ────────────────────────────────────────── */
@@ -558,27 +691,51 @@
     `;
     const form = $('order-form');
     form.parentNode.insertBefore(banner, form);
+    $('btn-load-draft').hidden = false;
 
-    document.getElementById('btn-restore-draft').addEventListener('click', () => {
-      banner.remove();
-      loadDraft();
-      showToast('Đã khôi phục đơn nháp.', 'success');
+    document.getElementById('btn-restore-draft').addEventListener('click', async () => {
+      if (await loadDraft()) {
+        banner.remove();
+        $('btn-load-draft').hidden = true;
+        showToast('Đã khôi phục đơn nháp.', 'success');
+      } else {
+        showToast('Không tải được bản nháp. Vui lòng thử lại.', 'error');
+      }
     });
 
-    document.getElementById('btn-discard-draft').addEventListener('click', () => {
-      clearDraft();
+    document.getElementById('btn-discard-draft').addEventListener('click', async () => {
+      await clearDraft();
       banner.remove();
+      $('btn-load-draft').hidden = true;
     });
   }
 
+  $('btn-load-draft').addEventListener('click', async () => {
+    if (await loadDraft()) {
+      document.querySelector('.co-draft-banner')?.remove();
+      $('btn-load-draft').hidden = true;
+      showToast('Đã khôi phục đơn nháp.', 'success');
+    } else {
+      showToast('Không tải được bản nháp. Vui lòng thử lại.', 'error');
+    }
+  });
+
   /* ── Save draft button ───────────────────────────────────── */
-  $('btn-save-draft').addEventListener('click', () => {
+  $('btn-save-draft').addEventListener('click', async () => {
     if (!state.items.length) {
       showToast('Chưa có dòng hàng nào để lưu nháp.', 'warning');
       return;
     }
-    saveDraftSilently();
-    showToast('Đã lưu nháp đơn hàng. Bạn có thể mở lại bất kỳ lúc nào.', 'success');
+    const btn = $('btn-save-draft');
+    btn.disabled = true;
+    try {
+      await saveDraft();
+      showToast('Đã lưu nháp đơn hàng. Bạn có thể mở lại ở lần sau.', 'success');
+    } catch (e) {
+      showToast(e.message || 'Không lưu được bản nháp.', 'error');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   /* ── Submit order ────────────────────────────────────────── */
@@ -594,6 +751,16 @@
       $('co-dealer').focus();
       return false;
     }
+    if (!$('co-delivery-date').value) {
+      showToast('Vui lòng chọn ngày giao mong muốn.', 'warning');
+      $('co-delivery-date').focus();
+      return false;
+    }
+    if (state.deliveryPoints.length && !$('co-delivery-point').value) {
+      showToast('Vui lòng chọn điểm giao hàng.', 'warning');
+      $('co-delivery-point').focus();
+      return false;
+    }
     if (!state.items.length) {
       showToast('Vui lòng thêm ít nhất một dòng hàng.', 'warning');
       $('co-product-search').focus();
@@ -607,9 +774,8 @@
     let subtotal = 0;
     let totalDiscount = 0;
     state.items.forEach((item) => {
-      const factor = item.selectedUnit?.conversionFactor ?? 1;
-      subtotal += item.qty * factor * item.unitPrice;
-      totalDiscount += item.discount;
+      subtotal += item.qty * item.unitPrice;
+      totalDiscount += item.discountAmount || 0;
     });
     const grandTotal = Math.max(0, subtotal - totalDiscount);
 
@@ -626,7 +792,7 @@
 
     $('confirm-msg').hidden = true;
     $('btn-confirm-order').disabled = false;
-    $('btn-confirm-order').textContent = 'Xác nhận ghi nhận';
+    $('btn-confirm-order').textContent = 'Xác nhận tạo đơn';
     $('confirm-modal').hidden = false;
   }
 
@@ -643,7 +809,7 @@
   $('btn-confirm-order').addEventListener('click', async () => {
     const btn = $('btn-confirm-order');
     btn.disabled = true;
-    btn.textContent = 'Đang ghi nhận…';
+    btn.textContent = 'Đang tạo đơn…';
 
     try {
       const payload = buildOrderPayload();
@@ -656,7 +822,7 @@
 
       closeConfirmModal();
       clearDraft();
-      showToast('Đơn hàng đã được ghi nhận thành công!', 'success');
+      showToast('Đơn hàng đã được tạo thành công!', 'success');
 
       // Reset form
       $('order-form').reset();
@@ -665,6 +831,10 @@
       $('co-dealer-info').hidden = true;
       $('co-delivery-point').innerHTML = '<option value="">— Chọn điểm giao hàng —</option>';
       $('co-delivery-point').disabled = true;
+      state.deliveryPoints = [];
+      state.priceList = null;
+      setDeliveryStatus('');
+      $('co-pricing-status').hidden = true;
       renderItems();
       updateSummary();
     } catch (err) {
@@ -690,10 +860,7 @@
       items: state.items.map((it) => ({
         productId: it.productId,
         unit: it.selectedUnit?.unitName || it.selectedUnit?.unit || 'cái',
-        conversionFactor: it.selectedUnit?.conversionFactor ?? 1,
         quantity: it.qty,
-        unitPrice: it.unitPrice,
-        discount: it.discount,
       })),
     };
   }
@@ -719,10 +886,12 @@
 
   /* ── Init ────────────────────────────────────────────────── */
   async function init() {
+    const today = todayInputValue();
+    $('co-delivery-date').min = today;
     await loadDealers();
 
     // Show draft banner if draft exists
-    if (hasDraft()) {
+    if (await hasDraft()) {
       showDraftBanner();
     }
   }

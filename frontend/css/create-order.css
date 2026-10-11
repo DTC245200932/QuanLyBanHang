@@ -150,6 +150,23 @@
   min-width: 0;
 }
 
+.co-field-hint {
+  margin: 2px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--ink-500);
+}
+
+.co-field-hint--error,
+.co-pricing-status--error {
+  color: var(--danger);
+}
+
+.co-field-hint--info,
+.co-pricing-status--info {
+  color: var(--ink-600);
+}
+
 /* ── Items header: title + search ─────────────────────── */
 
 .co-items-header {
@@ -395,6 +412,17 @@
   white-space: nowrap;
 }
 
+.co-price-value,
+.co-discount-value {
+  display: inline-block;
+  min-width: 86px;
+  white-space: nowrap;
+}
+
+.co-discount-value {
+  color: var(--danger);
+}
+
 /* Delete row button */
 .co-del-btn {
   width: 30px;
@@ -479,6 +507,13 @@
   font-size: 1.125rem;
   font-weight: 700;
   color: var(--teal-deep);
+}
+
+.co-pricing-status {
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--ink-500);
 }
 
 .co-discount-value {

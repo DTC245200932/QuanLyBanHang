@@ -375,6 +375,29 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | PUT | `/orders/{id}/approve` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng bán dưới giá sàn (chuyển trạng thái sang `RECORDED`) |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng bán dưới giá sàn (chuyển trạng thái sang `REJECTED`) |
 
+### Bản nháp tạo đơn và ngày giao mong muốn (S3-09)
+
+- `GET`, `PUT`, `DELETE /api/orders/draft` dành cho `ROLE_SALES`,
+  `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`,
+  `ROLE_WAREHOUSE_STAFF`. Chủ bản nháp lấy từ tài khoản đã xác thực; request
+  không được chọn chủ bản nháp của người khác.
+- `PUT` nhận một **đối tượng JSON** và lưu trong bảng `order_drafts`, mỗi tài
+  khoản có một bản nháp. Frontend sử dụng `dealerId`, `deliveryPointId`,
+  `deliveryDate` (`yyyy-MM-dd`), `note`, `items`, `_seq`. Mỗi dòng trong `items`
+  giữ `_key`, `productId`, `sku`, `name`, `unitConversions`, `selectedUnitId`,
+  `qty`, `basePrice`, `unitPrice`, `discountAmount` để tiếp tục soạn đơn.
+- `GET` trả `{ "success": true, "message": "...", "data": { ... } }` khi có
+  nháp. Khi chưa có nháp, thuộc tính `data` được bỏ khỏi response.
+- `DELETE` xoá bản nháp của chính tài khoản hiện tại. Luồng frontend đợi các
+  lần lưu nháp đang chạy kết thúc trước khi xoá, tránh ghi lại nháp sau khi
+  người dùng đã tạo đơn.
+- Khi mở nháp, frontend lấy lại sản phẩm và đơn vị quy đổi từ API, tải bảng
+  giá hiệu lực theo đại lý và tính lại chiết khấu. Giá/chiết khấu trong nháp
+  phục vụ khôi phục màn hình, không quyết định số tiền backend ghi nhận.
+- Khi tạo đơn thật bằng `POST /api/orders`, ngày giao dùng trường
+  **`expectedDeliveryDate`** (`yyyy-MM-dd`), không dùng `deliveryDate`.
+  Response đơn hàng trả lại `expectedDeliveryDate` cùng `deliveryPointId`.
+
 ## Khai báo Bảng giá theo nhóm khách hàng & Thời gian hiệu lực (S2-10)
 
 Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng và thời gian hiệu lực, để đại lý cấp 1 và cấp 2 tự động nhận đúng giá của mình.

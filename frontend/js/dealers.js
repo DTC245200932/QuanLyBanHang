@@ -628,12 +628,26 @@
     return (state.options.assignedUsers || []).filter((user) => user?.id != null);
   }
 
-  function fillUserSelect(select, placeholder, includeAll = false) {
+  function handoverSourceUsers() {
+    const users = new Map(salesUsers().map((user) => [String(user.id), user]));
+    for (const dealer of state.all) {
+      if (dealer.assignedUserId == null || users.has(String(dealer.assignedUserId))) continue;
+      users.set(String(dealer.assignedUserId), {
+        id: dealer.assignedUserId,
+        username: dealer.assignedUsername,
+        fullName: dealer.assignedUserFullName,
+        departing: true,
+      });
+    }
+    return [...users.values()];
+  }
+
+  function fillUserSelect(select, placeholder, includeAll = false, users = salesUsers()) {
     if (!select) return;
     const selected = select.value;
     const options = [`<option value="">${escHtml(placeholder)}</option>`];
-    salesUsers().forEach((user) => {
-      options.push(`<option value="${escHtml(user.id)}">${escHtml(userLabel(user))} · ${escHtml(user.username || '')}</option>`);
+    users.forEach((user) => {
+      options.push(`<option value="${escHtml(user.id)}">${escHtml(userLabel(user))} · ${escHtml(user.username || '')}${user.departing ? ' (cần bàn giao)' : ''}</option>`);
     });
     if (includeAll) options[0] = `<option value="">${escHtml(placeholder)}</option>`;
     select.innerHTML = options.join('');
@@ -644,9 +658,9 @@
 
   function populateAssignmentReferenceSelects() {
     fillUserSelect($('assignment-owner'), '— Chọn người phụ trách —');
-    fillUserSelect($('handover-from-user'), '— Chọn nhân viên bàn giao —');
+    fillUserSelect($('handover-from-user'), '— Chọn nhân viên bàn giao —', false, handoverSourceUsers());
     fillUserSelect($('handover-to-user'), '— Chọn nhân viên tiếp nhận —');
-    fillUserSelect($('history-from-user'), 'Tất cả người bàn giao', true);
+    fillUserSelect($('history-from-user'), 'Tất cả người bàn giao', true, handoverSourceUsers());
     fillUserSelect($('history-to-user'), 'Tất cả người tiếp nhận', true);
 
     const territoryOptions = ['<option value="">— Chọn khu vực —</option>'];

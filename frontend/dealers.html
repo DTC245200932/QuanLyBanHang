@@ -540,6 +540,71 @@
       </div>
     </div>
 
+    <!-- ── Modal: Quản lý điểm giao hàng (S3-04) ── -->
+    <div class="modal-overlay" id="delivery-points-modal" hidden>
+      <div class="modal modal--wide delivery-points-modal" role="dialog" aria-labelledby="delivery-points-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="delivery-points-title">Điểm giao hàng</h2>
+            <p class="modal-subtitle" id="delivery-points-subtitle"></p>
+          </div>
+          <button class="modal__close" type="button" data-close-transaction="delivery-points-modal" aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div class="modal__body">
+          <div class="delivery-points-toolbar">
+            <p class="delivery-points-hint">Mỗi đại lý có thể có nhiều nơi nhận hàng. Một điểm được chọn làm mặc định cho đơn mới.</p>
+            <button type="button" class="btn btn--primary" id="btn-add-delivery-point">
+              <svg width="16" height="16" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Thêm điểm giao
+            </button>
+          </div>
+
+          <div id="delivery-points-message" class="form-message" role="alert" hidden></div>
+          <div id="delivery-points-list" class="delivery-points-list" aria-live="polite"></div>
+
+          <form class="delivery-point-form" id="delivery-point-form" novalidate hidden>
+            <div class="delivery-point-form__heading">
+              <div>
+                <h3 id="delivery-point-form-title">Thêm điểm giao hàng</h3>
+                <p>Nhập thông tin người nhận và hướng dẫn để giao đúng địa chỉ.</p>
+              </div>
+              <button type="button" class="btn btn--secondary" id="btn-cancel-delivery-point">Huỷ</button>
+            </div>
+            <input type="hidden" id="delivery-point-id" />
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="delivery-point-receiver">Người nhận <span class="req">*</span></label>
+                <input id="delivery-point-receiver" type="text" maxlength="100" required autocomplete="name" />
+              </div>
+              <div class="form-field">
+                <label for="delivery-point-phone">Số điện thoại <span class="req">*</span></label>
+                <input id="delivery-point-phone" type="tel" maxlength="20" required autocomplete="tel" />
+              </div>
+              <div class="form-field form-field--full">
+                <label for="delivery-point-address">Địa chỉ giao hàng <span class="req">*</span></label>
+                <input id="delivery-point-address" type="text" maxlength="255" required autocomplete="street-address" />
+              </div>
+              <div class="form-field form-field--full">
+                <label for="delivery-point-note">Ghi chú đường đi</label>
+                <textarea id="delivery-point-note" rows="3" maxlength="500" placeholder="Ví dụ: vào cổng phụ, gọi trước khi giao…"></textarea>
+              </div>
+              <label class="delivery-point-default">
+                <input id="delivery-point-default" type="checkbox" />
+                <span>Đặt làm điểm mặc định</span>
+              </label>
+            </div>
+            <div id="delivery-point-form-message" class="form-message" role="alert" hidden></div>
+            <div class="modal__actions">
+              <button type="submit" class="btn btn--primary" id="btn-save-delivery-point">Lưu điểm giao</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <script src="/js/auth.js"></script>
     <script src="/js/menu-config.js"></script>
     <script src="/js/dealer-transactions.js"></script>

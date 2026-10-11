@@ -132,8 +132,8 @@
               <button class="btn btn--secondary" id="reload-debt-limits" type="button">Tải lại</button>
             </div>
             <div class="debt-limits__notice" role="note">
-              <strong>Chức năng lưu khai báo chưa sẵn sàng</strong>
-              <p>Hệ thống hiện mới cung cấp hạn mức tiền. Số ngày nợ tối đa và lý do thay đổi chưa được hỗ trợ lưu đầy đủ. Bạn có thể tra cứu và kiểm tra khai báo; dữ liệu nhập trong form chưa được lưu.</p>
+              <strong>Kiểm soát hạn mức trước khi giao hàng</strong>
+              <p>Mỗi thay đổi hạn mức đều yêu cầu lý do và được ghi vào nhật ký thao tác để đối chiếu.</p>
             </div>
             <p class="debt-limits__access" id="debt-limits-readonly" hidden>Bạn có quyền tra cứu. Chỉ Kế toán và Quản lý kinh doanh được mở form khai báo.</p>
             <form class="debt-limits__filters" id="debt-limits-filters">
@@ -294,7 +294,7 @@
             <div class="form-field">
               <label for="debt-limit-days">Số ngày nợ tối đa <span aria-hidden="true">*</span></label>
               <input id="debt-limit-days" type="number" min="0" step="1" inputmode="numeric" required aria-describedby="debt-limit-days-help" />
-              <small id="debt-limit-days-help">Nhập số ngày nguyên không âm. Chưa có dữ liệu hiện tại từ hệ thống.</small>
+              <small id="debt-limit-days-help">Nhập số ngày nguyên không âm.</small>
             </div>
           </div>
           <div class="form-field">
@@ -304,10 +304,10 @@
           </div>
           <div class="debt-limit__message" id="debt-limit-form-message" role="alert" hidden></div>
           <section class="debt-limit__preview" id="debt-limit-preview" aria-label="Kiểm tra khai báo" aria-live="polite" hidden>
-            <h3>Khai báo đã kiểm tra — chưa lưu</h3>
+            <h3>Khai báo đã kiểm tra — sẵn sàng lưu</h3>
             <dl id="debt-limit-preview-values"></dl>
           </section>
-          <p class="debt-limit__save-note" id="debt-limit-save-note">Chưa thể lưu: hệ thống chưa hỗ trợ số ngày nợ tối đa, lưu lý do vào nhật ký và quyền cập nhật của Quản lý kinh doanh. Đóng form sẽ bỏ dữ liệu đang nhập.</p>
+          <p class="debt-limit__save-note" id="debt-limit-save-note">Kiểm tra lại thông tin trước khi lưu. Thay đổi thành công sẽ được ghi vào nhật ký thao tác.</p>
           <div class="modal__actions">
             <button class="btn btn--secondary" data-close-debt-limit type="button">Hủy</button>
             <button class="btn btn--secondary" type="submit">Kiểm tra khai báo</button>

@@ -1,5 +1,5 @@
 /**
- * dealers.js — S3-03 / S3-06 / S3-07 / S3-08 Quản lý đại lý.
+ * dealers.js — S3-03 đến S3-08: hồ sơ, điểm giao và phân công đại lý.
  *
  * Tính năng:
  * - Dành cho Nhân viên kinh doanh (ROLE_SALES), Quản lý kinh doanh, Kế toán, Admin, Viewer
@@ -8,6 +8,7 @@
  * - Quick chips: Tất cả, Khách của tôi, Đang giao dịch
  * - Thêm / Sửa đại lý & Ngừng / Khôi phục giao dịch (ROLE_ADMIN, ROLE_SALES_MANAGER, ROLE_ACCOUNTANT)
  * - Phân công từng đại lý, bàn giao hàng loạt và tra cứu lịch sử (S3-06)
+ * - Khai báo nhiều điểm giao hàng, chọn mặc định và gắn vào đơn hàng (S3-04)
  * - Phân trang phía client, tải danh mục tham chiếu từ /dealers/options
  */
 (() => {
@@ -22,6 +23,9 @@
   const CAN_ASSIGN = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
   const CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyRole(
     'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_VIEWER',
+  );
+  const CAN_MANAGE_DELIVERY_POINTS = Auth.hasAnyRole(
+    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_SALES',
   );
 
   /* ── DOM helpers ────────────────────────────────────────── */
@@ -71,6 +75,9 @@
       historyPage: 0,
       historyTotalPages: 0,
     },
+    deliveryPoints: [],
+    deliveryDealerId: null,
+    editingDeliveryPointId: null,
   };
 
   /* ── Sidebar / layout ───────────────────────────────────── */
@@ -452,6 +459,9 @@
             <button class="dlr-action-btn dlr-action-btn--assign" data-action="assign" data-id="${dlr.id}" title="Phân công người phụ trách" aria-label="Phân công người phụ trách cho ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M19 8v6M22 11h-6"/></svg>
             </button>` : ''}
+            <button class="dlr-action-btn" data-action="delivery-points" data-id="${dlr.id}" title="Điểm giao hàng" aria-label="Điểm giao hàng của ${escHtml(dlr.name)}">
+              <svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+            </button>
             ${CAN_MANAGE ? `
             <button class="dlr-action-btn" data-action="edit" data-id="${dlr.id}" title="Sửa thông tin">
               <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -564,6 +574,9 @@
         const dlr = state.all.find((d) => d.id === Number(btn.dataset.id));
         if (dlr) openAssignmentModal(dlr);
       });
+    });
+    tbody.querySelectorAll('[data-action="delivery-points"]').forEach((btn) => {
+      btn.addEventListener('click', () => openDeliveryPointsModal(Number(btn.dataset.id)));
     });
   }
 
@@ -1217,25 +1230,227 @@
   });
   document.querySelectorAll('[data-close-transaction]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.closeTransaction === 'dealer-orders-modal') orderDealerId = null;
+    if (button.dataset.closeTransaction === 'delivery-points-modal') state.deliveryDealerId = null;
     closeTransactionModal(button.dataset.closeTransaction);
   }));
-  ['lock-modal', 'dealer-orders-modal'].forEach(id => $(id).addEventListener('click', event => {
+  ['lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].forEach(id => $(id).addEventListener('click', event => {
     if (event.target !== $(id)) return;
     if (id === 'dealer-orders-modal') orderDealerId = null;
+    if (id === 'delivery-points-modal') state.deliveryDealerId = null;
     closeTransactionModal(id);
   }));
   document.addEventListener('keydown', event => {
-    const id = ['lock-modal', 'dealer-orders-modal'].find(name => !$(name).hidden);
+    const id = ['lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].find(name => !$(name).hidden);
     if (!id) return;
     if (event.key === 'Escape') {
       if (id === 'dealer-orders-modal') orderDealerId = null;
+      if (id === 'delivery-points-modal') state.deliveryDealerId = null;
       closeTransactionModal(id);
     }
     if (event.key === 'Tab') {
-      const controls = [...$(id).querySelectorAll('button:not(:disabled), textarea')];
+      const controls = [...$(id).querySelectorAll('button:not(:disabled), textarea, input:not([type="hidden"]), select')]
+        .filter(control => !control.closest('[hidden]'));
       const first = controls[0], last = controls[controls.length - 1];
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+  });
+
+  /* ── S3-04: Delivery points ─────────────────────────────── */
+  function responseData(payload) {
+    return payload && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;
+  }
+
+  function responseMessage(payload, fallback) {
+    return payload?.message || payload?.error || fallback;
+  }
+
+  async function readJsonResponse(res) {
+    return res.json().catch(() => null);
+  }
+
+  async function loadDeliveryPointsForDealer(dealerId) {
+    const res = await Auth.apiFetch(`/dealers/${dealerId}/delivery-points`);
+    const payload = await readJsonResponse(res);
+    if (!res.ok) throw new Error(responseMessage(payload, 'Không tải được điểm giao hàng.'));
+
+    const data = responseData(payload);
+    state.deliveryPoints = Array.isArray(data) ? data : [];
+    renderDeliveryPoints();
+  }
+
+  function renderDeliveryPoints() {
+    const list = $('delivery-points-list');
+    if (!list) return;
+
+    if (!state.deliveryPoints.length) {
+      list.innerHTML = '<div class="delivery-points-empty">Đại lý này chưa có điểm giao hàng nào.</div>';
+      return;
+    }
+
+    list.innerHTML = state.deliveryPoints.map((point) => `
+      <article class="delivery-point-card">
+        <div class="delivery-point-card__main">
+          <h3 class="delivery-point-card__title">
+            ${escHtml(point.receiverName || 'Chưa có người nhận')}
+            ${point.isDefault ? '<span class="delivery-point-badge">Mặc định</span>' : ''}
+          </h3>
+          <div class="delivery-point-card__meta">
+            <div><strong>Số điện thoại:</strong> ${escHtml(point.phone || '—')}</div>
+            <div><strong>Địa chỉ:</strong> ${escHtml(point.address || '—')}</div>
+            ${point.directionNote ? `<div class="delivery-point-card__note"><strong>Ghi chú:</strong> ${escHtml(point.directionNote)}</div>` : ''}
+          </div>
+        </div>
+        ${CAN_MANAGE_DELIVERY_POINTS ? `<div class="delivery-point-card__actions">
+          <button type="button" class="btn btn--secondary" data-delivery-action="edit" data-id="${point.id}">Sửa</button>
+          ${point.isDefault ? '' : `<button type="button" class="btn btn--secondary" data-delivery-action="default" data-id="${point.id}">Đặt mặc định</button>`}
+          <button type="button" class="btn btn--secondary" data-delivery-action="delete" data-id="${point.id}">Xoá</button>
+        </div>` : ''}
+      </article>
+    `).join('');
+  }
+
+  function closeDeliveryPointForm() {
+    $('delivery-point-form').hidden = true;
+    $('delivery-point-form-message').hidden = true;
+    state.editingDeliveryPointId = null;
+  }
+
+  function openDeliveryPointForm(point = null) {
+    if (!CAN_MANAGE_DELIVERY_POINTS) {
+      showToast('Bạn không có quyền thay đổi điểm giao hàng.', 'error');
+      return;
+    }
+
+    state.editingDeliveryPointId = point?.id ?? null;
+    $('delivery-point-form').reset();
+    $('delivery-point-form-message').hidden = true;
+    $('delivery-point-id').value = point?.id ?? '';
+    $('delivery-point-receiver').value = point?.receiverName ?? '';
+    $('delivery-point-phone').value = point?.phone ?? '';
+    $('delivery-point-address').value = point?.address ?? '';
+    $('delivery-point-note').value = point?.directionNote ?? '';
+    $('delivery-point-default').checked = Boolean(point?.isDefault);
+    $('delivery-point-default').disabled = Boolean(point?.isDefault);
+    $('delivery-point-form-title').textContent = point ? 'Sửa điểm giao hàng' : 'Thêm điểm giao hàng';
+    $('btn-save-delivery-point').textContent = point ? 'Lưu thay đổi' : 'Lưu điểm giao';
+    $('delivery-point-form').hidden = false;
+    $('delivery-point-receiver').focus();
+  }
+
+  async function openDeliveryPointsModal(dealerId) {
+    const dealer = state.all.find((row) => row.id === dealerId);
+    if (!dealer) return;
+
+    state.deliveryDealerId = dealerId;
+    state.deliveryPoints = [];
+    closeDeliveryPointForm();
+    $('delivery-points-title').textContent = 'Điểm giao hàng';
+    $('delivery-points-subtitle').textContent = `${dealer.code || ''} — ${dealer.name || ''}`;
+    $('delivery-points-message').hidden = true;
+    $('btn-add-delivery-point').hidden = !CAN_MANAGE_DELIVERY_POINTS;
+    $('delivery-points-list').innerHTML = '<div class="delivery-points-loading">Đang tải điểm giao hàng…</div>';
+    openTransactionModal('delivery-points-modal');
+
+    try {
+      await loadDeliveryPointsForDealer(dealerId);
+    } catch (error) {
+      if (state.deliveryDealerId !== dealerId) return;
+      $('delivery-points-list').innerHTML = '<div class="delivery-points-empty">Không tải được danh sách điểm giao hàng.</div>';
+      showFormError('delivery-points-message', error.message || 'Lỗi không xác định');
+    }
+  }
+
+  $('btn-add-delivery-point')?.addEventListener('click', () => openDeliveryPointForm());
+  $('btn-cancel-delivery-point')?.addEventListener('click', closeDeliveryPointForm);
+
+  $('delivery-points-list')?.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-delivery-action]');
+    if (!button || !CAN_MANAGE_DELIVERY_POINTS) return;
+
+    const pointId = Number(button.dataset.id);
+    const point = state.deliveryPoints.find((item) => item.id === pointId);
+    if (!point) return;
+
+    if (button.dataset.deliveryAction === 'edit') {
+      openDeliveryPointForm(point);
+      return;
+    }
+
+    if (button.dataset.deliveryAction === 'delete') {
+      if (point.isDefault) {
+        showToast('Hãy đặt điểm khác làm mặc định trước khi xoá điểm này.', 'warning');
+        return;
+      }
+      if (!window.confirm(`Xoá điểm giao hàng của ${point.receiverName || 'người nhận này'}?`)) return;
+      button.disabled = true;
+      try {
+        const res = await Auth.apiFetch(`/dealers/delivery-points/${pointId}`, { method: 'DELETE' });
+        const payload = await readJsonResponse(res);
+        if (!res.ok) throw new Error(responseMessage(payload, 'Không xoá được điểm giao hàng.'));
+        showToast('Đã xoá điểm giao hàng.', 'success');
+        await loadDeliveryPointsForDealer(state.deliveryDealerId);
+      } catch (error) {
+        showFormError('delivery-points-message', error.message || 'Lỗi không xác định');
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
+
+    button.disabled = true;
+    try {
+      const res = await Auth.apiFetch(`/dealers/${state.deliveryDealerId}/delivery-points/${pointId}/default`, { method: 'PATCH' });
+      const payload = await readJsonResponse(res);
+      if (!res.ok) throw new Error(responseMessage(payload, 'Không đặt được điểm mặc định.'));
+      showToast('Đã đặt điểm giao hàng mặc định.', 'success');
+      await loadDeliveryPointsForDealer(state.deliveryDealerId);
+    } catch (error) {
+      showFormError('delivery-points-message', error.message || 'Lỗi không xác định');
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $('delivery-point-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!CAN_MANAGE_DELIVERY_POINTS || !state.deliveryDealerId) return;
+
+    const receiverName = $('delivery-point-receiver').value.trim();
+    const phone = $('delivery-point-phone').value.trim();
+    const address = $('delivery-point-address').value.trim();
+    if (!receiverName || !phone || !address) {
+      showFormError('delivery-point-form-message', 'Vui lòng nhập người nhận, số điện thoại và địa chỉ.');
+      return;
+    }
+
+    const button = $('btn-save-delivery-point');
+    button.disabled = true;
+    $('delivery-point-form-message').hidden = true;
+    const pointId = state.editingDeliveryPointId;
+    const payload = {
+      receiverName,
+      phone,
+      address,
+      directionNote: $('delivery-point-note').value.trim() || null,
+      isDefault: $('delivery-point-default').checked,
+    };
+
+    try {
+      const res = await Auth.apiFetch(
+        pointId ? `/dealers/delivery-points/${pointId}` : `/dealers/${state.deliveryDealerId}/delivery-points`,
+        { method: pointId ? 'PUT' : 'POST', body: JSON.stringify(payload) },
+      );
+      const response = await readJsonResponse(res);
+      if (!res.ok) throw new Error(responseMessage(response, 'Không lưu được điểm giao hàng.'));
+      showToast(pointId ? 'Đã cập nhật điểm giao hàng.' : 'Đã thêm điểm giao hàng.', 'success');
+      closeDeliveryPointForm();
+      await loadDeliveryPointsForDealer(state.deliveryDealerId);
+    } catch (error) {
+      showFormError('delivery-point-form-message', error.message || 'Lỗi không xác định');
+    } finally {
+      button.disabled = false;
+      button.textContent = pointId ? 'Lưu thay đổi' : 'Lưu điểm giao';
     }
   });
 

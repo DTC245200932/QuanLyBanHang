@@ -2,6 +2,7 @@
   if (!Auth.requireLogin()) return;
 
   const canManage = Auth.hasRole("ROLE_SALES_MANAGER");
+  const canImport = Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN");
   const canViewPriceHistory = canManage || Auth.hasRole("ROLE_ADMIN");
   const state = {
     products: [],
@@ -25,6 +26,7 @@
   const saveButton = $("save-product");
 
   $("create-product").hidden = !canManage;
+  $("btn-import-excel").hidden = !canImport;
   $("catalog-access-note").hidden = canManage;
   document.querySelectorAll(".cost-column").forEach((column) => {
     column.hidden = !canManage;
@@ -169,6 +171,10 @@
       }
       state.products = productsResult.data || [];
       state.categories = categoriesResult.data || [];
+      window.__productsCatalog = {
+        products: state.products,
+        categories: state.categories,
+      };
       populateCategorySelects();
       renderProducts();
     } catch (error) {
@@ -389,17 +395,16 @@
       return;
     }
     $("price-history-rows").innerHTML = rows.slice(page * historyPageSize, (page + 1) * historyPageSize).map(row => `<tr>
-      <td>${escapeHtml(historyTime(row.createdAt))}</td>
-      <td><span class="product-price">${escapeHtml(historyPrice(row.oldValue))}</span></td>
-      <td><span class="product-price">${escapeHtml(historyPrice(row.newValue))}</span></td>
-      <td>${escapeHtml(row.username || "Chưa có dữ liệu")}</td>
+      <td>${escapeHtml(historyTime(row.appliedAt))}</td>
+      <td><span class="product-price">${escapeHtml(historyPrice(row.oldPrice))}</span></td>
+      <td><span class="product-price">${escapeHtml(historyPrice(row.newPrice))}</span></td>
+      <td>${escapeHtml(row.modifiedBy || "Chưa có dữ liệu")}</td>
     </tr>`).join("");
     historyModal.querySelector(".price-history__table-wrap").scrollTop = 0;
   }
 
   async function loadPriceHistory() {
-    // The only existing history API is admin-only. Do not call it for a sales manager without that role.
-    if (!historyState.product || !Auth.hasRole("ROLE_ADMIN")) return;
+    if (!historyState.product) return;
     const from = $("price-history-from").value;
     const to = $("price-history-to").value;
     if (from && to && from > to) {
@@ -419,26 +424,23 @@
     historyState.loading = true;
     renderPriceHistory();
     try {
-      const rows = [];
-      let totalPages = 1;
-      for (let page = 0; page < totalPages; page++) {
-        const params = new URLSearchParams({ entityType: "PRICE", page: String(page), size: "100" });
-        if (from) params.set("startDate", `${from}T00:00:00`);
-        if (to) params.set("endDate", `${to}T23:59:59.999999999`);
-        const response = await Auth.apiFetch(`/admin/audit-logs?${params}`, { signal: controller.signal });
-        const result = await response.json().catch(() => null);
-        if (requestId !== historyState.requestId) return;
-        if (!response.ok || result?.success === false || !Array.isArray(result?.data)) {
-          throw new Error(result?.message || "Không tải được lịch sử giá. Vui lòng thử lại.");
-        }
-        // This API supports entity type, not product ID: read every page and match the exact ID.
-        rows.push(...result.data.filter(row => row.entityType === "PRICE" && String(row.entityId) === productId));
-        const pageCount = Number(result.totalPages);
-        if (!Number.isInteger(pageCount) || pageCount < 0) throw new Error("Dữ liệu phân trang lịch sử giá không hợp lệ.");
-        totalPages = pageCount;
+      const response = await Auth.apiFetch(`/products/${productId}/price-history`, { signal: controller.signal });
+      const result = await response.json().catch(() => null);
+      if (requestId !== historyState.requestId) return;
+      if (!response.ok || result?.success === false || !Array.isArray(result?.data)) {
+        throw new Error(result?.message || "Không tải được lịch sử giá. Vui lòng thử lại.");
       }
-      rows.sort((a, b) => (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0));
-      historyState.rows = rows;
+
+      const fromTime = from ? new Date(`${from}T00:00:00`).getTime() : null;
+      const toTime = to ? new Date(`${to}T23:59:59.999`).getTime() : null;
+      historyState.rows = result.data
+        .filter((row) => {
+          const appliedAt = new Date(row.appliedAt).getTime();
+          if (fromTime !== null && (!Number.isFinite(appliedAt) || appliedAt < fromTime)) return false;
+          if (toTime !== null && (!Number.isFinite(appliedAt) || appliedAt > toTime)) return false;
+          return true;
+        })
+        .sort((a, b) => (new Date(b.appliedAt).getTime() || 0) - (new Date(a.appliedAt).getTime() || 0));
     } catch (error) {
       if (requestId !== historyState.requestId || error.name === "AbortError") return;
       historyState.error = error.message || "Không thể kết nối tới máy chủ. Vui lòng thử lại.";
@@ -460,7 +462,7 @@
     historyState.error = "";
     $("price-history-product").textContent = `${product.code} · ${product.name}`;
     $("price-history-filters").reset();
-    const canReadApi = Auth.hasRole("ROLE_ADMIN");
+    const canReadApi = canViewPriceHistory;
     $("price-history-unavailable").hidden = canReadApi;
     $("price-history-content").hidden = !canReadApi;
     historyModal.hidden = false;
@@ -504,5 +506,6 @@
     }
   });
 
+  window.__reloadProductsCatalog = loadCatalog;
   loadCatalog();
 })();

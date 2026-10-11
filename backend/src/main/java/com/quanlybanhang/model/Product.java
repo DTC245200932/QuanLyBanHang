@@ -56,8 +56,7 @@ public class Product {
     private BigDecimal costPrice = BigDecimal.ZERO;
 
     /**
-     * Doanh số tích lũy bán hàng của sản phẩm.
-     * Phục vụ tính doanh số theo ngành hàng / nhóm hàng (S2-06).
+     * Cột cũ giữ để tương thích database. Doanh số trả qua API được tổng hợp từ order_items.
      */
     @Column(precision = 15, scale = 2)
     @Builder.Default
@@ -83,8 +82,7 @@ public class Product {
     private String imageUrl;
 
     /**
-     * Đánh dấu sản phẩm đã phát sinh giao dịch bán/nhập hàng hay chưa (S2-05).
-     * Sản phẩm đã phát sinh giao dịch thì KHÔNG xoá được, chỉ ngừng kinh doanh.
+     * Cột cũ giữ để tương thích database. Quyền xoá dựa vào dòng đơn hàng/phiếu kho thực tế.
      */
     @Column(name = "has_transactions", nullable = false)
     @Builder.Default
@@ -131,11 +129,6 @@ public class Product {
         this.code = sku;
     }
 
-    public boolean hasTransactions() {
-        return Boolean.TRUE.equals(this.hasTransactions) ||
-                (this.revenue != null && this.revenue.compareTo(BigDecimal.ZERO) > 0);
-    }
-
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
@@ -153,17 +146,12 @@ public class Product {
             this.revenue = BigDecimal.ZERO;
         }
         if (this.hasTransactions == null) {
-            this.hasTransactions = this.revenue.compareTo(BigDecimal.ZERO) > 0;
-        } else if (this.revenue.compareTo(BigDecimal.ZERO) > 0) {
-            this.hasTransactions = true;
+            this.hasTransactions = false;
         }
     }
 
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
-        if (this.revenue != null && this.revenue.compareTo(BigDecimal.ZERO) > 0) {
-            this.hasTransactions = true;
-        }
     }
 }

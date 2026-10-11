@@ -3,7 +3,9 @@ package com.quanlybanhang.controller;
 import com.quanlybanhang.dto.request.DebtLimitRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.model.Dealer;
+import com.quanlybanhang.model.Product;
 import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.ProductRepository;
 import com.quanlybanhang.service.AuditLogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,9 +17,11 @@ import org.springframework.security.core.Authentication;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,13 +36,16 @@ class FinanceControllerTest {
     private AuditLogService auditLogService;
 
     @Mock
+    private ProductRepository productRepository;
+
+    @Mock
     private Authentication authentication;
 
     private FinanceController financeController;
 
     @BeforeEach
     void setUp() {
-        financeController = new FinanceController(dealerRepository, auditLogService);
+        financeController = new FinanceController(dealerRepository, auditLogService, productRepository);
     }
 
     @Test
@@ -143,5 +150,37 @@ class FinanceControllerTest {
         assertEquals("Đại lý Cấp 1", list.get(0).get("customerName"));
         assertEquals(new BigDecimal("100000000"), list.get(0).get("debtLimit"));
         assertEquals(60, list.get(0).get("maxDebtDays"));
+        assertNull(list.get(0).get("debtAmount"));
+        assertEquals(false, list.get(0).get("debtAmountAvailable"));
+    }
+
+    @Test
+    void financeReturnsEmptyListsWhenCatalogIsEmpty() {
+        when(productRepository.findAll()).thenReturn(List.of());
+        assertEquals(List.of(), financeController.getCostPrice().getData());
+        assertEquals(List.of(), financeController.getProfitMargin().getData());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void financeUsesStoredPricesAndKeepsNegativeMargin() {
+        Product product = Product.builder().id(9L).code("CATALOG-9").name("Hàng trong danh mục")
+                .price(new BigDecimal("300")).costPrice(new BigDecimal("400")).unit("hộp").build();
+        when(productRepository.findAll()).thenReturn(List.of(product));
+        Map<String, Object> cost = ((List<Map<String, Object>>) financeController.getCostPrice().getData()).get(0);
+        assertEquals("CATALOG-9", cost.get("productCode"));
+        assertEquals(product.getCostPrice(), cost.get("costPrice"));
+        Map<String, Object> margin = ((List<Map<String, Object>>) financeController.getProfitMargin().getData()).get(0);
+        assertEquals(new BigDecimal("-33.33"), margin.get("marginPercent"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void marginIsUnavailableForZeroSellingPrice() {
+        Product product = Product.builder().id(9L).code("CATALOG-9")
+                .price(BigDecimal.ZERO).costPrice(new BigDecimal("400")).build();
+        when(productRepository.findAll()).thenReturn(List.of(product));
+        Map<String, Object> margin = ((List<Map<String, Object>>) financeController.getProfitMargin().getData()).get(0);
+        assertNull(margin.get("marginPercent"));
     }
 }

@@ -258,7 +258,6 @@
       categoryId: Number($("product-category").value),
       price: Number($("product-price").value),
       costPrice: Number($("product-cost").value),
-      revenue: Number(product?.revenue || 0),
       unit: $("product-unit").value.trim(),
       packingSpecification: $("product-packing").value.trim(),
       imageUrl: $("product-image-url").value,

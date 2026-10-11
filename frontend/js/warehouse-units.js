@@ -30,6 +30,7 @@
     products: [],
     receipts: [],
     loaded: false,
+    warehouseId: null,
 
     async request(path, options) {
       const response = await Auth.apiFetch(path, options);
@@ -47,19 +48,22 @@
       const preferredWarehouse = warehouses.find(warehouse => String(warehouse.id) === currentWarehouse)
         || warehouses.find(warehouse => user.warehouses?.some(scope => scope.id === warehouse.id))
         || warehouses[0];
-      if (!preferredWarehouse) throw new Error("Chưa có kho đang hoạt động. Vui lòng liên hệ quản trị viên.");
+      this.warehouseId = preferredWarehouse?.id || null;
       for (const id of ["active-warehouse-select", "receipt-warehouse"]) {
         const select = $(id);
         if (select) {
-          select.innerHTML = warehouses.map(warehouse =>
-            `<option value="${warehouse.id}">${escapeHtml(warehouse.name)}</option>`).join("");
-          select.value = String(preferredWarehouse.id);
+          select.innerHTML = warehouses.length ? warehouses.map(warehouse =>
+            `<option value="${warehouse.id}">${escapeHtml(warehouse.name)}</option>`).join("")
+            : '<option value="">Chưa cấu hình kho</option>';
+          select.value = this.warehouseId ? String(this.warehouseId) : "";
+          select.disabled = !this.warehouseId;
         }
       }
+      $("btn-export-inventory-excel").disabled = !this.warehouseId;
       const [products, inventory, vouchers, orders] = await Promise.all([
         this.request("/products"),
-        this.request(`/warehouse/inventory?warehouseId=${preferredWarehouse.id}`),
-        this.request(`/warehouse/vouchers?warehouseId=${preferredWarehouse.id}`),
+        this.warehouseId ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
+        this.warehouseId ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`) : [],
         this.request("/orders"),
       ]);
 
@@ -151,11 +155,7 @@
       this.loaded = true;
     },
 
-    save() {
-      // Dữ liệu nghiệp vụ được lưu tại backend; trình duyệt không giữ bản sao.
-    },
-
-    async resetToDemo() {
+    async reloadFromServer() {
       await this.init();
     },
 
@@ -478,10 +478,12 @@
             </div>
           </td>
           <td>
+            ${Store.warehouseId ? `
             <div class="inventory-dual-pill">
               <span class="inventory-dual-pill__base">${formatNumber(p.inventoryBaseQty)} ${escapeHtml(p.baseUnit)}</span>
               <span class="inventory-dual-pill__packages">≈ ${escapeHtml(breakdown)}</span>
             </div>
+            ` : '<span>Chưa cấu hình kho</span>'}
           </td>
           <td class="th-actions">
             <div class="table-row-actions">
@@ -503,12 +505,21 @@
   $("sku-category-filter")?.addEventListener("change", renderSkuTable);
   $("sku-baseunit-filter")?.addEventListener("change", renderSkuTable);
 
-  $("btn-reset-demo")?.addEventListener("click", async () => {
-    if (confirm("Tải lại dữ liệu mới nhất từ máy chủ?")) {
-      await Store.resetToDemo();
-      showToast("Đã tải lại dữ liệu từ máy chủ.");
+  $("btn-reload-data")?.addEventListener("click", async () => {
+    const button = $("btn-reload-data");
+    button.disabled = true;
+    try {
+      await Store.reloadFromServer();
       renderSkuTable();
+      prepareReceiptForm();
+      renderLedgerTable();
+      renderInventoryTable();
       updateMetrics();
+      showToast("Đã tải lại dữ liệu từ máy chủ.");
+    } catch (error) {
+      showToast(error.message || "Không tải được dữ liệu kho.", "error");
+    } finally {
+      button.disabled = false;
     }
   });
 
@@ -547,7 +558,15 @@
     return { id, sku: product.sku, inputUnit: unit.name, inputQuantity: 1, notes: "" };
   }
 
+  function updateReceiptAvailability() {
+    const needsWarehouse = receiptState.type !== "ORDER";
+    $("btn-save-receipt").disabled = !Store.loaded || !Store.products.length || (needsWarehouse && !Store.warehouseId);
+    $("warehouse-configuration-message").hidden = !Store.loaded || !needsWarehouse || Boolean(Store.warehouseId);
+    $("receipt-warehouse").closest(".form-field").hidden = !needsWarehouse;
+  }
+
   function prepareReceiptForm() {
+    updateReceiptAvailability();
     $("receipt-date").value = new Date().toISOString().slice(0, 10);
     $("receipt-code").value = Store.generateReceiptCode(receiptState.type);
     if (!receiptState.lines.length) {
@@ -582,6 +601,7 @@
         partnerLabel.textContent = "Khách hàng / Đại lý phân phối";
         partnerInput.placeholder = "VD: Đại lý Phương Nam (Hà Nội)...";
       }
+      updateReceiptAvailability();
     });
   });
 
@@ -760,6 +780,9 @@
       const code = $("receipt-code").value.trim() || Store.generateReceiptCode(receiptState.type);
       const date = $("receipt-date").value;
       const warehouseId = Number($("receipt-warehouse").value) || null;
+      if (receiptState.type !== "ORDER" && !warehouseId) {
+        throw new Error("Chưa có kho đang hoạt động. Vui lòng cấu hình kho trước khi ghi phiếu.");
+      }
       const warehouse = $("receipt-warehouse").selectedOptions[0]?.textContent || "";
       const partner = $("receipt-partner").value.trim();
       const notes = $("receipt-notes").value.trim();
@@ -893,6 +916,10 @@
   function renderInventoryTable() {
     const search = $("inv-search-input").value.trim().toLowerCase();
     const tbody = $("inventory-table-body");
+    if (Store.loaded && !Store.warehouseId) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Chưa cấu hình kho đang hoạt động để xem tồn kho.</td></tr>';
+      return;
+    }
 
     const filtered = Store.products.filter((p) => !search || p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search));
 
@@ -928,7 +955,7 @@
             </div>
           </td>
           <td>
-            <span class="badge badge--pill badge--primary">An toàn (Tồn tối thiểu 200)</span>
+            <span>Chưa thiết lập</span>
           </td>
           <td>
             <button class="action-btn action-btn--primary" data-action="quick-import" data-sku="${p.sku}">
@@ -958,6 +985,10 @@
 
   // Excel Export feature using XLSX
   $("btn-export-inventory-excel")?.addEventListener("click", () => {
+    if (!Store.warehouseId) {
+      showToast("Chưa cấu hình kho để xuất bảng tồn kho.", "warning");
+      return;
+    }
     if (typeof XLSX === "undefined") {
       showToast("Thư viện Excel đang tải, vui lòng thử lại.", "warning");
       return;

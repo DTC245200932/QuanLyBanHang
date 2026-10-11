@@ -23,7 +23,7 @@ public class ProductExcelService {
     /**
      * Sinh tệp Excel mẫu (.xlsx) phục vụ nhập danh mục sản phẩm hàng loạt (S2-08).
      * Bao gồm:
-     * - Sheet 1: "Sản phẩm mẫu" kèm các cột chuẩn và dòng dữ liệu ví dụ.
+     * - Sheet 1: "Sản phẩm" chỉ chứa các cột chuẩn để nhập dữ liệu thực tế.
      * - Sheet 2: "Danh mục nhóm hàng" chứa danh sách nhóm hàng hiện có trong hệ thống để tiện tra cứu.
      * - Sheet 3: "Hướng dẫn" quy định rõ các quy tắc nghiệp vụ (SKU duy nhất, cập nhật thay vì tạo mới...).
      */
@@ -59,8 +59,8 @@ public class ProductExcelService {
             DataFormat format = workbook.createDataFormat();
             numberStyle.setDataFormat(format.getFormat("#,##0"));
 
-            // --- SHEET 1: SẢN PHẨM MẪU ---
-            Sheet sheet = workbook.createSheet("Sản phẩm mẫu");
+            // --- SHEET 1: SẢN PHẨM ---
+            Sheet sheet = workbook.createSheet("Sản phẩm");
             String[] headers = {
                     "Mã SKU (*)",
                     "Tên sản phẩm (*)",
@@ -81,40 +81,9 @@ public class ProductExcelService {
                 cell.setCellStyle(headerStyle);
             }
 
-            // Dữ liệu mẫu thực tế
-            Object[][] sampleData = {
-                    {"HEIN-330", "Bia Heineken lon 330ml", "BEV-BEER", "lon", "Thùng 24 lon", 18000, 14500, "Đang kinh doanh", "Bia cao cấp Hà Lan lon bạc 330ml"},
-                    {"AQUA-500", "Nước suối Aquafina 500ml", "BEV-WATER", "chai", "Lốc 24 chai", 6000, 4200, "Đang kinh doanh", "Nước tinh khiết đóng chai 500ml"},
-                    {"COCA-320", "Nước ngọt Coca-Cola lon 320ml", "BEV-SOFT", "lon", "Thùng 24 lon", 10500, 8500, "Đang kinh doanh", "Nước ngọt có gas vị truyền thống"}
-            };
-
-            // Nếu có categories thực tế thì dùng mã nhóm thực tế cho mẫu
-            if (categories != null && !categories.isEmpty()) {
-                String firstCatCode = categories.get(0).getCode();
-                sampleData[0][2] = firstCatCode;
-                if (categories.size() > 1) {
-                    sampleData[1][2] = categories.get(1).getCode();
-                }
-                if (categories.size() > 2) {
-                    sampleData[2][2] = categories.get(2).getCode();
-                }
-            }
-
-            for (int r = 0; r < sampleData.length; r++) {
-                Row row = sheet.createRow(r + 1);
-                row.setHeightInPoints(20);
-                for (int c = 0; c < sampleData[r].length; c++) {
-                    Cell cell = row.createCell(c);
-                    Object val = sampleData[r][c];
-                    if (val instanceof Number) {
-                        cell.setCellValue(((Number) val).doubleValue());
-                        cell.setCellStyle(numberStyle);
-                    } else {
-                        cell.setCellValue(val != null ? val.toString() : "");
-                        cell.setCellStyle(dataStyle);
-                    }
-                }
-            }
+            sheet.setDefaultColumnStyle(5, numberStyle);
+            sheet.setDefaultColumnStyle(6, numberStyle);
+            sheet.createFreezePane(0, 1);
 
             for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
@@ -172,7 +141,7 @@ public class ProductExcelService {
                     "   - NẾU MÃ SKU ĐÃ TỒN TẠI: Hệ thống sẽ tự động CẬP NHẬT sản phẩm thay vì tạo mới (có đánh dấu rõ 'UPDATE' trong bản xem trước).",
                     "   - NẾU MÃ SKU CHƯA TỒN TẠI: Hệ thống sẽ TẠO MỚI sản phẩm ('CREATE').",
                     "3. Cột Nhóm hàng:",
-                    "   - Có thể điền Mã nhóm hàng (ví dụ: BEV-BEER) hoặc Tên nhóm hàng (ví dụ: Bia các loại).",
+                    "   - Điền Mã nhóm hàng hoặc Tên nhóm hàng có trong sheet Danh mục nhóm hàng.",
                     "   - Vui lòng tra cứu danh sách nhóm hàng tại Sheet 'Danh mục nhóm hàng'.",
                     "4. Cột Giá vốn (Bảo mật theo S1-05 & S2-05):",
                     "   - Chỉ Quản lý kinh doanh (ROLE_SALES_MANAGER) có quyền xem và cập nhật giá vốn.",

@@ -54,6 +54,40 @@ class WarehouseServiceTest {
     private Warehouse khoHcm;
     private Product biaHeineken;
 
+    @Test
+    void missingQuantityDoesNotInventOneUnit() {
+        WarehouseVoucherRequest request = WarehouseVoucherRequest.builder().productId(10L).warehouseId(1L).build();
+        assertThatThrownBy(() -> warehouseService.importGoods(request, "staff"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Số lượng không được để trống");
+        verifyNoInteractions(warehouseRepository, inventoryRepository, voucherRepository);
+    }
+
+    @Test
+    void missingWarehouseDoesNotCreateDefaultBusinessRecord() {
+        WarehouseVoucherRequest request = WarehouseVoucherRequest.builder().productId(10L).quantity(BigDecimal.ONE).build();
+        when(warehouseRepository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of());
+        assertThatThrownBy(() -> warehouseService.importGoods(request, "staff"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Chưa có kho đang hoạt động");
+        verify(warehouseRepository, never()).save(any());
+        verifyNoInteractions(inventoryRepository, voucherRepository);
+    }
+
+    @Test
+    void multipleWarehousesRequireExplicitSelection() {
+        WarehouseVoucherRequest request = WarehouseVoucherRequest.builder().productId(10L).quantity(BigDecimal.ONE).build();
+        when(warehouseRepository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of(khoHcm, Warehouse.builder().id(2L).build()));
+        assertThatThrownBy(() -> warehouseService.importGoods(request, "staff"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("warehouseId");
+        verifyNoInteractions(inventoryRepository, voucherRepository);
+    }
+
+    @Test
+    void emptyVoucherCannotWriteInventoryOrCreateWarehouse() {
+        assertThatThrownBy(() -> warehouseService.importGoods(new WarehouseVoucherRequest(), "staff"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ít nhất 1 sản phẩm");
+        verifyNoInteractions(warehouseRepository, inventoryRepository, voucherRepository);
+    }
+
     @BeforeEach
     void setUp() {
         khoHcm = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").build();

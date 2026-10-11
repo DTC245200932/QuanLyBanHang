@@ -61,16 +61,15 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Transactional
     public WarehouseVoucherResponse recordVoucher(WarehouseVoucherRequest request, WarehouseVoucherType type, String username) {
         if (request == null) {
-            request = new WarehouseVoucherRequest();
+            throw new IllegalArgumentException("Không được để trống nội dung phiếu kho");
         }
 
-        Warehouse warehouse = resolveWarehouse(request.getWarehouseId());
-
         // Chuẩn hóa danh sách items
-        List<WarehouseVoucherItemRequest> itemRequests = normalizeItemRequests(request);
+        List<WarehouseVoucherItemRequest> itemRequests = normalizeItemRequests(request, type);
         if (itemRequests.isEmpty()) {
             throw new IllegalArgumentException("Phiếu kho phải có ít nhất 1 sản phẩm");
         }
+        Warehouse warehouse = resolveWarehouse(request.getWarehouseId());
 
         String voucherCode = request.getVoucherCode();
         if (voucherCode == null || voucherCode.isBlank()) {
@@ -94,6 +93,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .build();
 
         for (WarehouseVoucherItemRequest itemReq : itemRequests) {
+            if (itemReq == null) {
+                throw new IllegalArgumentException("Dòng sản phẩm trong phiếu kho không được để trống");
+            }
             Product product = resolveProduct(itemReq);
 
             String inputUnit = itemReq.getUnit();
@@ -214,14 +216,21 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     private Warehouse resolveWarehouse(Long warehouseId) {
         if (warehouseId != null) {
-            return warehouseRepository.findById(warehouseId)
+            Warehouse warehouse = warehouseRepository.findById(warehouseId)
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + warehouseId));
+            if (!Boolean.TRUE.equals(warehouse.getActive())) {
+                throw new IllegalArgumentException("Kho đã ngừng hoạt động");
+            }
+            return warehouse;
         }
-        return warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
-                .findFirst()
-                .orElseGet(() -> warehouseRepository.findAll().stream()
-                        .findFirst()
-                        .orElseGet(() -> warehouseRepository.save(Warehouse.builder().code("KHO-DEFAULT").name("Kho mặc định").build())));
+        List<Warehouse> warehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
+        if (warehouses.isEmpty()) {
+            throw new IllegalArgumentException("Chưa có kho đang hoạt động. Vui lòng cấu hình kho thực tế trước khi ghi phiếu.");
+        }
+        if (warehouses.size() > 1) {
+            throw new IllegalArgumentException("Vui lòng chọn kho (warehouseId) để ghi phiếu");
+        }
+        return warehouses.get(0);
     }
 
     private Product resolveProduct(WarehouseVoucherItemRequest itemReq) {
@@ -236,18 +245,18 @@ public class WarehouseServiceImpl implements WarehouseService {
         throw new IllegalArgumentException("Cần cung cấp productId hoặc productCode");
     }
 
-    private List<WarehouseVoucherItemRequest> normalizeItemRequests(WarehouseVoucherRequest request) {
+    private List<WarehouseVoucherItemRequest> normalizeItemRequests(WarehouseVoucherRequest request, WarehouseVoucherType type) {
         if (request.getItems() != null && !request.getItems().isEmpty()) {
             return request.getItems();
         }
         // Trường hợp payload đơn giản {"productId": 1, "quantity": 50, "unit": "thùng"}
         if (request.getProductId() != null) {
             BigDecimal qty = request.getQuantity();
-            if (qty == null && request.getDelta() != null) {
+            if (qty == null && type == WarehouseVoucherType.ADJUSTMENT && request.getDelta() != null) {
                 qty = request.getDelta().abs();
             }
             if (qty == null) {
-                qty = BigDecimal.ONE;
+                throw new IllegalArgumentException("Số lượng không được để trống");
             }
             return List.of(WarehouseVoucherItemRequest.builder()
                     .productId(request.getProductId())

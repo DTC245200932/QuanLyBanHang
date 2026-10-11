@@ -1,0 +1,194 @@
+{
+  "date": "2026-10-12",
+  "database": "salestock_no_mock_audit_20261012_f173f1",
+  "testData": "Chỉ tạo fixture trong database riêng sau khi kiểm tra trạng thái rỗng",
+  "checks": [
+    {
+      "name": "Database mới không có dữ liệu nghiệp vụ dù bật biến seed demo cũ",
+      "passed": true,
+      "details": {
+        "warehouses": 0,
+        "territories": 0,
+        "categories": 0,
+        "products": 0,
+        "dealers": 0,
+        "price_lists": 0,
+        "volume_discount_policies": 0,
+        "product_unit_conversions": 0,
+        "orders": 0,
+        "warehouse_vouchers": 0,
+        "suppliers": 0
+      }
+    },
+    {
+      "name": "Chỉ có 7 vai trò và 1 quản trị ban đầu",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Bootstrap không gán số điện thoại giả",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Admin không có vai trò quản lý kinh doanh bị chặn giá vốn",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API dữ liệu trống /finance/cost-price",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API dữ liệu trống /finance/profit-margin",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API dữ liệu trống /categories/tree",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API dữ liệu trống /products",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API dữ liệu trống /warehouse/options",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API dữ liệu trống /warehouse/inventory",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API dữ liệu trống /warehouse/vouchers",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Phiếu rỗng không báo thành công: adjust",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Phiếu rỗng không báo thành công: import",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Phiếu rỗng không báo thành công: export",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Phiếu không hợp lệ không làm tăng dữ liệu",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "API không nhận doanh số/cờ giao dịch do client gửi",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Giá vốn và biên lợi nhuận lấy từ database",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Không tự tạo kho khi thiếu cấu hình",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Thiếu số lượng không được tự nhập 1",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Phiếu nhập thực lưu database và quy đổi tồn kho",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Phiếu xuất thực giảm tồn kho",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Lịch sử phiếu kho thực chặn xoá sản phẩm",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Hạn mức thực; số dư chưa có nguồn không trả 0 giả",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Doanh số bằng thành tiền đơn ghi sổ sau chiết khấu",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Bản nháp không góp doanh số",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Đơn chờ duyệt không góp doanh số",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Duyệt đơn làm tăng doanh số đúng thành tiền",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Huỷ đơn tự loại khỏi doanh số",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Đơn bị từ chối không góp doanh số",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Cây 3 cấp cộng doanh số trực tiếp và nhóm con",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Danh mục lấy thống kê giao dịch theo lô từ database",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Danh sách nhóm phẳng trả doanh số trực tiếp thực",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Doanh số legacy giả bị bỏ qua khi đọc sản phẩm/nhóm",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Cờ legacy không bịa lịch sử giao dịch",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Chuyển nhóm tính doanh số vào nhóm hiện tại",
+      "passed": true,
+      "details": null
+    }
+  ]
+}

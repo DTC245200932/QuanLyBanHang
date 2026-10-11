@@ -23,6 +23,7 @@ import java.math.BigDecimal;
  */
 @Getter
 @Setter
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"revenue", "hasTransactions"})
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -61,10 +62,6 @@ public class ProductRequest {
     @Builder.Default
     private BigDecimal costPrice = BigDecimal.ZERO;
 
-    @PositiveOrZero(message = "Doanh số không được âm")
-    @Builder.Default
-    private BigDecimal revenue = BigDecimal.ZERO;
-
     /**
      * Đơn vị tính cơ sở: cái, chai, hộp, lon, kg, gói, vỉ...
      */
@@ -94,12 +91,6 @@ public class ProductRequest {
      * Ví dụ: lon (cơ sở), lốc (hệ số 6), thùng (hệ số 24).
      */
     private java.util.List<UnitConversionRequest> unitConversions;
-
-    /**
-     * Cờ đánh dấu đã phát sinh giao dịch.
-     */
-    @Builder.Default
-    private Boolean hasTransactions = false;
 
     /**
      * Lấy mã SKU hợp lệ (ưu tiên sku, nếu trống thì lấy code).

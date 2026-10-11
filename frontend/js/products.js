@@ -466,7 +466,7 @@
     $("price-history-unavailable").hidden = canReadApi;
     $("price-history-content").hidden = !canReadApi;
     historyModal.hidden = false;
-    document.querySelector(".catalog-shell").inert = true;
+    document.querySelector(".app-shell").inert = true;
     document.body.style.overflow = "hidden";
     historyModal.querySelector("[data-close-price-history]").focus();
     if (canReadApi) loadPriceHistory();
@@ -478,7 +478,7 @@
     historyState.controller?.abort();
     historyState.loading = false;
     historyModal.hidden = true;
-    document.querySelector(".catalog-shell").inert = false;
+    document.querySelector(".app-shell").inert = false;
     document.body.style.overflow = historyPreviousOverflow;
     historyPreviousFocus?.focus();
   }

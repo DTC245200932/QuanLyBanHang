@@ -7,10 +7,11 @@
   <link rel="icon" href="/assets/brand-mark.svg">
   <link rel="stylesheet" href="/css/dashboard.css">
   <link rel="stylesheet" href="/css/profile.css">
+<link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
-  <main class="profile-page">
-    <header class="profile-header">
+  <main class="profile-page" data-app-content>
+    <header class="profile-header" data-standalone-header>
       <a class="profile-brand" href="/dashboard"><img src="/assets/brand-mark.svg" alt=""><span>SaleStock</span></a>
       <a class="profile-back" href="/dashboard">Về trang tổng quan</a>
     </header>
@@ -52,6 +53,7 @@
   </main>
   <script src="/js/auth.js"></script>
   <script src="/js/menu-config.js"></script>
+<script src="/js/app-shell.js"></script>
   <script src="/js/profile.js"></script>
 </body>
 </html>

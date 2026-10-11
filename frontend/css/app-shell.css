@@ -1,0 +1,15 @@
+.shared-main-area { width: calc(100% - var(--sidebar-width)); }
+.shared-main-area > .topbar { flex-shrink: 0; }
+.shared-main-area .topbar__breadcrumb { min-width: 0; }
+.sidebar__user-scope { color: var(--ink-400); font-size: .6875rem; line-height: 1.45; }
+.shared-main-area > .profile-layout { margin-top: 32px; }
+.app-shell .sidebar__link:focus-visible,
+.app-shell .sidebar__logout:focus-visible,
+.app-shell .sidebar__close:focus-visible,
+.shared-main-area .topbar button:focus-visible,
+.shared-main-area .topbar a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+@media (max-width: 1024px) { .shared-main-area { width: 100%; } }
+@media (max-width: 640px) {
+  .shared-main-area > .topbar { padding-inline: 12px; gap: 6px; }
+  .shared-main-area > .profile-layout { margin-top: 20px; }
+}

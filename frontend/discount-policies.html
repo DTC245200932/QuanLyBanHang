@@ -11,10 +11,11 @@
     <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/dashboard.css" />
     <link rel="stylesheet" href="/css/discount-policies.css" />
-  </head>
+  <link rel="stylesheet" href="/css/app-shell.css">
+</head>
   <body>
-    <div class="disc-shell">
-      <header class="disc-topbar">
+    <div class="disc-shell" data-app-content>
+      <header class="disc-topbar" data-standalone-header>
         <a class="disc-brand" href="/dashboard">
           <img src="/assets/brand-mark.svg" alt="" />
           <span>SaleStock</span>
@@ -309,6 +310,8 @@
 
     <div id="toast-container"></div>
     <script src="/js/auth.js"></script>
+<script src="/js/menu-config.js"></script>
+<script src="/js/app-shell.js"></script>
     <script src="/js/discount-policies.js"></script>
   </body>
 </html>

@@ -8,11 +8,12 @@
   <link rel="stylesheet" href="/css/dashboard.css">
   <link rel="stylesheet" href="/css/admin-users.css">
   <link rel="stylesheet" href="/css/audit-logs.css">
+<link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
-  <div class="admin-shell">
+  <div class="admin-shell" data-app-content>
     <!-- ── Topbar ── -->
-    <header class="admin-topbar">
+    <header class="admin-topbar" data-standalone-header>
       <div class="admin-topbar__left">
         <a class="admin-brand" href="/dashboard">
           <img src="/assets/brand-mark.svg" alt="SaleStock Logo">
@@ -212,6 +213,7 @@
   <!-- Scripts -->
   <script src="/js/auth.js"></script>
   <script src="/js/menu-config.js"></script>
+<script src="/js/app-shell.js"></script>
   <script src="/js/vendor/xlsx.full.min.js"></script>
   <script src="/js/audit-logs.js"></script>
 </body>

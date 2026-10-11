@@ -11,10 +11,11 @@
     <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/dashboard.css" />
     <link rel="stylesheet" href="/css/products.css" />
-  </head>
+  <link rel="stylesheet" href="/css/app-shell.css">
+</head>
   <body>
-    <div class="catalog-shell">
-      <header class="catalog-topbar">
+    <div class="catalog-shell" data-app-content>
+      <header class="catalog-topbar" data-standalone-header>
         <a class="catalog-brand" href="/dashboard">
           <img src="/assets/brand-mark.svg" alt="" />
           <span>SaleStock</span>
@@ -342,6 +343,8 @@
     </div>
 
     <script src="/js/auth.js"></script>
+<script src="/js/menu-config.js"></script>
+<script src="/js/app-shell.js"></script>
     <script src="/js/products.js"></script>
     <script src="/js/products-import.js"></script>
   </body>

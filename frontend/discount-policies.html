@@ -92,7 +92,7 @@
             <span>Phạm vi áp dụng</span>
             <select id="disc-scope-filter">
               <option value="">Tất cả phạm vi</option>
-              <option value="SKU">Theo SKU</option>
+              <option value="PRODUCT">Theo SKU</option>
               <option value="CATEGORY">Theo nhóm hàng</option>
             </select>
           </label>
@@ -100,8 +100,8 @@
             <span>Loại chiết khấu</span>
             <select id="disc-type-filter">
               <option value="">Tất cả loại</option>
-              <option value="PERCENT">Phần trăm (%)</option>
-              <option value="FIXED">Số tiền cố định (đ)</option>
+              <option value="PERCENTAGE">Phần trăm (%)</option>
+              <option value="FIXED_AMOUNT">Số tiền cố định (đ)</option>
             </select>
           </label>
           <label class="disc-filter">
@@ -183,7 +183,7 @@
               <span>Phạm vi áp dụng</span>
               <select id="disc-scope" required>
                 <option value="">Chọn phạm vi</option>
-                <option value="SKU">Theo SKU cụ thể</option>
+                <option value="PRODUCT">Theo SKU cụ thể</option>
                 <option value="CATEGORY">Theo nhóm hàng</option>
               </select>
             </label>
@@ -199,8 +199,8 @@
               <span>Loại chiết khấu</span>
               <select id="disc-type" required>
                 <option value="">Chọn loại</option>
-                <option value="PERCENT">Phần trăm (%)</option>
-                <option value="FIXED">Số tiền cố định (đ/đơn vị)</option>
+                <option value="PERCENTAGE">Phần trăm (%)</option>
+                <option value="FIXED_AMOUNT">Số tiền cố định (đ/đơn vị)</option>
               </select>
             </label>
 
@@ -247,6 +247,7 @@
                   <tr>
                     <th>Bậc</th>
                     <th>Số lượng từ (≥)</th>
+                    <th>Số lượng đến (≤)</th>
                     <th id="disc-value-header">Chiết khấu (%)</th>
                     <th></th>
                   </tr>
@@ -291,6 +292,7 @@
                 <tr>
                   <th>Bậc</th>
                   <th>Số lượng từ (≥)</th>
+                  <th>Số lượng đến (≤)</th>
                   <th id="disc-view-value-header">Chiết khấu</th>
                 </tr>
               </thead>

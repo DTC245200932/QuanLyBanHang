@@ -36,12 +36,20 @@
               Chuẩn hoá mã SKU, tên gọi và đơn vị tính để mọi bộ phận dùng cùng một dữ liệu.
             </span>
           </div>
-          <button class="btn btn--primary" id="create-product" type="button" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Thêm sản phẩm
-          </button>
+          <div class="catalog-heading__actions">
+            <button class="btn btn--secondary" id="btn-import-excel" type="button" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v12m0-12-4 4m4-4 4 4M5 15v4h14v-4" />
+              </svg>
+              Nhập Excel
+            </button>
+            <button class="btn btn--primary" id="create-product" type="button" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Thêm sản phẩm
+            </button>
+          </div>
         </section>
 
         <div class="catalog-access-note" id="catalog-access-note" hidden>
@@ -238,7 +246,103 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="import-excel-modal" hidden>
+      <div class="modal modal--product-import" role="dialog" aria-modal="true"
+        aria-labelledby="import-excel-title" aria-describedby="import-excel-description">
+        <div class="modal__header product-modal__header">
+          <div>
+            <p class="product-import__eyebrow">S2-08 · Danh mục dùng chung</p>
+            <h2 id="import-excel-title">Nhập sản phẩm từ Excel</h2>
+            <p id="import-excel-description">Kiểm tra trước từng dòng rồi nhập các SKU hợp lệ vào hệ thống.</p>
+          </div>
+          <button class="modal__close" id="btn-close-import" type="button" aria-label="Đóng nhập Excel">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div class="product-import__steps" aria-label="Tiến trình nhập Excel">
+          <span class="product-import__step product-import__step--active" data-import-step-label="upload">1. Chọn tệp</span>
+          <span class="product-import__step" data-import-step-label="preview">2. Xem trước</span>
+          <span class="product-import__step" data-import-step-label="done">3. Hoàn tất</span>
+        </div>
+
+        <div class="modal__body product-import" aria-live="polite">
+          <section id="import-step-upload" class="product-import__section">
+            <div class="product-import__intro">
+              <strong>Nhập tối đa 5.000 mã hàng trong một lần</strong>
+              <span>File .xlsx hoặc .xls, dung lượng tối đa 20 MB.</span>
+            </div>
+            <button class="product-import__dropzone" id="import-dropzone" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" />
+              </svg>
+              <strong>Chọn tệp Excel</strong>
+              <span>hoặc kéo thả tệp vào đây</span>
+              <input id="import-file-input" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+            </button>
+            <p class="product-import__file-status" id="import-file-status" role="status">Chưa chọn tệp.</p>
+            <div class="product-import__template">
+              <span>Chưa có file mẫu?</span>
+              <button class="btn btn--secondary" id="btn-download-template" type="button">Tải file mẫu</button>
+            </div>
+            <p class="product-import__message" id="import-upload-message" role="alert" hidden></p>
+          </section>
+
+          <section id="import-step-preview" class="product-import__section" hidden>
+            <div class="product-import__preview-head">
+              <div>
+                <strong id="import-preview-title">Bản xem trước</strong>
+                <span id="import-preview-file"></span>
+              </div>
+              <button class="btn btn--secondary" id="btn-import-change-file" type="button">Chọn tệp khác</button>
+            </div>
+            <div class="import-preview-stats" id="import-preview-stats"></div>
+            <p class="product-import__message" id="import-error-summary" role="status" hidden></p>
+            <div class="import-preview__table-wrap" tabindex="0" role="region" aria-label="Bản xem trước dữ liệu nhập sản phẩm">
+              <table class="import-preview__table">
+                <thead><tr>
+                  <th scope="col">Dòng</th>
+                  <th scope="col">Kết quả</th>
+                  <th scope="col">SKU</th>
+                  <th scope="col">Tên sản phẩm</th>
+                  <th scope="col">Nhóm hàng</th>
+                  <th scope="col">Đơn vị</th>
+                  <th scope="col">Quy cách</th>
+                  <th scope="col">Giá bán</th>
+                  <th scope="col">Giá vốn</th>
+                  <th scope="col">Ghi chú</th>
+                </tr></thead>
+                <tbody id="import-preview-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="import-step-progress" class="product-import__section product-import__progress" hidden>
+            <div class="product-import__progress-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48 2.12 2.12m0-12.72-2.12 2.12m-8.48 8.48-2.12 2.12" /></svg>
+            </div>
+            <strong>Đang nhập dữ liệu</strong>
+            <span id="import-progress-label">Hệ thống đang xử lý file Excel…</span>
+            <div class="product-import__progress-track" role="progressbar" aria-label="Tiến trình nhập Excel" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Đang xử lý">
+              <span id="import-progress-fill"></span>
+            </div>
+          </section>
+
+          <section id="import-step-done" class="product-import__section product-import__done" hidden>
+            <div id="import-done-summary"></div>
+            <p class="product-import__message" id="import-done-message" role="status"></p>
+          </section>
+
+          <div class="modal__actions product-import__actions">
+            <button class="btn btn--secondary" id="btn-cancel-import" type="button">Huỷ</button>
+            <button class="btn btn--primary" id="btn-start-import" type="button" disabled>Nhập dữ liệu</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="/js/auth.js"></script>
     <script src="/js/products.js"></script>
+    <script src="/js/products-import.js"></script>
   </body>
 </html>

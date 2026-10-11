@@ -52,6 +52,7 @@
     productCache: {},   // productId → { unitConversions }
     priceList: null,    // bảng giá hiệu lực theo nhóm đại lý
     pendingDeliveryPointId: null,
+    dealerLoading: false,
   };
 
   let pricingRequestId = 0;
@@ -155,7 +156,9 @@
   }
 
   /* ── Dealer selection ────────────────────────────────────── */
-  $('co-dealer').addEventListener('change', async () => {
+  $('co-dealer').addEventListener('change', selectDealer);
+
+  async function selectDealer() {
     const val = $('co-dealer').value;
     const dealerData = state.dealers.find((d) => String(d.id) === String(val)) ?? null;
     state.selectedDealer = dealerData;
@@ -177,22 +180,26 @@
     state.deliveryPoints = [];
     state.priceList = null;
     setDeliveryStatus('');
+    state.dealerLoading = true;
 
     if (dealerData) {
       await Promise.all([
         loadDeliveryPoints(dealerData.id),
         loadEffectivePriceList(dealerData.customerGroup),
       ]);
-      syncItemPrices();
-      refreshPricingPreview();
     }
-  });
+    if (state.selectedDealer?.id !== dealerData?.id) return;
+    state.dealerLoading = false;
+    syncItemPrices();
+    await refreshPricingPreview();
+  }
 
   async function loadDeliveryPoints(dealerId) {
     const dpSel = $('co-delivery-point');
     try {
       const res = await Auth.apiFetch(`/dealers/${dealerId}/delivery-points`);
       const result = await res.json().catch(() => null);
+      if (state.selectedDealer?.id !== dealerId) return;
       if (!res.ok) throw new Error(result?.message || 'Không tải được điểm giao hàng.');
       const points = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
       state.deliveryPoints = points;
@@ -214,6 +221,7 @@
       state.pendingDeliveryPointId = null;
       setDeliveryStatus('Có thể chọn điểm giao hàng của đại lý cho đơn này.');
     } catch (error) {
+      if (state.selectedDealer?.id !== dealerId) return;
       state.deliveryPoints = [];
       dpSel.innerHTML = '<option value="">— Không tải được điểm giao hàng —</option>';
       dpSel.disabled = true;
@@ -227,12 +235,14 @@
     try {
       const res = await Auth.apiFetch(`/price-lists/effective?customerGroup=${encodeURIComponent(customerGroup)}`);
       const result = await res.json();
+      if (state.selectedDealer?.customerGroup !== customerGroup) return;
       if (!res.ok || !result.success) {
         state.priceList = null;
         return;
       }
       state.priceList = result.data || null;
     } catch {
+      if (state.selectedDealer?.customerGroup !== customerGroup) return;
       // Giá cuối cùng vẫn được backend tự xác định khi ghi nhận đơn.
       state.priceList = null;
     }
@@ -449,6 +459,15 @@
       row.querySelector('.co-del-btn').addEventListener('click', () => removeItem(item._key));
 
       // Qty
+      row.querySelector('[data-field="qty"]').addEventListener('input', (e) => {
+        const quantity = Number(e.target.value);
+        if (!e.target.value || !Number.isFinite(quantity) || quantity <= 0) return;
+        item.qty = quantity;
+        refreshRowTotal(row, item);
+        updateSummary();
+        saveDraftSilently();
+        refreshPricingPreview();
+      });
       row.querySelector('[data-field="qty"]').addEventListener('change', (e) => {
         item.qty = Math.max(1, Number(e.target.value) || 1);
         e.target.value = item.qty;
@@ -466,7 +485,7 @@
         if (selected) {
           item.selectedUnit = selected;
           item.unitPrice = getUnitPrice(item);
-          renderItems();
+          refreshRowTotal(row, item);
           updateSummary();
           refreshPricingPreview();
         }
@@ -495,7 +514,6 @@
     const factor = Number(item.selectedUnit?.conversionFactor ?? 1) || 1;
     const priceLine = state.priceList?.items?.find((line) => Number(line.productId) === Number(item.productId));
     if (priceLine?.sellingPrice != null) return Number(priceLine.sellingPrice) * factor;
-    if (item.selectedUnit?.price != null) return Number(item.selectedUnit.price);
     return Number(item.basePrice || 0) * factor;
   }
 
@@ -523,12 +541,12 @@
   }
 
   async function refreshPricingPreview() {
+    const requestId = ++pricingRequestId;
     if (!state.items.length) {
       $('co-pricing-status').hidden = true;
-      return;
+      return true;
     }
 
-    const requestId = ++pricingRequestId;
     const statusEl = $('co-pricing-status');
     statusEl.hidden = false;
     statusEl.className = 'co-pricing-status co-pricing-status--info';
@@ -552,23 +570,32 @@
       });
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Không tính được chiết khấu');
-      if (requestId !== pricingRequestId) return;
+      if (requestId !== pricingRequestId) return false;
 
       const calculatedItems = Array.isArray(result.data?.items) ? result.data.items : [];
       state.items.forEach((item, index) => {
         item.discountAmount = Number(calculatedItems[index]?.discountAmount || 0);
       });
-      renderItems();
+      refreshItemAmounts();
       updateSummary();
       statusEl.hidden = true;
+      return true;
     } catch {
-      if (requestId !== pricingRequestId) return;
+      if (requestId !== pricingRequestId) return false;
       state.items.forEach((item) => { item.discountAmount = 0; });
-      renderItems();
+      refreshItemAmounts();
       updateSummary();
       statusEl.className = 'co-pricing-status co-pricing-status--error';
       statusEl.textContent = 'Chưa cập nhật được chiết khấu; tổng tiền đang hiển thị theo giá tạm tính.';
+      return false;
     }
+  }
+
+  function refreshItemAmounts() {
+    state.items.forEach((item) => {
+      const row = $('co-items-body').querySelector(`[data-key="${item._key}"]`);
+      if (row) refreshRowTotal(row, item);
+    });
   }
 
   /* ── Draft: save / load ─────────────────────────────────── */
@@ -586,6 +613,7 @@
         unitConversions: it.unitConversions,
         selectedUnitId: it.selectedUnit?.id ?? it.selectedUnit?.unitName ?? null,
         qty: it.qty,
+        basePrice: it.basePrice,
         unitPrice: it.unitPrice,
         discountAmount: it.discountAmount || 0,
       })),
@@ -594,28 +622,28 @@
   }
 
   let draftSaveTimer = null;
-  let draftSaveInFlight = false;
+  let draftSaveRequest = Promise.resolve();
 
-  async function saveDraft() {
-    const res = await Auth.apiFetch('/orders/draft', {
-      method: 'PUT',
-      body: JSON.stringify(buildDraftPayload()),
+  function saveDraft() {
+    const payload = buildDraftPayload();
+    draftSaveRequest = draftSaveRequest.catch(() => {}).then(async () => {
+      const res = await Auth.apiFetch('/orders/draft', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.message || 'Không lưu được bản nháp');
     });
-    const result = await res.json();
-    if (!res.ok || !result.success) throw new Error(result.message || 'Không lưu được bản nháp');
+    return draftSaveRequest;
   }
 
   function saveDraftSilently() {
     clearTimeout(draftSaveTimer);
     draftSaveTimer = setTimeout(async () => {
-      if (draftSaveInFlight) return;
-      draftSaveInFlight = true;
       try {
         await saveDraft();
       } catch {
         // Không chặn việc nhập đơn; nút Lưu nháp sẽ báo lỗi rõ ràng nếu cần.
-      } finally {
-        draftSaveInFlight = false;
       }
     }, 350);
   }
@@ -637,39 +665,61 @@
       if (!res.ok || !result.success || !result.data) return false;
       const draft = result.data;
       // Restore form fields
-      if (draft.dealerId) $('co-dealer').value = draft.dealerId;
-      if (draft.deliveryDate) $('co-delivery-date').value = draft.deliveryDate;
-      if (draft.note) $('co-note').value = draft.note;
+      $('co-dealer').value = draft.dealerId || '';
+      $('co-delivery-date').value = draft.deliveryDate || '';
+      $('co-note').value = draft.note || '';
 
       // Trigger dealer change to load delivery points
-      if (draft.dealerId) {
-        state.pendingDeliveryPointId = draft.deliveryPointId || null;
-        $('co-dealer').dispatchEvent(new Event('change'));
-      }
+      state.pendingDeliveryPointId = draft.deliveryPointId || null;
 
       // Restore items
       itemSeq = draft._seq || 0;
-      state.items = (draft.items || []).map((it) => {
-        const selected = (it.unitConversions || []).find(
+      state.items = await Promise.all((draft.items || []).map(async (it) => {
+        const [productResponse, unitsResponse] = await Promise.all([
+          Auth.apiFetch(`/products/${it.productId}`),
+          Auth.apiFetch(`/products/${it.productId}/unit-conversions`),
+        ]);
+        const [productResult, unitsResult] = await Promise.all([
+          productResponse.json(), unitsResponse.json(),
+        ]);
+        if (!productResponse.ok || !productResult.success || !unitsResponse.ok || !unitsResult.success) {
+          throw new Error('Không tải được dữ liệu sản phẩm trong bản nháp');
+        }
+        const product = productResult.data;
+        const units = unitsResult.data?.length ? unitsResult.data : [
+          { id: null, unitName: product.unit, conversionFactor: 1 },
+        ];
+        const oldUnit = (it.unitConversions || []).find(
           (u) => String(u.id ?? u.unitName) === String(it.selectedUnitId),
-        ) || it.unitConversions?.[0] || { unitName: 'cái', conversionFactor: 1 };
+        );
+        const selected = units.find((u) => String(u.id ?? u.unitName) === String(it.selectedUnitId))
+          || units.find((u) => u.unitName === oldUnit?.unitName)
+          || units.find((u) => u.unitName === it.selectedUnitId)
+          || units[0];
+        if (oldUnit && oldUnit.unitName !== selected.unitName) {
+          showToast(`Đơn vị của ${product.name} đã thay đổi. Vui lòng kiểm tra lại dòng hàng.`, 'warning');
+        }
+        state.productCache[it.productId] = units;
         return {
           _key: it._key,
           productId: it.productId,
-          sku: it.sku,
-          name: it.name,
-          unitConversions: it.unitConversions || [selected],
+          sku: product.sku || product.code,
+          name: product.name,
+          unitConversions: units,
           selectedUnit: selected,
           qty: it.qty,
-          basePrice: Number(it.unitPrice || 0) / (Number(selected.conversionFactor || 1) || 1),
+          basePrice: Number(product.price ?? product.sellingPrice ?? 0),
           unitPrice: Number(it.unitPrice || 0),
           discountAmount: Number(it.discountAmount || it.discount || 0),
         };
-      });
+      }));
 
       renderItems();
       updateSummary();
-      refreshPricingPreview();
+      await selectDealer();
+      if (draft.dealerId && !$('co-dealer').value) {
+        setDeliveryStatus('Đại lý trong bản nháp không còn được phép đặt hàng. Vui lòng chọn đại lý khác.', true);
+      }
       return true;
     } catch {
       return false;
@@ -677,6 +727,8 @@
   }
 
   async function clearDraft() {
+    clearTimeout(draftSaveTimer);
+    await draftSaveRequest.catch(() => {});
     try {
       await Auth.apiFetch('/orders/draft', { method: 'DELETE' });
     } catch {
@@ -746,13 +798,27 @@
   });
 
   /* ── Submit order ────────────────────────────────────────── */
-  $('order-form').addEventListener('submit', (e) => {
+  $('order-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
-    openConfirmModal();
+    const button = $('btn-submit-order');
+    button.disabled = true;
+    try {
+      if (!await refreshPricingPreview()) {
+        showToast('Chưa xác định được tổng tiền. Vui lòng cập nhật chiết khấu và thử lại.', 'error');
+        return;
+      }
+      openConfirmModal();
+    } finally {
+      button.disabled = false;
+    }
   });
 
   function validateForm() {
+    if (state.dealerLoading) {
+      showToast('Đang tải thông tin đại lý. Vui lòng thử lại sau khi tải xong.', 'warning');
+      return false;
+    }
     if (!$('co-dealer').value) {
       showToast('Vui lòng chọn đại lý.', 'warning');
       $('co-dealer').focus();

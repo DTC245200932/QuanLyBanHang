@@ -1,0 +1,575 @@
+{
+  "checkedAt": "2026-10-11T20:37:56.607652+07:00",
+  "sourceRevision": "e6c846f3e8d0dcff23e4c54e5a88760f77eee241",
+  "baselineMainRevision": "d1b6faf7f63fbb462200267a14e9ce9a7079026c",
+  "environment": "Spring Boot thực + MySQL database riêng + frontend hiện tại ở port 5501",
+  "cases": [
+    {
+      "name": "dealer_crud_fields",
+      "story": "S3-03",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "id": 3,
+        "code": "AUDIT-233E60-OWN",
+        "taxCode": "0100000000",
+        "customerGroup": "KHACH_LE",
+        "territoryId": 3,
+        "assignedUserId": 3,
+        "active": true
+      }
+    },
+    {
+      "name": "dealer_code_unique",
+      "story": "S3-03",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "discount_ui_contract_crud",
+      "story": "S3-01",
+      "httpStatus": 201,
+      "passed": true,
+      "evidence": {
+        "endpoint": "/api/volume-discounts",
+        "targetType": "PRODUCT",
+        "tiers": [
+          {
+            "id": 4,
+            "minQuantity": 10,
+            "maxQuantity": null,
+            "discountType": "PERCENTAGE",
+            "discountValue": 5,
+            "tierOrder": 1,
+            "description": "Từ 10 trở lên: Giảm 5 %"
+          }
+        ]
+      }
+    },
+    {
+      "name": "best_discount_policy_selected",
+      "story": "S3-01",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "subtotal": 120000,
+        "discount": 12000.0,
+        "expected": 12000
+      }
+    },
+    {
+      "name": "category_discount_sums_quantities",
+      "story": "S3-01",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "discount": 12000.0,
+        "expected": 12000
+      }
+    },
+    {
+      "name": "discount_below_tier_is_zero",
+      "story": "S3-01",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "price_history_old_new_actor_date",
+      "story": "S3-02",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "rows": [
+          {
+            "id": 1,
+            "productId": 7,
+            "oldPrice": 10000.0,
+            "newPrice": 11000.0,
+            "modifiedBy": "sales.manager",
+            "appliedAt": "2026-10-11T20:37:53.892306"
+          }
+        ]
+      }
+    },
+    {
+      "name": "price_history_put_does_not_mutate",
+      "story": "S3-02",
+      "httpStatus": 500,
+      "passed": true,
+      "evidence": {
+        "rowCountBefore": 1,
+        "rowCountAfter": 1,
+        "unchanged": true
+      }
+    },
+    {
+      "name": "price_history_delete_does_not_mutate",
+      "story": "S3-02",
+      "httpStatus": 500,
+      "passed": true,
+      "evidence": {
+        "rowCountBefore": 1,
+        "rowCountAfter": 1,
+        "unchanged": true
+      }
+    },
+    {
+      "name": "delivery_points_create_and_read",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "delivery_exactly_one_default_after_switch",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "delivery_default_cannot_be_removed",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "defaultCount": 0
+      }
+    },
+    {
+      "name": "delivery_scope_sales_get_dealer",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "role": "sales",
+        "method": "GET",
+        "endpoint": "/dealers/4/delivery-points"
+      }
+    },
+    {
+      "name": "delivery_scope_sales_get_point",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "role": "sales",
+        "method": "GET",
+        "endpoint": "/dealers/delivery-points/3"
+      }
+    },
+    {
+      "name": "delivery_scope_viewer_post_dealer",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "role": "viewer",
+        "method": "POST",
+        "endpoint": "/dealers/3/delivery-points"
+      }
+    },
+    {
+      "name": "delivery_scope_warehouse_get_dealer",
+      "story": "S3-04",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "role": "warehouse",
+        "method": "GET",
+        "endpoint": "/dealers/3/delivery-points"
+      }
+    },
+    {
+      "name": "sales_lists_only_own_dealers",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "sales_other_dealer_detail_forbidden",
+      "story": "S3-06",
+      "httpStatus": 403,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "dealer_search_combines_all_filters",
+      "story": "S3-08",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "dealerIds": [
+          3
+        ]
+      }
+    },
+    {
+      "name": "dealer_search_code",
+      "story": "S3-08",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "dealer_search_name",
+      "story": "S3-08",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "dealer_search_phone",
+      "story": "S3-08",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "debt_limit_and_days_saved",
+      "story": "S3-05",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "debt_change_requires_reason",
+      "story": "S3-05",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "sales_cannot_change_debt_limit",
+      "story": "S3-05",
+      "httpStatus": 403,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "debt_only_accountant_and_manager_can_edit",
+      "story": "S3-05",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "role": "ROLE_ADMIN",
+        "ac": "Chỉ Kế toán công nợ và Quản lý kinh doanh được sửa"
+      }
+    },
+    {
+      "name": "dealer_profile_cannot_bypass_debt_reason",
+      "story": "S3-05",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "endpoint": "/api/dealers/{id}",
+        "reasonSubmitted": false,
+        "storedDebtLimit": 9000000
+      }
+    },
+    {
+      "name": "debt_change_logs_actor_before_after_reason",
+      "story": "S3-05",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "rows": [
+          {
+            "id": 8,
+            "entityType": "DEBT_LIMIT",
+            "entityId": "3",
+            "action": "UPDATE",
+            "oldValue": "2000000.00",
+            "newValue": "2100000",
+            "reason": "Đánh giá tín dụng kiểm thử",
+            "username": "admin",
+            "createdAt": "2026-10-11T20:37:55.134429"
+          },
+          {
+            "id": 7,
+            "entityType": "DEBT_LIMIT",
+            "entityId": "3",
+            "action": "UPDATE",
+            "oldValue": "0.00 (0 ngày)",
+            "newValue": "2000000 (30 ngày)",
+            "reason": "Đánh giá tín dụng kiểm thử",
+            "username": "accountant.demo",
+            "createdAt": "2026-10-11T20:37:55.005686"
+          }
+        ]
+      }
+    },
+    {
+      "name": "order_saves_dealer_point_date_unit_quantity",
+      "story": "S3-09",
+      "httpStatus": 201,
+      "passed": true,
+      "evidence": {
+        "date": "2026-10-13",
+        "unit": "thùng",
+        "baseQuantity": 48.0
+      }
+    },
+    {
+      "name": "order_automatically_uses_dealer_price_group",
+      "story": "S3-03",
+      "httpStatus": 201,
+      "passed": true,
+      "evidence": {
+        "customerGroup": "KHACH_LE",
+        "price": 360000.0,
+        "priceListId": 4
+      }
+    },
+    {
+      "name": "frontend_price_list_preview_matches_saved_order",
+      "story": "S3-09",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "previewTotal": 672000.0,
+        "savedTotal": 672000.0
+      }
+    },
+    {
+      "name": "dealer_group_cannot_be_overridden_in_order",
+      "story": "S3-03",
+      "httpStatus": 201,
+      "passed": false,
+      "evidence": {
+        "submittedGroup": "DAI_LY_CAP_1",
+        "dealerGroup": "KHACH_LE",
+        "storedGroup": "DAI_LY_CAP_1"
+      }
+    },
+    {
+      "name": "order_cannot_use_another_group_price_list",
+      "story": "S3-03",
+      "httpStatus": 201,
+      "passed": false,
+      "evidence": {
+        "foreignPriceListId": 5,
+        "storedPriceListId": 5
+      }
+    },
+    {
+      "name": "order_point_must_belong_to_dealer",
+      "story": "S3-04",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "sales_cannot_order_for_another_sales_dealer",
+      "story": "S3-06",
+      "httpStatus": 201,
+      "passed": false,
+      "evidence": {
+        "dealerId": 4,
+        "role": "ROLE_SALES"
+      }
+    },
+    {
+      "name": "sales_order_list_obeys_dealer_scope",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "returnedDealerIds": [
+          3,
+          4
+        ]
+      }
+    },
+    {
+      "name": "sales_other_order_detail_forbidden",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {}
+    },
+    {
+      "name": "draft_save_to_database",
+      "story": "S3-09",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "draft_round_trip_preserves_all_fields",
+      "story": "S3-09",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "draft_is_private_to_its_owner",
+      "story": "S3-09",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "otherUserHasDraft": false,
+        "ownerUsername": "sales.demo",
+        "readerUsername": "sales.manager"
+      }
+    },
+    {
+      "name": "draft_has_database_record",
+      "story": "S3-09",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "databaseRows": 1
+      }
+    },
+    {
+      "name": "dealer_with_transactions_cannot_be_deleted",
+      "story": "S3-03",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "dealer_lock_requires_reason",
+      "story": "S3-07",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "locked_dealer_cannot_create_new_order",
+      "story": "S3-07",
+      "httpStatus": 400,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "locked_dealer_existing_orders_have_warning",
+      "story": "S3-07",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "locked_dealer_existing_order_can_be_processed",
+      "story": "S3-07",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "single_dealer_assignment_saved",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "single_assignment_has_history",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "locked_employee_dealers_marked_for_handover",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "handover_dropdown_includes_locked_departing_employee",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "employeeId": 7,
+        "frontendSource": "options.assignedUsers",
+        "accountActive": false
+      },
+      "stage": "beforeFrontendFix",
+      "resolvedBy": "sprint3-ui-checks-20261011.json: departing_employee_handover_ui_works_after_fix"
+    },
+    {
+      "name": "bulk_handover_includes_all_departing_employee_dealers",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {
+        "dealerIds": [
+          4,
+          5
+        ]
+      }
+    },
+    {
+      "name": "bulk_handover_persists_reason_history",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": true,
+      "evidence": {}
+    },
+    {
+      "name": "bulk_handover_notes_persisted",
+      "story": "S3-06",
+      "httpStatus": 200,
+      "passed": false,
+      "evidence": {
+        "submittedNotes": "Ghi chú bàn giao kiểm thử",
+        "returnedKeys": [
+          "id",
+          "dealerId",
+          "dealerCode",
+          "dealerName",
+          "fromUserId",
+          "fromUsername",
+          "fromUserFullName",
+          "toUserId",
+          "toUsername",
+          "toUserFullName",
+          "territoryId",
+          "territoryName",
+          "transferType",
+          "reason",
+          "performedByUserId",
+          "performedByUsername",
+          "performedByFullName",
+          "transferredAt"
+        ]
+      }
+    },
+    {
+      "name": "unsupported_history_put_returns_405",
+      "story": "S3-02",
+      "httpStatus": 500,
+      "passed": false,
+      "evidence": {
+        "classification": "API error handling; dữ liệu lịch sử vẫn không bị sửa"
+      }
+    },
+    {
+      "name": "unsupported_history_delete_returns_405",
+      "story": "S3-02",
+      "httpStatus": 500,
+      "passed": false,
+      "evidence": {
+        "classification": "API error handling; dữ liệu lịch sử vẫn không bị sửa"
+      }
+    }
+  ],
+  "summary": {
+    "total": 55,
+    "passed": 39,
+    "failed": 16
+  },
+  "remainingSummary": {
+    "total": 54,
+    "passed": 39,
+    "failed": 15,
+    "excludes": "Một phép đối chiếu dropdown đã được thay thế bằng kiểm tra giao diện sau sửa"
+  }
+}

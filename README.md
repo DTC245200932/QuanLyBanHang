@@ -220,6 +220,10 @@ http://localhost:5500/reset-password
 
 ## 8. Chạy kiểm thử
 
+Báo cáo kiểm tra Sprint 3 hiện tại: [ngày 11/10/2026](docs/SPRINT_3_AUDIT_20261011.md).
+Báo cáo có trạng thái frontend/backend của từng task, các lỗi còn lại trước
+nghiệm thu và bằng chứng chạy API/giao diện.
+
 Kiểm tra đường dẫn frontend và menu theo vai trò từ thư mục repo:
 
 ```powershell

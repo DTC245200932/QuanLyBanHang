@@ -2,6 +2,7 @@
   if (!Auth.requireLogin()) return;
 
   const canManage = Auth.hasRole("ROLE_SALES_MANAGER");
+  const canImport = Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN");
   const canViewPriceHistory = canManage || Auth.hasRole("ROLE_ADMIN");
   const state = {
     products: [],
@@ -25,6 +26,7 @@
   const saveButton = $("save-product");
 
   $("create-product").hidden = !canManage;
+  $("btn-import-excel").hidden = !canImport;
   $("catalog-access-note").hidden = canManage;
   document.querySelectorAll(".cost-column").forEach((column) => {
     column.hidden = !canManage;
@@ -169,6 +171,10 @@
       }
       state.products = productsResult.data || [];
       state.categories = categoriesResult.data || [];
+      window.__productsCatalog = {
+        products: state.products,
+        categories: state.categories,
+      };
       populateCategorySelects();
       renderProducts();
     } catch (error) {
@@ -504,5 +510,6 @@
     }
   });
 
+  window.__reloadProductsCatalog = loadCatalog;
   loadCatalog();
 })();

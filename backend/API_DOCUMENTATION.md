@@ -107,12 +107,93 @@ POST /api/admin/users/15/lock
 
 Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý liên quan được đánh dấu `handoverRequired = true`.
 
-## Hồ sơ cá nhân
+## Hồ sơ cá nhân (S2-02)
+
+Mọi người dùng đã đăng nhập đều có thể xem và cập nhật thông tin liên lạc của chính mình để phục vụ liên hệ giao/nhận và xác nhận đơn hàng.
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/users/profile` | Đã đăng nhập | Xem hồ sơ, vai trò, kho, địa bàn và URL ảnh đại diện/thumbnail hiện tại |
-| PUT | `/users/profile` | Đã đăng nhập | Chỉ cập nhật họ tên và số điện thoại Việt Nam |
+| PUT | `/users/profile` | Đã đăng nhập | Cập nhật họ tên và số điện thoại Việt Nam |
+
+### Xem hồ sơ cá nhân
+
+```http
+GET /api/users/profile
+Authorization: Bearer <access-token>
+```
+
+Response mẫu:
+```json
+{
+  "success": true,
+  "message": "Lấy hồ sơ thành công",
+  "data": {
+    "id": 1,
+    "username": "sales1",
+    "email": "sales1@quanlybanhang.com",
+    "fullName": "Nguyễn Văn Bán Hàng",
+    "phone": "0901234567",
+    "avatarUrl": "/api/auth/users/1/avatar?thumbnail=false&v=1728748800",
+    "avatarThumbnailUrl": "/api/auth/users/1/avatar?thumbnail=true&v=1728748800",
+    "roles": ["ROLE_SALES"],
+    "warehouses": [
+      { "id": 1, "code": "KHO_HN", "name": "Kho Hà Nội" }
+    ],
+    "territories": [
+      { "id": 1, "code": "DB_MB", "name": "Miền Bắc" }
+    ],
+    "active": true
+  }
+}
+```
+
+### Cập nhật hồ sơ cá nhân
+
+```http
+PUT /api/users/profile
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "fullName": "Nguyễn Văn Bán Hàng",
+  "phone": "0901234567"
+}
+```
+
+Quy tắc nghiệp vụ & bảo mật (S2-02):
+- **Sửa được họ tên, số điện thoại**:
+  - `fullName`: Bắt buộc, không để trống, tối đa 100 ký tự.
+  - `phone`: Bắt buộc, phải đúng định dạng số điện thoại di động Việt Nam (`^(0|\+84|84)[35789]\d{8}$`). Hỗ trợ các đầu số 10 số (03x, 05x, 07x, 08x, 09x) và tiền tố quốc tế (+84, 84).
+- **Không tự đổi được tài khoản, vai trò, kho và địa bàn**:
+  - API chỉ nhận `fullName` và `phone`. Mọi trường khác nếu người dùng gửi kèm (`username`, `email`, `roles`, `warehouses`, `territories`, `active`,...) đều bị bỏ qua và không thể tự thay đổi. Việc phân quyền vai trò, gán kho và địa bàn chỉ do Quản trị viên thực hiện qua `/api/admin/users/{id}`.
+- Trả về `400 Bad Request` nếu họ tên để trống/vượt quá độ dài hoặc số điện thoại sai định dạng.
+- Trả về `401 Unauthorized` nếu chưa đăng nhập.
+
+Response mẫu thành công:
+```json
+{
+  "success": true,
+  "message": "Cập nhật hồ sơ thành công",
+  "data": {
+    "id": 1,
+    "username": "sales1",
+    "email": "sales1@quanlybanhang.com",
+    "fullName": "Nguyễn Văn Bán Hàng",
+    "phone": "0901234567",
+    "avatarUrl": "/api/auth/users/1/avatar?thumbnail=false&v=1728748800",
+    "avatarThumbnailUrl": "/api/auth/users/1/avatar?thumbnail=true&v=1728748800",
+    "roles": ["ROLE_SALES"],
+    "warehouses": [
+      { "id": 1, "code": "KHO_HN", "name": "Kho Hà Nội" }
+    ],
+    "territories": [
+      { "id": 1, "code": "DB_MB", "name": "Miền Bắc" }
+    ],
+    "active": true
+  }
+}
+```
 
 ## Kho & Tồn kho
 

@@ -43,6 +43,34 @@ Server dùng thư viện chuẩn Python, không cần cài thêm package. Khi th
 cập nhật `ROUTES` trong `serve_frontend.py` và menu trong `frontend/js/menu-config.js`.
 Không dùng `python -m http.server` cho các đường dẫn ngắn này.
 
+## Breadcrumb và mục sidebar hiện tại
+
+Các trang nghiệp vụ dùng chung `app-navigation.js` và `app-navigation.css`.
+Tên trang, nhóm chức năng và đường dẫn lấy từ `MenuConfig`:
+
+- Trang tổng quan: `Tổng quan`.
+- Hồ sơ: `Tổng quan › Hồ sơ cá nhân`.
+- Các trang còn lại: `Tổng quan › Nhóm chức năng › Trang hiện tại`.
+- `Tổng quan` dẫn về `/dashboard`; tên nhóm là nhãn khi chưa có trang nhóm riêng.
+- Mỗi trang có một mục sidebar được tô sáng và gắn `aria-current="page"`.
+  So khớp gồm cả tham số `view`/`tab`, nên công nợ không tô sáng thêm Tổng quan,
+  các tab kho không chọn nhầm nhau.
+- Kho có bốn mục tương ứng: Đơn vị tính, Nhập / Xuất kho, Sổ cái kho, Tồn kho.
+  Khi đổi tab trên màn hình kho, breadcrumb và sidebar cập nhật ngay.
+- Vai trò chỉ xem có mục Đơn vị tính tương ứng tab đọc đã có; các nút tạo/sửa
+  đơn vị và lập chứng từ vẫn bị ẩn theo quyền hiện có.
+- Khi thêm trang, khai báo metadata trong `MenuConfig` và tải module điều hướng
+  sau `menu-config.js` (sau `app-shell.js` nếu trang cần dựng shell). Các script
+  nghiệp vụ không tự dựng lại menu hoặc gán trạng thái active riêng.
+
+Đã xác minh ngày 11/10/2026: **16 trang/tab ở 1280px và 360px**, bốn lần đổi tab
+kho, đường dẫn mặc định/cũ, menu sales và chế độ chỉ xem. Kết quả:
+[navigation-checks-20261011.json](navigation-checks-20261011.json).
+
+![Tạo đơn: breadcrumb và mục sidebar được chọn](evidence/navigation-create-order-desktop-20261011.png)
+
+![Menu tạo đơn trên mobile](evidence/navigation-create-order-sidebar-mobile-20261011.png)
+
 ## Kiểm tra
 
 ```powershell

@@ -1,8 +1,12 @@
 package com.quanlybanhang.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
+import com.quanlybanhang.model.OrderDraft;
+import com.quanlybanhang.repository.OrderDraftRepository;
 import com.quanlybanhang.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,11 +28,53 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderDraftRepository orderDraftRepository;
+    private final ObjectMapper objectMapper;
+
+    private static final String DRAFT_ROLES = "hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')";
 
     @GetMapping
     public ApiResponse getAllOrders() {
         List<OrderResponse> orders = orderService.getAllOrders();
         return ApiResponse.success("Danh sách đơn hàng", orders);
+    }
+
+    /** Lấy bản nháp tạo đơn của chính người dùng hiện tại (S3-09). */
+    @GetMapping("/draft")
+    @PreAuthorize(DRAFT_ROLES)
+    public ApiResponse getDraft(Principal principal) throws Exception {
+        return orderDraftRepository.findByUsername(principal.getName())
+                .map(draft -> {
+                    try {
+                        return ApiResponse.success("Lấy bản nháp thành công", objectMapper.readTree(draft.getDraftData()));
+                    } catch (Exception e) {
+                        throw new IllegalStateException("Không đọc được bản nháp đã lưu", e);
+                    }
+                })
+                .orElseGet(() -> ApiResponse.success("Chưa có bản nháp", null));
+    }
+
+    /** Lưu đè bản nháp của chính người dùng hiện tại (S3-09). */
+    @PutMapping("/draft")
+    @PreAuthorize(DRAFT_ROLES)
+    public ApiResponse saveDraft(@RequestBody JsonNode draftData, Principal principal) throws Exception {
+        if (draftData == null || draftData.isNull() || !draftData.isObject()) {
+            throw new IllegalArgumentException("Dữ liệu bản nháp không hợp lệ");
+        }
+
+        OrderDraft draft = orderDraftRepository.findByUsername(principal.getName())
+                .orElseGet(() -> OrderDraft.builder().username(principal.getName()).build());
+        draft.setDraftData(objectMapper.writeValueAsString(draftData));
+        orderDraftRepository.save(draft);
+        return ApiResponse.success("Đã lưu bản nháp tạo đơn", draftData);
+    }
+
+    /** Xoá bản nháp sau khi ghi nhận đơn hoặc người dùng bỏ qua (S3-09). */
+    @DeleteMapping("/draft")
+    @PreAuthorize(DRAFT_ROLES)
+    public ApiResponse deleteDraft(Principal principal) {
+        orderDraftRepository.findByUsername(principal.getName()).ifPresent(orderDraftRepository::delete);
+        return ApiResponse.success("Đã xoá bản nháp tạo đơn", null);
     }
 
     @GetMapping("/{id}")

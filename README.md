@@ -43,6 +43,7 @@ $env:SPRING_DATASOURCE_USERNAME="root"
 $env:SPRING_DATASOURCE_PASSWORD="mat-khau-mysql-cua-ban"
 $env:APP_JWT_SECRET="chuoi-bi-mat-rieng-cua-moi-truong-it-nhat-32-ky-tu"
 $env:APP_BOOTSTRAP_ADMIN_PASSWORD="mat-khau-admin-ban-tu-chon"
+$env:APP_BOOTSTRAP_ADMIN_EMAIL="email-quan-tri-thuc-te-cua-ban"
 ```
 
 `APP_JWT_SECRET` là bắt buộc và phải là chuỗi bí mật riêng cho từng môi trường.
@@ -106,56 +107,25 @@ Server chỉ phục vụ thư mục frontend; không mở trang bằng `file://`
 |---|---|---|
 | `admin` | Giá trị `APP_BOOTSTRAP_ADMIN_PASSWORD` | Quản trị hệ thống |
 
-Đây là tài khoản phát triển. Hãy đổi mật khẩu ngay sau khi đăng nhập và không dùng thông tin này ở production.
+Dùng mật khẩu riêng cho mỗi môi trường và cập nhật hồ sơ quản trị bằng thông tin thực tế.
 
-### Tài khoản demo theo vai trò
+### Dữ liệu nghiệp vụ
 
-Các tài khoản sau mặc định **không được tạo**. Muốn dùng chúng để kiểm thử menu và phân quyền, đặt biến môi trường trước khi chạy backend:
+Backend không tự chèn kho, địa bàn, nhóm hàng, sản phẩm, đại lý, bảng giá,
+chiết khấu hay tài khoản demo. Database mới chỉ có vai trò hệ thống và tài khoản
+`admin`. `APP_BOOTSTRAP_ADMIN_EMAIL` phải là email quản trị thực tế; không đặt
+số điện thoại giả cho tài khoản ban đầu. Database đã có `admin` không cần khai
+báo lại hai biến bootstrap và giữ nguyên hồ sơ/mật khẩu hiện có.
 
-Nếu dùng PowerShell:
+Quản trị viên tạo nhân sự, khai báo/nhập danh mục thực tế và thiết lập bảng giá,
+chiết khấu qua các trang quản lý. Kho và địa bàn phải được cấu hình bằng dữ liệu
+thực trong database trước khi gán nhân sự hoặc ghi phiếu kho. Chưa có dữ liệu
+thì trang hiển thị trạng thái trống hoặc thông báo thiếu cấu hình.
 
-```powershell
-$env:APP_SEED_DEMO_USERS="true"
-$env:APP_DEMO_USER_PASSWORD="mat-khau-demo-ban-tu-chon"
-cd D:\GitHub\QuanLyBanHang\backend
-.\mvnw.cmd spring-boot:run
-```
-
-Nếu dùng Command Prompt (`cmd.exe`):
-
-```cmd
-set "APP_SEED_DEMO_USERS=true"
-set "APP_DEMO_USER_PASSWORD=MAT_KHAU_DEMO_BAN_TU_CHON"
-set "SPRING_DATASOURCE_USERNAME=root"
-set "SPRING_DATASOURCE_PASSWORD=MAT_KHAU_MYSQL_CUA_BAN"
-cd /d D:\GitHub\QuanLyBanHang\backend
-mvnw.cmd spring-boot:run
-```
-
-Backend sẽ tạo các tài khoản chưa tồn tại:
-
-| Tên đăng nhập | Mật khẩu | Vai trò | Phạm vi mẫu |
-|---|---|---|---|
-| `sales.manager` | Giá trị `APP_DEMO_USER_PASSWORD` | Quản lý kinh doanh | Xem giá vốn và biên lợi nhuận |
-| `sales.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Nhân viên kinh doanh | Một địa bàn mẫu |
-| `warehouse.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Thủ kho | Một kho mẫu |
-| `accountant.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Kế toán | Công nợ và báo cáo tài chính |
-| `viewer.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Chỉ xem | Báo cáo được phép |
-
-Chỉ bật dữ liệu demo trên máy phát triển. Để tắt cho những lần chạy sau:
-
-```powershell
-Remove-Item Env:APP_SEED_DEMO_USERS -ErrorAction SilentlyContinue
-```
-
-Việc tắt biến môi trường không xóa những tài khoản đã tạo. Nếu database đã có tài khoản cùng tên, initializer giữ nguyên tài khoản và mật khẩu hiện tại.
-
-Kiểm tra các tài khoản đã được tạo trong MySQL:
-
-```sql
-USE quanlybanhang;
-SELECT username, full_name, active FROM users;
-```
+Các biến `APP_SEED_DEMO_USERS` và `APP_DEMO_USER_PASSWORD` không còn được dùng.
+Thay đổi này không tự xoá các bản ghi đã tạo ở phiên bản trước: cần đối chiếu
+lịch sử giao dịch và sao lưu trước khi dọn database của nhóm. Doanh số giả trong
+cột `products.revenue` cũ đã được bỏ qua; API tính từ đơn hàng đã ghi sổ.
 
 ## 6. Ví dụ gọi API đăng nhập
 
@@ -219,6 +189,10 @@ http://localhost:5500/reset-password
 ```
 
 ## 8. Chạy kiểm thử
+
+Báo cáo kiểm tra Sprint 3 hiện tại: [ngày 11/10/2026](docs/SPRINT_3_AUDIT_20261011.md).
+Báo cáo có trạng thái frontend/backend của từng task, các lỗi còn lại trước
+nghiệm thu và bằng chứng chạy API/giao diện.
 
 Kiểm tra đường dẫn frontend và menu theo vai trò từ thư mục repo:
 

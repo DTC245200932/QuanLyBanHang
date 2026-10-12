@@ -52,7 +52,7 @@ public class CategoryServiceImpl implements CategoryService {
                 .build();
 
         Category saved = categoryRepository.save(category);
-        return mapToResponse(saved, false);
+        return mapToResponse(saved);
     }
 
     @Override
@@ -96,7 +96,7 @@ public class CategoryServiceImpl implements CategoryService {
         }
 
         Category saved = categoryRepository.save(category);
-        return mapToResponse(saved, false);
+        return mapToResponse(saved);
     }
 
     @Override
@@ -148,7 +148,7 @@ public class CategoryServiceImpl implements CategoryService {
     public List<CategoryResponse> getAllFlat() {
         List<Category> all = categoryRepository.findAllByOrderByLevelAscNameAsc();
         return all.stream()
-                .map(c -> mapToResponse(c, false))
+                .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
@@ -193,7 +193,7 @@ public class CategoryServiceImpl implements CategoryService {
     // ── Helper methods ──
 
     private CategoryResponse buildCategoryNode(Category category) {
-        CategoryResponse response = mapToResponse(category, true);
+        CategoryResponse response = mapToResponse(category);
 
         // Lấy các nhóm con trực tiếp
         List<Category> children = categoryRepository.findByParentIdOrderByNameAsc(category.getId());
@@ -213,7 +213,7 @@ public class CategoryServiceImpl implements CategoryService {
         return response;
     }
 
-    private CategoryResponse mapToResponse(Category category, boolean calculateDirectStats) {
+    private CategoryResponse mapToResponse(Category category) {
         Long parentId = category.getParent() != null ? category.getParent().getId() : null;
         String parentName = category.getParent() != null ? category.getParent().getName() : null;
         String parentCode = category.getParent() != null ? category.getParent().getCode() : null;
@@ -221,7 +221,7 @@ public class CategoryServiceImpl implements CategoryService {
         long directCount = 0L;
         BigDecimal directRevenue = BigDecimal.ZERO;
 
-        if (calculateDirectStats && category.getId() != null) {
+        if (category.getId() != null) {
             directCount = productRepository.countByCategoryId(category.getId());
             BigDecimal rev = productRepository.sumRevenueByCategoryIds(Collections.singleton(category.getId()));
             directRevenue = rev != null ? rev : BigDecimal.ZERO;

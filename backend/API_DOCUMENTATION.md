@@ -127,14 +127,32 @@ Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý l
 
 Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` với người thực hiện và giá trị trước/sau.
 
+Các API nhập/xuất/điều chỉnh chỉ trả thành công sau khi lưu phiếu và tồn kho.
+Body trống, `null`, `{}`, danh sách sản phẩm rỗng hoặc số lượng không hợp lệ trả
+`400 Bad Request`. Payload đơn giản vẫn hỗ trợ `productId`, `quantity`, `unit`;
+không tự thay số lượng thiếu bằng 1. `delta` chỉ dùng cho điều chỉnh tồn kho.
+Kho phải tồn tại và đang hoạt động; nếu có nhiều kho phải truyền `warehouseId`.
+Nếu chưa có kho, API báo thiếu cấu hình, không tự tạo kho mặc định.
+
 ## Tài chính (Bảo mật giá vốn & biên lợi nhuận)
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/finance/cost-price` | `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm — chỉ Quản lý kinh doanh; Admin, Thủ kho, Sales, Kế toán đều bị từ chối |
 | GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
-| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem công nợ khách hàng (bao gồm hạn mức tiền và số ngày nợ tối đa) |
+| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem hạn mức tiền và số ngày nợ tối đa từ hồ sơ đại lý; số dư công nợ hiện chưa có nguồn dữ liệu |
 | PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo / cập nhật hạn mức công nợ và số ngày nợ tối đa (S3-05); bắt buộc nhập lý do, tự động ghi nhật ký giá trị trước/sau kèm lý do |
+
+`cost-price` và `profit-margin` đọc danh mục sản phẩm trong database, trả `[]`
+khi danh mục rỗng. Giá bán và giá vốn đều theo đơn vị cơ sở của sản phẩm.
+`marginPercent = (sellingPrice - costPrice) / sellingPrice * 100`, làm tròn 2
+chữ số thập phân; trả `null` khi giá bán bằng 0 hoặc thiếu giá. Đây là biên lợi
+nhuận theo giá danh mục hiện tại.
+
+`debtAmount` trả `null`, `debtAmountAvailable` trả `false` vì hệ thống chưa có sổ
+công nợ và phiếu thu để tính số dư. Không xem tổng tiền đơn hàng là số tiền chưa
+thu, không trả số dư 0 giả. Trang hạn mức tiếp tục dùng `debtLimit` và
+`maxDebtDays` thực tế.
 
 Body cập nhật hạn mức công nợ (S3-05):
 
@@ -187,13 +205,23 @@ Hỗ trợ Quản lý kinh doanh xem và phân tích doanh số theo ngành hàn
 
 ### Danh sách API Quản lý danh mục sản phẩm (S2-05)
 
+Doanh số nhóm hàng (`directRevenue`, `totalRevenue`) và sản phẩm (`revenue`)
+được tổng hợp từ `order_items.total_amount` sau chiết khấu của các đơn
+`RECORDED`. Đơn chờ duyệt (`PENDING_APPROVAL`), bị từ chối (`REJECTED`), đã huỷ
+(`CANCELLED`) và bản nháp không được tính. Chưa có giao dịch thì doanh số bằng
+0. Nhóm cha cộng cả các nhóm con; sản phẩm chuyển nhóm được tính vào nhóm hiện
+tại. Cột `products.revenue` cũ không được dùng làm nguồn số liệu.
+
+`revenue` và `hasTransactions` là kết quả chỉ đọc; gửi hai trường này khi
+tạo/sửa sản phẩm không làm thay đổi doanh số hay lịch sử giao dịch.
+
 Hỗ trợ Quản lý kinh doanh quản lý danh mục sản phẩm chuẩn hóa toàn công ty (gọi tên và mã SKU thống nhất).
 
 #### Quy tắc nghiệp vụ cốt lõi:
 1. **Khai báo đầy đủ**: Mã SKU, tên sản phẩm, nhóm hàng, đơn vị tính cơ sở (cái, chai, hộp, kg...), quy cách đóng gói (Thùng 24 lon, Hộp 10 vỉ...), giá vốn, giá bán, ảnh sản phẩm, trạng thái.
 2. **Mã SKU là duy nhất**: Hệ thống ràng buộc duy nhất trên toàn cơ sở dữ liệu (`unique`) và kiểm tra khi tạo mới / cập nhật.
 3. **Giá vốn bảo mật**: CHỈ DUY NHẤT Quản lý kinh doanh (`ROLE_SALES_MANAGER`) xem và chỉnh sửa được giá vốn. Với các vai trò khác (kể cả Admin, Sales, Thủ kho, Kế toán), trường `costPrice` luôn trả về `null` và không thể sửa đổi giá vốn khi cập nhật.
-4. **Bảo vệ sản phẩm có giao dịch**: Sản phẩm đã phát sinh giao dịch bán hoặc nhập kho (`hasTransactions = true` hoặc `revenue > 0`) thì **KHÔNG ĐƯỢC PHÉP XOÁ**, chỉ có thể chuyển sang trạng thái **Ngừng kinh doanh** (`active = false`). Thao tác xoá sẽ trả về lỗi `400 Bad Request` (`ProductHasTransactionsException`).
+4. **Bảo vệ sản phẩm có giao dịch**: Kiểm tra dòng đơn hàng hoặc phiếu kho thực tế trong database (kể cả đơn đã huỷ). Sản phẩm có lịch sử giao dịch thì **KHÔNG ĐƯỢC PHÉP XOÁ**, chỉ có thể chuyển sang trạng thái **Ngừng kinh doanh** (`active = false`). Cờ và doanh số nhập tay cũ không quyết định quyền xoá. Thao tác xoá bị chặn trả `400 Bad Request` (`ProductHasTransactionsException`).
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
@@ -206,7 +234,7 @@ Hỗ trợ Quản lý kinh doanh quản lý danh mục sản phẩm chuẩn hóa
 | DELETE | `/products/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa sản phẩm (**Chặn nếu đã phát sinh giao dịch** -> 400 Bad Request) |
 | POST | `/products/upload-image` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải ảnh sản phẩm lên server (hỗ trợ JPG, PNG, WEBP tối đa 5MB) |
 | GET | `/products/images/{fileName}` | Đã đăng nhập | Xem ảnh sản phẩm |
-| GET | `/products/import/template` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải tệp Excel mẫu (`.xlsx`) kèm dữ liệu mẫu, sheet nhóm hàng tra cứu và hướng dẫn |
+| GET | `/products/import/template` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tải tệp Excel nhập liệu (`.xlsx`) chỉ có tiêu đề, sheet nhóm hàng thực tế và hướng dẫn |
 | POST | `/products/import/preview` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xem trước và kiểm tra lỗi từng dòng từ tệp Excel (`multipart/form-data`) hoặc JSON (`application/json`) |
 | POST | `/products/import` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Nhập danh mục sản phẩm hàng loạt từ Excel (`multipart/form-data`) hoặc JSON (`application/json`). SKU đã tồn tại thì cập nhật thay vì tạo mới |
 
@@ -217,7 +245,7 @@ Hỗ trợ Quản lý kinh doanh đưa đến 5.000 mã hàng hiện có vào h�
 #### Quy tắc nghiệp vụ cốt lõi:
 1. **Tải tệp mẫu chuẩn (.xlsx)**:
    - Tệp gồm 3 sheet:
-     - Sheet 1: `Sản phẩm mẫu` với các cột chuẩn: `Mã SKU (*)`, `Tên sản phẩm (*)`, `Mã/Tên nhóm hàng (*)`, `Đơn vị tính cơ sở`, `Quy cách đóng gói`, `Giá bán`, `Giá vốn`, `Trạng thái`, `Mô tả`.
+     - Sheet 1: `Sản phẩm` chỉ có tiêu đề các cột: `Mã SKU (*)`, `Tên sản phẩm (*)`, `Mã/Tên nhóm hàng (*)`, `Đơn vị tính cơ sở`, `Quy cách đóng gói`, `Giá bán`, `Giá vốn`, `Trạng thái`, `Mô tả`. Người dùng tự nhập danh mục thực tế; tải rồi nhập lại tệp trống không tạo sản phẩm demo.
      - Sheet 2: `Danh mục nhóm hàng` hiển thị toàn bộ mã và tên nhóm hàng hiện hành giúp người dùng dễ dàng sao chép.
      - Sheet 3: `Hướng dẫn` quy định rõ nguyên tắc nhập liệu.
 2. **Xem trước & báo lỗi theo từng dòng**:
@@ -237,7 +265,7 @@ Hỗ trợ Quản lý kinh doanh đưa đến 5.000 mã hàng hiện có vào h�
      - SKU mới: đánh dấu `action = "CREATE"` và `isUpdate = false`.
    - Khi thực hiện nhập (`POST /api/products/import`):
      - Dòng `UPDATE`: cập nhật tên, nhóm hàng, đơn vị, quy cách, giá bán, giá vốn (nếu có quyền), trạng thái, mô tả cho sản phẩm hiện có. Tự động ghi nhật ký kiểm toán (Audit Log) nếu giá bán thay đổi.
-     - Dòng `CREATE`: tạo mới sản phẩm với trạng thái ban đầu `revenue = 0`, `hasTransactions = false`.
+     - Dòng `CREATE`: tạo mới sản phẩm; doanh số và lịch sử giao dịch được tính từ đơn hàng/phiếu kho thực tế.
 4. **Bảo mật giá vốn**:
    - CHỈ Quản lý kinh doanh (`ROLE_SALES_MANAGER` hoặc quyền `FINANCE_VIEW_COST_PRICE`) mới được xem và sửa giá vốn khi nhập từ Excel.
    - Nếu người dùng khác (ví dụ Quản trị viên không có quyền giá vốn) tải tệp có cột giá vốn: trường giá vốn sẽ được bỏ qua, giữ nguyên giá vốn hiện tại của SKU để đảm bảo tuyệt đối bí mật kinh doanh.
@@ -336,6 +364,10 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 `GET /warehouse/inventory?warehouseId={id}` chỉ đọc tồn đã ghi nhận. Kho chưa có
 tồn trả danh sách rỗng; endpoint không tạo tồn mặc định hoặc ghi dữ liệu khi đọc.
 Frontend chọn kho từ `/warehouse/options` và hiển thị 0 cho SKU chưa có bản ghi tồn.
+Khi chưa cấu hình kho, trang vẫn tải sản phẩm và đơn vị quy đổi, báo thiếu kho
+trên màn lập phiếu và tồn kho, đồng thời khoá nút ghi phiếu. Chưa có dữ liệu định
+mức tồn kho thì hiển thị `Chưa thiết lập`; không gán ngưỡng 200 hoặc nhãn an toàn
+cho tất cả SKU.
 
 ### Danh sách API Danh mục nhà cung cấp (S2-09)
 
@@ -367,10 +399,36 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 |---|---|---|---|
 | GET | `/orders` | Đã đăng nhập | Xem danh sách đơn hàng |
 | GET | `/orders/{id}` | Đã đăng nhập | Xem chi tiết đơn hàng (kèm thông tin bảng giá, giá sàn và trạng thái phê duyệt) |
-| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng (tự động áp bảng giá theo nhóm khách hàng; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
+| GET | `/orders/draft` | Vai trò tạo đơn | Lấy bản nháp tạo đơn của người dùng hiện tại |
+| PUT | `/orders/draft` | Vai trò tạo đơn | Lưu đè bản nháp tạo đơn của người dùng hiện tại |
+| DELETE | `/orders/draft` | Vai trò tạo đơn | Xoá bản nháp tạo đơn của người dùng hiện tại |
+| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng cho đại lý (có thể truyền `deliveryPointId`, `expectedDeliveryDate`; tự động áp bảng giá theo nhóm khách hàng; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng |
 | PUT | `/orders/{id}/approve` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng bán dưới giá sàn (chuyển trạng thái sang `RECORDED`) |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng bán dưới giá sàn (chuyển trạng thái sang `REJECTED`) |
+
+### Bản nháp tạo đơn và ngày giao mong muốn (S3-09)
+
+- `GET`, `PUT`, `DELETE /api/orders/draft` dành cho `ROLE_SALES`,
+  `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`,
+  `ROLE_WAREHOUSE_STAFF`. Chủ bản nháp lấy từ tài khoản đã xác thực; request
+  không được chọn chủ bản nháp của người khác.
+- `PUT` nhận một **đối tượng JSON** và lưu trong bảng `order_drafts`, mỗi tài
+  khoản có một bản nháp. Frontend sử dụng `dealerId`, `deliveryPointId`,
+  `deliveryDate` (`yyyy-MM-dd`), `note`, `items`, `_seq`. Mỗi dòng trong `items`
+  giữ `_key`, `productId`, `sku`, `name`, `unitConversions`, `selectedUnitId`,
+  `qty`, `basePrice`, `unitPrice`, `discountAmount` để tiếp tục soạn đơn.
+- `GET` trả `{ "success": true, "message": "...", "data": { ... } }` khi có
+  nháp. Khi chưa có nháp, thuộc tính `data` được bỏ khỏi response.
+- `DELETE` xoá bản nháp của chính tài khoản hiện tại. Luồng frontend đợi các
+  lần lưu nháp đang chạy kết thúc trước khi xoá, tránh ghi lại nháp sau khi
+  người dùng đã tạo đơn.
+- Khi mở nháp, frontend lấy lại sản phẩm và đơn vị quy đổi từ API, tải bảng
+  giá hiệu lực theo đại lý và tính lại chiết khấu. Giá/chiết khấu trong nháp
+  phục vụ khôi phục màn hình, không quyết định số tiền backend ghi nhận.
+- Khi tạo đơn thật bằng `POST /api/orders`, ngày giao dùng trường
+  **`expectedDeliveryDate`** (`yyyy-MM-dd`), không dùng `deliveryDate`.
+  Response đơn hàng trả lại `expectedDeliveryDate` cùng `deliveryPointId`.
 
 ## Khai báo Bảng giá theo nhóm khách hàng & Thời gian hiệu lực (S2-10)
 

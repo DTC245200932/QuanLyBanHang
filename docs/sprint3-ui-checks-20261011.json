@@ -1,0 +1,269 @@
+{
+  "checkedAt": "2026-10-11T14:14:19.322Z",
+  "environment": "Frontend hiện tại + backend Spring Boot thực + MySQL riêng; tài khoản và hồ sơ kiểm thử",
+  "cases": [
+    {
+      "story": "S3-02",
+      "name": "manager_price_history_ui",
+      "passed": true,
+      "evidence": "sprint3-price-history-20261011.png"
+    },
+    {
+      "name": "sidebar_mobile_profile_and_products",
+      "passed": true,
+      "width": 360,
+      "evidence": [
+        "sprint3-profile-sidebar-mobile-20261011.png",
+        "sprint3-products-mobile-20261011.png"
+      ]
+    },
+    {
+      "story": "S3-01",
+      "name": "create_discount_from_ui_persists_after_reload",
+      "passed": true,
+      "evidence": "sprint3-discount-ui-20261011.png"
+    },
+    {
+      "story": "S3-06",
+      "name": "locked_departing_employee_can_be_selected_in_handover_ui",
+      "passed": false,
+      "evidence": "sprint3-handover-dropdown-gap-20261011.png",
+      "stage": "beforeFix"
+    },
+    {
+      "story": "S3-06",
+      "name": "selected_dealers_handover_ui_and_history_connected",
+      "passed": true,
+      "evidence": "sprint3-handover-history-20261011.png"
+    },
+    {
+      "story": "S3-09",
+      "name": "database_draft_restored_after_reload_including_non_default_delivery_point",
+      "passed": false,
+      "before": {
+        "date": "2026-10-13",
+        "dealer": "3",
+        "note": "Đơn kiểm thử từ giao diện",
+        "point": "1",
+        "qty": "2",
+        "total": "288.000 ₫",
+        "unit": "thùng"
+      },
+      "restored": {
+        "date": "2026-10-13",
+        "dealer": "3",
+        "note": "Đơn kiểm thử từ giao diện",
+        "point": "1",
+        "qty": "1",
+        "total": "288.000 ₫",
+        "unit": "thùng"
+      },
+      "stage": "beforeFix"
+    },
+    {
+      "story": "S3-09",
+      "name": "database_draft_restores_all_fields_after_input_fix",
+      "stage": "afterFix",
+      "passed": true,
+      "before": {
+        "date": "2026-10-13",
+        "dealer": "3",
+        "note": "Đơn kiểm thử từ giao diện",
+        "point": "1",
+        "qty": "2",
+        "total": "576.000 ₫",
+        "unit": "thùng"
+      },
+      "restored": {
+        "date": "2026-10-13",
+        "dealer": "3",
+        "note": "Đơn kiểm thử từ giao diện",
+        "point": "1",
+        "qty": "2",
+        "total": "576.000 ₫",
+        "unit": "thùng"
+      }
+    },
+    {
+      "story": "S3-09",
+      "name": "order_confirmation_at_360px",
+      "stage": "afterFix",
+      "passed": true,
+      "width": 360,
+      "confirmedTotal": 576000,
+      "evidence": "sprint3-order-confirm-mobile-20261011.png"
+    },
+    {
+      "story": "S3-06",
+      "name": "departing_employee_handover_ui_works_after_fix",
+      "stage": "afterFix",
+      "passed": true,
+      "evidence": "sprint3-handover-departed-fixed-20261011.png"
+    },
+    {
+      "story": "S3-05",
+      "name": "debt_limit_and_days_ui_save_survives_reload",
+      "passed": true,
+      "evidence": "sprint3-debt-limit-ui-20261011.png"
+    },
+    {
+      "name": "shared_shell_/profile",
+      "passed": true,
+      "details": {
+        "activeMenu": "/profile",
+        "navLinks": 11,
+        "path": "/profile",
+        "scrollWidth": 1280,
+        "sidebarCount": 1,
+        "width": 1280,
+        "passed": true
+      }
+    },
+    {
+      "name": "shared_shell_/products",
+      "passed": true,
+      "details": {
+        "activeMenu": "/products",
+        "navLinks": 11,
+        "path": "/products",
+        "scrollWidth": 1265,
+        "sidebarCount": 1,
+        "width": 1265,
+        "passed": true
+      }
+    },
+    {
+      "name": "shared_shell_/product-groups",
+      "passed": true,
+      "details": {
+        "activeMenu": "/product-groups",
+        "navLinks": 11,
+        "path": "/product-groups",
+        "scrollWidth": 1280,
+        "sidebarCount": 1,
+        "width": 1280,
+        "passed": true
+      }
+    },
+    {
+      "name": "shared_shell_/price-lists",
+      "passed": true,
+      "details": {
+        "activeMenu": "/price-lists",
+        "navLinks": 11,
+        "path": "/price-lists",
+        "scrollWidth": 1265,
+        "sidebarCount": 1,
+        "width": 1265,
+        "passed": true
+      }
+    },
+    {
+      "name": "shared_shell_/discount-policies",
+      "passed": true,
+      "details": {
+        "activeMenu": "/discount-policies",
+        "navLinks": 11,
+        "path": "/discount-policies",
+        "scrollWidth": 1265,
+        "sidebarCount": 1,
+        "width": 1265,
+        "passed": true
+      }
+    },
+    {
+      "name": "shared_shell_admin_users",
+      "passed": true,
+      "details": {
+        "activeMenu": "/admin/users",
+        "navLinks": 13,
+        "path": "/admin/users",
+        "scrollWidth": 1265,
+        "sidebarCount": 1,
+        "width": 1265
+      }
+    },
+    {
+      "name": "shared_shell_admin_audit_logs",
+      "passed": true,
+      "details": {
+        "activeMenu": "/admin/audit-logs",
+        "navLinks": 13,
+        "path": "/admin/audit-logs",
+        "scrollWidth": 1265,
+        "sidebarCount": 1,
+        "width": 1265
+      }
+    },
+    {
+      "name": "sales_sidebar_hides_management_and_finance",
+      "passed": true,
+      "menu": [
+        "Tổng quan",
+        "Hồ sơ cá nhân",
+        "Sản phẩm",
+        "Tạo đơn hàng",
+        "Đại lý"
+      ]
+    },
+    {
+      "story": "S3-04",
+      "name": "sales_delivery_point_create_default_and_reload",
+      "passed": true
+    },
+    {
+      "story": "S3-08",
+      "name": "sales_search_dealer_code_filters_ui",
+      "passed": true
+    },
+    {
+      "story": "S3-03",
+      "name": "dealer_profile_ac_fields_saved_by_accountant_ui",
+      "passed": true,
+      "details": {
+        "code": "UI-AUDIT-233E60-OWN",
+        "group": "KHACH_LE",
+        "name": "Đại lý tạo qua giao diện",
+        "notes": "",
+        "owner": "3",
+        "region": "3",
+        "tax": "0100000003"
+      }
+    },
+    {
+      "story": "S3-03",
+      "name": "dealer_profile_extra_notes_field_persists",
+      "classification": "UI feature outside listed AC",
+      "passed": false,
+      "stored": "",
+      "evidence": "sprint3-dealer-notes-gap-20261011.png"
+    },
+    {
+      "story": "S3-07",
+      "name": "accountant_lock_dealer_persists_after_reload",
+      "passed": true
+    },
+    {
+      "story": "S3-07",
+      "name": "locked_dealer_old_orders_ui_warning",
+      "passed": true,
+      "evidence": "sprint3-locked-old-orders-ui-20261011.png",
+      "locatorProbeMatched": false,
+      "verification": "Đã đối chiếu cây trợ năng và screenshot: cảnh báo đại lý bị khóa hiển thị đầy đủ."
+    },
+    {
+      "story": "S3-09",
+      "name": "restored_draft_refreshes_conversion_from_24_to_30",
+      "stage": "afterFix",
+      "passed": true,
+      "expectedTotal": 720000,
+      "displayedTotal": "720.000 ₫"
+    }
+  ],
+  "summary": {
+    "currentChecks": 23,
+    "passed": 22,
+    "failed": 1
+  },
+  "verifiedCodeRevision": "1b343219afb78ccb003b414d180d765d7f0d719a"
+}

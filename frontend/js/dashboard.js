@@ -3,7 +3,6 @@
 
   const user = Auth.getUser();
   const sidebar = document.getElementById("sidebar");
-  const nav = document.getElementById("sidebar-nav");
   const overlay = document.createElement("div");
   overlay.className = "sidebar-overlay";
   document.body.appendChild(overlay);
@@ -20,16 +19,6 @@
   document.getElementById("sidebar-toggle")?.addEventListener("click", () => openSidebar(true));
   document.getElementById("sidebar-close")?.addEventListener("click", () => openSidebar(false));
   overlay.addEventListener("click", () => openSidebar(false));
-
-  let lastSection = null;
-  nav.innerHTML = MenuConfig.getMenuForUser(user).map((item) => {
-    const section = item.section && item.section !== lastSection
-      ? `<div class="sidebar__section-label">${escapeHtml(item.section)}</div>` : "";
-    if (item.section) lastSection = item.section;
-    return `${section}<a class="sidebar__link ${item.id === "dashboard" ? "sidebar__link--active" : ""}"
-      href="${item.href}" data-page="${item.id}"><svg viewBox="0 0 24 24">${item.icon}</svg>
-      <span>${escapeHtml(item.label)}</span></a>`;
-  }).join("");
 
   document.getElementById("user-name").textContent = user.fullName || user.username;
   const avatarInitial = (user.fullName || user.username || "U").trim().charAt(0).toUpperCase();

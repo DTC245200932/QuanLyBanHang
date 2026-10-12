@@ -3,6 +3,7 @@ package com.quanlybanhang.dto.response;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -19,6 +20,7 @@ public class OrderResponse {
     private com.quanlybanhang.model.CustomerGroup customerGroup;
     private Long dealerId;
     private Long deliveryPointId;
+    private LocalDate expectedDeliveryDate;
     private Long priceListId;
     private String priceListCode;
     private String status;

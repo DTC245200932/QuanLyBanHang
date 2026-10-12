@@ -35,10 +35,24 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     long countByCategoryIdIn(Collection<Long> categoryIds);
 
     /**
-     * Tính tổng doanh số của các sản phẩm thuộc danh sách nhóm hàng (ngành hàng / cây nhóm con).
+     * Doanh số thực sau chiết khấu, chỉ tính đơn đã ghi sổ. Không dùng cột revenue cũ.
      */
-    @Query("SELECT SUM(p.revenue) FROM Product p WHERE p.category.id IN :categoryIds")
+    @Query("SELECT SUM(i.totalAmount) FROM OrderItem i WHERE i.order.status = 'RECORDED' " +
+            "AND i.product.category.id IN :categoryIds")
     BigDecimal sumRevenueByCategoryIds(@Param("categoryIds") Collection<Long> categoryIds);
+
+    @Query("SELECT SUM(i.totalAmount) FROM OrderItem i WHERE i.order.status = 'RECORDED' " +
+            "AND i.product.id = :productId")
+    BigDecimal sumRevenueByProductId(@Param("productId") Long productId);
+
+    interface ProductRevenue {
+        Long getProductId();
+        BigDecimal getRevenue();
+    }
+
+    @Query("SELECT i.product.id AS productId, SUM(i.totalAmount) AS revenue FROM OrderItem i " +
+            "WHERE i.order.status = 'RECORDED' AND i.product.id IN :productIds GROUP BY i.product.id")
+    List<ProductRevenue> sumRevenueByProductIds(@Param("productIds") Collection<Long> productIds);
 
     /**
      * Tìm danh sách sản phẩm theo danh sách mã SKU (không phân biệt chữ hoa/thường).

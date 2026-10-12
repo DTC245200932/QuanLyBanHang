@@ -50,6 +50,12 @@ class ProductServiceTest {
     @Mock
     private ProductExcelService productExcelService;
 
+    @Mock
+    private com.quanlybanhang.repository.OrderItemRepository orderItemRepository;
+
+    @Mock
+    private com.quanlybanhang.repository.WarehouseVoucherItemRepository warehouseVoucherItemRepository;
+
     @InjectMocks
     private ProductServiceImpl productService;
 
@@ -89,7 +95,6 @@ class ProductServiceTest {
                 .categoryId(10L)
                 .price(new BigDecimal("25000000"))
                 .costPrice(new BigDecimal("20000000"))
-                .revenue(BigDecimal.ZERO)
                 .unit("chiếc")
                 .packingSpecification("Hộp 1 máy kèm cáp")
                 .imageUrl("https://example.com/ip15.jpg")
@@ -235,12 +240,64 @@ class ProductServiceTest {
                 .build();
 
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        when(orderItemRepository.existsByProductId(1L)).thenReturn(true);
 
         assertThatThrownBy(() -> productService.delete(1L))
                 .isInstanceOf(ProductHasTransactionsException.class)
                 .hasMessageContaining("đã phát sinh giao dịch không thể xoá, chỉ có thể chuyển sang trạng thái ngừng kinh doanh");
 
         verify(productRepository, never()).delete(any());
+    }
+
+    @Test
+    void realWarehouseHistoryProtectsProductEvenWhenLegacyFlagIsFalse() {
+        Product product = Product.builder().id(5L).code("WAREHOUSE-5").hasTransactions(false).build();
+        when(productRepository.findById(5L)).thenReturn(Optional.of(product));
+        when(warehouseVoucherItemRepository.existsByProductId(5L)).thenReturn(true);
+        assertThatThrownBy(() -> productService.delete(5L)).isInstanceOf(ProductHasTransactionsException.class);
+        verify(productRepository, never()).delete(any());
+    }
+
+    @Test
+    void legacySeedRevenueAndFlagDoNotFabricateSalesOrTransactions() {
+        Product product = Product.builder().id(5L).code("LEGACY-5")
+                .revenue(new BigDecimal("150000000")).hasTransactions(true).build();
+        when(productRepository.findById(5L)).thenReturn(Optional.of(product));
+        ProductResponse response = productService.getById(5L);
+        assertThat(response.getRevenue()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getHasTransactions()).isFalse();
+        assertThat(response.getCanDelete()).isTrue();
+        productService.delete(5L);
+        verify(productRepository).delete(product);
+    }
+
+    @Test
+    void productRevenueComesFromRecordedOrderLines() {
+        Product product = Product.builder().id(5L).code("LEGACY-5").revenue(new BigDecimal("150000000")).build();
+        when(productRepository.findById(5L)).thenReturn(Optional.of(product));
+        when(productRepository.sumRevenueByProductId(5L)).thenReturn(new BigDecimal("12345.67"));
+        assertThat(productService.getById(5L).getRevenue()).isEqualByComparingTo("12345.67");
+    }
+
+    @Test
+    void catalogLoadsRealStatisticsInBatches() {
+        Product first = Product.builder().id(1L).code("CATALOG-1").build();
+        Product second = Product.builder().id(2L).code("CATALOG-2").build();
+        ProductRepository.ProductRevenue revenue = mock(ProductRepository.ProductRevenue.class);
+        when(revenue.getProductId()).thenReturn(1L);
+        when(revenue.getRevenue()).thenReturn(new BigDecimal("123.45"));
+        when(productRepository.findAll()).thenReturn(List.of(first, second));
+        when(productRepository.sumRevenueByProductIds(List.of(1L, 2L))).thenReturn(List.of(revenue));
+        when(warehouseVoucherItemRepository.findProductIdsWithTransactions(List.of(1L, 2L)))
+                .thenReturn(java.util.Set.of(1L));
+        List<ProductResponse> products = productService.getAll(null);
+        assertThat(products.get(0).getRevenue()).isEqualByComparingTo("123.45");
+        assertThat(products.get(0).getCanDelete()).isFalse();
+        assertThat(products.get(1).getRevenue()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(products.get(1).getCanDelete()).isTrue();
+        verify(productRepository, never()).sumRevenueByProductId(any());
+        verify(orderItemRepository, never()).existsByProductId(any());
+        verify(warehouseVoucherItemRepository, never()).existsByProductId(any());
     }
 
     @Test

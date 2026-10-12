@@ -846,10 +846,10 @@
 
     tbody.innerHTML = filtered.map((r) => {
       const typeBadge = r.type === "IMPORT"
-        ? `<span class="badge badge--import">📥 Nhập kho</span>`
+        ? `<span class="badge badge--import"> Nhập kho</span>`
         : r.type === "EXPORT"
-        ? `<span class="badge badge--export">📤 Xuất kho</span>`
-        : `<span class="badge badge--order">🛒 Đơn hàng</span>`;
+        ? `<span class="badge badge--export"> Xuất kho</span>`
+        : `<span class="badge badge--order"> Đơn hàng</span>`;
 
       return r.items.map((item, idx) => `
         <tr>

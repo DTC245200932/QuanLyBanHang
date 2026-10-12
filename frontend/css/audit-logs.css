@@ -293,17 +293,17 @@
   border-color: var(--navy-900);
 }
 
-.filter-chip--highlight {
-  background: #fff1f1;
-  color: var(--danger);
-  border-color: #fecaca;
-}
+/* .filter-chip--highlight { */
+  /* background: #fff1f1; */
+  /* color: var(--danger); */
+  /* border-color: #fecaca; */
+/* } */
 
-.filter-chip--highlight.filter-chip--active {
-  background: var(--danger);
-  color: #fff;
-  border-color: var(--danger);
-}
+/* .filter-chip--highlight.filter-chip--active { */
+  /* background: var(--danger); */
+  /* color: #fff; */
+  /* border-color: var(--danger); */
+/* } */
 
 /* ── Audit Table Panel ── */
 .audit-panel {

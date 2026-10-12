@@ -8,12 +8,20 @@ import com.quanlybanhang.repository.WarehouseVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.security.SecureRandom;
+import java.text.Normalizer;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 public class SupplierServiceImpl implements SupplierService {
+
+    private static final String CODE_PREFIX = "NCC";
+    private static final SecureRandom CODE_RANDOM = new SecureRandom();
 
     private final SupplierRepository supplierRepository;
     private final WarehouseVoucherRepository warehouseVoucherRepository;
@@ -39,13 +47,16 @@ public class SupplierServiceImpl implements SupplierService {
     @Override
     @Transactional
     public SupplierResponse createSupplier(SupplierRequest request) {
-        if (supplierRepository.existsByCode(request.getCode())) {
-            throw new RuntimeException("Mã nhà cung cấp đã tồn tại");
+        String code = normalizeCode(request.getCode());
+        if (code == null) {
+            code = generateUniqueCode();
+        } else if (supplierRepository.existsByCodeIgnoreCase(code)) {
+            throw new IllegalArgumentException("Mã nhà cung cấp đã tồn tại");
         }
 
         Supplier supplier = Supplier.builder()
-                .code(request.getCode())
-                .name(request.getName())
+                .code(code)
+                .name(request.getName().trim())
                 .taxCode(request.getTaxCode())
                 .contactPerson(request.getContactPerson())
                 .contactPhone(request.getContactPhone())
@@ -56,7 +67,7 @@ public class SupplierServiceImpl implements SupplierService {
                 .active(request.getActive() != null ? request.getActive() : true)
                 .build();
 
-        supplier = supplierRepository.save(supplier);
+        supplier = saveWithUniqueCode(supplier);
         return mapToResponse(supplier);
     }
 
@@ -66,12 +77,15 @@ public class SupplierServiceImpl implements SupplierService {
         Supplier supplier = supplierRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhà cung cấp"));
 
-        if (!supplier.getCode().equals(request.getCode()) && supplierRepository.existsByCode(request.getCode())) {
-            throw new RuntimeException("Mã nhà cung cấp đã tồn tại");
+        String code = normalizeCode(request.getCode());
+        // Bỏ trống khi sửa hồ sơ thì giữ mã đã cấp, không sinh lại mã.
+        if (code == null) code = supplier.getCode();
+        if (supplierRepository.existsByCodeIgnoreCaseAndIdNot(code, id)) {
+            throw new IllegalArgumentException("Mã nhà cung cấp đã tồn tại");
         }
 
-        supplier.setCode(request.getCode());
-        supplier.setName(request.getName());
+        supplier.setCode(code);
+        supplier.setName(request.getName().trim());
         supplier.setTaxCode(request.getTaxCode());
         supplier.setContactPerson(request.getContactPerson());
         supplier.setContactPhone(request.getContactPhone());
@@ -84,7 +98,7 @@ public class SupplierServiceImpl implements SupplierService {
             supplier.setActive(request.getActive());
         }
 
-        supplier = supplierRepository.save(supplier);
+        supplier = saveWithUniqueCode(supplier);
         return mapToResponse(supplier);
     }
 
@@ -124,5 +138,36 @@ public class SupplierServiceImpl implements SupplierService {
                 .paymentTerms(supplier.getPaymentTerms())
                 .active(supplier.getActive())
                 .build();
+    }
+
+    private String normalizeCode(String input) {
+        if (input == null || input.isBlank()) return null;
+        String code = Normalizer.normalize(input.trim(), Normalizer.Form.NFC).toUpperCase(Locale.ROOT);
+        if (code.equals(CODE_PREFIX)) return null;
+        if (!code.startsWith(CODE_PREFIX)) code = CODE_PREFIX + code;
+        if (code.length() > 30) {
+            throw new IllegalArgumentException("Mã nhà cung cấp gồm tiền tố NCC tối đa 30 ký tự");
+        }
+        if (code.codePoints().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("Mã nhà cung cấp không được chứa ký tự điều khiển");
+        }
+        return code;
+    }
+
+    private String generateUniqueCode() {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            String code = CODE_PREFIX + String.format(Locale.ROOT, "%09d", CODE_RANDOM.nextInt(1_000_000_000));
+            if (!supplierRepository.existsByCodeIgnoreCase(code)) return code;
+        }
+        throw new IllegalStateException("Chưa tạo được mã nhà cung cấp duy nhất. Vui lòng thử lại.");
+    }
+
+    private Supplier saveWithUniqueCode(Supplier supplier) {
+        try {
+            // Flush để ràng buộc UNIQUE của DB chặn cả hai yêu cầu đồng thời.
+            return supplierRepository.saveAndFlush(supplier);
+        } catch (DataIntegrityViolationException ex) {
+            throw new IllegalArgumentException("Mã nhà cung cấp đã tồn tại. Vui lòng chọn mã khác hoặc để trống để tạo tự động.");
+        }
     }
 }

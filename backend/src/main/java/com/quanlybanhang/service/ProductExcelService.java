@@ -215,9 +215,10 @@ public class ProductExcelService {
                 String category = getStringValue(row, colMap.get("category"));
                 String unit = getStringValue(row, colMap.get("unit"));
                 String packing = getStringValue(row, colMap.get("packing"));
-                BigDecimal price = getBigDecimalValue(row, colMap.get("price"));
-                BigDecimal costPrice = getBigDecimalValue(row, colMap.get("costPrice"));
-                Boolean active = getBooleanValue(row, colMap.get("active"));
+                List<String> parseErrors = new ArrayList<>();
+                BigDecimal price = getBigDecimalValue(row, colMap.get("price"), "Giá bán", parseErrors);
+                BigDecimal costPrice = getBigDecimalValue(row, colMap.get("costPrice"), "Giá vốn", parseErrors);
+                Boolean active = getBooleanValue(row, colMap.get("active"), parseErrors);
                 String description = getStringValue(row, colMap.get("description"));
 
                 // Nếu tất cả các trường chính đều rỗng thì bỏ qua
@@ -231,12 +232,13 @@ public class ProductExcelService {
                         .code(sku != null ? sku.trim() : null)
                         .name(name != null ? name.trim() : null)
                         .category(category != null ? category.trim() : null)
-                        .unit(unit != null && !unit.isBlank() ? unit.trim() : "cái")
+                        .unit(unit != null && !unit.isBlank() ? unit.trim() : null)
                         .packingSpecification(packing != null ? packing.trim() : null)
                         .price(price)
                         .costPrice(costPrice)
                         .active(active)
                         .description(description != null ? description.trim() : null)
+                        .parseErrors(parseErrors)
                         .build();
 
                 requests.add(req);
@@ -256,23 +258,23 @@ public class ProductExcelService {
         for (int c = 0; c < row.getLastCellNum(); c++) {
             Cell cell = row.getCell(c);
             if (cell == null) continue;
-            String text = normalizeHeader(cell.getStringCellValue());
+            String text = normalizeHeader(new DataFormatter(Locale.ROOT).formatCellValue(cell));
             if (text.isBlank()) continue;
 
             if (text.contains("sku") || text.equals("code") || text.contains("masanpham") || text.contains("masp") || text.equals("ma")) {
                 map.putIfAbsent("sku", c);
-            } else if (text.contains("tensanpham") || text.contains("tensp") || text.contains("ten") || text.equals("name")) {
-                map.putIfAbsent("name", c);
             } else if (text.contains("nhomhang") || text.contains("manhom") || text.contains("tennhom") || text.contains("nhom") || text.contains("category")) {
                 map.putIfAbsent("category", c);
+            } else if (text.contains("tensanpham") || text.contains("tensp") || text.equals("ten") || text.equals("name")) {
+                map.putIfAbsent("name", c);
             } else if (text.contains("donvitinh") || text.contains("dvt") || text.contains("donvi") || text.equals("unit")) {
                 map.putIfAbsent("unit", c);
             } else if (text.contains("quycach") || text.contains("donggoi") || text.contains("packing")) {
                 map.putIfAbsent("packing", c);
-            } else if (text.contains("giaban") || text.contains("dongia") || text.equals("gia") || text.contains("price")) {
-                map.putIfAbsent("price", c);
             } else if (text.contains("giavon") || text.contains("costprice") || text.contains("cost")) {
                 map.putIfAbsent("costPrice", c);
+            } else if (text.contains("giaban") || text.contains("dongia") || text.equals("gia") || text.contains("price")) {
+                map.putIfAbsent("price", c);
             } else if (text.contains("trangthai") || text.contains("kinhdoanh") || text.contains("status") || text.equals("active")) {
                 map.putIfAbsent("active", c);
             } else if (text.contains("mota") || text.contains("ghichu") || text.contains("description") || text.contains("note")) {
@@ -341,57 +343,92 @@ public class ProductExcelService {
         }
     }
 
-    private BigDecimal getBigDecimalValue(Row row, Integer colIdx) {
+    private BigDecimal getBigDecimalValue(Row row, Integer colIdx, String label, List<String> errors) {
         if (colIdx == null || colIdx < 0) return null;
         Cell cell = row.getCell(colIdx);
         if (cell == null) return null;
 
         try {
-            switch (cell.getCellType()) {
+            if (cell.getCellType() == CellType.FORMULA
+                    && cell instanceof org.apache.poi.xssf.usermodel.XSSFCell formulaCell
+                    && (formulaCell.getCTCell().getV() == null || formulaCell.getCTCell().getV().isBlank())) {
+                throw new IllegalArgumentException("Công thức chưa có giá trị đã tính");
+            }
+            CellType type = cell.getCellType() == CellType.FORMULA ? cell.getCachedFormulaResultType() : cell.getCellType();
+            switch (type) {
                 case NUMERIC:
                     return BigDecimal.valueOf(cell.getNumericCellValue());
                 case STRING:
-                    String text = cell.getStringCellValue().trim()
-                            .replace(",", "")
-                            .replace(".", "")
-                            .replace(" ", "")
-                            .replace("đ", "")
-                            .replace("VND", "")
-                            .replace("vnd", "");
+                    String text = cell.getStringCellValue().trim();
                     if (text.isEmpty()) return null;
-                    return new BigDecimal(text);
-                case FORMULA:
-                    return BigDecimal.valueOf(cell.getNumericCellValue());
-                default:
+                    return parseDecimalText(text);
+                case BLANK:
                     return null;
+                default:
+                    throw new IllegalArgumentException("Sai kiểu dữ liệu số");
             }
         } catch (Exception e) {
+            errors.add(label + " không phải số hợp lệ");
             return null;
         }
     }
 
-    private Boolean getBooleanValue(Row row, Integer colIdx) {
+    private BigDecimal parseDecimalText(String input) {
+        String value = input.replaceAll("[\\s\\u00a0\\u202f]", "")
+                .replaceFirst("(?iu)(VND|VNĐ|đ|₫)$", "");
+        if (value.contains(",") && value.contains(".")) {
+            char decimal = value.lastIndexOf(',') > value.lastIndexOf('.') ? ',' : '.';
+            char grouping = decimal == ',' ? '.' : ',';
+            String pattern = "[+-]?\\d{1,3}(\\" + grouping + "\\d{3})+\\" + decimal + "\\d+";
+            if (!value.matches(pattern)) throw new IllegalArgumentException("Sai dấu phân cách số");
+            value = value.replace(String.valueOf(grouping), "").replace(decimal, '.');
+        } else if (value.contains(",") || value.contains(".")) {
+            char separator = value.contains(",") ? ',' : '.';
+            if (value.matches("[+-]?\\d{1,3}(\\" + separator + "\\d{3})+")) {
+                value = value.replace(String.valueOf(separator), "");
+            } else {
+                if (!value.matches("[+-]?\\d+\\" + separator + "\\d+")) {
+                    throw new IllegalArgumentException("Sai dấu phân cách số");
+                }
+                value = value.replace(separator, '.');
+            }
+        }
+        if (!value.matches("[+-]?\\d+(\\.\\d+)?")) throw new IllegalArgumentException("Sai định dạng số");
+        return new BigDecimal(value);
+    }
+
+    private Boolean getBooleanValue(Row row, Integer colIdx, List<String> errors) {
         if (colIdx == null || colIdx < 0) return null;
         Cell cell = row.getCell(colIdx);
         if (cell == null) return null;
 
-        switch (cell.getCellType()) {
+        CellType type = cell.getCellType() == CellType.FORMULA ? cell.getCachedFormulaResultType() : cell.getCellType();
+        switch (type) {
             case BOOLEAN:
                 return cell.getBooleanCellValue();
             case NUMERIC:
-                return cell.getNumericCellValue() != 0;
+                double number = cell.getNumericCellValue();
+                if (number == 0 || number == 1) return number == 1;
+                errors.add("Trạng thái dạng số phải là 0 hoặc 1");
+                return null;
             case STRING:
-                String val = cell.getStringCellValue().trim().toLowerCase(Locale.ROOT);
-                if (val.contains("đang") || val.contains("dang") || val.contains("hoat dong")
+                String val = Normalizer.normalize(cell.getStringCellValue().trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                        .replaceAll("\\p{M}", "").replace('đ', 'd');
+                if (val.isEmpty()) return null;
+                if (val.equals("dang kinh doanh") || val.equals("hoat dong") || val.equals("active")
                         || val.equals("true") || val.equals("1") || val.equals("yes") || val.equals("co")) {
                     return true;
                 }
-                if (val.contains("ngừng") || val.contains("ngung") || val.contains("khoa")
+                if (val.equals("ngung kinh doanh") || val.equals("ngung") || val.equals("da khoa") || val.equals("khoa") || val.equals("inactive")
                         || val.equals("false") || val.equals("0") || val.equals("no") || val.equals("khong")) {
                     return false;
                 }
+                errors.add("Trạng thái không hợp lệ");
+                return null;
+            case BLANK:
                 return null;
             default:
+                errors.add("Trạng thái không hợp lệ");
                 return null;
         }
     }

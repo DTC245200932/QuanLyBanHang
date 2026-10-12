@@ -229,17 +229,24 @@ public class ProductServiceImpl implements ProductService {
                     return true;
                 })
                 .collect(Collectors.toList());
-        if (filtered.isEmpty()) return List.of();
+        return mapToResponses(filtered);
+    }
 
+    private List<ProductResponse> mapToResponses(List<Product> products) {
+        if (products.isEmpty()) return List.of();
         // Tổng hợp theo lô để danh mục lớn không phát sinh truy vấn thống kê cho từng SKU.
-        List<Long> ids = filtered.stream().map(Product::getId).toList();
-        Map<Long, BigDecimal> revenues = productRepository.sumRevenueByProductIds(ids).stream()
+        List<Long> ids = products.stream().map(Product::getId).filter(Objects::nonNull).toList();
+        Map<Long, BigDecimal> revenues = ids.isEmpty() ? Map.of() : productRepository.sumRevenueByProductIds(ids).stream()
                 .collect(Collectors.toMap(ProductRepository.ProductRevenue::getProductId,
                         ProductRepository.ProductRevenue::getRevenue));
-        Set<Long> transactionIds = new HashSet<>(orderItemRepository.findProductIdsWithTransactions(ids));
-        transactionIds.addAll(warehouseVoucherItemRepository.findProductIdsWithTransactions(ids));
-        return filtered.stream().map(product -> mapToResponse(product,
-                revenues.getOrDefault(product.getId(), BigDecimal.ZERO), transactionIds.contains(product.getId())))
+        Set<Long> transactionIds = new HashSet<>();
+        if (!ids.isEmpty()) {
+            transactionIds.addAll(orderItemRepository.findProductIdsWithTransactions(ids));
+            transactionIds.addAll(warehouseVoucherItemRepository.findProductIdsWithTransactions(ids));
+        }
+        return products.stream().map(product -> mapToResponse(product,
+                product.getId() == null ? BigDecimal.ZERO : revenues.getOrDefault(product.getId(), BigDecimal.ZERO),
+                transactionIds.contains(product.getId())))
                 .toList();
     }
 
@@ -306,6 +313,7 @@ public class ProductServiceImpl implements ProductService {
         // Trích xuất danh sách SKU để truy vấn hàng loạt
         Set<String> uniqueSkus = new HashSet<>();
         for (ProductImportRowRequest req : safeRequests) {
+            if (req == null) continue;
             String sku = req.getEffectiveSku();
             if (!sku.isBlank()) {
                 uniqueSkus.add(sku.trim().toUpperCase(Locale.ROOT));
@@ -322,10 +330,11 @@ public class ProductServiceImpl implements ProductService {
 
         for (int i = 0; i < safeRequests.size(); i++) {
             ProductImportRowRequest req = safeRequests.get(i);
+            if (req == null) req = new ProductImportRowRequest();
             int rowNum = req.getRowNumber() != null ? req.getRowNumber() : (i + 2);
             String rawSku = req.getEffectiveSku();
             String normalizedSku = rawSku.trim().toUpperCase(Locale.ROOT);
-            List<String> errors = new ArrayList<>();
+            List<String> errors = req.getParseErrors() != null ? new ArrayList<>(req.getParseErrors()) : new ArrayList<>();
 
             // 1. Kiểm tra SKU
             if (normalizedSku.isEmpty()) {
@@ -373,11 +382,13 @@ public class ProductServiceImpl implements ProductService {
             if (req.getPrice() != null && req.getPrice().compareTo(BigDecimal.ZERO) < 0) {
                 errors.add("Giá bán không được âm");
             }
+            validateImportMoney(req.getPrice(), "Giá bán", errors);
 
             // 5. Kiểm tra giá vốn
             if (req.getCostPrice() != null && req.getCostPrice().compareTo(BigDecimal.ZERO) < 0) {
                 errors.add("Giá vốn không được âm");
             }
+            validateImportMoney(req.getCostPrice(), "Giá vốn", errors);
 
             // 6. Kiểm tra độ dài các trường chuỗi
             if (req.getUnit() != null && req.getUnit().length() > 50) {
@@ -414,11 +425,12 @@ public class ProductServiceImpl implements ProductService {
                     .category(req.getCategory())
                     .resolvedCategoryId(resolvedCat != null ? resolvedCat.getId() : null)
                     .resolvedCategoryName(resolvedCat != null ? resolvedCat.getName() : null)
-                    .unit(req.getUnit() != null && !req.getUnit().isBlank() ? req.getUnit().trim() : "cái")
+                    .unit(req.getUnit() != null && !req.getUnit().isBlank() ? req.getUnit().trim()
+                            : existing != null ? existing.getUnit() : "cái")
                     .packingSpecification(req.getPackingSpecification() != null ? req.getPackingSpecification().trim() : null)
-                    .price(req.getPrice() != null ? req.getPrice() : BigDecimal.ZERO)
+                    .price(req.getPrice() != null ? req.getPrice() : existing != null ? existing.getPrice() : BigDecimal.ZERO)
                     .costPrice(displayCostPrice)
-                    .active(req.getActive() != null ? req.getActive() : true)
+                    .active(req.getActive() != null ? req.getActive() : existing != null ? existing.getActive() : true)
                     .description(req.getDescription() != null ? req.getDescription().trim() : null)
                     .action(action)
                     .isUpdate(isUpdate)
@@ -551,14 +563,14 @@ public class ProductServiceImpl implements ProductService {
 
         // Lưu hàng loạt (Batch save)
         List<Product> savedProducts = productRepository.saveAll(productsToSave);
-        Map<String, Product> savedMap = savedProducts.stream()
+        Map<String, ProductResponse> savedMap = mapToResponses(savedProducts).stream()
                 .collect(Collectors.toMap(p -> p.getCode().toUpperCase(Locale.ROOT), p -> p));
 
         for (ProductImportRowResponse row : validRows) {
-            Product saved = savedMap.get(row.getSku());
+            ProductResponse saved = savedMap.get(row.getSku());
             if (saved != null) {
                 row.setExistingProductId(saved.getId());
-                row.setCreatedProduct(mapToResponse(saved));
+                row.setCreatedProduct(saved);
             }
         }
 
@@ -605,6 +617,17 @@ public class ProductServiceImpl implements ProductService {
         }
         if (file.getSize() > 20 * 1024 * 1024) {
             throw new IllegalArgumentException("Kích thước tệp vượt quá giới hạn tối đa 20MB");
+        }
+    }
+
+    private void validateImportMoney(BigDecimal value, String label, List<String> errors) {
+        if (value == null) return;
+        BigDecimal normalized = value.stripTrailingZeros();
+        if (normalized.scale() > 2) {
+            errors.add(label + " chỉ được có tối đa 2 chữ số thập phân");
+        }
+        if (normalized.precision() - normalized.scale() > 13) {
+            errors.add(label + " vượt quá giới hạn lưu trữ (13 chữ số phần nguyên)");
         }
     }
 

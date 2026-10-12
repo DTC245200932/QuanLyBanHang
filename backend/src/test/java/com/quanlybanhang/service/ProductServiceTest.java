@@ -372,6 +372,42 @@ class ProductServiceTest {
     }
 
     @Test
+    void importBlankOptionalCellsPreservesExistingPriceUnitAndInactiveStatus() {
+        Category category = Category.builder().id(1L).code("CAT").name("Nhóm").build();
+        Product existing = Product.builder().id(1L).code("EXISTING").name("Cũ").category(category)
+                .price(new BigDecimal("12000")).unit("chai").active(false).build();
+        when(categoryRepository.findAll()).thenReturn(List.of(category));
+        when(productRepository.findByCodeUpperIn(anyCollection())).thenReturn(List.of(existing));
+        when(productRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        var row = ProductImportRowRequest.builder().sku("existing").name("Mới").category("CAT").build();
+        var result = productService.importProducts(List.of(row));
+        assertThat(result.getImportedRows()).isEqualTo(1);
+        assertThat(existing.getName()).isEqualTo("Mới");
+        assertThat(existing.getPrice()).isEqualByComparingTo("12000");
+        assertThat(existing.getUnit()).isEqualTo("chai");
+        assertThat(existing.getActive()).isFalse();
+    }
+
+    @Test
+    void excelParseErrorsAndMoneyOverflowPreventSavingThoseRows() {
+        Category category = Category.builder().id(1L).code("CAT").name("Nhóm").build();
+        when(categoryRepository.findAll()).thenReturn(List.of(category));
+        var badFormat = ProductImportRowRequest.builder().sku("BAD").name("Sai giá").category("CAT")
+                .parseErrors(List.of("Giá bán không phải số hợp lệ")).build();
+        var overflow = ProductImportRowRequest.builder().sku("OVERFLOW").name("Quá lớn").category("CAT")
+                .price(new BigDecimal("100000000000000")).build();
+        var precision = ProductImportRowRequest.builder().sku("PRECISION").name("Quá lẻ").category("CAT")
+                .price(new BigDecimal("1.2345")).build();
+        var result = productService.importProducts(List.of(badFormat, overflow, precision));
+        assertThat(result.getInvalidRows()).isEqualTo(3);
+        assertThat(result.getImportedRows()).isZero();
+        assertThat(result.getRows().get(0).getErrors()).contains("Giá bán không phải số hợp lệ");
+        assertThat(result.getRows().get(1).getErrors()).anyMatch(error -> error.contains("giới hạn lưu trữ"));
+        assertThat(result.getRows().get(2).getErrors()).anyMatch(error -> error.contains("2 chữ số"));
+        verify(productRepository, never()).saveAll(anyList());
+    }
+
+    @Test
     @DisplayName("S2-08: Xem trước phát hiện lỗi từng dòng (SKU trống, Tên trống, Nhóm hàng không tồn tại, SKU trùng trong tệp)")
     void previewImport_DetectsRowErrors() {
         Category cat = Category.builder().id(1L).code("BEV").name("Đồ uống").build();

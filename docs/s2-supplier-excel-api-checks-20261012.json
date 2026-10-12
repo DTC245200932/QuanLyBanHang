@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-12",
+  "environment": "Database MySQL kiểm thử riêng; API 8081. Không thay đổi dữ liệu nhóm ở 8080.",
+  "timings": {
+    "preview5000Seconds": 0.73,
+    "import5000Seconds": 2.76
+  },
+  "checks": [
+    {
+      "name": "Mã để trống/null tự tạo NCC và 9 chữ số, không trùng",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Mã nhập tay nhận Unicode/ký tự và tự thêm tiền tố",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Trùng sau chuẩn hoá hoa/thường bị chặn",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Giới hạn chiều dài tính cả tiền tố; ký tự điều khiển bị chặn",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Sửa hồ sơ với mã trống giữ nguyên mã cũ",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Cập nhật không được dùng mã của NCC khác",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Ràng buộc UNIQUE chặn các yêu cầu đồng thời",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Người xem không được tạo NCC",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Tệp mẫu tải được, có nhóm hàng thực và không có sản phẩm mẫu",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Xem trước tệp mẫu trống không tạo dữ liệu",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Đọc đúng tiêu đề Mã/Tên nhóm hàng của chính tệp mẫu",
+      "passed": true,
+      "details": {
+        "totalRows": 13,
+        "validRows": 3,
+        "invalidRows": 10
+      }
+    },
+    {
+      "name": "SKU có sẵn được đánh dấu UPDATE và chỉ có 2 SKU mới",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Xem trước không ghi DB",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Báo lỗi theo dòng cho giá sai, trùng SKU, nhóm sai, giá âm, giới hạn giá và trạng thái",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Giữ giá và đơn vị cũ khi ô cập nhật để trống",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Giá thập phân và SKU có số 0 đầu không bị đổi",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Nhập đúng 3 dòng hợp lệ, bỏ toàn bộ dòng lỗi",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "SKU cập nhật giữ ID, giá, giá vốn, đơn vị và trạng thái ngừng kinh doanh",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Nhập lại cùng tệp cập nhật 3 SKU, không tạo bản ghi trùng",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "SKU lỗi không được lưu trong DB",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Admin không có vai trò quản lý kinh doanh không được thấy giá vốn",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Admin không được thay giá vốn trong DB khi nhập Excel",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Cập nhật giá bán qua Excel ghi đúng lịch sử giá",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Người xem bị chặn cả xem trước lẫn nhập Excel",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Tệp hỏng trả lỗi, không báo thành công",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Tệp 5.000 SKU thực sự vượt giới hạn multipart 2 MB cũ",
+      "passed": true,
+      "details": {
+        "bytes": 3641003
+      }
+    },
+    {
+      "name": "Xem trước đủ 5.000 SKU, không có dòng lỗi",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Nhập đủ 5.000 SKU vào MySQL",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "Kết quả từng dòng sau nhập giữ đủ ID sản phẩm",
+      "passed": true,
+      "details": null
+    }
+  ]
+}

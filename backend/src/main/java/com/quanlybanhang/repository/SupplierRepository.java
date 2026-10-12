@@ -20,4 +20,8 @@ public interface SupplierRepository extends JpaRepository<Supplier, Long> {
     Page<Supplier> searchSuppliers(@Param("keyword") String keyword, Pageable pageable);
     
     boolean existsByCode(String code);
+
+    boolean existsByCodeIgnoreCase(String code);
+
+    boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
 }

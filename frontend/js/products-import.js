@@ -29,6 +29,7 @@
     rows: [],
     preview: null,
     importing: false,
+    previewRequestId: 0,
     previousFocus: null,
     previousOverflow: "",
   };
@@ -97,12 +98,14 @@
   }
 
   function resetFlow() {
+    state.previewRequestId++;
     state.file = null;
     state.rows = [];
     state.preview = null;
     state.importing = false;
     const input = $("import-file-input");
     if (input) input.value = "";
+    if ($("import-dropzone")) $("import-dropzone").disabled = false;
     $("import-preview-body").innerHTML = "";
     $("import-preview-stats").innerHTML = "";
     $("import-preview-file").textContent = "";
@@ -240,9 +243,8 @@
     updateActionButtons("preview");
   }
 
-  async function previewFile(file) {
+  async function previewFile(file, requestId) {
     validateFile(file);
-    state.file = file;
     $("import-file-status").textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
     setMessage("import-upload-message");
     const formData = new FormData();
@@ -252,6 +254,8 @@
       body: formData,
     });
     const result = await readApiResult(response, "Không thể xem trước file Excel.");
+    if (requestId !== state.previewRequestId) return;
+    state.file = file;
     state.preview = result;
     $("import-preview-file").textContent = file.name;
     renderPreview(result);
@@ -259,16 +263,22 @@
   }
 
   async function handleFile(file) {
+    const requestId = ++state.previewRequestId;
+    state.file = null;
+    state.rows = [];
+    state.preview = null;
+    setStep("upload");
     try {
       validateFile(file);
       $("import-file-status").textContent = "Đang kiểm tra file…";
       $("import-dropzone").disabled = true;
-      await previewFile(file);
+      await previewFile(file, requestId);
     } catch (error) {
+      if (requestId !== state.previewRequestId) return;
       $("import-file-status").textContent = "Chưa chọn tệp.";
       setMessage("import-upload-message", error.message || "Không thể đọc file Excel.");
     } finally {
-      $("import-dropzone").disabled = false;
+      if (requestId === state.previewRequestId) $("import-dropzone").disabled = false;
     }
   }
 

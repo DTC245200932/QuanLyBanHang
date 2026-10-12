@@ -1286,6 +1286,35 @@
   justify-content: space-between;
 }
 
+#modal-receipt-detail .modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#modal-receipt-detail .modal__header {
+  flex: 0 0 auto;
+  padding: 20px 24px;
+}
+#modal-receipt-detail .modal__body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 0;
+}
+#modal-receipt-detail .modal__actions {
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+#modal-receipt-detail .modal__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 /* ══════════════════════════════════════════════════
    RESPONSIVE DESIGN (1024px, 768px, 480px)
    ══════════════════════════════════════════════════ */

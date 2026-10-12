@@ -398,6 +398,27 @@
   grid-column: 1 / -1;
 }
 
+.sup-code-input {
+  display: flex;
+  align-items: stretch;
+}
+.sup-code-input > span {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-600);
+  font-size: 0.875rem;
+}
+.sup-code-input > input {
+  min-width: 0;
+  flex: 1;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
 .modal__body .sup-select {
   width: 100%;
 }

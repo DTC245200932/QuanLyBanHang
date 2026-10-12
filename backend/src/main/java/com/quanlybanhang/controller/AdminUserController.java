@@ -104,7 +104,15 @@ public class AdminUserController {
         Map<String, Object> matrix = new LinkedHashMap<>();
         rolePermissionConfig.getAllPermissions().forEach((role, permissions) ->
                 matrix.put(role.name(), permissions.stream().map(Permission::name).sorted().toList()));
-        return ApiResponse.success("Ma trận phân quyền", matrix);
+        List<Map<String, String>> catalog = Arrays.stream(Permission.values())
+                .map(permission -> Map.of(
+                        "code", permission.name(),
+                        "label", permission.getDisplayName()))
+                .toList();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("matrix", matrix);
+        data.put("permissions", catalog);
+        return ApiResponse.success("Ma trận phân quyền", data);
     }
 
     @PutMapping("/permissions/{role}")

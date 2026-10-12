@@ -1,5 +1,6 @@
 package com.quanlybanhang.security;
 
+import com.quanlybanhang.config.RolePermissionConfig;
 import com.quanlybanhang.model.User;
 import com.quanlybanhang.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserDetailsServiceImpl implements UserDetailsService {
 
     private final UserRepository userRepository;
+    private final RolePermissionConfig rolePermissionConfig;
 
     @Override
     @Transactional(readOnly = true)
@@ -25,6 +27,6 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException(
                         "Không tìm thấy người dùng: " + username));
 
-        return UserDetailsImpl.build(user);
+        return UserDetailsImpl.build(user, rolePermissionConfig);
     }
 }

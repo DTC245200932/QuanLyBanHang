@@ -632,8 +632,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     /**
-     * Kiểm tra xem người dùng hiện tại có vai trò Quản lý kinh doanh (ROLE_SALES_MANAGER)
-     * hoặc quyền FINANCE_VIEW_COST_PRICE hay không.
+     * Kiểm tra xem người dùng hiện tại có vai trò được xem giá vốn hay không.
+     * Quản trị viên luôn có toàn quyền.
      */
     private boolean isSalesManager() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -641,6 +641,7 @@ public class ProductServiceImpl implements ProductService {
             return false;
         }
         return auth.getAuthorities().stream().anyMatch(a ->
+                "ROLE_ADMIN".equals(a.getAuthority()) ||
                 "ROLE_SALES_MANAGER".equals(a.getAuthority()) ||
                 Permission.FINANCE_VIEW_COST_PRICE.name().equals(a.getAuthority())
         );

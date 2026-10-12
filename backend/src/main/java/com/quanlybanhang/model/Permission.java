@@ -15,45 +15,55 @@ package com.quanlybanhang.model;
 public enum Permission {
 
     // ── Quản lý tài khoản ──
-    USER_VIEW,
-    USER_CREATE,
-    USER_EDIT,
-    USER_LOCK,
-    USER_ASSIGN_ROLE,
+    USER_VIEW("Xem tài khoản"),
+    USER_CREATE("Tạo tài khoản"),
+    USER_EDIT("Sửa tài khoản"),
+    USER_LOCK("Khóa tài khoản"),
+    USER_ASSIGN_ROLE("Gán vai trò"),
 
     // ── Sản phẩm ──
-    PRODUCT_VIEW,
-    PRODUCT_CREATE,
-    PRODUCT_EDIT,
-    PRODUCT_DELETE,
+    PRODUCT_VIEW("Xem sản phẩm"),
+    PRODUCT_CREATE("Thêm sản phẩm"),
+    PRODUCT_EDIT("Sửa sản phẩm"),
+    PRODUCT_DELETE("Xóa sản phẩm"),
 
     // ── Đơn hàng ──
-    ORDER_VIEW,
-    ORDER_CREATE,
-    ORDER_EDIT,
-    ORDER_CANCEL,
-    ORDER_APPROVE,
+    ORDER_VIEW("Xem đơn hàng"),
+    ORDER_CREATE("Tạo đơn hàng"),
+    ORDER_EDIT("Sửa đơn hàng"),
+    ORDER_CANCEL("Hủy đơn hàng"),
+    ORDER_APPROVE("Duyệt đơn hàng"),
 
     // ── Kho & tồn kho ──
-    WAREHOUSE_VIEW,
-    WAREHOUSE_IMPORT,        // Nhập kho
-    WAREHOUSE_EXPORT,        // Xuất kho
-    WAREHOUSE_ADJUST,        // Điều chỉnh tồn kho
-    WAREHOUSE_APPROVE,       // Phê duyệt phiếu nhập/xuất
+    WAREHOUSE_VIEW("Xem tồn kho"),
+    WAREHOUSE_IMPORT("Nhập kho"),
+    WAREHOUSE_EXPORT("Xuất kho"),
+    WAREHOUSE_ADJUST("Điều chỉnh tồn kho"),
+    WAREHOUSE_APPROVE("Duyệt phiếu kho"),
 
     // ── Khách hàng / Đại lý ──
-    CUSTOMER_VIEW,
-    CUSTOMER_CREATE,
-    CUSTOMER_EDIT,
+    CUSTOMER_VIEW("Xem khách hàng"),
+    CUSTOMER_CREATE("Thêm khách hàng"),
+    CUSTOMER_EDIT("Sửa khách hàng"),
 
     // ── Tài chính (nhạy cảm) ──
-    FINANCE_VIEW_COST_PRICE,      // Xem giá vốn — chỉ SALES_MANAGER
-    FINANCE_VIEW_PROFIT_MARGIN,   // Xem biên lợi nhuận — chỉ SALES_MANAGER
-    FINANCE_VIEW_DEBT,            // Xem công nợ
-    FINANCE_MANAGE,               // Quản lý tài chính
+    FINANCE_VIEW_COST_PRICE("Xem giá vốn"),
+    FINANCE_VIEW_PROFIT_MARGIN("Xem biên lợi nhuận"),
+    FINANCE_VIEW_DEBT("Xem công nợ"),
+    FINANCE_MANAGE("Quản lý công nợ"),
 
     // ── Báo cáo ──
-    REPORT_SALES,
-    REPORT_INVENTORY,
-    REPORT_FINANCE
+    REPORT_SALES("Xem báo cáo bán hàng"),
+    REPORT_INVENTORY("Xem báo cáo tồn kho"),
+    REPORT_FINANCE("Xem báo cáo tài chính");
+
+    private final String displayName;
+
+    Permission(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
 }

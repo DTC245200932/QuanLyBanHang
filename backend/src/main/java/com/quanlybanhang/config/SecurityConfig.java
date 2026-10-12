@@ -122,10 +122,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/customers/**").hasAnyRole(
                         "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")
 
-                // ── Giá vốn & Biên lợi nhuận: CHỈ DUY NHẤT Quản lý kinh doanh (ROLE_SALES_MANAGER) ──
+                // ── Giá vốn & Biên lợi nhuận: Quản lý kinh doanh và Quản trị viên ──
                 .requestMatchers("/api/finance/cost-price", "/api/finance/cost-price/**",
                         "/api/finance/profit-margin", "/api/finance/profit-margin/**")
-                        .hasRole("SALES_MANAGER")
+                        .hasAnyRole("ADMIN", "SALES_MANAGER")
 
                 // ── Tài chính khác (công nợ, quản lý): ADMIN, SALES_MANAGER, ACCOUNTANT ──
                 .requestMatchers("/api/finance/**").hasAnyRole(

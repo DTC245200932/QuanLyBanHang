@@ -68,9 +68,9 @@ Tất cả endpoint dưới `/admin/**` yêu cầu `ROLE_ADMIN` và được ki�
 | POST | `/admin/users/{id}/lock` | Khóa, thu hồi phiên và cảnh báo bàn giao đại lý |
 | POST | `/admin/users/{id}/unlock` | Mở khóa |
 | GET | `/admin/assignment-options` | Danh sách 7 vai trò, kho và địa bàn |
-| GET | `/admin/permissions` | Ma trận quyền của 7 vai trò |
-| PUT | `/admin/permissions/{role}` | Khai báo/cập nhật quyền cho vai trò (chặn gán giá vốn ngoài Sales Manager, chặn gán sửa tồn kho cho Sales) |
-| POST | `/admin/permissions/reset` | Khôi phục ma trận quyền 7 vai trò về mặc định ban đầu |
+| GET | `/admin/permissions` | Ma trận quyền và danh mục mã quyền/nhãn hiển thị của 7 vai trò; ma trận được đọc từ bảng `role_permissions` |
+| PUT | `/admin/permissions/{role}` | Khai báo/cập nhật quyền cho vai trò; quyền được lưu vào database, ADMIN luôn được chuẩn hóa thành toàn bộ quyền |
+| POST | `/admin/permissions/reset` | Khôi phục ma trận quyền 7 vai trò về mặc định ban đầu và lưu vào database |
 
 ### Tìm kiếm
 
@@ -138,7 +138,7 @@ Nếu chưa có kho, API báo thiếu cấu hình, không tự tạo kho mặc �
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/finance/cost-price` | `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm — chỉ Quản lý kinh doanh; Admin, Thủ kho, Sales, Kế toán đều bị từ chối |
+| GET | `/finance/cost-price` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm |
 | GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
 | GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem hạn mức tiền và số ngày nợ tối đa từ hồ sơ đại lý; số dư công nợ hiện chưa có nguồn dữ liệu |
 | PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo / cập nhật hạn mức công nợ và số ngày nợ tối đa (S3-05); bắt buộc nhập lý do, tự động ghi nhật ký giá trị trước/sau kèm lý do |

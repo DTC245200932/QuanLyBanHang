@@ -2,6 +2,9 @@ package com.quanlybanhang.config;
 
 import com.quanlybanhang.model.ERole;
 import com.quanlybanhang.model.Permission;
+import com.quanlybanhang.model.RolePermission;
+import com.quanlybanhang.repository.RolePermissionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -9,157 +12,168 @@ import java.util.*;
 import static com.quanlybanhang.model.Permission.*;
 
 /**
- * Cấu hình ma trận phân quyền: mỗi vai trò (ERole) được gán một tập Permission.
+ * Nguồn đọc/ghi ma trận phân quyền.
  *
- * Nguyên tắc thiết kế:
- * - Mặc định là TỪ CHỐI — chỉ role nào được gán permission mới truy cập được
- * - ADMIN quản trị hệ thống nhưng không mặc nhiên xem dữ liệu giá vốn
- * - Giá vốn + biên lợi nhuận chỉ cho SALES_MANAGER
- * - Thủ kho chỉ thao tác trên module kho, không thấy giá vốn
- * - Nhân viên kinh doanh không sửa tồn kho
+ * Bộ quyền trong mã nguồn chỉ là dữ liệu khởi tạo lần đầu. Sau khi có bảng
+ * role_permissions, mọi thay đổi từ màn hình quản trị được đọc lại từ DB.
+ * ROLE_ADMIN luôn được chuẩn hoá thành toàn bộ Permission.
  */
 @Component
 public class RolePermissionConfig {
 
-    private final Map<ERole, Set<Permission>> rolePermissions;
+    private final Map<ERole, Set<Permission>> rolePermissions = new EnumMap<>(ERole.class);
+    private RolePermissionRepository rolePermissionRepository;
 
+    /** Giữ constructor không tham số để các unit test thuần Java vẫn dùng được. */
     public RolePermissionConfig() {
-        rolePermissions = new EnumMap<>(ERole.class);
-        initDefaultPermissions();
+        rolePermissions.putAll(defaultPermissions());
+        enforceAdminPermissions();
     }
 
-    private void initDefaultPermissions() {
-        // ── ADMIN: toàn quyền quản trị ──
-        EnumSet<Permission> adminPermissions = EnumSet.allOf(Permission.class);
-        // Giá vốn và biên lợi nhuận là dữ liệu nghiệp vụ riêng của Quản lý kinh doanh.
-        adminPermissions.remove(FINANCE_VIEW_COST_PRICE);
-        adminPermissions.remove(FINANCE_VIEW_PROFIT_MARGIN);
-        rolePermissions.put(ERole.ROLE_ADMIN, adminPermissions);
+    @Autowired(required = false)
+    public void setRolePermissionRepository(RolePermissionRepository repository) {
+        this.rolePermissionRepository = repository;
+        loadFromDatabase();
+    }
 
-        // ── SALES_MANAGER: quản lý kinh doanh — xem giá vốn, biên lợi nhuận ──
-        rolePermissions.put(ERole.ROLE_SALES_MANAGER, EnumSet.of(
+    private static Map<ERole, Set<Permission>> defaultPermissions() {
+        Map<ERole, Set<Permission>> defaults = new EnumMap<>(ERole.class);
+        defaults.put(ERole.ROLE_ADMIN, EnumSet.allOf(Permission.class));
+        defaults.put(ERole.ROLE_SALES_MANAGER, EnumSet.of(
                 PRODUCT_VIEW, PRODUCT_CREATE, PRODUCT_EDIT, PRODUCT_DELETE,
                 ORDER_VIEW, ORDER_CREATE, ORDER_EDIT, ORDER_CANCEL, ORDER_APPROVE,
-                CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT,
-                WAREHOUSE_VIEW,
+                CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT, WAREHOUSE_VIEW,
                 FINANCE_VIEW_COST_PRICE, FINANCE_VIEW_PROFIT_MARGIN,
                 FINANCE_VIEW_DEBT, FINANCE_MANAGE,
                 REPORT_SALES, REPORT_INVENTORY, REPORT_FINANCE
         ));
-
-        // ── WAREHOUSE_MANAGER: quản lý kho — phê duyệt nhập/xuất, điều chỉnh tồn kho ──
-        rolePermissions.put(ERole.ROLE_WAREHOUSE_MANAGER, EnumSet.of(
-                PRODUCT_VIEW,
-                ORDER_VIEW,
-                WAREHOUSE_VIEW, WAREHOUSE_IMPORT, WAREHOUSE_EXPORT,
-                WAREHOUSE_ADJUST, WAREHOUSE_APPROVE,
+        defaults.put(ERole.ROLE_WAREHOUSE_MANAGER, EnumSet.of(
+                PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, WAREHOUSE_IMPORT,
+                WAREHOUSE_EXPORT, WAREHOUSE_ADJUST, WAREHOUSE_APPROVE,
                 REPORT_INVENTORY
         ));
-
-        // ── SALES: nhân viên kinh doanh — tạo đơn, quản lý khách, không sửa tồn kho, không xem giá vốn ──
-        rolePermissions.put(ERole.ROLE_SALES, EnumSet.of(
-                PRODUCT_VIEW,
-                ORDER_VIEW, ORDER_CREATE, ORDER_EDIT,
-                CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT,
-                REPORT_SALES
+        defaults.put(ERole.ROLE_SALES, EnumSet.of(
+                PRODUCT_VIEW, ORDER_VIEW, ORDER_CREATE, ORDER_EDIT,
+                CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT, REPORT_SALES
         ));
-
-        // ── WAREHOUSE_STAFF: thủ kho — nhập/xuất kho, không sửa tồn kho, không thấy giá vốn ──
-        rolePermissions.put(ERole.ROLE_WAREHOUSE_STAFF, EnumSet.of(
-                PRODUCT_VIEW,
-                ORDER_VIEW,
-                WAREHOUSE_VIEW, WAREHOUSE_IMPORT, WAREHOUSE_EXPORT
+        defaults.put(ERole.ROLE_WAREHOUSE_STAFF, EnumSet.of(
+                PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, WAREHOUSE_IMPORT,
+                WAREHOUSE_EXPORT
         ));
-
-        // ── ACCOUNTANT: kế toán — báo cáo tài chính, công nợ, không thấy giá vốn ──
-        rolePermissions.put(ERole.ROLE_ACCOUNTANT, EnumSet.of(
-                PRODUCT_VIEW,
-                ORDER_VIEW,
-                WAREHOUSE_VIEW,
-                FINANCE_VIEW_DEBT, FINANCE_MANAGE,
-                REPORT_SALES, REPORT_INVENTORY, REPORT_FINANCE
+        defaults.put(ERole.ROLE_ACCOUNTANT, EnumSet.of(
+                PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, FINANCE_VIEW_DEBT,
+                FINANCE_MANAGE, REPORT_SALES, REPORT_INVENTORY, REPORT_FINANCE
         ));
-
-        // ── VIEWER: chỉ xem — không thao tác dữ liệu ──
-        rolePermissions.put(ERole.ROLE_VIEWER, EnumSet.of(
-                PRODUCT_VIEW,
-                ORDER_VIEW,
-                WAREHOUSE_VIEW,
-                CUSTOMER_VIEW,
+        defaults.put(ERole.ROLE_VIEWER, EnumSet.of(
+                PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, CUSTOMER_VIEW,
                 REPORT_SALES, REPORT_INVENTORY
         ));
+        return defaults;
     }
 
-    /**
-     * Cập nhật danh sách quyền cho một vai trò, đảm bảo các quy tắc nghiệp vụ cốt lõi:
-     * 1. Giá vốn và biên lợi nhuận CHỈ lộ ra với vai trò Quản lý kinh doanh (ROLE_SALES_MANAGER).
-     * 2. Nhân viên kinh doanh (ROLE_SALES) KHÔNG được sửa điều chỉnh tồn kho (WAREHOUSE_ADJUST).
-     */
-    public synchronized void updateRolePermissions(ERole role, Set<Permission> newPermissions) {
-        if (role == null) {
-            throw new IllegalArgumentException("Vai trò không được để trống");
-        }
-        if (newPermissions == null) {
-            newPermissions = Collections.emptySet();
-        }
+    private void loadFromDatabase() {
+        synchronized (this) {
+            List<RolePermission> stored = rolePermissionRepository.findAll();
+            if (stored.isEmpty()) {
+                persistAll(rolePermissions);
+                return;
+            }
 
-        // Quy tắc: Giá vốn và biên lợi nhuận chỉ dành cho Quản lý kinh doanh
-        if (role != ERole.ROLE_SALES_MANAGER) {
-            if (newPermissions.contains(FINANCE_VIEW_COST_PRICE) || newPermissions.contains(FINANCE_VIEW_PROFIT_MARGIN)) {
-                throw new IllegalArgumentException("Giá vốn và biên lợi nhuận chỉ được phép cấp cho vai trò Quản lý kinh doanh");
+            Map<ERole, Set<Permission>> loaded = new EnumMap<>(ERole.class);
+            for (RolePermission item : stored) {
+                if (item.getRole() != null && item.getPermission() != null) {
+                    loaded.computeIfAbsent(item.getRole(), ignored -> EnumSet.noneOf(Permission.class))
+                            .add(item.getPermission());
+                }
+            }
+            Map<ERole, Set<Permission>> defaults = defaultPermissions();
+            for (ERole role : ERole.values()) {
+                loaded.putIfAbsent(role, EnumSet.copyOf(defaults.get(role)));
+            }
+            rolePermissions.clear();
+            rolePermissions.putAll(copyMatrix(loaded));
+            enforceAdminPermissions();
+            // Bổ sung vai trò còn thiếu và sửa dữ liệu ADMIN cũ nếu cần.
+            persistAll(rolePermissions);
+        }
+    }
+
+    private void persistAll(Map<ERole, Set<Permission>> matrix) {
+        if (rolePermissionRepository == null) return;
+        for (ERole role : ERole.values()) {
+            replaceStoredPermissions(role, matrix.getOrDefault(role, Set.of()));
+        }
+    }
+
+    private void replaceStoredPermissions(ERole role, Set<Permission> permissions) {
+        if (rolePermissionRepository == null) return;
+        rolePermissionRepository.deleteByRole(role);
+        List<RolePermission> rows = permissions.stream()
+                .map(permission -> RolePermission.builder().role(role).permission(permission).build())
+                .toList();
+        if (!rows.isEmpty()) rolePermissionRepository.saveAll(rows);
+    }
+
+    private void enforceAdminPermissions() {
+        rolePermissions.put(ERole.ROLE_ADMIN, EnumSet.allOf(Permission.class));
+    }
+
+    private static Map<ERole, Set<Permission>> copyMatrix(Map<ERole, Set<Permission>> source) {
+        Map<ERole, Set<Permission>> copy = new EnumMap<>(ERole.class);
+        source.forEach((role, permissions) -> copy.put(role,
+                permissions.isEmpty() ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(permissions)));
+        return copy;
+    }
+
+    /** Cập nhật quyền; ADMIN luôn được chuẩn hoá thành toàn bộ quyền. */
+    public synchronized void updateRolePermissions(ERole role, Set<Permission> newPermissions) {
+        if (role == null) throw new IllegalArgumentException("Vai trò không được để trống");
+        if (role == ERole.ROLE_ADMIN) {
+            rolePermissions.put(role, EnumSet.allOf(Permission.class));
+            replaceStoredPermissions(role, rolePermissions.get(role));
+            return;
+        }
+        if (newPermissions == null) newPermissions = Collections.emptySet();
+        if (newPermissions.contains(FINANCE_VIEW_COST_PRICE)
+                || newPermissions.contains(FINANCE_VIEW_PROFIT_MARGIN)) {
+            if (role != ERole.ROLE_SALES_MANAGER) {
+                throw new IllegalArgumentException(
+                        "Giá vốn và biên lợi nhuận chỉ được phép cấp cho vai trò Quản lý kinh doanh");
             }
         }
-
-        // Quy tắc: Nhân viên kinh doanh không được sửa tồn kho
         if (role == ERole.ROLE_SALES && newPermissions.contains(WAREHOUSE_ADJUST)) {
             throw new IllegalArgumentException("Nhân viên kinh doanh không được phép sửa tồn kho");
         }
-
-        EnumSet<Permission> perms = newPermissions.isEmpty()
-                ? EnumSet.noneOf(Permission.class)
-                : EnumSet.copyOf(newPermissions);
-        rolePermissions.put(role, perms);
+        Set<Permission> permissions = newPermissions.isEmpty()
+                ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(newPermissions);
+        rolePermissions.put(role, permissions);
+        replaceStoredPermissions(role, permissions);
     }
 
-    /**
-     * Khôi phục ma trận phân quyền về mặc định ban đầu.
-     */
     public synchronized void resetToDefault() {
         rolePermissions.clear();
-        initDefaultPermissions();
+        rolePermissions.putAll(defaultPermissions());
+        enforceAdminPermissions();
+        persistAll(rolePermissions);
     }
 
-    /**
-     * Lấy tất cả permissions của một role.
-     */
-    public Set<Permission> getPermissions(ERole role) {
-        return Collections.unmodifiableSet(
-                rolePermissions.getOrDefault(role, EnumSet.noneOf(Permission.class)));
+    public synchronized Set<Permission> getPermissions(ERole role) {
+        Set<Permission> permissions = rolePermissions.getOrDefault(role, EnumSet.noneOf(Permission.class));
+        return Collections.unmodifiableSet(permissions.isEmpty()
+                ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(permissions));
     }
 
-    /**
-     * Kiểm tra role có permission cụ thể không.
-     */
-    public boolean hasPermission(ERole role, Permission permission) {
-        return rolePermissions.getOrDefault(role, EnumSet.noneOf(Permission.class))
-                .contains(permission);
+    public synchronized boolean hasPermission(ERole role, Permission permission) {
+        return role == ERole.ROLE_ADMIN || rolePermissions.getOrDefault(role, Set.of()).contains(permission);
     }
 
-    /**
-     * Gom permissions từ nhiều roles (user có nhiều role).
-     */
     public Set<Permission> getPermissions(Collection<ERole> roles) {
         Set<Permission> combined = EnumSet.noneOf(Permission.class);
-        for (ERole role : roles) {
-            combined.addAll(getPermissions(role));
-        }
+        if (roles != null) for (ERole role : roles) combined.addAll(getPermissions(role));
         return Collections.unmodifiableSet(combined);
     }
 
-    /**
-     * Lấy toàn bộ ma trận phân quyền (dùng cho API admin xem/quản lý).
-     */
-    public Map<ERole, Set<Permission>> getAllPermissions() {
-        return Collections.unmodifiableMap(rolePermissions);
+    public synchronized Map<ERole, Set<Permission>> getAllPermissions() {
+        return Collections.unmodifiableMap(copyMatrix(rolePermissions));
     }
 }

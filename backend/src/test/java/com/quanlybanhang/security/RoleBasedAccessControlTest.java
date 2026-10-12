@@ -49,7 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * 4. Quản trị hệ thống (ROLE_ADMIN):
  *    - Quản trị được phân quyền (/api/admin/**) -> 200 OK
- *    - Không xem được giá vốn (/api/finance/cost-price) -> 403 Forbidden
+ *    - Xem được giá vốn (/api/finance/cost-price) -> 200 OK
  *
  * 5. Mặc định từ chối:
  *    - Chưa đăng nhập truy cập endpoint bảo vệ -> 401 Unauthorized
@@ -301,10 +301,10 @@ class RoleBasedAccessControlTest {
 
     @Test
     @WithMockUser(username = "admin_user", roles = {"ADMIN"})
-    @DisplayName("[ROLE_ADMIN] Quản trị viên KHÔNG mặc nhiên xem giá vốn (403 Forbidden)")
-    void adminCannotViewCostPrice() throws Exception {
+    @DisplayName("[ROLE_ADMIN] Quản trị viên được xem giá vốn (200 OK)")
+    void adminCanViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     // ═══════════════════════════════════════════════════════════════

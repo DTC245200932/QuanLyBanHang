@@ -41,14 +41,16 @@ class RolePermissionConfigTest {
     }
 
     @Test
-    @DisplayName("Giá vốn và biên lợi nhuận CHỈ lộ ra với vai trò Quản lý kinh doanh (ROLE_SALES_MANAGER)")
-    void salesManagerAloneCanSeeCostAndMargin() {
-        // Quản lý kinh doanh xem được giá vốn và biên lợi nhuận
+    @DisplayName("Quản lý kinh doanh và quản trị viên xem được giá vốn, biên lợi nhuận")
+    void salesManagerAndAdminCanSeeCostAndMargin() {
+        // Quản lý kinh doanh và quản trị viên xem được giá vốn, biên lợi nhuận
         assertThat(permissions.hasPermission(ERole.ROLE_SALES_MANAGER, Permission.FINANCE_VIEW_COST_PRICE)).isTrue();
         assertThat(permissions.hasPermission(ERole.ROLE_SALES_MANAGER, Permission.FINANCE_VIEW_PROFIT_MARGIN)).isTrue();
 
-        // Tất cả 6 vai trò còn lại KHÔNG xem được giá vốn
-        assertThat(permissions.hasPermission(ERole.ROLE_ADMIN, Permission.FINANCE_VIEW_COST_PRICE)).isFalse();
+        assertThat(permissions.hasPermission(ERole.ROLE_ADMIN, Permission.FINANCE_VIEW_COST_PRICE)).isTrue();
+        assertThat(permissions.hasPermission(ERole.ROLE_ADMIN, Permission.FINANCE_VIEW_PROFIT_MARGIN)).isTrue();
+
+        // Các vai trò còn lại không xem được giá vốn
         assertThat(permissions.hasPermission(ERole.ROLE_ACCOUNTANT, Permission.FINANCE_VIEW_COST_PRICE)).isFalse();
         assertThat(permissions.hasPermission(ERole.ROLE_WAREHOUSE_MANAGER, Permission.FINANCE_VIEW_COST_PRICE)).isFalse();
         assertThat(permissions.hasPermission(ERole.ROLE_SALES, Permission.FINANCE_VIEW_COST_PRICE)).isFalse();
@@ -56,7 +58,6 @@ class RolePermissionConfigTest {
         assertThat(permissions.hasPermission(ERole.ROLE_VIEWER, Permission.FINANCE_VIEW_COST_PRICE)).isFalse();
 
         // Tất cả 6 vai trò còn lại KHÔNG xem được biên lợi nhuận
-        assertThat(permissions.hasPermission(ERole.ROLE_ADMIN, Permission.FINANCE_VIEW_PROFIT_MARGIN)).isFalse();
         assertThat(permissions.hasPermission(ERole.ROLE_ACCOUNTANT, Permission.FINANCE_VIEW_PROFIT_MARGIN)).isFalse();
         assertThat(permissions.hasPermission(ERole.ROLE_WAREHOUSE_MANAGER, Permission.FINANCE_VIEW_PROFIT_MARGIN)).isFalse();
         assertThat(permissions.hasPermission(ERole.ROLE_SALES, Permission.FINANCE_VIEW_PROFIT_MARGIN)).isFalse();
@@ -123,16 +124,16 @@ class RolePermissionConfigTest {
     }
 
     @Test
-    @DisplayName("Cập nhật quyền từ chối gán giá vốn/biên lợi nhuận cho bất kỳ vai trò nào khác Quản lý kinh doanh")
+    @DisplayName("Cập nhật quyền từ chối gán giá vốn/biên lợi nhuận cho vai trò không phù hợp")
     void updatePermissionsRejectsCostPriceForNonSalesManager() {
         Set<Permission> illegalPerms = EnumSet.of(Permission.PRODUCT_VIEW, Permission.FINANCE_VIEW_COST_PRICE);
         assertThatThrownBy(() -> permissions.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, illegalPerms))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Giá vốn và biên lợi nhuận chỉ được phép cấp cho vai trò Quản lý kinh doanh");
 
-        assertThatThrownBy(() -> permissions.updateRolePermissions(ERole.ROLE_ADMIN, illegalPerms))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Giá vốn và biên lợi nhuận chỉ được phép cấp cho vai trò Quản lý kinh doanh");
+        permissions.updateRolePermissions(ERole.ROLE_ADMIN, EnumSet.noneOf(Permission.class));
+        assertThat(permissions.getPermissions(ERole.ROLE_ADMIN))
+                .containsExactlyInAnyOrder(Permission.values());
     }
 
     @Test

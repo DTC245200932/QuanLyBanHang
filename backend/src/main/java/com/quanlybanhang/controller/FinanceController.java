@@ -30,8 +30,8 @@ import java.util.Objects;
  *
  * Quy tắc nghiệp vụ cốt lõi:
  * - Giá vốn (/api/finance/cost-price) và biên lợi nhuận (/api/finance/profit-margin)
- *   CHỈ DUY NHẤT vai trò Quản lý kinh doanh (ROLE_SALES_MANAGER) được phép truy cập.
- * - Thủ kho, nhân viên KD, kế toán, admin đều bị từ chối ở tầng server.
+ *   dành cho Quản lý kinh doanh và Quản trị viên.
+ * - Thủ kho, nhân viên KD và kế toán bị từ chối ở tầng server.
  * - Công nợ (/api/finance/debt): dành cho ADMIN, SALES_MANAGER, ACCOUNTANT.
  */
 @RestController
@@ -44,10 +44,10 @@ public class FinanceController {
     private final ProductRepository productRepository;
 
     /**
-     * API xem giá vốn — CHỈ Quản lý kinh doanh.
+     * API xem giá vốn — Quản lý kinh doanh hoặc Quản trị viên.
      */
     @GetMapping("/cost-price")
-    @PreAuthorize("hasRole('SALES_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER')")
     public ApiResponse getCostPrice() {
         List<Map<String, Object>> costPrices = productRepository.findAll().stream()
                 .map(product -> {
@@ -63,10 +63,10 @@ public class FinanceController {
     }
 
     /**
-     * API xem biên lợi nhuận — CHỈ Quản lý kinh doanh.
+     * API xem biên lợi nhuận — Quản lý kinh doanh hoặc Quản trị viên.
      */
     @GetMapping("/profit-margin")
-    @PreAuthorize("hasRole('SALES_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER')")
     public ApiResponse getProfitMargin() {
         List<Map<String, Object>> margins = productRepository.findAll().stream()
                 .map(product -> {

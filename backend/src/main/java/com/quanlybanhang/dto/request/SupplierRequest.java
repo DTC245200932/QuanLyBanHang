@@ -8,7 +8,6 @@ import lombok.Data;
 
 @Data
 public class SupplierRequest {
-    @NotBlank(message = "Mã nhà cung cấp không được để trống")
     @Size(max = 30, message = "Mã nhà cung cấp không được vượt quá 30 ký tự")
     private String code;
 

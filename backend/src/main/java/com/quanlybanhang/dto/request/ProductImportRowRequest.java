@@ -76,6 +76,10 @@ public class ProductImportRowRequest {
      */
     private String description;
 
+    /** Lỗi đọc ô Excel; chỉ do backend điền, không nhận từ JSON của client. */
+    @JsonIgnore
+    private java.util.List<String> parseErrors;
+
     @JsonIgnore
     public String getEffectiveSku() {
         if (sku != null && !sku.isBlank()) {

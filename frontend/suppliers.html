@@ -161,10 +161,13 @@
           <div class="form-grid">
             <!-- Mã NCC -->
             <div class="form-field">
-              <label for="sup-code">Mã nhà cung cấp <span class="req">*</span></label>
-              <input id="sup-code" type="text" required maxlength="30"
-                placeholder="VD: NCC001" autocomplete="off" />
-              <small>Mã định danh duy nhất, không thể thay đổi sau khi tạo.</small>
+              <label for="sup-code">Mã nhà cung cấp</label>
+              <div class="sup-code-input">
+                <span aria-hidden="true">NCC</span>
+                <input id="sup-code" type="text" maxlength="27" aria-describedby="sup-code-help"
+                  placeholder="Để trống để tạo tự động" autocomplete="off" />
+              </div>
+              <small id="sup-code-help">Tiền tố NCC được thêm tự động. Mã có thể gồm chữ, số và ký tự; không được trùng.</small>
             </div>
 
             <!-- Mã số thuế -->

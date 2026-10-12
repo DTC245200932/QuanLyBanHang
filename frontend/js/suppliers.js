@@ -300,7 +300,7 @@
       $('supplier-modal-title').textContent = 'Sửa nhà cung cấp';
       $('supplier-modal-sub').textContent   = 'Cập nhật thông tin nhà cung cấp.';
       $('sup-id').value              = sup.id;
-      $('sup-code').value            = sup.code ?? '';
+      $('sup-code').value            = (sup.code ?? '').replace(/^NCC/i, '');
       $('sup-code').disabled         = true; // Mã không thay đổi sau khi tạo
       $('sup-name').value            = sup.name ?? '';
       $('sup-tax').value             = sup.taxCode ?? '';
@@ -330,6 +330,10 @@
     $('sup-code').disabled = false;
   }
 
+  $('sup-code').addEventListener('blur', () => {
+    $('sup-code').value = $('sup-code').value.trim().replace(/^NCC/i, '');
+  });
+
   $('supplier-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = $('sup-id').value;
@@ -350,10 +354,8 @@
       showFormError('supplier-form-message', 'Vui lòng nhập tên nhà cung cấp.');
       return;
     }
-    if (!id && !payload.code) {
-      showFormError('supplier-form-message', 'Vui lòng nhập mã nhà cung cấp.');
-      return;
-    }
+    // Khi sửa, giữ nguyên mã đầy đủ đang lưu (kể cả mã từ danh mục cũ).
+    if (id) payload.code = state.all.find(supplier => String(supplier.id) === id)?.code || null;
 
     const btn = $('btn-save-supplier');
     btn.disabled    = true;

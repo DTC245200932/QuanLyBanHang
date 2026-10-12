@@ -256,6 +256,8 @@ Hỗ trợ Quản lý kinh doanh đưa đến 5.000 mã hàng hiện có vào h�
      - Nhóm hàng không tìm thấy (tra cứu thông minh theo ID, Mã nhóm hoặc Tên nhóm hàng).
      - Trùng lặp mã SKU nội bộ trong cùng tệp tải lên (chỉ rõ dòng bị trùng).
      - Giá bán hoặc giá vốn âm.
+     - Ô giá không phải số, trạng thái không hợp lệ, giá có quá 2 chữ số thập phân hoặc quá 13 chữ số phần nguyên.
+     - Công thức giá trong `.xlsx` chưa có kết quả đã tính; không tự thay bằng 0.
      - Độ dài đơn vị tính, quy cách đóng gói, mô tả.
    - Thống kê tổng hợp: `totalRows`, `validRows`, `invalidRows`, `createCount`, `updateCount`.
 3. **Cập nhật thay vì tạo mới khi SKU đã tồn tại**:
@@ -265,12 +267,18 @@ Hỗ trợ Quản lý kinh doanh đưa đến 5.000 mã hàng hiện có vào h�
      - SKU mới: đánh dấu `action = "CREATE"` và `isUpdate = false`.
    - Khi thực hiện nhập (`POST /api/products/import`):
      - Dòng `UPDATE`: cập nhật tên, nhóm hàng, đơn vị, quy cách, giá bán, giá vốn (nếu có quyền), trạng thái, mô tả cho sản phẩm hiện có. Tự động ghi nhật ký kiểm toán (Audit Log) nếu giá bán thay đổi.
+       Ô giá bán, đơn vị cơ sở và trạng thái để trống giữ giá trị cũ; giá vốn để trống giữ nguyên giá vốn.
      - Dòng `CREATE`: tạo mới sản phẩm; doanh số và lịch sử giao dịch được tính từ đơn hàng/phiếu kho thực tế.
 4. **Bảo mật giá vốn**:
    - CHỈ Quản lý kinh doanh (`ROLE_SALES_MANAGER` hoặc quyền `FINANCE_VIEW_COST_PRICE`) mới được xem và sửa giá vốn khi nhập từ Excel.
    - Nếu người dùng khác (ví dụ Quản trị viên không có quyền giá vốn) tải tệp có cột giá vốn: trường giá vốn sẽ được bỏ qua, giữ nguyên giá vốn hiện tại của SKU để đảm bảo tuyệt đối bí mật kinh doanh.
 5. **Hiệu năng xử lý 5.000 mã hàng**:
    - Cơ chế truy vấn theo lô (`chunk` 500 SKU) và lưu hàng loạt (`saveAll`), tránh tình trạng N+1 query và không nghẽn cơ sở dữ liệu.
+   - Thống kê doanh số/lịch sử giao dịch trong kết quả nhập được tải theo lô, không truy vấn riêng cho mỗi SKU.
+6. **Tệp Excel và định dạng giá**:
+   - `.xlsx`/`.xls` tối đa 20 MB; giới hạn multipart toàn ứng dụng là 20 MB/tệp và 21 MB/yêu cầu. Ảnh đại diện vẫn được service giới hạn 2 MB.
+   - Nhận số trong ô Excel, chuỗi số như `12.50`, `12,50`, `18.000`, `1.234,56`, `1,234.56`, kèm hậu tố tiền tệ VND/đ/₫. Các nhóm ba chữ số được xem là phân cách hàng nghìn.
+   - Dòng đọc sai giá/trạng thái được đánh dấu lỗi và bỏ qua khi nhập; các dòng hợp lệ vẫn được lưu. Xem trước không ghi database.
 
 #### Cấu trúc Response kiểm tra / nhập (`ProductImportResponse`):
 ```json
@@ -391,6 +399,14 @@ Frontend đọc `data.content` và tải các trang trước khi tìm kiếm/l�
 `paymentTerms` (200), `address` (300), `notes` (1000) và `active` (boolean).
 Các trường liên hệ, địa chỉ và ghi chú được lưu trong bảng `suppliers` và trả lại trong response.
 Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ dùng `contactPerson`.
+
+**Mã nhà cung cấp (góp ý S2-09):**
+
+- `code` không bắt buộc khi tạo. Bỏ qua trường, gửi `null`, chuỗi rỗng hoặc chỉ khoảng trắng thì backend sinh mã `NCC` + 9 chữ số ngẫu nhiên và kiểm tra trùng trước khi lưu.
+- Mã nhập tay được trim, chuẩn hoá Unicode/hoa chữ và thêm tiền tố `NCC` nếu chưa có. Ví dụ `abc@1` → `NCCABC@1`; `ncc001` → `NCC001`. Chấp nhận chữ, số và ký tự; không nhận ký tự điều khiển.
+- Giới hạn 30 ký tự tính cả tiền tố. Form có tiền tố `NCC` riêng và phần nhập tối đa 27 ký tự.
+- Trùng không phân biệt hoa/thường trả `400 Bad Request`. Ràng buộc `UNIQUE` ở DB chặn cả yêu cầu đồng thời; lỗi trả thông báo mã bị trùng, không lộ SQL.
+- Khi cập nhật, mã để trống giữ mã hiện có. Nếu gửi mã mới qua API thì cũng phải duy nhất, loại trừ ID đang sửa. Form giữ mã đã cấp khi sửa thông tin NCC.
 
 
 ### Danh sách API Đơn hàng (`/api/orders`)

@@ -5,7 +5,7 @@
   min-width: 0;
 }
 
-.status-badge--locked, .dlr-action-btn--lock { color: var(--danger); background: var(--danger-soft); }
+.status-badge--locked { color: var(--danger); background: var(--danger-soft); }
 .dlr-lock-reason { display: block; font-size: .75rem; max-width: 24ch; margin-top: 5px; white-space: normal; overflow-wrap: anywhere; }
 .lock-warning-banner { padding: 12px 14px; margin-bottom: 16px; border: 1px solid var(--amber); border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--ink-700); line-height: 1.5; }
 .btn--danger { background: var(--danger); color: var(--white); }
@@ -492,8 +492,21 @@ button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
 }
 
 .dlr-action-btn:hover {
-  background: var(--line-light);
-  color: var(--ink-900);
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+}
+
+.dlr-action-btn:focus-visible {
+  outline: 2px solid var(--teal-deep);
+  outline-offset: 2px;
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+}
+
+.dlr-action-btn--lock:hover,
+.dlr-action-btn--lock:focus-visible {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .dlr-action-btn svg {
@@ -501,7 +514,8 @@ button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
   height: 15px;
 }
 
-.dlr-action-btn--warn:hover {
+.dlr-action-btn--warn:hover,
+.dlr-action-btn--warn:focus-visible {
   background: var(--amber-soft);
   color: var(--amber);
 }

@@ -398,11 +398,8 @@
     tab.addEventListener("click", () => switchTab(tab.dataset.tab));
   });
 
-  $("btn-quick-new-receipt").hidden = !canRecordVouchers;
   $("tab-create-receipt").hidden = !canRecordVouchers;
   $("btn-open-create-unit-modal").hidden = !canManageUnits;
-
-  $("btn-quick-new-receipt")?.addEventListener("click", () => switchTab("create-receipt"));
 
   // ══════════════════════════════════════════════════
   // 5. UPDATE METRICS STRIP

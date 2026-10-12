@@ -415,7 +415,7 @@
 .co-price-value,
 .co-discount-value {
   display: inline-block;
-  min-width: 86px;
+  /* min-width: 86px; */
   white-space: nowrap;
 }
 

@@ -327,14 +327,14 @@
     releaseAvatarImages(tbody);
 
     if (state.loading) {
-      tbody.innerHTML = '<tr><td colspan="6" class="audit-load-state"><span class="audit-loading-dot" aria-hidden="true"></span><strong>Đang tải nhật ký thao tác…</strong></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="audit-load-state"><span class="audit-loading-dot" aria-hidden="true"></span><strong>Đang tải nhật ký thao tác…</strong></td></tr>';
       setPaginationEmpty("Đang tải dữ liệu…");
       return;
     }
     if (state.loadError) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="6" class="audit-load-state audit-load-state--error">
+          <td colspan="7" class="audit-load-state audit-load-state--error">
             <strong>${escapeHtml(state.loadError)}</strong>
             <span>Kiểm tra kết nối và bấm thử tải lại.</span>
             <button type="button" class="audit-retry-button" data-action="retry">Thử tải lại</button>
@@ -348,7 +348,7 @@
     if (!total) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="6" class="audit-load-state">
+          <td colspan="7" class="audit-load-state">
             <strong>Không tìm thấy bản ghi nhật ký phù hợp</strong>
             <span>Thay đổi tiêu chí lọc hoặc bấm “Đặt lại”.</span>
           </td>
@@ -372,7 +372,8 @@
           <td><div class="actor-badge">${actorAvatarMarkup(log.actor)}<div class="actor-info"><span class="actor-name">${escapeHtml(log.actor.fullName)}</span><span class="actor-sub">${escapeHtml(log.actor.username)}${log.actor.role ? ` · ${escapeHtml(roleLabel(log.actor.role))}` : ""}</span></div></div></td>
           <td><span class="entity-tag ${escapeHtml(type.badgeClass)}">${escapeHtml(type.label)}</span><span class="action-title">${escapeHtml(log.action)}</span></td>
           <td class="target-cell"><span class="target-code">${escapeHtml(log.targetCode)}</span><span class="target-name">${escapeHtml(log.targetName)}</span></td>
-          <td class="diff-cell"><div class="diff-box"><span class="diff-val diff-val--before">${escapeHtml(log.valBefore)}</span><span class="diff-arrow">➔</span><span class="diff-val diff-val--after">${escapeHtml(log.valAfter)}</span></div><div style="margin-top:5px"><span class="diff-delta ${deltaClass}">${deltaPrefix}${escapeHtml(log.deltaText)}</span></div>${discrepancy}</td>
+          <td class="diff-cell diff-cell--before"><span class="diff-val diff-val--before">${escapeHtml(log.valBefore)}</span></td>
+          <td class="diff-cell diff-cell--after"><span class="diff-val diff-val--after">${escapeHtml(log.valAfter)}</span><div class="diff-meta"><span class="diff-delta ${deltaClass}">${deltaPrefix}${escapeHtml(log.deltaText)}</span></div>${discrepancy}</td>
           <td style="text-align:right"><button class="btn-view-detail" type="button" data-action="view" data-id="${escapeHtml(log.id)}">Xem</button></td>
         </tr>`;
     }).join("");

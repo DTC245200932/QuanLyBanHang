@@ -140,6 +140,30 @@
               </div>
             </section>
 
+            <!-- ─── Section 1b: Lịch sử mua hàng của đại lý ─── -->
+            <section class="co-card co-history-card" id="co-history-section" hidden aria-label="Lịch sử mua hàng">
+              <div class="co-history-header">
+                <div class="co-history-header__left">
+                  <svg viewBox="0 0 24 24" width="16" height="16" class="co-history-icon">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  <h2 class="co-card__title">Lịch sử mua hàng <span class="co-history-period">3 tháng gần nhất</span></h2>
+                </div>
+                <button class="btn btn--secondary co-history-add-all" id="btn-add-all-history" type="button" hidden>
+                  <svg viewBox="0 0 24 24" width="14" height="14">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Thêm tất cả vào đơn
+                </button>
+              </div>
+              <div id="co-history-body">
+                <div class="co-history-loading" id="co-history-loading">
+                  <span>Đang tải lịch sử…</span>
+                </div>
+              </div>
+            </section>
+
             <!-- ─── Section 2: Dòng hàng ─── -->
             <section class="co-card" aria-label="Dòng hàng">
               <div class="co-items-header">

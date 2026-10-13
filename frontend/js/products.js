@@ -1,9 +1,14 @@
 (() => {
   if (!Auth.requireLogin()) return;
 
-  const canManage = Auth.hasRole("ROLE_SALES_MANAGER");
-  const canImport = Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN");
-  const canViewPriceHistory = canManage || Auth.hasRole("ROLE_ADMIN");
+  const canManageRole = Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN");
+  const canCreate = canManageRole && Auth.hasPermission("PRODUCT_CREATE");
+  const canEdit = canManageRole && Auth.hasPermission("PRODUCT_EDIT");
+  const canDelete = canManageRole && Auth.hasPermission("PRODUCT_DELETE");
+  const canManage = canCreate || canEdit || canDelete;
+  const canImport = canManageRole && Auth.hasPermission("PRODUCT_CREATE");
+  const canViewCost = Auth.hasPermission("FINANCE_VIEW_COST_PRICE");
+  const canViewPriceHistory = canManageRole && Auth.hasPermission("PRODUCT_VIEW");
   const state = {
     products: [],
     categories: [],
@@ -25,11 +30,11 @@
   const costHelp = $("cost-help");
   const saveButton = $("save-product");
 
-  $("create-product").hidden = !canManage;
+  $("create-product").hidden = !canCreate;
   $("btn-import-excel").hidden = !canImport;
   $("catalog-access-note").hidden = canManage;
   document.querySelectorAll(".cost-column").forEach((column) => {
-    column.hidden = !canManage;
+    column.hidden = !canViewCost;
   });
 
   function showToast(message, type = "success") {
@@ -111,14 +116,14 @@
       const packaging = product.packingSpecification
         ? escapeHtml(product.packingSpecification)
         : '<span class="product-backend-note">Chưa có dữ liệu quy cách</span>';
-      const costCell = canManage
+      const costCell = canViewCost
         ? `<td class="cost-column"><span class="product-price">${product.costPrice == null ? "—" : formatCurrency(product.costPrice)}</span>${product.costPrice == null ? '<span class="product-detail">Chưa có giá vốn</span>' : ""}</td>`
         : "";
-      const actions = canManage
-        ? `<button class="product-edit" type="button" data-edit-product="${product.id}">Sửa</button>
-           <button class="product-edit" type="button" data-toggle-product="${product.id}">${active ? "Ngừng bán" : "Kích hoạt"}</button>
-           ${product.canDelete ? `<button class="product-edit" type="button" data-delete-product="${product.id}">Xoá</button>` : ""}`
-        : "";
+      const actions = [
+        canEdit ? `<button class="product-edit" type="button" data-edit-product="${product.id}">Sửa</button>
+          <button class="product-edit" type="button" data-toggle-product="${product.id}">${active ? "Ngừng bán" : "Kích hoạt"}</button>` : "",
+        canDelete && product.canDelete ? `<button class="product-edit" type="button" data-delete-product="${product.id}">Xoá</button>` : "",
+      ].join("");
       const historyAction = canViewPriceHistory
         ? `<button class="product-edit product-history-button" type="button" data-price-history="${escapeHtml(product.id)}" aria-label="${escapeHtml(`Xem lịch sử giá của ${product.code}`)}">Lịch sử giá</button>`
         : "";
@@ -190,7 +195,7 @@
   }
 
   function openProductModal(product = null) {
-    if (!canManage) return;
+    if (product ? !canEdit : !canCreate) return;
     state.editingProduct = product;
     form.reset();
     clearInvalidFields();
@@ -313,11 +318,13 @@
     const toggleButton = event.target.closest("[data-toggle-product]");
     const deleteButton = event.target.closest("[data-delete-product]");
     if (editButton) {
+      if (!canEdit) return;
       const product = state.products.find((item) => String(item.id) === editButton.dataset.editProduct);
       if (product) openProductModal(product);
       return;
     }
     if (toggleButton) {
+      if (!canEdit) return;
       const product = state.products.find((item) => String(item.id) === toggleButton.dataset.toggleProduct);
       if (!product) return;
       Auth.apiFetch(`/products/${product.id}/status?active=${product.active === false}`, { method: "PATCH" })
@@ -326,6 +333,7 @@
       return;
     }
     if (deleteButton) {
+      if (!canDelete) return;
       const product = state.products.find((item) => String(item.id) === deleteButton.dataset.deleteProduct);
       if (!product || !confirm(`Xoá sản phẩm ${product.code}?`)) return;
       Auth.apiFetch(`/products/${product.id}`, { method: "DELETE" })

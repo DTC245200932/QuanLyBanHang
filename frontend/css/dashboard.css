@@ -83,6 +83,222 @@ a { text-decoration: none; color: inherit; }
 @media (max-width: 480px) { .work-link { gap: 12px; padding: 18px 14px; } }
 
 /* ═══════════════════════════════════
+   DASHBOARD HOME
+   ═══════════════════════════════════ */
+
+.dashboard-home {
+  width: 100%;
+  max-width: 1480px;
+  padding: 32px clamp(24px, 3vw, 48px) 48px;
+}
+
+.dashboard-home .welcome-card {
+  position: relative;
+  isolation: isolate;
+  min-height: 174px;
+  overflow: hidden;
+  align-items: flex-end;
+  padding: 30px 38px;
+  border-radius: 18px;
+  background: linear-gradient(116deg, #071a2c 0%, #0d2d48 62%, #14536a 100%);
+  box-shadow: 0 16px 30px rgba(7, 26, 44, 0.16);
+}
+
+.dashboard-home .welcome-card::before,
+.dashboard-home .welcome-card::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+  z-index: -1;
+  border: 1px solid rgba(119, 235, 200, 0.18);
+  border-radius: 50%;
+}
+
+.dashboard-home .welcome-card::before {
+  width: 360px;
+  height: 360px;
+  right: 10%;
+  top: -250px;
+}
+
+.dashboard-home .welcome-card::after {
+  width: 240px;
+  height: 240px;
+  right: -36px;
+  bottom: -164px;
+  background: rgba(47, 184, 138, 0.12);
+}
+
+.dashboard-home .welcome-card__text {
+  position: relative;
+  max-width: 680px;
+  z-index: 1;
+}
+
+.welcome-card__eyebrow {
+  margin-bottom: 12px;
+  color: #8de0c4;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.dashboard-home .welcome-card h1 {
+  margin-bottom: 8px;
+  font-size: clamp(1.55rem, 2.1vw, 2rem);
+  letter-spacing: -0.025em;
+}
+
+.welcome-card__subtitle {
+  max-width: 54ch;
+  color: #b9cad4;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.welcome-card__meta {
+  display: grid;
+  justify-items: end;
+  gap: 15px;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.welcome-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(141, 224, 196, 0.22);
+  border-radius: 999px;
+  background: rgba(5, 21, 34, 0.25);
+  color: #c9f5e6;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.welcome-card__status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #74e2b5;
+  box-shadow: 0 0 0 4px rgba(116, 226, 181, 0.12);
+}
+
+.dashboard-home .welcome-card__time {
+  color: #a8bdc9;
+  font-size: 0.75rem;
+}
+
+.dashboard-home .dashboard-work {
+  margin-top: 34px;
+}
+
+.dashboard-work__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.dashboard-work__heading h2 {
+  margin-bottom: 5px;
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+.dashboard-work__heading p {
+  color: var(--ink-600);
+  font-size: 0.8125rem;
+}
+
+.dashboard-work__hint {
+  color: var(--teal-deep);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.dashboard-home .work-list {
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(6, 27, 47, 0.06);
+}
+
+.dashboard-home .work-link {
+  min-height: 82px;
+  padding: 18px 24px;
+  transition: background 0.15s, padding-left 0.15s;
+}
+
+.dashboard-home .work-link:hover {
+  padding-left: 28px;
+}
+
+.dashboard-home .work-link__icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  flex-basis: 40px;
+  border-radius: 12px;
+  background: var(--teal-soft);
+}
+
+.dashboard-home .work-link__text {
+  gap: 4px;
+}
+
+.dashboard-home .work-link__title {
+  font-size: 0.9375rem;
+}
+
+.dashboard-home .work-link__open {
+  padding: 7px 11px;
+  border: 1px solid rgba(33, 138, 105, 0.18);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dashboard-home .work-link:hover .work-link__open {
+  background: var(--teal);
+  color: var(--white);
+}
+
+@media (max-width: 640px) {
+  .dashboard-home {
+    padding: 20px 16px 32px;
+  }
+
+  .dashboard-home .welcome-card {
+    min-height: 0;
+    align-items: flex-start;
+    gap: 24px;
+    padding: 26px 24px;
+  }
+
+  .welcome-card__meta {
+    justify-items: start;
+  }
+
+  .dashboard-work__heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .dashboard-home .work-link {
+    min-height: 76px;
+    padding: 16px;
+  }
+
+  .dashboard-home .work-link:hover {
+    padding-left: 16px;
+  }
+}
+
+/* ═══════════════════════════════════
    SIDEBAR
    ═══════════════════════════════════ */
 

@@ -116,6 +116,20 @@
                   </div>
                 </div>
 
+                <!-- Kho phục vụ -->
+                <div class="form-field">
+                  <label for="co-warehouse">Kho phục vụ <span class="req">*</span></label>
+                  <div class="co-select-wrap">
+                    <svg viewBox="0 0 24 24" width="16" height="16" class="co-select-icon">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                      <polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                    <select id="co-warehouse" required>
+                      <option value="">— Chọn kho phục vụ —</option>
+                    </select>
+                  </div>
+                </div>
+
                 <!-- Ngày giao -->
                 <div class="form-field">
                   <label for="co-delivery-date">Ngày giao mong muốn <span class="req">*</span></label>
@@ -136,6 +150,7 @@
               <!-- Dealer info strip -->
               <div class="co-dealer-info" id="co-dealer-info" hidden>
                 <span class="co-dealer-info__group" id="co-dealer-group-badge"></span>
+                <span class="co-dealer-info__warehouse" id="co-dealer-warehouse-badge"></span>
                 <span class="co-dealer-info__address" id="co-dealer-address"></span>
               </div>
             </section>
@@ -171,6 +186,7 @@
                       <th class="col-sku">Mã SKU</th>
                       <th class="col-name">Tên sản phẩm</th>
                       <th class="col-unit">Đơn vị tính</th>
+                      <th class="col-stock">Tồn khả dụng</th>
                       <th class="col-qty">Số lượng</th>
                       <th class="col-price">Đơn giá</th>
                       <th class="col-discount">Chiết khấu</th>
@@ -180,7 +196,7 @@
                   </thead>
                   <tbody id="co-items-body">
                     <tr class="co-items-empty" id="co-items-empty">
-                      <td colspan="8">
+                      <td colspan="9">
                         <div class="co-empty-state">
                           <svg viewBox="0 0 24 24" width="40" height="40" stroke-width="1.2">
                             <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
@@ -275,6 +291,7 @@
     <script src="/js/auth.js"></script>
     <script src="/js/menu-config.js"></script>
 <script src="/js/app-navigation.js"></script>
+    <script src="/js/order-inventory.js"></script>
     <script src="/js/create-order.js"></script>
   </body>
 </html>

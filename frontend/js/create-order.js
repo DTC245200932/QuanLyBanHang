@@ -14,7 +14,7 @@
  *   GET  /products?search={q}&active=true      → tìm sản phẩm
  *   GET  /products/{id}/unit-conversions       → đơn vị tính quy đổi
  *   GET  /price-lists/effective                → bảng giá hiệu lực theo nhóm đại lý
- *   POST /volume-discounts/calculate           → tính chiết khấu theo sản lượng
+ *   POST /orders/calculate                     → áp giá và tính chiết khấu toàn bộ đơn
  *   POST /orders                               → tạo đơn hàng
  */
 (() => {
@@ -54,6 +54,7 @@
     productCache: {},   // productId → { unitConversions }
     priceList: null,    // bảng giá hiệu lực theo nhóm đại lý
     priceListError: '', // lý do không thể áp giá cho đại lý hiện tại
+    pricingSummary: null, // kết quả tính giá/chiết khấu mới nhất từ backend
     pendingDeliveryPointId: null,
     dealerLoading: false,
   };
@@ -165,6 +166,7 @@
     state.deliveryPoints = [];
     state.priceList = null;
     state.priceListError = '';
+    state.pricingSummary = null;
     setDeliveryStatus('');
     state.dealerLoading = true;
 
@@ -577,16 +579,17 @@
     return Number(item.floorPrice || 0) > 0 && Number(item.unitPrice || 0) < Number(item.floorPrice);
   }
 
-  function updateApprovalNotice() {
+  function updateApprovalNotice(pricingSummary = state.pricingSummary) {
     const statusEl = $('co-pricing-status');
     if (!statusEl || !state.items.length || !state.priceList) return;
     const approvalItems = state.items.filter(isBelowFloor);
-    statusEl.className = approvalItems.length
+    const requiresApproval = pricingSummary?.requiresApproval ?? approvalItems.length > 0;
+    statusEl.className = requiresApproval
       ? 'co-pricing-status co-pricing-status--warning'
       : 'co-pricing-status co-pricing-status--success';
-    statusEl.textContent = approvalItems.length
-      ? `Có ${approvalItems.length} dòng dưới giá sàn. Đơn sẽ chuyển sang trạng thái chờ duyệt.`
-      : `Đã áp dụng bảng giá ${state.priceList.code || ''} và chiết khấu theo sản lượng.`;
+    statusEl.textContent = requiresApproval
+      ? (pricingSummary?.approvalReason || `Có ${approvalItems.length} dòng dưới giá sàn. Đơn sẽ chuyển sang trạng thái chờ duyệt.`)
+      : `Đã áp dụng bảng giá ${pricingSummary?.priceListCode || state.priceList.code || ''} và chiết khấu theo sản lượng.`;
     statusEl.hidden = false;
   }
 
@@ -617,6 +620,7 @@
   async function refreshPricingPreview() {
     const requestId = ++pricingRequestId;
     if (!state.items.length) {
+      state.pricingSummary = null;
       const statusEl = $('co-pricing-status');
       if (state.selectedDealer && !state.priceList) {
         statusEl.hidden = false;
@@ -629,6 +633,7 @@
     }
 
     if (!state.priceList) {
+      state.pricingSummary = null;
       state.items.forEach((item) => { item.discountAmount = 0; });
       refreshItemAmounts();
       updateSummary();
@@ -648,15 +653,20 @@
       const payload = {
         dealerId: state.selectedDealer?.id ? Number(state.selectedDealer.id) : null,
         customerGroup: state.selectedDealer?.customerGroup || null,
+        priceListId: state.priceList?.id || null,
         orderDate: todayInputValue(),
-        items: state.items.map((item) => ({
-          productId: Number(item.productId),
-          unit: item.selectedUnit?.unitName || item.selectedUnit?.unit || 'cái',
-          quantity: item.qty,
-          price: item.unitPrice,
-        })),
+        items: state.items.map((item) => {
+          const line = {
+            productId: Number(item.productId),
+            unit: item.selectedUnit?.unitName || item.selectedUnit?.unit || 'cái',
+            quantity: item.qty,
+          };
+          // Chỉ gửi giá khi người dùng thật sự sửa thủ công.
+          if (item.manualPrice) line.price = item.unitPrice;
+          return line;
+        }),
       };
-      const res = await Auth.apiFetch('/volume-discounts/calculate', {
+      const res = await Auth.apiFetch('/orders/calculate', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -664,9 +674,14 @@
       if (!res.ok || !result.success) throw new Error(result.message || 'Không tính được chiết khấu');
       if (requestId !== pricingRequestId) return false;
 
+      state.pricingSummary = result.data || null;
       const calculatedItems = Array.isArray(result.data?.items) ? result.data.items : [];
       state.items.forEach((item, index) => {
-        item.discountAmount = Number(calculatedItems[index]?.discountAmount || 0);
+        const calculated = calculatedItems[index];
+        if (!calculated) return;
+        if (!item.manualPrice && calculated.price != null) item.unitPrice = Number(calculated.price);
+        if (calculated.floorPrice != null) item.floorPrice = Number(calculated.floorPrice);
+        item.discountAmount = Number(calculated.discountAmount || 0);
       });
       refreshItemAmounts();
       updateSummary();
@@ -674,6 +689,7 @@
       return true;
     } catch {
       if (requestId !== pricingRequestId) return false;
+      state.pricingSummary = null;
       state.items.forEach((item) => { item.discountAmount = 0; });
       refreshItemAmounts();
       updateSummary();
@@ -1011,6 +1027,7 @@
       $('co-delivery-point').disabled = true;
       state.deliveryPoints = [];
       state.priceList = null;
+      state.pricingSummary = null;
       setDeliveryStatus('');
       $('co-pricing-status').hidden = true;
       renderItems();
@@ -1040,7 +1057,7 @@
         productId: it.productId,
         unit: it.selectedUnit?.unitName || it.selectedUnit?.unit || 'cái',
         quantity: it.qty,
-        price: it.unitPrice,
+        ...(it.manualPrice ? { price: it.unitPrice } : {}),
       })),
     };
   }

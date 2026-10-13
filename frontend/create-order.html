@@ -138,6 +138,29 @@
                 <span class="co-dealer-info__group" id="co-dealer-group-badge"></span>
                 <span class="co-dealer-info__address" id="co-dealer-address"></span>
               </div>
+
+              <!-- Công nợ đại lý (S4-02) -->
+              <div class="co-debt-panel" id="co-debt-panel" hidden>
+                <div class="co-debt-panel__header">
+                  <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  <span>Công nợ đại lý</span>
+                </div>
+                <div class="co-debt-panel__body">
+                  <div class="co-debt-panel__stat">
+                    <span class="co-debt-panel__label">Công nợ hiện tại</span>
+                    <span class="co-debt-panel__value" id="co-debt-current">0 ₫</span>
+                  </div>
+                  <div class="co-debt-panel__stat">
+                    <span class="co-debt-panel__label">Hạn mức</span>
+                    <span class="co-debt-panel__value" id="co-debt-limit">0 ₫</span>
+                  </div>
+                  <div class="co-debt-panel__stat">
+                    <span class="co-debt-panel__label">Còn lại</span>
+                    <span class="co-debt-panel__value co-debt-panel__value--remaining" id="co-debt-remaining">0 ₫</span>
+                  </div>
+                </div>
+                <div class="co-debt-panel__alert" id="co-debt-alert" hidden></div>
+              </div>
             </section>
 
             <!-- ─── Section 2: Dòng hàng ─── -->

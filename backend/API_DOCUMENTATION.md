@@ -848,3 +848,40 @@ Mọi chức năng đều kiểm quyền ở tầng server. Endpoint chưa đư�
 
 Tài khoản khởi tạo cho môi trường phát triển là `admin`; mật khẩu lấy từ
 `APP_BOOTSTRAP_ADMIN_PASSWORD`. Hãy đổi ngay sau lần đăng nhập đầu tiên.
+
+### Seed demo tùy chọn
+
+Đặt các biến môi trường trước khi chạy backend:
+
+```powershell
+$env:APP_SEED_DEMO_USERS="true"
+$env:APP_DEMO_USER_PASSWORD="mat-khau-demo-ban-tu-chon"
+$env:APP_SEED_DEMO_DATA="true"
+```
+
+`APP_SEED_DEMO_USERS` và `APP_SEED_DEMO_DATA` mặc định `false`, có thể bật
+độc lập. Seed tài khoản bắt buộc có `APP_DEMO_USER_PASSWORD`; không có mật khẩu
+hardcode hoặc API seed công khai. Các tài khoản mới là `sales.manager`,
+`sales.demo`, `warehouse.manager`, `warehouse.demo`, `accountant.demo` và
+`viewer.demo`, mỗi tài khoản có vai trò tương ứng. Tài khoản cũ giữ nguyên
+mật khẩu, quyền và phạm vi đã lưu. Seed không gửi email.
+
+Hai chế độ đều cung cấp 2 kho và 3 địa bàn demo. Chế độ nghiệp vụ bổ sung
+3 nhà cung cấp, cây 12 nhóm hàng/3 cấp, 8 SKU và 8 đơn vị quy đổi, lịch sử giá
+khởi tạo, 5 đại lý (1 bị khóa), hạn mức công nợ, 6 điểm giao, 3 bảng giá/24 dòng,
+3 chính sách/5 bậc chiết khấu, 7 đơn và 8 phiếu kho. Có 4 đơn `RECORDED`,
+1 `PENDING_APPROVAL`, 1 `CANCELLED`, 1 `REJECTED`; chỉ đơn `RECORDED` góp doanh số.
+
+Đơn và phiếu được ghi qua `OrderService`/`WarehouseService`, nên hệ số quy đổi,
+giá sàn, chiết khấu, tồn kho và nhật ký tuân theo logic API. Phiếu nhập mới
+được gắn nhà cung cấp. Tồn kho được tính từ 4 phiếu nhập/4 phiếu xuất, không
+gán số dư hoặc doanh số giả vào trường legacy. Lịch sử phân công được tạo
+cho đại lý mới nếu có tài khoản `sales.demo` đang hoạt động với vai trò Sales.
+Bảng giá/chính sách demo có hiệu lực 2020–2099.
+
+Mã nghiệp vụ bắt đầu bằng `DEMO-`; các bản ghi đã có được giữ nguyên. Seed
+demo dùng cùng transaction và rollback khi lỗi. Chạy lại không nhân đôi
+đơn/phiếu, không đặt lại mật khẩu hoặc cộng tồn kho lần nữa. Tắt hai cờ không
+xóa dữ liệu. Số dư công nợ/định mức tồn kho chưa có nguồn dữ liệu vẫn trả theo
+hợp đồng API hiện tại. Xem [README](../README.md#5-tài-khoản-đăng-nhập) để chạy
+và xem danh sách tài khoản đầy đủ.

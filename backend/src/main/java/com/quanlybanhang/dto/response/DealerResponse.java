@@ -39,6 +39,13 @@ public class DealerResponse {
     private BigDecimal debtLimit;
     private Integer maxDebtDays;
 
+    /** Thông tin công nợ và quá hạn (S4-02). */
+    private BigDecimal currentDebt;
+    private BigDecimal remainingDebtLimit;
+    private Boolean hasOverdueDebt;
+    private Boolean isBlockedDueToDebt;
+    private Integer maxOverdueDays;
+
     /** Trạng thái khoá giao dịch (S3-07): true = Bị khoá, false = Đang mở */
     private Boolean locked;
     private String lockReason;

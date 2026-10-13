@@ -2,11 +2,14 @@ package com.quanlybanhang.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.quanlybanhang.dto.request.OrderDebtCheckRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
+import com.quanlybanhang.dto.response.OrderDebtCheckResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.model.OrderDraft;
 import com.quanlybanhang.repository.OrderDraftRepository;
+import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.security.Principal;
 import java.util.List;
 
@@ -28,6 +32,7 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final DealerDebtService dealerDebtService;
     private final OrderDraftRepository orderDraftRepository;
     private final ObjectMapper objectMapper;
 
@@ -136,5 +141,27 @@ public class OrderController {
                 ? "Từ chối đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
                 : "Từ chối đơn hàng thành công";
         return ApiResponse.success(message, response);
+    }
+
+    /**
+     * Kiểm tra sơ bộ hạn mức và điều kiện nợ khi đặt đơn cho đại lý (S4-02).
+     */
+    @PostMapping("/check-debt")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public ApiResponse checkOrderDebt(@Valid @RequestBody OrderDebtCheckRequest request) {
+        OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(request);
+        return ApiResponse.success("Kiểm tra công nợ thành công", response);
+    }
+
+    /**
+     * Tra cứu nhanh hạn mức công nợ theo query param (S4-02).
+     */
+    @GetMapping("/check-debt")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public ApiResponse checkOrderDebtByParam(
+            @RequestParam Long dealerId,
+            @RequestParam(required = false, defaultValue = "0") BigDecimal orderAmount) {
+        OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(dealerId, orderAmount);
+        return ApiResponse.success("Kiểm tra công nợ thành công", response);
     }
 }

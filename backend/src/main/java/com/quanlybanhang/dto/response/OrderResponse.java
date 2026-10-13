@@ -41,4 +41,10 @@ public class OrderResponse {
     private Boolean dealerLocked;
     private String dealerLockWarning;
     private String warning;
+
+    /** Cảnh báo và thông tin công nợ vượt hạn mức (S4-02). */
+    private Boolean exceedsDebtLimit;
+    private BigDecimal currentDebt;
+    private BigDecimal debtLimit;
+    private BigDecimal remainingDebtLimit;
 }

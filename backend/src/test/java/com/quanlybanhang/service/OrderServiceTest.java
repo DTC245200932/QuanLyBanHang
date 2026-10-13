@@ -2,7 +2,9 @@ package com.quanlybanhang.service;
 
 import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
+import com.quanlybanhang.dto.response.DealerDebtResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
+import com.quanlybanhang.exception.DealerDebtOverdueException;
 import com.quanlybanhang.model.Dealer;
 import com.quanlybanhang.model.Order;
 import com.quanlybanhang.model.Product;
@@ -56,6 +58,9 @@ class OrderServiceTest {
 
     @Mock
     private VolumeDiscountPolicyService volumeDiscountPolicyService;
+
+    @Mock
+    private DealerDebtService dealerDebtService;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -199,5 +204,141 @@ class OrderServiceTest {
         assertThat(response.getStatus()).isEqualTo("CANCELLED");
         assertThat(response.getDealerLocked()).isTrue();
         assertThat(response.getDealerLockWarning()).contains("Cảnh báo: Đại lý 'Đại lý Minh Phát'");
+    }
+
+    @Test
+    @DisplayName("S4-02: Đại lý có nợ quá hạn vượt quá số ngày cho phép -> Chặn tạo đơn hoàn toàn")
+    void createOrder_DealerHasOverdueDebt_ThrowsDealerDebtOverdueException() {
+        Dealer overdueDealer = Dealer.builder()
+                .id(2L)
+                .code("DL-OVERDUE")
+                .name("Đại lý Nợ Quá Hạn")
+                .debtLimit(new BigDecimal("100000000"))
+                .maxDebtDays(30)
+                .active(true)
+                .locked(false)
+                .build();
+
+        OrderRequest request = OrderRequest.builder()
+                .dealerId(2L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .quantity(BigDecimal.ONE)
+                        .price(new BigDecimal("19000"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(2L)).thenReturn(Optional.of(overdueDealer));
+        org.mockito.Mockito.doThrow(new DealerDebtOverdueException("DL-OVERDUE", "Đại lý Nợ Quá Hạn", 45, 30, new BigDecimal("15000000")))
+                .when(dealerDebtService).validateDealerCanCreateOrder(overdueDealer);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> orderService.createOrder(request, "sales01"))
+                .isInstanceOf(DealerDebtOverdueException.class)
+                .hasMessageContaining("Đại lý 'Đại lý Nợ Quá Hạn' (DL-OVERDUE) có khoản nợ quá hạn 45 ngày");
+
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("S4-02: Tổng đơn cộng công nợ hiện tại vượt hạn mức -> Đơn bị đánh dấu PENDING_APPROVAL")
+    void createOrder_ExceedsDebtLimit_SetsPendingApproval() {
+        Dealer dealerWithLimit = Dealer.builder()
+                .id(3L)
+                .code("DL-LIMIT")
+                .name("Đại lý Hạn Mức")
+                .debtLimit(new BigDecimal("10000000"))
+                .maxDebtDays(30)
+                .active(true)
+                .locked(false)
+                .build();
+
+        OrderRequest request = OrderRequest.builder()
+                .orderCode("DH-DEBT-01")
+                .dealerId(3L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("2"))
+                        .price(new BigDecimal("435000"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(3L)).thenReturn(Optional.of(dealerWithLimit));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        when(dealerDebtService.getDealerDebtInfo(dealerWithLimit)).thenReturn(
+                DealerDebtResponse.builder()
+                        .dealerId(3L)
+                        .dealerCode("DL-LIMIT")
+                        .dealerName("Đại lý Hạn Mức")
+                        .currentDebt(new BigDecimal("9500000"))
+                        .debtLimit(new BigDecimal("10000000"))
+                        .remainingLimit(new BigDecimal("500000"))
+                        .build());
+        when(dealerDebtService.checkProjectedDebtExceedsLimit(eq(dealerWithLimit), any(BigDecimal.class), eq(new BigDecimal("9500000"))))
+                .thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponse response = orderService.createOrder(request, "sales01");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("PENDING_APPROVAL");
+        assertThat(response.getRequiresApproval()).isTrue();
+        assertThat(response.getApprovalReason()).contains("Vượt hạn mức công nợ");
+        assertThat(response.getExceedsDebtLimit()).isTrue();
+        assertThat(response.getCurrentDebt()).isEqualByComparingTo(new BigDecimal("9500000"));
+        assertThat(response.getDebtLimit()).isEqualByComparingTo(new BigDecimal("10000000"));
+    }
+
+    @Test
+    @DisplayName("S4-02: Tổng đơn cộng công nợ hiện tại trong hạn mức -> Đơn ghi sổ RECORDED bình thường")
+    void createOrder_WithinDebtLimit_SetsRecorded() {
+        Dealer dealerWithLimit = Dealer.builder()
+                .id(4L)
+                .code("DL-OK")
+                .name("Đại lý Chuẩn")
+                .debtLimit(new BigDecimal("50000000"))
+                .maxDebtDays(30)
+                .active(true)
+                .locked(false)
+                .build();
+
+        OrderRequest request = OrderRequest.builder()
+                .orderCode("DH-DEBT-02")
+                .dealerId(4L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("2"))
+                        .price(new BigDecimal("435000"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(4L)).thenReturn(Optional.of(dealerWithLimit));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        when(dealerDebtService.getDealerDebtInfo(dealerWithLimit)).thenReturn(
+                DealerDebtResponse.builder()
+                        .dealerId(4L)
+                        .dealerCode("DL-OK")
+                        .dealerName("Đại lý Chuẩn")
+                        .currentDebt(new BigDecimal("5000000"))
+                        .debtLimit(new BigDecimal("50000000"))
+                        .remainingLimit(new BigDecimal("45000000"))
+                        .build());
+        when(dealerDebtService.checkProjectedDebtExceedsLimit(eq(dealerWithLimit), any(BigDecimal.class), eq(new BigDecimal("5000000"))))
+                .thenReturn(false);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponse response = orderService.createOrder(request, "sales01");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("RECORDED");
+        assertThat(response.getRequiresApproval()).isFalse();
+        assertThat(response.getExceedsDebtLimit()).isFalse();
+        assertThat(response.getCurrentDebt()).isEqualByComparingTo(new BigDecimal("5000000"));
+        assertThat(response.getDebtLimit()).isEqualByComparingTo(new BigDecimal("50000000"));
     }
 }

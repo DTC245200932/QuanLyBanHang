@@ -6,6 +6,7 @@ import com.quanlybanhang.dto.request.DealerRequest;
 import com.quanlybanhang.dto.request.LockDealerRequest;
 import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.CustomerGroup;
+import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.DealerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ import java.util.List;
  * - Phân công phụ trách, bàn giao hàng loạt: SALES_MANAGER, ADMIN
  * - Tra cứu lịch sử bàn giao: SALES_MANAGER, ADMIN, ACCOUNTANT, VIEWER
  * - Khoá/mở giao dịch: ACCOUNTANT, SALES_MANAGER, ADMIN
+ * - Xem công nợ/hạn mức đại lý (S4-02): SALES, SALES_MANAGER, ADMIN, ACCOUNTANT, WAREHOUSE_MANAGER, WAREHOUSE_STAFF
  */
 @RestController
 @RequestMapping("/api/dealers")
@@ -38,6 +40,7 @@ import java.util.List;
 public class DealerController {
 
     private final DealerService dealerService;
+    private final DealerDebtService dealerDebtService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
@@ -252,5 +255,16 @@ public class DealerController {
     public ApiResponse getDealerAssignmentHistory(@PathVariable Long id) {
         List<DealerAssignmentHistoryResponse> history = dealerService.getDealerAssignmentHistory(id);
         return ApiResponse.success("Lấy lịch sử phân công của đại lý thành công", history);
+    }
+
+    /**
+     * Tra cứu công nợ hiện tại, hạn mức và nợ quá hạn của đại lý (S4-02).
+     * Phục vụ hiển thị trên màn hình tạo đơn và kiểm soát rủi ro bán hàng.
+     */
+    @GetMapping({"/{id}/debt", "/{id}/credit-info"})
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'VIEWER')")
+    public ApiResponse getDealerDebtInfo(@PathVariable Long id) {
+        DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(id);
+        return ApiResponse.success("Lấy thông tin công nợ đại lý thành công", response);
     }
 }

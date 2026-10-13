@@ -2,6 +2,7 @@ package com.quanlybanhang.service;
 
 import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
+import com.quanlybanhang.dto.response.DealerDebtResponse;
 import com.quanlybanhang.dto.response.OrderItemResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.exception.DealerLockedException;
@@ -34,6 +35,7 @@ public class OrderServiceImpl implements OrderService {
     private final UnitConversionService unitConversionService;
     private final AuditLogService auditLogService;
     private final VolumeDiscountPolicyService volumeDiscountPolicyService;
+    private final DealerDebtService dealerDebtService;
 
     private record ItemPreData(
             Product product,
@@ -76,6 +78,10 @@ public class OrderServiceImpl implements OrderService {
             if (Boolean.FALSE.equals(dealer.getActive())) {
                 throw new IllegalArgumentException(String.format("Đại lý '%s' (%s) đã ngừng giao dịch, không thể tạo đơn hàng mới.",
                         dealer.getName(), dealer.getCode()));
+            }
+            // S4-02: Đại lý có khoản quá hạn quá số ngày cho phép thì chặn tạo đơn hoàn toàn
+            if (dealerDebtService != null) {
+                dealerDebtService.validateDealerCanCreateOrder(dealer);
             }
             if (customerGroup == null) {
                 customerGroup = dealer.getCustomerGroup();
@@ -279,9 +285,33 @@ public class OrderServiceImpl implements OrderService {
 
         order.setSubtotalAmount(grandSubtotal);
         order.setDiscountAmount(grandDiscount);
-        order.setTotalAmount(grandSubtotal.subtract(grandDiscount).max(BigDecimal.ZERO));
+        BigDecimal orderTotal = grandSubtotal.subtract(grandDiscount).max(BigDecimal.ZERO);
+        order.setTotalAmount(orderTotal);
 
-        // 5. Nếu có sản phẩm bán dưới giá sàn -> đơn hàng chuyển sang trạng thái CHỜ DUYỆT (PENDING_APPROVAL)
+        // 5. Kiểm tra hạn mức công nợ của đại lý (S4-02):
+        // Tổng đơn cộng công nợ hiện tại vượt hạn mức thì đơn bị đánh dấu cần duyệt
+        if (dealer != null && dealerDebtService != null) {
+            DealerDebtResponse debtInfo = dealerDebtService.getDealerDebtInfo(dealer);
+            BigDecimal currentDebt = debtInfo != null && debtInfo.getCurrentDebt() != null
+                    ? debtInfo.getCurrentDebt()
+                    : BigDecimal.ZERO;
+            BigDecimal debtLimit = debtInfo != null && debtInfo.getDebtLimit() != null
+                    ? debtInfo.getDebtLimit()
+                    : (dealer.getDebtLimit() != null ? dealer.getDebtLimit() : BigDecimal.ZERO);
+
+            if (dealerDebtService.checkProjectedDebtExceedsLimit(dealer, orderTotal, currentDebt)) {
+                orderRequiresApproval = true;
+                BigDecimal projectedDebt = currentDebt.add(orderTotal);
+                belowFloorReasons.add(String.format(
+                        "Vượt hạn mức công nợ: Công nợ hiện tại (%s) + Đơn mới (%s) = %s vượt hạn mức (%s)",
+                        formatMoney(currentDebt),
+                        formatMoney(orderTotal),
+                        formatMoney(projectedDebt),
+                        formatMoney(debtLimit)));
+            }
+        }
+
+        // Nếu có sản phẩm bán dưới giá sàn hoặc đơn vượt hạn mức công nợ -> chuyển sang trạng thái CHỜ DUYỆT (PENDING_APPROVAL)
         if (orderRequiresApproval) {
             order.setStatus("PENDING_APPROVAL");
             order.setRequiresApproval(true);
@@ -292,8 +322,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
+        String auditSuffix = orderRequiresApproval ? " (Chờ duyệt: " + order.getApprovalReason() + ")" : "";
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "CREATE", null,
-                "Tổng tiền: " + saved.getTotalAmount().toPlainString() + (orderRequiresApproval ? " (Chờ duyệt do dưới giá sàn)" : ""),
+                "Tổng tiền: " + saved.getTotalAmount().toPlainString() + auditSuffix,
                 username != null ? username : "system");
 
         return mapToResponse(saved);
@@ -399,6 +430,28 @@ public class OrderServiceImpl implements OrderService {
                         dealer.getName(), dealer.getCode(), dealer.getLockReason() != null ? dealer.getLockReason() : "Không nêu rõ")
                 : null;
 
+        boolean exceedsDebt = order.getApprovalReason() != null && order.getApprovalReason().contains("Vượt hạn mức công nợ");
+        BigDecimal currentDebt = null;
+        BigDecimal debtLimit = null;
+        BigDecimal remainingLimit = null;
+
+        if (dealer != null) {
+            debtLimit = dealer.getDebtLimit();
+            if (dealerDebtService != null) {
+                try {
+                    DealerDebtResponse dInfo = dealerDebtService.getDealerDebtInfo(dealer);
+                    currentDebt = dInfo.getCurrentDebt();
+                    remainingLimit = dInfo.getRemainingLimit();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        String warning = dealerLockWarning;
+        if (warning == null && Boolean.TRUE.equals(order.getRequiresApproval())) {
+            warning = order.getApprovalReason();
+        }
+
         return OrderResponse.builder()
                 .id(order.getId())
                 .orderCode(order.getOrderCode())
@@ -424,8 +477,17 @@ public class OrderServiceImpl implements OrderService {
                 .items(items)
                 .dealerLocked(dealerLocked)
                 .dealerLockWarning(dealerLockWarning)
-                .warning(dealerLockWarning)
+                .warning(warning)
+                .exceedsDebtLimit(exceedsDebt)
+                .currentDebt(currentDebt)
+                .debtLimit(debtLimit)
+                .remainingDebtLimit(remainingLimit)
                 .build();
+    }
+
+    private String formatMoney(BigDecimal amount) {
+        if (amount == null) return "0 đ";
+        return new java.text.DecimalFormat("#,### đ").format(amount);
     }
 
     private OrderItemResponse mapToItemResponse(OrderItem item) {

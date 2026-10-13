@@ -824,6 +824,88 @@ và chưa bị khoá. Với người dùng chỉ có vai trò `SALES`, danh sác
 `GET /api/dealers/{id}/in-progress-orders` đều giới hạn theo nhân viên phụ trách;
 xem đơn đang dở của đại lý do người khác phụ trách trả HTTP 403.
 
+### Kiểm soát hạn mức công nợ và chặn nợ quá hạn (S4-02 - SCRUM-82)
+
+Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) được hiển thị công nợ, hạn mức và chặn ngay khi đơn vượt hạn mức công nợ hoặc đại lý có khoản nợ quá hạn, giúp ngăn chặn rủi ro tài chính và tránh tình trạng chốt đơn rồi mới bị Kế toán bắt huỷ.
+
+Quy tắc nghiệp vụ:
+1. **Hiển thị thông tin công nợ**:
+   - Khi chọn đại lý trên màn hình tạo đơn hoặc xem chi tiết đại lý, hệ thống hiển thị:
+     + Công nợ hiện tại (`currentDebt`): Tổng số tiền các đơn hàng đã ghi sổ (`RECORDED`).
+     + Hạn mức công nợ (`debtLimit`): Hạn mức được cấp theo hồ sơ đại lý.
+     + Hạn mức còn lại (`remainingLimit`): `debtLimit - currentDebt` (tối thiểu 0).
+     + Số ngày được phép nợ (`maxDebtDays`).
+2. **Cảnh báo vượt hạn mức (Soft Block - Chờ duyệt)**:
+   - Khi tổng tiền đơn hàng mới cộng công nợ hiện tại vượt quá hạn mức (`currentDebt + newOrderTotal > debtLimit`, với `debtLimit > 0`):
+     + Đơn hàng vẫn được tạo và lưu vào hệ thống nhưng được chuyển sang trạng thái chờ duyệt: `status = "PENDING_APPROVAL"`.
+     + Đánh dấu cờ `requiresApproval = true` và ghi rõ lý do trong `approvalReason` (ví dụ: *"Vượt hạn mức công nợ: Công nợ hiện tại (15,000,000 đ) + Đơn mới (40,000,000 đ) = 55,000,000 đ vượt hạn mức (50,000,000 đ)"*).
+     + Quản lý kinh doanh (`ROLE_SALES_MANAGER`) hoặc Quản trị viên (`ROLE_ADMIN`) có thẩm quyền phê duyệt (`PUT /api/orders/{id}/approve`) hoặc từ chối (`PUT /api/orders/{id}/reject`).
+3. **Chặn tạo đơn hoàn toàn khi có nợ quá hạn (Hard Block)**:
+   - Nếu đại lý có bất kỳ khoản nợ nào (đơn hàng `RECORDED`) đã quá hạn quá số ngày cho phép (`maxDebtDays` > 0 và `daysBetween(recordedAt, now) > maxDebtDays`):
+     + Hệ thống **chặn tạo đơn hoàn toàn**, KHÔNG lưu đơn vào cơ sở dữ liệu.
+     + Trả về mã lỗi **HTTP 400 Bad Request** với chi tiết thông tin: mã đại lý, tên đại lý, số ngày quá hạn (`overdueDays`), giới hạn cho phép (`maxDebtDays`), và tổng số tiền nợ bị quá hạn (`overdueAmount`).
+     + Ngoại lệ: `DealerDebtOverdueException`.
+4. **Bảo mật phân quyền cấp dòng (Row-Level Security)**:
+   - Nhân viên kinh doanh (`ROLE_SALES`) chỉ được tra cứu thông tin công nợ của các đại lý do chính mình phụ trách (`assignedUser`). Truy cập công nợ của đại lý khác bị trả về **HTTP 403 Forbidden**.
+   - Các vai trò Quản lý/Kế toán/Admin (`ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER`) có quyền tra cứu thông tin công nợ của mọi đại lý.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/dealers/{id}/debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_VIEWER` | Lấy chi tiết công nợ, hạn mức, số ngày quá hạn và trạng thái cho phép đặt hàng của đại lý (áp dụng Row-Level Security cho `ROLE_SALES`). Alias: `GET /dealers/{id}/credit-info` |
+| POST | `/orders/check-debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Kiểm tra sơ bộ công nợ và dự phóng trước khi đặt đơn (pre-check trên giao diện tạo đơn) |
+| GET | `/orders/check-debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tra cứu nhanh hạn mức công nợ theo query param `dealerId` và `orderAmount` |
+
+#### Ví dụ Request kiểm tra công nợ (`POST /api/orders/check-debt`):
+```json
+{
+  "dealerId": 1,
+  "orderAmount": 40000000
+}
+```
+
+#### Ví dụ Response khi vượt hạn mức công nợ (cần duyệt):
+```json
+{
+  "success": true,
+  "message": "Kiểm tra công nợ thành công",
+  "data": {
+    "dealerId": 1,
+    "dealerCode": "DL001",
+    "dealerName": "Đại lý Cấp 1 Minh Phát",
+    "currentDebt": 15000000,
+    "debtLimit": 50000000,
+    "remainingLimit": 35000000,
+    "newOrderTotal": 40000000,
+    "projectedDebt": 55000000,
+    "exceedsLimit": true,
+    "requiresApproval": true,
+    "approvalReason": "Đơn hàng mới làm tổng công nợ vượt hạn mức (55,000,000 đ > 50,000,000 đ). Cần Quản lý kinh doanh phê duyệt.",
+    "hasOverdueDebt": false,
+    "maxOverdueDays": 0,
+    "overdueAmount": 0,
+    "isBlocked": false,
+    "blockReason": null,
+    "warningMessage": "Cảnh báo: Đơn hàng mới (40,000,000 đ) cộng công nợ hiện tại (15,000,000 đ) sẽ vượt hạn mức công nợ (50,000,000 đ). Đơn hàng sẽ cần Quản lý duyệt trước khi ghi sổ."
+  }
+}
+```
+
+#### Ví dụ Response lỗi khi bị chặn do nợ quá hạn (HTTP 400 Bad Request):
+```json
+{
+  "success": false,
+  "message": "Đại lý 'Đại lý Cấp 1 Minh Phát' (DL001) có khoản nợ quá hạn 45 ngày (vượt quá giới hạn cho phép 30 ngày) với tổng tiền 15,000,000 đ, bị chặn tạo đơn hoàn toàn.",
+  "data": {
+    "dealerCode": "DL001",
+    "dealerName": "Đại lý Cấp 1 Minh Phát",
+    "overdueDays": 45,
+    "maxDebtDays": 30,
+    "overdueAmount": 15000000,
+    "errorType": "DEALER_DEBT_OVERDUE"
+  }
+}
+```
+
 ## Bảy vai trò
 
 - `ROLE_ADMIN`: quản trị tài khoản và hệ thống; không mặc nhiên xem giá vốn.

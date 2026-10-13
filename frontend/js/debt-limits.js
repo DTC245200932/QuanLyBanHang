@@ -9,7 +9,7 @@
   }
 
   // Quản trị viên có toàn quyền theo ma trận quyền và backend FinanceController.
-  const canDeclare = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_ACCOUNTANT", "ROLE_SALES_MANAGER");
+  const canDeclare = Auth.hasPermission("FINANCE_MANAGE");
   const $ = id => document.getElementById(id);
   const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",

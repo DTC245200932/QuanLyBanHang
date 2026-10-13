@@ -19,6 +19,10 @@
     location.href = '/error?status=403';
     return;
   }
+  if (!Auth.hasPermission('CUSTOMER_VIEW')) {
+    location.href = '/error?status=403';
+    return;
+  }
   const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT');
   const CAN_ASSIGN = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
   const CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyRole(

@@ -26,6 +26,10 @@
     location.href = '/error?status=403';
     return;
   }
+  if (!Auth.hasPermission('ORDER_CREATE')) {
+    location.href = '/error?status=403';
+    return;
+  }
 
   /* ── DOM helpers ────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);

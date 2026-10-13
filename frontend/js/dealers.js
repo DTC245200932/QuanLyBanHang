@@ -1181,10 +1181,38 @@
   });
 
   let orderDealerId = null;
+  let activeCancelOrder = null;
+
+  const ORDER_LIFECYCLE_CONFIG = {
+    DRAFT: { label: 'Nháp', cls: 'order-status-badge--draft', canCancel: true },
+    PENDING_APPROVAL: { label: 'Chờ duyệt', cls: 'order-status-badge--pending', canCancel: true },
+    RECORDED: { label: 'Đã duyệt', cls: 'order-status-badge--approved', canCancel: true },
+    APPROVED: { label: 'Đã duyệt', cls: 'order-status-badge--approved', canCancel: true },
+    PROCESSING: { label: 'Đang soạn hàng', cls: 'order-status-badge--picking', canCancel: true },
+    PICKING: { label: 'Đang soạn hàng', cls: 'order-status-badge--picking', canCancel: true },
+    EXPORTED: { label: 'Đã xuất', cls: 'order-status-badge--exported', canCancel: false, exported: true },
+    SHIPPED: { label: 'Đã xuất', cls: 'order-status-badge--exported', canCancel: false, exported: true },
+    DELIVERED: { label: 'Đã giao', cls: 'order-status-badge--delivered', canCancel: false, exported: true },
+    CLOSED: { label: 'Đóng', cls: 'order-status-badge--closed', canCancel: false, exported: true },
+    COMPLETED: { label: 'Đóng', cls: 'order-status-badge--closed', canCancel: false, exported: true },
+    CANCELLED: { label: 'Đã huỷ', cls: 'order-status-badge--cancelled', canCancel: false },
+    REJECTED: { label: 'Từ chối duyệt', cls: 'order-status-badge--rejected', canCancel: false },
+  };
+
+  function formatOrderLifecycleBadge(status) {
+    const norm = String(status || '').toUpperCase();
+    const config = ORDER_LIFECYCLE_CONFIG[norm] || {
+      label: status || 'Chưa xác định',
+      cls: 'order-status-badge--draft',
+      canCancel: false,
+    };
+    return `<span class="order-status-badge ${config.cls}"><span class="order-status-badge__dot"></span>${escHtml(config.label)}</span>`;
+  }
+
   async function openInProgressOrders(id) {
     orderDealerId = id;
     const dealer = state.all.find(row => row.id === id);
-    $('dealer-orders-title').textContent = `Đơn đang dở · ${dealer?.name || ''}`;
+    $('dealer-orders-title').textContent = `Vòng đời đơn hàng · ${dealer?.name || ''}`;
     if ($('dealer-orders-modal').hidden) openTransactionModal('dealer-orders-modal');
     $('dealer-orders-message').hidden = true;
     $('dealer-orders-warning').hidden = !dealer?.locked;
@@ -1200,18 +1228,65 @@
         $('dealer-orders-warning').textContent = warning;
       }
       const canApprove = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
-      $('dealer-orders-body').innerHTML = orders.length ? orders.map(order => `<tr>
-        <td>${escHtml(order.orderCode)}</td><td>${escHtml(order.status === 'PENDING_APPROVAL' ? 'Chờ duyệt' : order.status === 'RECORDED' ? 'Đã ghi sổ' : order.status)}</td>
-        <td>${escHtml(Number(order.totalAmount || 0).toLocaleString('vi-VN'))} ₫</td>
-        <td>${canApprove && order.status === 'PENDING_APPROVAL' ? `<button class="btn btn--secondary" data-order-action="approve" data-order-id="${order.id}">Duyệt</button> <button class="btn btn--secondary" data-order-action="reject" data-order-id="${order.id}">Từ chối</button>` : '—'}</td>
-        </tr>`).join('') : '<tr><td colspan="4">Không có đơn đang dở.</td></tr>';
+      const canCancelRole = Auth.hasAnyRole('ROLE_SALES', 'ROLE_SALES_MANAGER', 'ROLE_ADMIN');
+
+      $('dealer-orders-body').innerHTML = orders.length ? orders.map(order => {
+        const normStatus = String(order.status || '').toUpperCase();
+        const config = ORDER_LIFECYCLE_CONFIG[normStatus] || { canCancel: false, exported: false };
+
+        const actionButtons = [];
+        if (canApprove && normStatus === 'PENDING_APPROVAL') {
+          actionButtons.push(`<button class="btn btn--secondary" data-order-action="approve" data-order-id="${order.id}">Duyệt</button>`);
+          actionButtons.push(`<button class="btn btn--secondary" data-order-action="reject" data-order-id="${order.id}">Từ chối</button>`);
+        }
+
+        if (canCancelRole) {
+          if (config.canCancel) {
+            actionButtons.push(`<button class="btn btn--danger" data-order-cancel="${order.id}" data-order-code="${escHtml(order.orderCode)}">Huỷ đơn</button>`);
+          } else if (config.exported) {
+            actionButtons.push(`<span class="order-return-guide" title="Đơn đã xuất kho không thể huỷ trực tiếp, phải thực hiện thủ tục nhập trả hàng">Đã xuất kho (đi đường trả hàng)</span>`);
+          }
+        }
+
+        return `<tr>
+          <td><strong>${escHtml(order.orderCode)}</strong></td>
+          <td>${formatOrderLifecycleBadge(order.status)}</td>
+          <td>${escHtml(Number(order.totalAmount || 0).toLocaleString('vi-VN'))} ₫</td>
+          <td><div class="order-actions-wrap">${actionButtons.length ? actionButtons.join(' ') : '—'}</div></td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="4">Không có đơn đang dở.</td></tr>';
     } catch (error) {
       if (orderDealerId !== id) return;
       $('dealer-orders-body').innerHTML = '<tr><td colspan="4">Không tải được đơn hàng.</td></tr>';
       showFormError('dealer-orders-message', error.message);
     }
   }
+
+  function openCancelOrderModal(orderId, orderCode) {
+    activeCancelOrder = { id: orderId, code: orderCode };
+    $('cancel-order-id').value = orderId;
+    $('cancel-order-sub').textContent = `Mã đơn: ${orderCode}`;
+    $('cancel-order-reason').value = '';
+    $('cancel-order-message').hidden = true;
+    $('btn-submit-cancel-order').disabled = false;
+    $('cancel-order-modal').hidden = false;
+    setTimeout(() => $('cancel-order-reason').focus(), 50);
+  }
+
+  function closeCancelOrderModal() {
+    $('cancel-order-modal').hidden = true;
+    activeCancelOrder = null;
+  }
+
   $('dealer-orders-body').addEventListener('click', async event => {
+    const cancelBtn = event.target.closest('[data-order-cancel]');
+    if (cancelBtn) {
+      const orderId = Number(cancelBtn.dataset.orderCancel);
+      const orderCode = cancelBtn.dataset.orderCode;
+      openCancelOrderModal(orderId, orderCode);
+      return;
+    }
+
     const button = event.target.closest('[data-order-action]');
     if (!button || !Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER')) return;
     const dealerId = orderDealerId;
@@ -1224,21 +1299,56 @@
     } catch (error) { showFormError('dealer-orders-message', error.message); }
     finally { button.disabled = false; }
   });
+
+  $('cancel-order-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!activeCancelOrder) return;
+    const orderId = Number($('cancel-order-id').value || activeCancelOrder.id);
+    const reason = $('cancel-order-reason').value.trim();
+    if (!reason) {
+      showFormError('cancel-order-message', 'Vui lòng nhập lý do huỷ đơn hàng.');
+      $('cancel-order-reason').focus();
+      return;
+    }
+    const submitBtn = $('btn-submit-cancel-order');
+    submitBtn.disabled = true;
+    $('cancel-order-message').hidden = true;
+    try {
+      await DealerTransactions.cancelOrder(orderId, reason);
+      closeCancelOrderModal();
+      showToast(`Đã huỷ đơn hàng ${activeCancelOrder?.code || ''}. Tồn kho giữ chỗ đã được giải phóng.`);
+      await loadDealers();
+      if (orderDealerId) await openInProgressOrders(orderDealerId);
+    } catch (error) {
+      showFormError('cancel-order-message', error.message);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  document.querySelectorAll('[data-close-cancel-order]').forEach(btn =>
+    btn.addEventListener('click', closeCancelOrderModal)
+  );
+
   document.querySelectorAll('[data-close-transaction]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.closeTransaction === 'dealer-orders-modal') orderDealerId = null;
     if (button.dataset.closeTransaction === 'delivery-points-modal') state.deliveryDealerId = null;
     closeTransactionModal(button.dataset.closeTransaction);
   }));
-  ['lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].forEach(id => $(id).addEventListener('click', event => {
+
+  ['lock-modal', 'dealer-orders-modal', 'delivery-points-modal', 'cancel-order-modal'].forEach(id => $(id)?.addEventListener('click', event => {
     if (event.target !== $(id)) return;
     if (id === 'dealer-orders-modal') orderDealerId = null;
     if (id === 'delivery-points-modal') state.deliveryDealerId = null;
+    if (id === 'cancel-order-modal') { closeCancelOrderModal(); return; }
     closeTransactionModal(id);
   }));
+
   document.addEventListener('keydown', event => {
-    const id = ['lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].find(name => !$(name).hidden);
+    const id = ['cancel-order-modal', 'lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].find(name => $(name) && !$(name).hidden);
     if (!id) return;
     if (event.key === 'Escape') {
+      if (id === 'cancel-order-modal') { closeCancelOrderModal(); return; }
       if (id === 'dealer-orders-modal') orderDealerId = null;
       if (id === 'delivery-points-modal') state.deliveryDealerId = null;
       closeTransactionModal(id);

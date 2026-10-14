@@ -5,6 +5,7 @@ import com.quanlybanhang.dto.request.AssignDealerRequest;
 import com.quanlybanhang.dto.request.BulkHandoverRequest;
 import com.quanlybanhang.dto.response.BulkHandoverResponse;
 import com.quanlybanhang.dto.response.DealerAssignmentHistoryResponse;
+import com.quanlybanhang.dto.response.DealerDebtResponse;
 import com.quanlybanhang.dto.response.DealerOptionsResponse;
 import com.quanlybanhang.dto.response.DealerResponse;
 import com.quanlybanhang.exception.DealerHasTransactionsException;
@@ -14,6 +15,7 @@ import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.RestAccessDeniedHandler;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
+import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.DealerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +52,9 @@ class DealerControllerTest {
 
     @MockBean
     private DealerService dealerService;
+
+    @MockBean
+    private DealerDebtService dealerDebtService;
 
     @MockBean
     private UserDetailsServiceImpl userDetailsService;
@@ -461,6 +466,44 @@ class DealerControllerTest {
                 .when(dealerService).getDealerById(999L);
 
         mvc.perform(get("/api/dealers/999").with(user("sales01").roles("SALES")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Bạn không có quyền thực hiện chức năng này"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES", "VIEWER"})
+    @DisplayName("[S4-02] Các vai trò hợp lệ được phép xem thông tin công nợ đại lý (200 OK)")
+    void allowedRolesCanGetDealerDebt(String role) throws Exception {
+        DealerDebtResponse debtResponse = DealerDebtResponse.builder()
+                .dealerId(1L)
+                .dealerCode("DL01")
+                .dealerName("Đại lý Cấp 1 Minh Phát")
+                .currentDebt(new BigDecimal("15000000"))
+                .debtLimit(new BigDecimal("50000000"))
+                .remainingLimit(new BigDecimal("35000000"))
+                .maxDebtDays(30)
+                .hasOverdueDebt(false)
+                .isBlocked(false)
+                .build();
+
+        when(dealerDebtService.getDealerDebtInfo(1L)).thenReturn(debtResponse);
+
+        mvc.perform(get("/api/dealers/1/debt").with(user("reader").roles(role)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.dealerCode").value("DL01"))
+                .andExpect(jsonPath("$.data.currentDebt").value(15000000))
+                .andExpect(jsonPath("$.data.remainingLimit").value(35000000));
+    }
+
+    @Test
+    @DisplayName("[S4-02] Nhân viên kinh doanh xem công nợ đại lý không thuộc quyền phụ trách bị trả về 403 Forbidden")
+    void salesAccessDeniedWhenViewingOtherDealerDebt() throws Exception {
+        when(dealerDebtService.getDealerDebtInfo(999L))
+                .thenThrow(new AccessDeniedException("Bạn chỉ có quyền xem công nợ của đại lý do mình phụ trách"));
+
+        mvc.perform(get("/api/dealers/999/debt").with(user("sales01").roles("SALES")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Bạn không có quyền thực hiện chức năng này"));

@@ -153,6 +153,25 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Xử lý lỗi đại lý có nợ quá hạn quá số ngày cho phép bị chặn tạo đơn (S4-02).
+     */
+    @ExceptionHandler(DealerDebtOverdueException.class)
+    public ResponseEntity<ApiResponse> handleDealerDebtOverdue(DealerDebtOverdueException ex) {
+        Map<String, Object> details = new HashMap<>();
+        details.put("dealerCode", ex.getDealerCode());
+        details.put("dealerName", ex.getDealerName());
+        details.put("overdueDays", ex.getOverdueDays());
+        details.put("maxDebtDays", ex.getMaxDebtDays());
+        details.put("overdueAmount", ex.getOverdueAmount());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(details)
+                        .build());
+    }
+
+    /**
      * Xử lý lỗi không có quyền truy cập (@PreAuthorize hoặc AccessDeniedException).
      * Trả về 403 Forbidden.
      */

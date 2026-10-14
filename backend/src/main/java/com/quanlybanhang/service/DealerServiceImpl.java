@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -621,6 +622,34 @@ public class DealerServiceImpl implements DealerService {
         long inProgressOrderCount = orderRepository.countByDealerIdAndStatusNotIn(
                 dealer.getId(), List.of("CANCELLED", "REJECTED"));
 
+        BigDecimal currentDebt = orderRepository.sumTotalAmountByDealerIdAndStatus(dealer.getId(), "RECORDED");
+        if (currentDebt == null) {
+            currentDebt = BigDecimal.ZERO;
+        }
+        BigDecimal debtLimit = dealer.getDebtLimit() != null ? dealer.getDebtLimit() : BigDecimal.ZERO;
+        BigDecimal remainingDebtLimit = debtLimit.subtract(currentDebt);
+        int maxDebtDays = dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0;
+
+        boolean hasOverdueDebt = false;
+        int maxOverdueDays = 0;
+        if (maxDebtDays > 0) {
+            List<Order> recordedOrders = orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(dealer.getId(), "RECORDED");
+            LocalDate today = LocalDate.now();
+            for (Order o : recordedOrders) {
+                LocalDateTime recTime = o.getRecordedAt() != null ? o.getRecordedAt() : o.getCreatedAt();
+                if (recTime != null) {
+                    long days = java.time.temporal.ChronoUnit.DAYS.between(recTime.toLocalDate(), today);
+                    if (days > maxDebtDays) {
+                        hasOverdueDebt = true;
+                        int diff = (int) (days - maxDebtDays);
+                        if (diff > maxOverdueDays) {
+                            maxOverdueDays = diff;
+                        }
+                    }
+                }
+            }
+        }
+
         return DealerResponse.builder()
                 .id(dealer.getId())
                 .code(dealer.getCode())
@@ -638,6 +667,11 @@ public class DealerServiceImpl implements DealerService {
                 .handoverRequired(dealer.getHandoverRequired())
                 .debtLimit(dealer.getDebtLimit())
                 .maxDebtDays(dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0)
+                .currentDebt(currentDebt)
+                .remainingDebtLimit(remainingDebtLimit)
+                .hasOverdueDebt(hasOverdueDebt)
+                .isBlockedDueToDebt(hasOverdueDebt || Boolean.TRUE.equals(dealer.getLocked()))
+                .maxOverdueDays(maxOverdueDays)
                 .locked(dealer.getLocked())
                 .lockReason(dealer.getLockReason())
                 .lockedAt(dealer.getLockedAt())

@@ -19,6 +19,7 @@ import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.JwtUtils;
 import com.quanlybanhang.security.RestAccessDeniedHandler;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
+import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,6 +59,9 @@ class OrderControllerTest {
 
     @MockBean
     private OrderService orderService;
+
+    @MockBean
+    private DealerDebtService dealerDebtService;
 
     @MockBean
     private OrderDraftRepository orderDraftRepository;
@@ -322,5 +326,70 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.discountAmount").value(330000))
                 .andExpect(jsonPath("$.data.totalAmount").value(2970000))
                 .andExpect(jsonPath("$.data.items[0].productCode").value("SP-KEN330"));
+    }
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-02] POST /api/orders/check-debt - Kiểm tra công nợ khi tạo đơn")
+    void checkDebt_Post_Success() throws Exception {
+        com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
+                .dealerId(1L)
+                .dealerCode("DL01")
+                .dealerName("Đại lý Minh Phát")
+                .currentDebt(new BigDecimal("15000000"))
+                .debtLimit(new BigDecimal("50000000"))
+                .remainingLimit(new BigDecimal("35000000"))
+                .newOrderTotal(new BigDecimal("10000000"))
+                .projectedDebt(new BigDecimal("25000000"))
+                .exceedsLimit(false)
+                .hasOverdueDebt(false)
+                .isBlocked(false)
+                .requiresApproval(false)
+                .build();
+
+        when(dealerDebtService.checkOrderDebt(any(com.quanlybanhang.dto.request.OrderDebtCheckRequest.class))).thenReturn(checkResponse);
+
+        com.quanlybanhang.dto.request.OrderDebtCheckRequest req = new com.quanlybanhang.dto.request.OrderDebtCheckRequest();
+        req.setDealerId(1L);
+        req.setOrderAmount(new BigDecimal("10000000"));
+
+        mockMvc.perform(post("/api/orders/check-debt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.dealerCode").value("DL01"))
+                .andExpect(jsonPath("$.data.isBlocked").value(false))
+                .andExpect(jsonPath("$.data.requiresApproval").value(false));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-02] GET /api/orders/check-debt - Kiểm tra công nợ đại lý qua query params")
+    void checkDebt_Get_Success() throws Exception {
+        com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
+                .dealerId(1L)
+                .dealerCode("DL01")
+                .dealerName("Đại lý Minh Phát")
+                .currentDebt(new BigDecimal("45000000"))
+                .debtLimit(new BigDecimal("50000000"))
+                .remainingLimit(new BigDecimal("5000000"))
+                .newOrderTotal(new BigDecimal("10000000"))
+                .projectedDebt(new BigDecimal("55000000"))
+                .exceedsLimit(true)
+                .hasOverdueDebt(false)
+                .isBlocked(false)
+                .requiresApproval(true)
+                .approvalReason("Đơn hàng làm vượt hạn mức công nợ")
+                .build();
+
+        when(dealerDebtService.checkOrderDebt(eq(1L), any(BigDecimal.class))).thenReturn(checkResponse);
+
+        mockMvc.perform(get("/api/orders/check-debt")
+                        .param("dealerId", "1")
+                        .param("orderAmount", "10000000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.exceedsLimit").value(true))
+                .andExpect(jsonPath("$.data.requiresApproval").value(true));
     }
 }

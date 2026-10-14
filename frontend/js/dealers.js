@@ -1318,9 +1318,10 @@
     submitBtn.disabled = true;
     $('cancel-order-message').hidden = true;
     try {
+      const cancelledOrderCode = activeCancelOrder.code;
       await DealerTransactions.cancelOrder(orderId, reason);
       closeCancelOrderModal();
-      showToast(`Đã huỷ đơn hàng ${activeCancelOrder?.code || ''}. Tồn kho giữ chỗ đã được giải phóng.`);
+      showToast(`Đã huỷ đơn hàng ${cancelledOrderCode}.`);
       await loadDealers();
       if (orderDealerId) await openInProgressOrders(orderDealerId);
     } catch (error) {

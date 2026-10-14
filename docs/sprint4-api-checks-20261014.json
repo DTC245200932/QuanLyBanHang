@@ -1,0 +1,160 @@
+{
+  "runAt": "2026-10-14T12:17:15.361110+07:00",
+  "baseUrl": "http://127.0.0.1:18184/api",
+  "environment": "H2 in memory, isolated demo fixtures; no production DB",
+  "checks": [
+    {
+      "story": "S4-01",
+      "check": "15 dòng: số tiền xem trước và số tiền lưu khớp nhau",
+      "result": "PASS",
+      "evidence": {
+        "previewHttp": 200,
+        "createHttp": 201,
+        "previewTotal": 110274880.0,
+        "savedTotal": 110274880.0
+      }
+    },
+    {
+      "story": "S4-01",
+      "check": "Giá thủ công dưới giá sàn được đánh dấu cần duyệt",
+      "result": "PASS",
+      "evidence": {
+        "http": 200,
+        "requiresApproval": true
+      }
+    },
+    {
+      "story": "S4-01",
+      "check": "Server từ chối bảng giá thuộc nhóm khác với đại lý",
+      "result": "FAIL",
+      "evidence": {
+        "http": 200,
+        "dealerGroup": "DAI_LY_CAP_1",
+        "submittedPriceGroup": "KHACH_LE"
+      }
+    },
+    {
+      "story": "S4-02",
+      "check": "SALES đọc được DTO công nợ dùng trên màn hình tạo đơn",
+      "result": "PASS",
+      "evidence": {
+        "http": 200,
+        "data": {
+          "dealerId": 1,
+          "dealerCode": "DEMO-DL-MINHPHAT",
+          "dealerName": "Đại lý Minh Phát (Demo)",
+          "currentDebt": 3612240.0,
+          "debtLimit": 100000000.0,
+          "remainingLimit": 96387760.0,
+          "maxDebtDays": 30,
+          "hasOverdueDebt": false,
+          "overdueAmount": 0,
+          "maxOverdueDays": 0,
+          "oldestOverdueOrderCode": null,
+          "oldestOverdueOrderDate": null,
+          "isBlocked": false,
+          "blockReason": null
+        }
+      }
+    },
+    {
+      "story": "S4-02",
+      "check": "Đơn vượt hạn mức được đánh dấu cần duyệt",
+      "result": "PASS",
+      "evidence": {
+        "http": 200,
+        "requiresApproval": true
+      }
+    },
+    {
+      "story": "S4-03",
+      "check": "SALES đọc được API tồn mà module frontend đang gọi",
+      "result": "FAIL",
+      "evidence": {
+        "http": 403
+      }
+    },
+    {
+      "story": "S4-03",
+      "check": "Hai đơn cùng chốt không được giữ chỗ vượt tồn thực tế",
+      "result": "FAIL",
+      "evidence": {
+        "physicalBase": 840.0,
+        "requestedBasePerOrder": 630.0,
+        "http": [
+          201,
+          201
+        ],
+        "statuses": [
+          "RECORDED",
+          "RECORDED"
+        ],
+        "acceptedOrders": 2
+      }
+    },
+    {
+      "story": "S4-04",
+      "check": "API lịch sử mua hàng do frontend gọi tồn tại",
+      "result": "FAIL",
+      "evidence": {
+        "http": 500,
+        "message": "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."
+      }
+    },
+    {
+      "story": "S4-05",
+      "check": "Từ chối đơn bắt buộc có ý kiến",
+      "result": "FAIL",
+      "evidence": {
+        "httpWithoutReason": 200
+      }
+    },
+    {
+      "story": "S4-06",
+      "check": "Lý do huỷ gửi từ frontend được lưu trong DB hoặc nhật ký",
+      "result": "FAIL",
+      "evidence": {
+        "http": 200,
+        "savedStatus": "CANCELLED",
+        "savedNote": "Isolated Sprint 4 audit"
+      }
+    },
+    {
+      "story": "S4-06",
+      "check": "Server chặn huỷ đơn khi không nhập lý do",
+      "result": "FAIL",
+      "evidence": {
+        "httpWithoutReason": 200
+      }
+    },
+    {
+      "story": "S4-02",
+      "check": "Công nợ đại lý chưa phân công bị từ chối với SALES",
+      "result": "PASS",
+      "evidence": {
+        "http": 403
+      }
+    },
+    {
+      "story": "S4-07",
+      "check": "SALES chỉ thấy đơn của đại lý mình phụ trách",
+      "result": "FAIL",
+      "evidence": {
+        "http": 200,
+        "otherDealerOrderVisible": true
+      }
+    },
+    {
+      "story": "S4-07",
+      "check": "Bộ lọc đại lý/trạng thái được xử lý phía server",
+      "result": "FAIL",
+      "evidence": {
+        "http": 200,
+        "returnedRows": 13,
+        "requestedDealerId": 6
+      }
+    }
+  ],
+  "passed": 5,
+  "failedAcceptanceCriteria": 9
+}

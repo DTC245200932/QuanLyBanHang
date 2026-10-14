@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({DemoDataSeeder.class, OrderServiceImpl.class, WarehouseServiceImpl.class,
         UnitConversionServiceImpl.class, VolumeDiscountPolicyServiceImpl.class,
+        DealerDebtServiceImpl.class,
         AuditLogServiceImpl.class, DemoDataSeederTest.EncoderConfig.class})
 class DemoDataSeederTest {
     @TestConfiguration

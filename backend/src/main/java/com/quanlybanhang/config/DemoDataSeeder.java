@@ -392,6 +392,9 @@ public class DemoDataSeeder {
         OrderResponse response = orderService.createOrder(OrderRequest.builder().orderCode(code).dealerId(dealer.getId())
                 .priceListId(prices.get(dealer.getCustomerGroup()).getId()).expectedDeliveryDate(LocalDate.now().plusDays(3))
                 .note(NOTE + ": " + outcome).items(items).build(), ACTOR);
+        if ("RECORDED".equals(outcome) && "PENDING_APPROVAL".equals(response.getStatus())) {
+            response = orderService.approveOrder(response.getId(), ACTOR);
+        }
         if ("CANCELLED".equals(outcome)) {
             orderService.cancelOrder(response.getId(), ACTOR);
         } else if ("REJECTED".equals(outcome) && "PENDING_APPROVAL".equals(response.getStatus())) {

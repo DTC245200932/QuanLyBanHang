@@ -1,0 +1,260 @@
+package com.quanlybanhang.service;
+
+import com.quanlybanhang.dto.request.OrderDebtCheckRequest;
+import com.quanlybanhang.dto.response.DealerDebtResponse;
+import com.quanlybanhang.dto.response.OrderDebtCheckResponse;
+import com.quanlybanhang.exception.DealerDebtOverdueException;
+import com.quanlybanhang.exception.DealerLockedException;
+import com.quanlybanhang.model.*;
+import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.OrderRepository;
+import com.quanlybanhang.repository.UserRepository;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("DealerDebtService - Kiểm soát công nợ, hạn mức và chặn nợ quá hạn (S4-02)")
+class DealerDebtServiceTest {
+
+    @Mock
+    private DealerRepository dealerRepository;
+
+    @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @InjectMocks
+    private DealerDebtServiceImpl dealerDebtService;
+
+    private User salesUser1;
+    private User salesUser2;
+    private Dealer dealer;
+
+    @BeforeEach
+    void setUp() {
+        Role salesRole = Role.builder().id(1L).name(ERole.ROLE_SALES).build();
+
+        salesUser1 = User.builder()
+                .id(101L)
+                .username("sales1")
+                .fullName("Nhân viên Kinh doanh 1")
+                .active(true)
+                .roles(Set.of(salesRole))
+                .build();
+
+        salesUser2 = User.builder()
+                .id(102L)
+                .username("sales2")
+                .fullName("Nhân viên Kinh doanh 2")
+                .active(true)
+                .roles(Set.of(salesRole))
+                .build();
+
+        dealer = Dealer.builder()
+                .id(1L)
+                .code("DL001")
+                .name("Đại lý Minh Phát")
+                .assignedUser(salesUser1)
+                .debtLimit(new BigDecimal("50000000"))
+                .maxDebtDays(30)
+                .active(true)
+                .locked(false)
+                .build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private void authenticate(String username, String... roles) {
+        List<SimpleGrantedAuthority> authorities = java.util.Arrays.stream(roles)
+                .map(r -> new SimpleGrantedAuthority(r.startsWith("ROLE_") ? r : "ROLE_" + r))
+                .toList();
+        UsernamePasswordAuthenticationToken auth =
+                new UsernamePasswordAuthenticationToken(username, "password", authorities);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    @Test
+    @DisplayName("Tính toán công nợ hiện tại và hạn mức còn lại chính xác khi đại lý chưa có nợ")
+    void getDealerDebtInfo_noOrders_returnsZeroDebt() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+
+        DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getDealerId()).isEqualTo(1L);
+        assertThat(response.getCurrentDebt()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getDebtLimit()).isEqualByComparingTo(new BigDecimal("50000000"));
+        assertThat(response.getRemainingLimit()).isEqualByComparingTo(new BigDecimal("50000000"));
+        assertThat(response.getHasOverdueDebt()).isFalse();
+        assertThat(response.getIsBlocked()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Tính toán công nợ hiện tại và hạn mức còn lại chính xác khi đại lý có đơn hàng ghi sổ")
+    void getDealerDebtInfo_withRecordedOrders_calculatesRemaining() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("35000000"));
+
+        Order order = Order.builder()
+                .id(10L)
+                .orderCode("DH-001")
+                .totalAmount(new BigDecimal("35000000"))
+                .recordedAt(LocalDateTime.now().minusDays(10)) // Trong hạn 30 ngày
+                .status("RECORDED")
+                .build();
+
+        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of(order));
+
+        DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
+
+        assertThat(response.getCurrentDebt()).isEqualByComparingTo(new BigDecimal("35000000"));
+        assertThat(response.getRemainingLimit()).isEqualByComparingTo(new BigDecimal("15000000"));
+        assertThat(response.getHasOverdueDebt()).isFalse();
+        assertThat(response.getIsBlocked()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Phát hiện khoản nợ quá hạn khi đơn hàng ghi sổ đã vượt quá số ngày nợ cho phép (maxDebtDays)")
+    void getDealerDebtInfo_withOverdueOrder_flagsOverdueAndBlocked() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("20000000"));
+
+        // maxDebtDays = 30, đơn phát sinh từ 45 ngày trước -> quá hạn 15 ngày
+        Order overdueOrder = Order.builder()
+                .id(10L)
+                .orderCode("DH-OLD")
+                .totalAmount(new BigDecimal("20000000"))
+                .recordedAt(LocalDateTime.now().minusDays(45))
+                .status("RECORDED")
+                .build();
+
+        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of(overdueOrder));
+
+        DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
+
+        assertThat(response.getHasOverdueDebt()).isTrue();
+        assertThat(response.getMaxOverdueDays()).isEqualTo(15);
+        assertThat(response.getOverdueAmount()).isEqualByComparingTo(new BigDecimal("20000000"));
+        assertThat(response.getOldestOverdueOrderCode()).isEqualTo("DH-OLD");
+        assertThat(response.getIsBlocked()).isTrue();
+        assertThat(response.getBlockReason()).contains("khoản nợ quá hạn 15 ngày (vượt quá giới hạn cho phép 30 ngày)");
+    }
+
+    @Test
+    @DisplayName("Chặn tạo đơn hoàn toàn khi đại lý có khoản nợ quá hạn quá số ngày cho phép")
+    void validateDealerCanCreateOrder_throwsExceptionWhenOverdue() {
+        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("10000000"));
+
+        Order overdueOrder = Order.builder()
+                .id(11L)
+                .orderCode("DH-QUAHAN")
+                .totalAmount(new BigDecimal("10000000"))
+                .recordedAt(LocalDateTime.now().minusDays(40)) // quá hạn 10 ngày
+                .status("RECORDED")
+                .build();
+
+        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of(overdueOrder));
+
+        assertThatThrownBy(() -> dealerDebtService.validateDealerCanCreateOrder(dealer))
+                .isInstanceOf(DealerDebtOverdueException.class)
+                .hasMessageContaining("quá hạn 10 ngày")
+                .hasMessageContaining("chặn tạo đơn hoàn toàn");
+    }
+
+    @Test
+    @DisplayName("Chặn tạo đơn khi đại lý bị khoá giao dịch (S3-07)")
+    void validateDealerCanCreateOrder_throwsExceptionWhenLocked() {
+        dealer.setLocked(true);
+        dealer.setLockReason("Có dấu hiệu mất khả năng thanh toán");
+
+        assertThatThrownBy(() -> dealerDebtService.validateDealerCanCreateOrder(dealer))
+                .isInstanceOf(DealerLockedException.class)
+                .hasMessageContaining("Có dấu hiệu mất khả năng thanh toán");
+    }
+
+    @Test
+    @DisplayName("Kiểm tra sơ bộ vượt hạn mức công nợ: trả về cảnh báo và đánh dấu cần duyệt")
+    void checkOrderDebt_exceedsLimit_requiresApproval() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("40000000"));
+        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+
+        // Hạn mức 50tr, nợ hiện tại 40tr, đơn mới 15tr -> tổng 55tr > 50tr
+        OrderDebtCheckRequest request = OrderDebtCheckRequest.builder()
+                .dealerId(1L)
+                .orderAmount(new BigDecimal("15000000"))
+                .build();
+
+        OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(request);
+
+        assertThat(response.getExceedsLimit()).isTrue();
+        assertThat(response.getRequiresApproval()).isTrue();
+        assertThat(response.getProjectedDebt()).isEqualByComparingTo(new BigDecimal("55000000"));
+        assertThat(response.getApprovalReason()).contains("Vượt hạn mức công nợ");
+    }
+
+    @Test
+    @DisplayName("Kiểm tra sơ bộ không vượt hạn mức công nợ: không yêu cầu duyệt")
+    void checkOrderDebt_withinLimit_notRequiresApproval() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("20000000"));
+        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+
+        // Hạn mức 50tr, nợ hiện tại 20tr, đơn mới 10tr -> tổng 30tr <= 50tr
+        OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(1L, new BigDecimal("10000000"));
+
+        assertThat(response.getExceedsLimit()).isFalse();
+        assertThat(response.getRequiresApproval()).isFalse();
+        assertThat(response.getProjectedDebt()).isEqualByComparingTo(new BigDecimal("30000000"));
+    }
+
+    @Test
+    @DisplayName("Bảo mật cấp dòng: Nhân viên kinh doanh chỉ xem được công nợ đại lý do mình phụ trách")
+    void rowLevelSecurity_salesUserOnlyAccessesOwnDealer() {
+        authenticate("sales1", "ROLE_SALES");
+        when(userRepository.findByUsername("sales1")).thenReturn(Optional.of(salesUser1));
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+
+        // Sales1 phụ trách đại lý 1 -> xem được bình thường
+        DealerDebtResponse res = dealerDebtService.getDealerDebtInfo(1L);
+        assertThat(res).isNotNull();
+
+        // Bây giờ authenticate sales2 (không phụ trách đại lý 1) -> bị từ chối 403
+        authenticate("sales2", "ROLE_SALES");
+        when(userRepository.findByUsername("sales2")).thenReturn(Optional.of(salesUser2));
+
+        assertThatThrownBy(() -> dealerDebtService.getDealerDebtInfo(1L))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("chỉ có quyền xem đại lý do mình phụ trách");
+    }
+}
+

@@ -962,7 +962,7 @@ Quy tắc nghiệp vụ:
    - Khi chọn đại lý trên màn hình tạo đơn hoặc xem chi tiết đại lý, hệ thống hiển thị:
      + Công nợ hiện tại (`currentDebt`): Tổng số tiền các đơn hàng đã ghi sổ (`RECORDED`).
      + Hạn mức công nợ (`debtLimit`): Hạn mức được cấp theo hồ sơ đại lý.
-     + Hạn mức còn lại (`remainingLimit`): `debtLimit - currentDebt` (tối thiểu 0).
+     + Hạn mức còn lại (`remainingLimit`): `debtLimit - currentDebt`; có thể âm khi đã vượt hạn mức.
      + Số ngày được phép nợ (`maxDebtDays`).
 2. **Cảnh báo vượt hạn mức (Soft Block - Chờ duyệt)**:
    - Khi tổng tiền đơn hàng mới cộng công nợ hiện tại vượt quá hạn mức (`currentDebt + newOrderTotal > debtLimit`, với `debtLimit > 0`):
@@ -983,6 +983,17 @@ Quy tắc nghiệp vụ:
 | GET | `/dealers/{id}/debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_VIEWER` | Lấy chi tiết công nợ, hạn mức, số ngày quá hạn và trạng thái cho phép đặt hàng của đại lý (áp dụng Row-Level Security cho `ROLE_SALES`). Alias: `GET /dealers/{id}/credit-info` |
 | POST | `/orders/check-debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Kiểm tra sơ bộ công nợ và dự phóng trước khi đặt đơn (pre-check trên giao diện tạo đơn) |
 | GET | `/orders/check-debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tra cứu nhanh hạn mức công nợ theo query param `dealerId` và `orderAmount` |
+
+#### Kết nối màn hình tạo đơn và giới hạn hiện tại (kiểm tra 14/10/2026)
+
+- Frontend S4-02 gọi `GET /api/dealers/{id}/debt`, đọc `hasOverdueDebt`, `isBlocked` và `blockReason`.
+  Không có API `/api/finance/debt/{id}/check`, cũng không có trường `oldestOverdueDays` trong DTO này.
+- Nếu API công nợ lỗi, frontend hiển thị lý do và chặn chốt đơn cho tới khi tải lại được dữ liệu.
+- `currentDebt` hiện được suy ra từ tổng đơn `RECORDED`. Chưa có sổ công nợ/phiếu thu/phân bổ thanh toán,
+  nên chưa thể xác định số dư còn phải thu sau khi khách thanh toán. Không dùng kết quả này như số dư kế toán đã đối soát.
+- `debtLimit = 0` hiện không kích hoạt kiểm tra vượt hạn mức; `maxDebtDays = 0` không kích hoạt kiểm tra quá hạn.
+- Kiểm tra công nợ không thay thế kiểm tra tồn. Đơn được duyệt hiện chuyển sang `RECORDED`, chưa giữ chỗ tồn trong DB.
+- Chi tiết các API đã nối và các tiêu chí Sprint 4 chưa đạt: [Báo cáo Sprint 4](../docs/SPRINT_4_AUDIT_20261014.md).
 
 #### Ví dụ Request kiểm tra công nợ (`POST /api/orders/check-debt`):
 ```json

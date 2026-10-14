@@ -46,7 +46,7 @@ const MenuConfig = (() => {
       icon: '<path d="M3 6h18M3 12h12M3 18h8"/>',
       href: "/product-groups",
       permission: "PRODUCT_VIEW",
-      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_VIEWER"],
+      roles: ALL_ROLES,
     },
     {
       id: "create-order",
@@ -54,6 +54,7 @@ const MenuConfig = (() => {
       label: "Tạo đơn hàng",
       icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/><line x1="6" y1="10" x2="10" y2="10"/>',
       href: "/create-order",
+      permission: "ORDER_CREATE",
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_SALES", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF"],
     },
     {
@@ -62,7 +63,7 @@ const MenuConfig = (() => {
       label: "Bảng giá",
       icon: '<path d="M20 12V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14l4-3 4 3 4-3 4 3v-7"/><path d="M8 8h8M8 12h5"/>',
       href: "/price-lists",
-      roles: ["ROLE_SALES_MANAGER"],
+      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER"],
     },
     {
       id: "discount-policies",
@@ -70,7 +71,7 @@ const MenuConfig = (() => {
       label: "Chiết khấu sản lượng",
       icon: '<path d="M9 14l2 2 4-4"/><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7"/><circle cx="18" cy="18" r="4"/><path d="M15 18h6M18 15v6"/>',
       href: "/discount-policies",
-      roles: ["ROLE_SALES_MANAGER"],
+      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER"],
     },
     {
       id: "dealers",
@@ -78,6 +79,7 @@ const MenuConfig = (() => {
       label: "Đại lý",
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
       href: "/dealers",
+      permission: "CUSTOMER_VIEW",
       roles: [
         "ROLE_ADMIN",
         "ROLE_SALES_MANAGER",
@@ -191,8 +193,10 @@ const MenuConfig = (() => {
   function getMenuForUser(user) {
     const roles = user?.roles || [];
     const permissions = user?.permissions || [];
+    const isAdmin = roles.includes("ROLE_ADMIN");
     return menuItems.filter((item) => {
       if (!item.roles.some((role) => roles.includes(role))) return false;
+      if (isAdmin) return true;
       if (item.permission) return permissions.includes(item.permission);
       if (item.permissions) return item.permissions.some((permission) => permissions.includes(permission));
       return item.roles.some((role) => roles.includes(role));

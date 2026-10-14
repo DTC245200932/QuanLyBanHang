@@ -1,7 +1,11 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.OrderCalculateRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
+import com.quanlybanhang.dto.request.OrderLineItemPricingRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
+import com.quanlybanhang.dto.response.OrderCalculateResponse;
+import com.quanlybanhang.dto.response.OrderLineItemPricingResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.DealerDeliveryPointRepository;
@@ -21,9 +25,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -299,5 +305,256 @@ class OrderPriceListTest {
         assertThat(resp.getStatus()).isEqualTo("REJECTED");
         assertThat(resp.getApprovedBy()).isEqualTo("sales.manager");
         assertThat(resp.getNote()).contains("Lý do từ chối: Lỗ quá mức cho phép");
+    }
+
+    // ==========================================
+    // STORY S4-01 TESTS: TỰ ĐỘNG ÁP DỤNG BẢNG GIÁ, CHIẾT KHẤU SẢN LƯỢNG & CHẶN SKU NGOÀI BẢNG GIÁ
+    // ==========================================
+
+    @Test
+    @DisplayName("S4-01: Chặn tạo đơn khi không tìm thấy bảng giá có hiệu lực cho nhóm khách hàng của đại lý")
+    void createOrder_NoEffectivePriceList_ThrowsException() {
+        OrderRequest request = OrderRequest.builder()
+                .dealerId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(new BigDecimal("10"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of()); // Không có bảng giá nào hiệu lực
+
+        assertThatThrownBy(() -> orderService.createOrder(request, "sales01"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Không tìm thấy bảng giá hiệu lực cho nhóm khách hàng 'Đại lý cấp 1'");
+    }
+
+    @Test
+    @DisplayName("S4-01: Chặn thêm dòng hàng khi SKU không có trong bảng giá hiệu lực kèm thông báo rõ lý do")
+    void createOrder_SkuNotInPriceList_ThrowsExceptionWithClearReason() {
+        Product biaTiger = Product.builder()
+                .id(20L)
+                .code("SP-TIGER330")
+                .name("Bia Tiger lon 330ml")
+                .unit("lon")
+                .price(new BigDecimal("18000"))
+                .build();
+
+        OrderRequest request = OrderRequest.builder()
+                .dealerId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(20L)
+                        .unit("lon")
+                        .quantity(new BigDecimal("10"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceListDl1)); // priceListDl1 chỉ có SP-KEN330
+        when(productRepository.findById(20L)).thenReturn(Optional.of(biaTiger));
+
+        assertThatThrownBy(() -> orderService.createOrder(request, "sales01"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Sản phẩm 'Bia Tiger lon 330ml' (mã: SP-TIGER330) chưa có trong bảng giá hiệu lực của nhóm khách hàng 'Đại lý cấp 1'. Không thể thêm dòng hàng.");
+    }
+
+    @Test
+    @DisplayName("S4-01: calculateLineItemPricing tự động lấy giá bán từ bảng giá hiệu lực và tính chiết khấu sản lượng")
+    void calculateLineItemPricing_AutoReceivesPriceListAndDiscount() {
+        OrderLineItemPricingRequest request = OrderLineItemPricingRequest.builder()
+                .dealerId(1L)
+                .productId(10L)
+                .unit("lon")
+                .quantity(new BigDecimal("100"))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceListDl1));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "lon")).thenReturn(BigDecimal.ONE);
+
+        // Giả lập chiết khấu sản lượng 5% = 82,500đ
+        VolumeDiscountPolicyService.ItemDiscountResult discountResult = VolumeDiscountPolicyService.ItemDiscountResult.builder()
+                .discountAmount(new BigDecimal("82500"))
+                .discountPercent(new BigDecimal("5.00"))
+                .appliedPolicyId(1L)
+                .appliedPolicyCode("CK-SL-01")
+                .appliedPolicyName("Chiết khấu SL Đại lý Cấp 1")
+                .bestPolicyReason("Chiết khấu theo bậc số lượng >= 100 lon")
+                .build();
+
+        VolumeDiscountPolicyService.OrderDiscountSummary summary = VolumeDiscountPolicyService.OrderDiscountSummary.builder()
+                .discountAmount(new BigDecimal("82500"))
+                .itemResults(Map.of(0, discountResult))
+                .build();
+
+        when(volumeDiscountPolicyService.calculateOrderDiscount(any(), eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(summary);
+
+        OrderLineItemPricingResponse resp = orderService.calculateLineItemPricing(request);
+
+        assertThat(resp).isNotNull();
+        assertThat(resp.getCustomerGroup()).isEqualTo(CustomerGroup.DAI_LY_CAP_1);
+        assertThat(resp.getPriceListCode()).isEqualTo("BG-DLC1-2026");
+        assertThat(resp.getPriceListSellingPrice()).isEqualByComparingTo(new BigDecimal("16500"));
+        assertThat(resp.getFloorPrice()).isEqualByComparingTo(new BigDecimal("15500"));
+        assertThat(resp.getUnitPrice()).isEqualByComparingTo(new BigDecimal("16500"));
+        assertThat(resp.getIsManualPrice()).isFalse();
+        assertThat(resp.getBelowFloorPrice()).isFalse();
+        assertThat(resp.getRequiresApproval()).isFalse();
+        assertThat(resp.getSubtotalAmount()).isEqualByComparingTo(new BigDecimal("1650000")); // 100 * 16,500
+        assertThat(resp.getDiscountAmount()).isEqualByComparingTo(new BigDecimal("82500"));
+        assertThat(resp.getTotalAmount()).isEqualByComparingTo(new BigDecimal("1567500")); // 1,650,000 - 82,500
+        assertThat(resp.getAppliedPolicyCode()).isEqualTo("CK-SL-01");
+    }
+
+    @Test
+    @DisplayName("S4-01: calculateLineItemPricing sửa giá thủ công dưới giá sàn bị đánh dấu cần duyệt")
+    void calculateLineItemPricing_ManualPriceBelowFloor_RequiresApproval() {
+        OrderLineItemPricingRequest request = OrderLineItemPricingRequest.builder()
+                .dealerId(1L)
+                .productId(10L)
+                .unit("lon")
+                .quantity(new BigDecimal("50"))
+                .manualPrice(new BigDecimal("14000")) // < 15,500
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceListDl1));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "lon")).thenReturn(BigDecimal.ONE);
+
+        OrderLineItemPricingResponse resp = orderService.calculateLineItemPricing(request);
+
+        assertThat(resp).isNotNull();
+        assertThat(resp.getUnitPrice()).isEqualByComparingTo(new BigDecimal("14000"));
+        assertThat(resp.getIsManualPrice()).isTrue();
+        assertThat(resp.getBelowFloorPrice()).isTrue();
+        assertThat(resp.getRequiresApproval()).isTrue();
+        assertThat(resp.getApprovalReason()).contains("bán giá 14000 < giá sàn 15500");
+    }
+
+    @Test
+    @DisplayName("S4-01: calculateLineItemPricing chặn khi SKU không có trong bảng giá hiệu lực")
+    void calculateLineItemPricing_SkuNotInPriceList_ThrowsException() {
+        Product biaTiger = Product.builder()
+                .id(20L)
+                .code("SP-TIGER330")
+                .name("Bia Tiger lon 330ml")
+                .unit("lon")
+                .price(new BigDecimal("18000"))
+                .build();
+
+        OrderLineItemPricingRequest request = OrderLineItemPricingRequest.builder()
+                .dealerId(1L)
+                .productId(20L)
+                .unit("lon")
+                .quantity(new BigDecimal("10"))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceListDl1));
+        when(productRepository.findById(20L)).thenReturn(Optional.of(biaTiger));
+
+        assertThatThrownBy(() -> orderService.calculateLineItemPricing(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Sản phẩm 'Bia Tiger lon 330ml' (mã: SP-TIGER330) chưa có trong bảng giá hiệu lực của nhóm khách hàng 'Đại lý cấp 1'. Không thể thêm dòng hàng.");
+    }
+
+    @Test
+    @DisplayName("S4-01: calculateOrder tính lại chiết khấu sản lượng tự động khi số lượng thay đổi trên toàn đơn")
+    void calculateOrder_RecalculatesDiscountsAndItemTotals() {
+        OrderCalculateRequest request = OrderCalculateRequest.builder()
+                .dealerId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(new BigDecimal("200")) // Số lượng tăng lên 200
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceListDl1));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "lon")).thenReturn(BigDecimal.ONE);
+
+        // Giả lập chiết khấu mức cao hơn: 10% = 330,000đ cho 200 lon
+        VolumeDiscountPolicyService.ItemDiscountResult discountResult = VolumeDiscountPolicyService.ItemDiscountResult.builder()
+                .discountAmount(new BigDecimal("330000"))
+                .discountPercent(new BigDecimal("10.00"))
+                .appliedPolicyId(1L)
+                .appliedPolicyCode("CK-SL-02")
+                .appliedPolicyName("Chiết khấu SL Tier 2")
+                .bestPolicyReason("Chiết khấu theo bậc số lượng >= 200 lon (10%)")
+                .build();
+
+        VolumeDiscountPolicyService.OrderDiscountSummary summary = VolumeDiscountPolicyService.OrderDiscountSummary.builder()
+                .discountAmount(new BigDecimal("330000"))
+                .itemResults(Map.of(0, discountResult))
+                .build();
+
+        when(volumeDiscountPolicyService.calculateOrderDiscount(any(), eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(summary);
+
+        OrderCalculateResponse resp = orderService.calculateOrder(request);
+
+        assertThat(resp).isNotNull();
+        assertThat(resp.getCustomerGroup()).isEqualTo(CustomerGroup.DAI_LY_CAP_1);
+        assertThat(resp.getSubtotalAmount()).isEqualByComparingTo(new BigDecimal("3300000")); // 200 * 16,500
+        assertThat(resp.getDiscountAmount()).isEqualByComparingTo(new BigDecimal("330000"));
+        assertThat(resp.getTotalAmount()).isEqualByComparingTo(new BigDecimal("2970000")); // 3,300,000 - 330,000
+        assertThat(resp.getRequiresApproval()).isFalse();
+
+        assertThat(resp.getItems()).hasSize(1);
+        assertThat(resp.getItems().get(0).getDiscountAmount()).isEqualByComparingTo(new BigDecimal("330000"));
+        assertThat(resp.getItems().get(0).getTotalAmount()).isEqualByComparingTo(new BigDecimal("2970000"));
+    }
+
+    @Test
+    @DisplayName("S4-01: calculateOrder chặn khi có sản phẩm không nằm trong bảng giá hiệu lực")
+    void calculateOrder_SkuNotInPriceList_ThrowsException() {
+        Product biaTiger = Product.builder()
+                .id(20L)
+                .code("SP-TIGER330")
+                .name("Bia Tiger lon 330ml")
+                .unit("lon")
+                .price(new BigDecimal("18000"))
+                .build();
+
+        OrderCalculateRequest request = OrderCalculateRequest.builder()
+                .dealerId(1L)
+                .items(List.of(
+                        OrderItemRequest.builder()
+                                .productId(10L)
+                                .unit("lon")
+                                .quantity(new BigDecimal("10"))
+                                .build(),
+                        OrderItemRequest.builder()
+                                .productId(20L)
+                                .unit("lon")
+                                .quantity(new BigDecimal("5"))
+                                .build()
+                ))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceListDl1));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(productRepository.findById(20L)).thenReturn(Optional.of(biaTiger));
+        when(unitConversionService.getConversionFactor(any(), any())).thenReturn(BigDecimal.ONE);
+
+        assertThatThrownBy(() -> orderService.calculateOrder(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Sản phẩm 'Bia Tiger lon 330ml' (mã: SP-TIGER330) chưa có trong bảng giá hiệu lực của nhóm khách hàng 'Đại lý cấp 1'. Không thể thêm dòng hàng.");
     }
 }

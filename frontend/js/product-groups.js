@@ -19,7 +19,8 @@
   /* ── Auth guard ────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
 
-  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
+  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER')
+    && Auth.hasAnyPermission('PRODUCT_CREATE', 'PRODUCT_EDIT', 'PRODUCT_DELETE');
 
   /* ── Helpers ───────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);

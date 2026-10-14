@@ -264,6 +264,7 @@ class OrderServiceTest {
                 .build();
 
         when(dealerRepository.findById(3L)).thenReturn(Optional.of(dealerWithLimit));
+        mockEffectivePrices(dealerWithLimit);
         when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
         when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
 
@@ -316,6 +317,7 @@ class OrderServiceTest {
                 .build();
 
         when(dealerRepository.findById(4L)).thenReturn(Optional.of(dealerWithLimit));
+        mockEffectivePrices(dealerWithLimit);
         when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
         when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
 
@@ -340,5 +342,15 @@ class OrderServiceTest {
         assertThat(response.getExceedsDebtLimit()).isFalse();
         assertThat(response.getCurrentDebt()).isEqualByComparingTo(new BigDecimal("5000000"));
         assertThat(response.getDebtLimit()).isEqualByComparingTo(new BigDecimal("50000000"));
+    }
+    private void mockEffectivePrices(Dealer dealer) {
+        var priceList = com.quanlybanhang.model.PriceList.builder()
+                .id(1L).customerGroup(dealer.getCustomerGroup())
+                .items(List.of(com.quanlybanhang.model.PriceListItem.builder()
+                        .product(biaHeineken).sellingPrice(new BigDecimal("19000"))
+                        .floorPrice(new BigDecimal("16000")).build()))
+                .build();
+        when(priceListRepository.findEffectivePriceLists(eq(dealer.getCustomerGroup()), any()))
+                .thenReturn(List.of(priceList));
     }
 }

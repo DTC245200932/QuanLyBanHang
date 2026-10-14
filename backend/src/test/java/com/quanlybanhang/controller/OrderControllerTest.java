@@ -2,11 +2,17 @@ package com.quanlybanhang.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.quanlybanhang.config.SecurityConfig;
+import com.quanlybanhang.dto.request.OrderCalculateRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
+import com.quanlybanhang.dto.request.OrderLineItemPricingRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
+import com.quanlybanhang.dto.response.OrderCalculateItemResponse;
+import com.quanlybanhang.dto.response.OrderCalculateResponse;
 import com.quanlybanhang.dto.response.OrderItemResponse;
+import com.quanlybanhang.dto.response.OrderLineItemPricingResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.exception.GlobalExceptionHandler;
+import com.quanlybanhang.model.CustomerGroup;
 import com.quanlybanhang.repository.OrderDraftRepository;
 import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
@@ -210,6 +216,117 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.dealerLocked").value(true));
     }
 
+    @Test
+    @WithMockUser(username = "sales_user", roles = "SALES")
+    @DisplayName("POST /api/orders/line-item/pricing thành công -> 200 OK")
+    void calculateLineItemPricing_Success_Returns200() throws Exception {
+        OrderLineItemPricingRequest req = OrderLineItemPricingRequest.builder()
+                .dealerId(1L)
+                .productId(10L)
+                .unit("lon")
+                .quantity(new BigDecimal("100"))
+                .build();
+
+        OrderLineItemPricingResponse resp = OrderLineItemPricingResponse.builder()
+                .productId(10L)
+                .productCode("SP-KEN330")
+                .productName("Bia Heineken Sleek lon 330ml")
+                .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .customerGroupName("Đại lý Cấp 1")
+                .priceListCode("BG-DLC1-2026")
+                .unit("lon")
+                .quantity(new BigDecimal("100"))
+                .priceListSellingPrice(new BigDecimal("16500"))
+                .floorPrice(new BigDecimal("15500"))
+                .unitPrice(new BigDecimal("16500"))
+                .isManualPrice(false)
+                .belowFloorPrice(false)
+                .requiresApproval(false)
+                .subtotalAmount(new BigDecimal("1650000"))
+                .discountAmount(new BigDecimal("82500"))
+                .totalAmount(new BigDecimal("1567500"))
+                .build();
+
+        when(orderService.calculateLineItemPricing(any())).thenReturn(resp);
+
+        mockMvc.perform(post("/api/orders/line-item/pricing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.productCode").value("SP-KEN330"))
+                .andExpect(jsonPath("$.data.priceListSellingPrice").value(16500))
+                .andExpect(jsonPath("$.data.unitPrice").value(16500))
+                .andExpect(jsonPath("$.data.totalAmount").value(1567500));
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = "SALES")
+    @DisplayName("POST /api/orders/line-item/pricing chặn khi SKU chưa có trong bảng giá hiệu lực -> 400 Bad Request")
+    void calculateLineItemPricing_SkuNotInPriceList_Returns400() throws Exception {
+        OrderLineItemPricingRequest req = OrderLineItemPricingRequest.builder()
+                .dealerId(1L)
+                .productId(20L)
+                .unit("lon")
+                .quantity(new BigDecimal("10"))
+                .build();
+
+        when(orderService.calculateLineItemPricing(any()))
+                .thenThrow(new IllegalArgumentException("Sản phẩm 'Bia Tiger' (mã: SP-TIGER) chưa có trong bảng giá hiệu lực của nhóm khách hàng 'Đại lý Cấp 1'. Không thể thêm dòng hàng."));
+
+        mockMvc.perform(post("/api/orders/line-item/pricing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Sản phẩm 'Bia Tiger' (mã: SP-TIGER) chưa có trong bảng giá hiệu lực của nhóm khách hàng 'Đại lý Cấp 1'. Không thể thêm dòng hàng."));
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = "SALES")
+    @DisplayName("POST /api/orders/calculate tính lại đơn hàng thành công -> 200 OK")
+    void calculateOrder_Success_Returns200() throws Exception {
+        OrderCalculateRequest req = OrderCalculateRequest.builder()
+                .dealerId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(new BigDecimal("200"))
+                        .build()))
+                .build();
+
+        OrderCalculateResponse resp = OrderCalculateResponse.builder()
+                .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .customerGroupName("Đại lý Cấp 1")
+                .priceListCode("BG-DLC1-2026")
+                .subtotalAmount(new BigDecimal("3300000"))
+                .discountAmount(new BigDecimal("330000"))
+                .totalAmount(new BigDecimal("2970000"))
+                .requiresApproval(false)
+                .items(List.of(OrderCalculateItemResponse.builder()
+                        .productId(10L)
+                        .productCode("SP-KEN330")
+                        .unit("lon")
+                        .quantity(new BigDecimal("200"))
+                        .price(new BigDecimal("16500"))
+                        .subtotalAmount(new BigDecimal("3300000"))
+                        .discountAmount(new BigDecimal("330000"))
+                        .totalAmount(new BigDecimal("2970000"))
+                        .build()))
+                .build();
+
+        when(orderService.calculateOrder(any())).thenReturn(resp);
+
+        mockMvc.perform(post("/api/orders/calculate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.subtotalAmount").value(3300000))
+                .andExpect(jsonPath("$.data.discountAmount").value(330000))
+                .andExpect(jsonPath("$.data.totalAmount").value(2970000))
+                .andExpect(jsonPath("$.data.items[0].productCode").value("SP-KEN330"));
+    }
     @Test
     @WithMockUser(username = "sales01", roles = {"SALES"})
     @DisplayName("[S4-02] POST /api/orders/check-debt - Kiểm tra công nợ khi tạo đơn")

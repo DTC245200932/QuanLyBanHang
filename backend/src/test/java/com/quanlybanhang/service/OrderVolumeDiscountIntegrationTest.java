@@ -106,6 +106,20 @@ class OrderVolumeDiscountIntegrationTest {
         when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
         when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0"));
 
+        PriceList priceList = PriceList.builder()
+                .id(101L)
+                .code("BG-DLC1-2026")
+                .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .items(new ArrayList<>())
+                .build();
+        priceList.addItem(PriceListItem.builder()
+                .product(biaHeineken)
+                .sellingPrice(new BigDecimal("16500"))
+                .floorPrice(new BigDecimal("15000"))
+                .build());
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceList));
+
         // Mock kết quả tính chiết khấu từ VolumeDiscountPolicyService
         Map<Integer, VolumeDiscountPolicyService.ItemDiscountResult> itemResults = new HashMap<>();
         itemResults.put(0, VolumeDiscountPolicyService.ItemDiscountResult.builder()

@@ -1,10 +1,10 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.OrderCalculateRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
+import com.quanlybanhang.dto.request.OrderLineItemPricingRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
-import com.quanlybanhang.dto.response.DealerDebtResponse;
-import com.quanlybanhang.dto.response.OrderItemResponse;
-import com.quanlybanhang.dto.response.OrderResponse;
+import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.exception.DealerLockedException;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.DealerRepository;
@@ -83,12 +83,11 @@ public class OrderServiceImpl implements OrderService {
             if (dealerDebtService != null) {
                 dealerDebtService.validateDealerCanCreateOrder(dealer);
             }
-            if (customerGroup == null) {
-                customerGroup = dealer.getCustomerGroup();
-            }
+            // S4-01: Bảng giá lấy theo nhóm khách hàng mà đại lý thuộc về
+            customerGroup = dealer.getCustomerGroup();
         }
 
-        // 2. Tự động tìm bảng giá hiệu lực phù hợp (S2-10)
+        // 2. Tự động tìm bảng giá hiệu lực phù hợp (S2-10, S4-01)
         PriceList priceList = null;
         if (request.getPriceListId() != null) {
             priceList = priceListRepository.findById(request.getPriceListId())
@@ -97,7 +96,8 @@ public class OrderServiceImpl implements OrderService {
                 customerGroup = priceList.getCustomerGroup();
             }
         } else if (customerGroup != null) {
-            List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, LocalDate.now());
+            LocalDate queryDate = request.getExpectedDeliveryDate() != null ? request.getExpectedDeliveryDate() : LocalDate.now();
+            List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, queryDate);
             if (!effectivePriceLists.isEmpty()) {
                 priceList = effectivePriceLists.get(0);
             }
@@ -160,6 +160,19 @@ public class OrderServiceImpl implements OrderService {
             OrderItemRequest itemReq = request.getItems().get(i);
             Product product = resolveProduct(itemReq);
 
+            // S4-01: Chặn thêm dòng hàng nếu không có bảng giá hiệu lực cho SKU đó
+            if (customerGroup != null) {
+                if (priceList == null) {
+                    throw new IllegalArgumentException(String.format("Không tìm thấy bảng giá hiệu lực cho nhóm khách hàng '%s'. Không thể thêm dòng hàng cho sản phẩm '%s'.",
+                            customerGroup.getDisplayName(), product.getName()));
+                }
+                PriceListItem pli = priceItemMap.get(product.getId());
+                if (pli == null) {
+                    throw new IllegalArgumentException(String.format("Sản phẩm '%s' (mã: %s) chưa có trong bảng giá hiệu lực của nhóm khách hàng '%s'. Không thể thêm dòng hàng.",
+                            product.getName(), product.getCode(), customerGroup.getDisplayName()));
+                }
+            }
+
             String inputUnit = itemReq.getUnit();
             if (inputUnit == null || inputUnit.isBlank()) {
                 inputUnit = product.getUnit();
@@ -178,7 +191,7 @@ public class OrderServiceImpl implements OrderService {
             // Quy đổi về đơn vị cơ sở: baseQuantity = quantity * factor
             BigDecimal baseQty = qty.multiply(factor);
 
-            // 3. Tự động nhận đúng giá theo bảng giá hoặc kiểm tra giá sàn (S2-10)
+            // 3. Tự động nhận đúng giá theo bảng giá hoặc kiểm tra giá sàn (S2-10, S4-01)
             PriceListItem priceListItem = priceItemMap.get(product.getId());
 
             BigDecimal unitSellingPrice = null;
@@ -512,6 +525,376 @@ public class OrderServiceImpl implements OrderService {
                 .appliedPolicyName(item.getAppliedPolicyName())
                 .totalAmount(item.getTotalAmount())
                 .note(item.getNote())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderLineItemPricingResponse calculateLineItemPricing(OrderLineItemPricingRequest request) {
+        if (request.getProductId() == null && (request.getProductCode() == null || request.getProductCode().isBlank())) {
+            throw new IllegalArgumentException("Cần cung cấp productId hoặc productCode");
+        }
+
+        Dealer dealer = null;
+        CustomerGroup customerGroup = request.getCustomerGroup();
+
+        if (request.getDealerId() != null) {
+            dealer = dealerRepository.findById(request.getDealerId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
+            if (Boolean.TRUE.equals(dealer.getLocked())) {
+                throw new DealerLockedException(dealer.getCode(), dealer.getName(), dealer.getLockReason());
+            }
+            if (Boolean.FALSE.equals(dealer.getActive())) {
+                throw new IllegalArgumentException(String.format("Đại lý '%s' (%s) đã ngừng giao dịch.",
+                        dealer.getName(), dealer.getCode()));
+            }
+            customerGroup = dealer.getCustomerGroup();
+        }
+
+        if (customerGroup == null) {
+            throw new IllegalArgumentException("Không xác định được nhóm khách hàng của đại lý để tra cứu bảng giá");
+        }
+
+        LocalDate orderDate = request.getOrderDate() != null ? request.getOrderDate() : LocalDate.now();
+
+        // 1. Tra cứu bảng giá hiệu lực của nhóm khách hàng mà đại lý thuộc về
+        List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, orderDate);
+        if (effectivePriceLists.isEmpty()) {
+            throw new IllegalArgumentException(String.format("Không tìm thấy bảng giá hiệu lực cho nhóm khách hàng '%s'. Không thể thêm dòng hàng.",
+                    customerGroup.getDisplayName()));
+        }
+        PriceList priceList = effectivePriceLists.get(0);
+
+        // 2. Tra cứu sản phẩm
+        Product product;
+        if (request.getProductId() != null) {
+            product = productRepository.findById(request.getProductId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + request.getProductId()));
+        } else {
+            product = productRepository.findByCode(request.getProductCode().trim().toUpperCase())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với mã: " + request.getProductCode()));
+        }
+
+        // 3. Kiểm tra SKU có trong bảng giá hiệu lực hay không - nếu không có thì chặn thêm dòng hàng kèm thông báo rõ lý do
+        PriceListItem priceListItem = null;
+        if (priceList.getItems() != null) {
+            for (PriceListItem pli : priceList.getItems()) {
+                if (pli.getProduct() != null && pli.getProduct().getId().equals(product.getId())) {
+                    priceListItem = pli;
+                    break;
+                }
+            }
+        }
+        if (priceListItem == null) {
+            throw new IllegalArgumentException(String.format("Sản phẩm '%s' (mã: %s) chưa có trong bảng giá hiệu lực của nhóm khách hàng '%s'. Không thể thêm dòng hàng.",
+                    product.getName(), product.getCode(), customerGroup.getDisplayName()));
+        }
+
+        // 4. Quy đổi đơn vị và giá
+        String unit = request.getUnit();
+        if (unit == null || unit.isBlank()) {
+            unit = product.getUnit();
+        } else {
+            unit = unit.trim();
+        }
+
+        BigDecimal factor = unitConversionService.getConversionFactor(product, unit);
+        BigDecimal qty = request.getQuantity() != null && request.getQuantity().compareTo(BigDecimal.ZERO) > 0
+                ? request.getQuantity() : BigDecimal.ONE;
+        BigDecimal baseQty = qty.multiply(factor);
+
+        BigDecimal priceListSellingPrice = priceListItem.getSellingPrice().multiply(factor);
+        BigDecimal floorPrice = priceListItem.getFloorPrice().multiply(factor);
+
+        boolean isManualPrice = request.getManualPrice() != null;
+        BigDecimal appliedPrice = isManualPrice ? request.getManualPrice() : priceListSellingPrice;
+
+        boolean isBelowFloor = appliedPrice.compareTo(floorPrice) < 0;
+        String approvalReason = isBelowFloor
+                ? String.format("Sản phẩm '%s' bán giá %s < giá sàn %s (%s)",
+                        product.getName(), appliedPrice.toPlainString(), floorPrice.toPlainString(), unit)
+                : null;
+
+        BigDecimal subtotal = appliedPrice.multiply(qty);
+
+        // 5. Chiết khấu theo sản lượng tính lại tự động mỗi khi số lượng thay đổi
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        BigDecimal discountPercent = null;
+        Long appliedPolicyId = null;
+        String appliedPolicyCode = null;
+        String appliedPolicyName = null;
+        String discountReason = null;
+
+        if (volumeDiscountPolicyService != null) {
+            VolumeDiscountPolicyService.OrderItemDiscountInput discountInput = VolumeDiscountPolicyService.OrderItemDiscountInput.builder()
+                    .index(0)
+                    .product(product)
+                    .unit(unit)
+                    .quantity(qty)
+                    .conversionFactor(factor)
+                    .baseQuantity(baseQty)
+                    .baseUnit(product.getUnit())
+                    .price(appliedPrice)
+                    .subtotalAmount(subtotal)
+                    .build();
+
+            VolumeDiscountPolicyService.OrderDiscountSummary summary = volumeDiscountPolicyService.calculateOrderDiscount(
+                    List.of(discountInput), customerGroup, orderDate);
+
+            if (summary != null && summary.getItemResults() != null) {
+                VolumeDiscountPolicyService.ItemDiscountResult res = summary.getItemResults().get(0);
+                if (res != null) {
+                    discountAmount = res.getDiscountAmount() != null ? res.getDiscountAmount() : BigDecimal.ZERO;
+                    discountPercent = res.getDiscountPercent();
+                    appliedPolicyId = res.getAppliedPolicyId();
+                    appliedPolicyCode = res.getAppliedPolicyCode();
+                    appliedPolicyName = res.getAppliedPolicyName();
+                    discountReason = res.getBestPolicyReason();
+                }
+            }
+        }
+
+        BigDecimal totalAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
+
+        return OrderLineItemPricingResponse.builder()
+                .productId(product.getId())
+                .productCode(product.getCode())
+                .productName(product.getName())
+                .categoryId(product.getCategory() != null ? product.getCategory().getId() : null)
+                .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
+                .dealerId(dealer != null ? dealer.getId() : null)
+                .dealerName(dealer != null ? dealer.getName() : null)
+                .customerGroup(customerGroup)
+                .customerGroupName(customerGroup.getDisplayName())
+                .priceListId(priceList.getId())
+                .priceListCode(priceList.getCode())
+                .priceListName(priceList.getName())
+                .unit(unit)
+                .conversionFactor(factor)
+                .baseUnit(product.getUnit())
+                .quantity(qty)
+                .baseQuantity(baseQty)
+                .priceListSellingPrice(priceListSellingPrice)
+                .floorPrice(floorPrice)
+                .unitPrice(appliedPrice)
+                .isManualPrice(isManualPrice)
+                .belowFloorPrice(isBelowFloor)
+                .requiresApproval(isBelowFloor)
+                .approvalReason(approvalReason)
+                .subtotalAmount(subtotal)
+                .discountAmount(discountAmount)
+                .discountPercent(discountPercent)
+                .appliedPolicyId(appliedPolicyId)
+                .appliedPolicyCode(appliedPolicyCode)
+                .appliedPolicyName(appliedPolicyName)
+                .discountReason(discountReason)
+                .totalAmount(totalAmount)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderCalculateResponse calculateOrder(OrderCalculateRequest request) {
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new IllegalArgumentException("Đơn hàng phải có ít nhất 1 sản phẩm để tính toán");
+        }
+
+        Dealer dealer = null;
+        CustomerGroup customerGroup = request.getCustomerGroup();
+
+        if (request.getDealerId() != null) {
+            dealer = dealerRepository.findById(request.getDealerId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
+            if (Boolean.TRUE.equals(dealer.getLocked())) {
+                throw new DealerLockedException(dealer.getCode(), dealer.getName(), dealer.getLockReason());
+            }
+            if (Boolean.FALSE.equals(dealer.getActive())) {
+                throw new IllegalArgumentException(String.format("Đại lý '%s' (%s) đã ngừng giao dịch.",
+                        dealer.getName(), dealer.getCode()));
+            }
+            customerGroup = dealer.getCustomerGroup();
+        }
+
+        PriceList priceList = null;
+        LocalDate orderDate = request.getOrderDate() != null ? request.getOrderDate() : LocalDate.now();
+
+        if (request.getPriceListId() != null) {
+            priceList = priceListRepository.findById(request.getPriceListId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy bảng giá với ID: " + request.getPriceListId()));
+            if (customerGroup == null) {
+                customerGroup = priceList.getCustomerGroup();
+            }
+        } else if (customerGroup != null) {
+            List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, orderDate);
+            if (!effectivePriceLists.isEmpty()) {
+                priceList = effectivePriceLists.get(0);
+            } else {
+                throw new IllegalArgumentException(String.format("Không tìm thấy bảng giá hiệu lực cho nhóm khách hàng '%s'. Không thể thêm dòng hàng.",
+                        customerGroup.getDisplayName()));
+            }
+        }
+
+        Map<Long, PriceListItem> priceItemMap = new HashMap<>();
+        if (priceList != null && priceList.getItems() != null) {
+            for (PriceListItem pli : priceList.getItems()) {
+                if (pli.getProduct() != null) {
+                    priceItemMap.put(pli.getProduct().getId(), pli);
+                }
+            }
+        }
+
+        boolean orderRequiresApproval = false;
+        List<String> belowFloorReasons = new ArrayList<>();
+        List<VolumeDiscountPolicyService.OrderItemDiscountInput> discountInputs = new ArrayList<>();
+        List<ItemPreData> preDataList = new ArrayList<>();
+
+        for (int i = 0; i < request.getItems().size(); i++) {
+            OrderItemRequest itemReq = request.getItems().get(i);
+            Product product = resolveProduct(itemReq);
+
+            if (customerGroup != null) {
+                PriceListItem pli = priceItemMap.get(product.getId());
+                if (pli == null) {
+                    throw new IllegalArgumentException(String.format("Sản phẩm '%s' (mã: %s) chưa có trong bảng giá hiệu lực của nhóm khách hàng '%s'. Không thể thêm dòng hàng.",
+                            product.getName(), product.getCode(), customerGroup.getDisplayName()));
+                }
+            }
+
+            String inputUnit = itemReq.getUnit();
+            if (inputUnit == null || inputUnit.isBlank()) {
+                inputUnit = product.getUnit();
+            } else {
+                inputUnit = inputUnit.trim();
+            }
+
+            BigDecimal qty = itemReq.getQuantity();
+            if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Số lượng cho sản phẩm '" + product.getCode() + "' phải lớn hơn 0");
+            }
+
+            BigDecimal factor = unitConversionService.getConversionFactor(product, inputUnit);
+            BigDecimal baseQty = qty.multiply(factor);
+
+            PriceListItem priceListItem = priceItemMap.get(product.getId());
+            BigDecimal unitSellingPrice = null;
+            BigDecimal unitFloorPrice = null;
+
+            if (priceListItem != null) {
+                unitSellingPrice = priceListItem.getSellingPrice().multiply(factor);
+                unitFloorPrice = priceListItem.getFloorPrice().multiply(factor);
+            }
+
+            boolean isManual = itemReq.getPrice() != null;
+            BigDecimal price;
+            if (isManual) {
+                price = itemReq.getPrice();
+            } else if (unitSellingPrice != null) {
+                price = unitSellingPrice;
+            } else {
+                price = product.getPrice() != null ? product.getPrice().multiply(factor) : BigDecimal.ZERO;
+            }
+
+            boolean isBelowFloor = false;
+            if (unitFloorPrice != null && price.compareTo(unitFloorPrice) < 0) {
+                isBelowFloor = true;
+                orderRequiresApproval = true;
+                belowFloorReasons.add(String.format("Sản phẩm '%s' bán giá %s < giá sàn %s (%s)",
+                        product.getName(), price.toPlainString(), unitFloorPrice.toPlainString(), inputUnit));
+            }
+
+            BigDecimal subtotalAmount = price.multiply(qty);
+
+            discountInputs.add(VolumeDiscountPolicyService.OrderItemDiscountInput.builder()
+                    .index(i)
+                    .product(product)
+                    .unit(inputUnit)
+                    .quantity(qty)
+                    .conversionFactor(factor)
+                    .baseQuantity(baseQty)
+                    .baseUnit(product.getUnit())
+                    .price(price)
+                    .subtotalAmount(subtotalAmount)
+                    .build());
+
+            preDataList.add(new ItemPreData(product, inputUnit, qty, factor, baseQty, price, unitFloorPrice, isBelowFloor, subtotalAmount, itemReq.getNote()));
+        }
+
+        VolumeDiscountPolicyService.OrderDiscountSummary discountSummary = null;
+        if (volumeDiscountPolicyService != null) {
+            discountSummary = volumeDiscountPolicyService.calculateOrderDiscount(discountInputs, customerGroup, orderDate);
+        }
+
+        BigDecimal grandSubtotal = BigDecimal.ZERO;
+        BigDecimal grandDiscount = BigDecimal.ZERO;
+        List<OrderCalculateItemResponse> calculatedItems = new ArrayList<>();
+
+        for (int i = 0; i < preDataList.size(); i++) {
+            ItemPreData d = preDataList.get(i);
+            BigDecimal discountAmount = BigDecimal.ZERO;
+            BigDecimal discountPercent = null;
+            Long appliedPolicyId = null;
+            String appliedPolicyCode = null;
+            String appliedPolicyName = null;
+            String reason = null;
+
+            if (discountSummary != null && discountSummary.getItemResults() != null) {
+                VolumeDiscountPolicyService.ItemDiscountResult res = discountSummary.getItemResults().get(i);
+                if (res != null) {
+                    discountAmount = res.getDiscountAmount() != null ? res.getDiscountAmount() : BigDecimal.ZERO;
+                    discountPercent = res.getDiscountPercent();
+                    appliedPolicyId = res.getAppliedPolicyId();
+                    appliedPolicyCode = res.getAppliedPolicyCode();
+                    appliedPolicyName = res.getAppliedPolicyName();
+                    reason = res.getBestPolicyReason();
+                }
+            }
+
+            BigDecimal lineTotal = d.subtotal().subtract(discountAmount).max(BigDecimal.ZERO);
+            grandSubtotal = grandSubtotal.add(d.subtotal());
+            grandDiscount = grandDiscount.add(discountAmount);
+
+            PriceListItem priceListItem = priceItemMap.get(d.product().getId());
+            BigDecimal priceListSelling = priceListItem != null ? priceListItem.getSellingPrice().multiply(d.conversionFactor()) : null;
+
+            calculatedItems.add(OrderCalculateItemResponse.builder()
+                    .productId(d.product().getId())
+                    .productCode(d.product().getCode())
+                    .productName(d.product().getName())
+                    .unit(d.unit())
+                    .quantity(d.quantity())
+                    .conversionFactor(d.conversionFactor())
+                    .baseUnit(d.product().getUnit())
+                    .baseQuantity(d.baseQuantity())
+                    .priceListSellingPrice(priceListSelling)
+                    .floorPrice(d.floorPrice())
+                    .price(d.price())
+                    .isManualPrice(request.getItems().get(i).getPrice() != null)
+                    .belowFloorPrice(d.isBelowFloor())
+                    .subtotalAmount(d.subtotal())
+                    .discountAmount(discountAmount)
+                    .discountPercent(discountPercent)
+                    .appliedPolicyId(appliedPolicyId)
+                    .appliedPolicyCode(appliedPolicyCode)
+                    .appliedPolicyName(appliedPolicyName)
+                    .selectionReason(reason)
+                    .totalAmount(lineTotal)
+                    .build());
+        }
+
+        return OrderCalculateResponse.builder()
+                .dealerId(dealer != null ? dealer.getId() : null)
+                .dealerName(dealer != null ? dealer.getName() : null)
+                .customerGroup(customerGroup)
+                .customerGroupName(customerGroup != null ? customerGroup.getDisplayName() : null)
+                .priceListId(priceList != null ? priceList.getId() : null)
+                .priceListCode(priceList != null ? priceList.getCode() : null)
+                .priceListName(priceList != null ? priceList.getName() : null)
+                .subtotalAmount(grandSubtotal)
+                .discountAmount(grandDiscount)
+                .totalAmount(grandSubtotal.subtract(grandDiscount).max(BigDecimal.ZERO))
+                .requiresApproval(orderRequiresApproval)
+                .approvalReason(orderRequiresApproval ? String.join("; ", belowFloorReasons) : null)
+                .items(calculatedItems)
                 .build();
     }
 }

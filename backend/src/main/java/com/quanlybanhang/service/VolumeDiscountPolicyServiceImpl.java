@@ -8,6 +8,7 @@ import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.CategoryRepository;
 import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
 import com.quanlybanhang.repository.VolumeDiscountPolicyRepository;
 import com.quanlybanhang.repository.VolumeDiscountTierRepository;
@@ -40,6 +41,7 @@ public class VolumeDiscountPolicyServiceImpl implements VolumeDiscountPolicyServ
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final DealerRepository dealerRepository;
+    private final PriceListRepository priceListRepository;
     private final UnitConversionService unitConversionService;
     private final AuditLogService auditLogService;
 
@@ -237,8 +239,28 @@ public class VolumeDiscountPolicyServiceImpl implements VolumeDiscountPolicyServ
 
         LocalDate orderDate = request.getOrderDate() != null ? request.getOrderDate() : LocalDate.now();
 
+        PriceList priceList = null;
+        if (customerGroup != null && priceListRepository != null) {
+            List<PriceList> effectiveLists = priceListRepository.findEffectivePriceLists(customerGroup, orderDate);
+            if (!effectiveLists.isEmpty()) {
+                priceList = effectiveLists.get(0);
+            }
+        }
+
+        Map<Long, PriceListItem> priceItemMap = new HashMap<>();
+        if (priceList != null && priceList.getItems() != null) {
+            for (PriceListItem pli : priceList.getItems()) {
+                if (pli.getProduct() != null) {
+                    priceItemMap.put(pli.getProduct().getId(), pli);
+                }
+            }
+        }
+
         // Chuẩn bị danh sách OrderItemDiscountInput
         List<OrderItemDiscountInput> inputs = new ArrayList<>();
+        List<BigDecimal> itemPriceListSellingList = new ArrayList<>();
+        List<BigDecimal> itemFloorPriceList = new ArrayList<>();
+
         for (int i = 0; i < request.getItems().size(); i++) {
             VolumeDiscountCalculateItemRequest itemReq = request.getItems().get(i);
             Product product = resolveProduct(itemReq);
@@ -253,9 +275,23 @@ public class VolumeDiscountPolicyServiceImpl implements VolumeDiscountPolicyServ
             BigDecimal factor = unitConversionService.getConversionFactor(product, unit);
             BigDecimal baseQty = itemReq.getQuantity().multiply(factor);
 
+            PriceListItem priceListItem = priceItemMap.get(product.getId());
+            BigDecimal priceListSelling = null;
+            BigDecimal floorPrice = null;
+            if (priceListItem != null) {
+                priceListSelling = priceListItem.getSellingPrice().multiply(factor);
+                floorPrice = priceListItem.getFloorPrice().multiply(factor);
+            }
+            itemPriceListSellingList.add(priceListSelling);
+            itemFloorPriceList.add(floorPrice);
+
             BigDecimal price = itemReq.getPrice();
             if (price == null) {
-                price = product.getPrice() != null ? product.getPrice().multiply(factor) : BigDecimal.ZERO;
+                if (priceListSelling != null) {
+                    price = priceListSelling;
+                } else {
+                    price = product.getPrice() != null ? product.getPrice().multiply(factor) : BigDecimal.ZERO;
+                }
             }
 
             BigDecimal subtotal = price.multiply(itemReq.getQuantity());
@@ -276,10 +312,15 @@ public class VolumeDiscountPolicyServiceImpl implements VolumeDiscountPolicyServ
         OrderDiscountSummary summary = calculateOrderDiscount(inputs, customerGroup, orderDate);
 
         List<VolumeDiscountItemCalculationResponse> itemResponses = new ArrayList<>();
-        for (OrderItemDiscountInput input : inputs) {
+        for (int i = 0; i < inputs.size(); i++) {
+            OrderItemDiscountInput input = inputs.get(i);
             ItemDiscountResult itemResult = summary.getItemResults().get(input.getIndex());
             BigDecimal itemDiscount = itemResult != null ? itemResult.getDiscountAmount() : BigDecimal.ZERO;
             BigDecimal itemTotal = input.getSubtotalAmount().subtract(itemDiscount);
+
+            BigDecimal floorPrice = itemFloorPriceList.get(i);
+            BigDecimal priceListSelling = itemPriceListSellingList.get(i);
+            boolean belowFloor = floorPrice != null && input.getPrice().compareTo(floorPrice) < 0;
 
             itemResponses.add(VolumeDiscountItemCalculationResponse.builder()
                     .productId(input.getProduct().getId())
@@ -293,6 +334,9 @@ public class VolumeDiscountPolicyServiceImpl implements VolumeDiscountPolicyServ
                     .baseUnit(input.getBaseUnit())
                     .baseQuantity(input.getBaseQuantity())
                     .price(input.getPrice())
+                    .priceListSellingPrice(priceListSelling)
+                    .floorPrice(floorPrice)
+                    .belowFloorPrice(belowFloor)
                     .subtotalAmount(input.getSubtotalAmount())
                     .discountAmount(itemDiscount)
                     .discountPercent(itemResult != null ? itemResult.getDiscountPercent() : null)

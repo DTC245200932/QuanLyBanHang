@@ -9,9 +9,98 @@
 .dlr-lock-reason { display: block; font-size: .75rem; max-width: 24ch; margin-top: 5px; white-space: normal; overflow-wrap: anywhere; }
 .lock-warning-banner { padding: 12px 14px; margin-bottom: 16px; border: 1px solid var(--amber); border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--ink-700); line-height: 1.5; }
 .btn--danger { background: var(--danger); color: var(--white); }
+.btn--danger:hover { background: #b03a3a; }
 .dealer-orders-table-wrap { max-width: 100%; overflow-x: auto; }
-.dealer-orders-table-wrap .dlr-table { min-width: 540px; }
+.dealer-orders-table-wrap .dlr-table { min-width: 580px; }
 button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+
+/* ── S4-06: Order lifecycle badges & Actions ────────────────── */
+.order-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.order-status-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.order-status-badge--draft {
+  background: var(--line-light);
+  color: var(--ink-600);
+}
+.order-status-badge--pending {
+  background: var(--amber-soft);
+  color: #925807;
+}
+.order-status-badge--approved {
+  background: rgba(47, 184, 138, 0.12);
+  color: var(--teal-deep);
+}
+.order-status-badge--picking {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+.order-status-badge--exported {
+  background: rgba(103, 58, 183, 0.12);
+  color: #5b2c9b;
+}
+.order-status-badge--delivered {
+  background: rgba(47, 184, 138, 0.2);
+  color: #126349;
+}
+.order-status-badge--closed {
+  background: var(--surface);
+  color: var(--ink-500);
+  border: 1px solid var(--line);
+}
+.order-status-badge--cancelled {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.order-status-badge--rejected {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.order-actions-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.order-return-guide {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--ink-500);
+  font-style: italic;
+  padding: 3px 0;
+}
+
+.cancel-order-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--amber-soft);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  color: #7a4d0e;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.cancel-order-notice svg {
+  flex-shrink: 0;
+  color: #b87812;
+  margin-top: 1px;
+}
 
 /* ── Page heading ───────────────────────────────────────── */
 

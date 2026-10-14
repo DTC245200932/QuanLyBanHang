@@ -55,7 +55,7 @@ label {
   min-height: min(640px, calc(100vh - 48px));
   margin: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+  grid-template-columns: minmax(0, 1.04fr) minmax(440px, 0.96fr);
   overflow: hidden;
   border: 1px solid rgba(9, 37, 62, 0.08);
   border-radius: 28px;
@@ -66,7 +66,7 @@ label {
 .brand-panel {
   position: relative;
   min-height: 560px;
-  padding: 50px clamp(42px, 5vw, 76px) 38px;
+  padding: 50px clamp(42px, 5vw, 76px) 42px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -140,7 +140,7 @@ label {
 
 .brand-copy {
   max-width: 660px;
-  margin-top: clamp(62px, 9vh, 108px);
+  margin-top: clamp(48px, 7vh, 84px);
 }
 
 .brand-kicker {
@@ -170,7 +170,7 @@ label {
 
 .operations-visual {
   width: min(650px, 100%);
-  margin-top: 54px;
+  margin-top: 42px;
   padding: 19px;
   border-radius: 23px;
   border: 1px solid rgba(255, 255, 255, 0.11);
@@ -415,7 +415,7 @@ label {
 .form-panel {
   display: grid;
   place-items: center;
-  padding: 54px clamp(44px, 6vw, 94px);
+  padding: 54px clamp(44px, 6vw, 84px);
   background: var(--white);
 }
 
@@ -438,7 +438,7 @@ label {
   margin: 0;
   color: var(--ink-900);
   font-family: "Bahnschrift", "Aptos Display", "Segoe UI", sans-serif;
-  font-size: clamp(31px, 3vw, 39px);
+  font-size: clamp(31px, 3vw, 38px);
   line-height: 1.12;
   letter-spacing: -0.035em;
   font-weight: 610;
@@ -507,7 +507,7 @@ label {
   border: 1px solid var(--line);
   border-radius: 12px;
   color: var(--ink-900);
-  background: #fbfcfd;
+  background: #f8fafc;
   font-size: 14px;
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
@@ -816,8 +816,13 @@ label {
 
 /* ── Field error state ── */
 .field-group--error .field-control {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.field-group--error .field-control input {
   border-color: var(--danger);
-  box-shadow: 0 0 0 3px rgba(200, 73, 73, 0.15);
+  box-shadow: 0 0 0 4px rgba(200, 73, 73, 0.12);
 }
 
 .field-group--error .field-icon svg {

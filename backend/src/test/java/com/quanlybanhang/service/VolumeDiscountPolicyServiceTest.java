@@ -10,6 +10,7 @@ import com.quanlybanhang.dto.response.VolumeDiscountPolicyResponse;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.CategoryRepository;
 import com.quanlybanhang.repository.DealerRepository;
+import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
 import com.quanlybanhang.repository.VolumeDiscountPolicyRepository;
 import com.quanlybanhang.repository.VolumeDiscountTierRepository;
@@ -48,6 +49,9 @@ class VolumeDiscountPolicyServiceTest {
 
     @Mock
     private DealerRepository dealerRepository;
+
+    @Mock
+    private PriceListRepository priceListRepository;
 
     @Mock
     private UnitConversionService unitConversionService;

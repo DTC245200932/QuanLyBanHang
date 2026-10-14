@@ -26,6 +26,9 @@ public class VolumeDiscountItemCalculationResponse {
     private BigDecimal baseQuantity;
 
     private BigDecimal price;
+    private BigDecimal priceListSellingPrice;
+    private BigDecimal floorPrice;
+    private Boolean belowFloorPrice;
     private BigDecimal subtotalAmount;
 
     // Chiết khấu được áp dụng

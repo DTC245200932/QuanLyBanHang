@@ -23,3 +23,4 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 - **Frontend**:
   - `dealer-transactions.js`: Kiểm tra `Auth.hasPermission('ORDER_CREATE')` để hiển thị nút hành động "Sao chép đơn".
   - `create-order.js`: Tự động nạp dữ liệu từ bản nháp đã sao chép, gọi bảng giá và chiết khấu hiện hành.
+

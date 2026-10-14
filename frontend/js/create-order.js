@@ -61,6 +61,10 @@
     pricingSummary: null, // kết quả tính giá/chiết khấu mới nhất từ backend
     pendingDeliveryPointId: null,
     dealerLoading: false,
+    debtInfo: null,           // { currentDebt, debtLimit, maxDebtDays, oldestOverdueDays }
+    debtBlocked: false,       // true = đại lý bị chặn tạo đơn hoàn toàn
+    debtNeedsApproval: false, // true = đơn sẽ cần duyệt
+    debtError: '',
   };
 
   let pricingRequestId = 0;
@@ -169,8 +173,14 @@
     dpSel.disabled = !dealerData;
     state.deliveryPoints = [];
     state.priceList = null;
+    state.debtInfo = null;
+    state.debtBlocked = false;
+    state.debtNeedsApproval = false;
+    $('co-debt-panel').hidden = true;
+    state.debtError = '';
     state.priceListError = '';
     state.pricingSummary = null;
+    syncBlockedState();
     setDeliveryStatus('');
     state.dealerLoading = true;
 
@@ -178,6 +188,7 @@
       await Promise.all([
         loadDeliveryPoints(dealerData.id),
         loadEffectivePriceList(dealerData.customerGroup),
+        loadDebtInfo(dealerData.id),
       ]);
     }
     if (state.selectedDealer?.id !== dealerData?.id) return;
@@ -252,6 +263,117 @@
     el.hidden = !message;
     el.classList.toggle('co-field-hint--error', isError);
     el.classList.toggle('co-field-hint--info', !isError && !!message);
+  }
+
+  /* ── Debt info (S4-02) ─────────────────────────────────── */
+
+  async function loadDebtInfo(dealerId) {
+    try {
+      const res = await Auth.apiFetch(`/dealers/${dealerId}/debt`);
+      const result = await res.json();
+      if (state.selectedDealer?.id !== dealerId) return;
+      if (!res.ok || !result.success) {
+        throw new Error(result.message || 'Không tải được công nợ. Vui lòng chọn lại đại lý để thử lại.');
+      }
+      state.debtInfo = result.data || null;
+      if (!state.debtInfo) throw new Error('Chưa nhận được dữ liệu công nợ. Vui lòng chọn lại đại lý.');
+      state.debtError = '';
+      updateDebtPanel();
+    } catch (err) {
+      if (state.selectedDealer?.id !== dealerId) return;
+      state.debtInfo = null;
+      state.debtError = err.message || 'Không tải được công nợ. Vui lòng chọn lại đại lý để thử lại.';
+      updateDebtPanel();
+    }
+  }
+
+  function updateDebtPanel() {
+    const panel = $('co-debt-panel');
+    const alertEl = $('co-debt-alert');
+    const info = state.debtInfo;
+
+    if (state.debtError && state.selectedDealer) {
+      panel.hidden = false;
+      panel.className = 'co-debt-panel co-debt-panel--blocked';
+      alertEl.hidden = false;
+      alertEl.className = 'co-debt-panel__alert co-debt-panel__alert--blocked';
+      alertEl.textContent = state.debtError;
+      state.debtBlocked = true;
+      syncBlockedState();
+      return;
+    }
+
+    if (!info || !state.selectedDealer) {
+      panel.hidden = true;
+      state.debtBlocked = false;
+      state.debtNeedsApproval = false;
+      syncBlockedState();
+      return;
+    }
+
+    panel.hidden = false;
+    const currentDebt = Number(info.currentDebt || 0);
+    const debtLimit = Number(info.debtLimit || 0);
+
+    $('co-debt-current').textContent = fmtMoney(currentDebt);
+    $('co-debt-limit').textContent = debtLimit > 0 ? fmtMoney(debtLimit) : 'Chưa khai báo';
+
+    // Hạn mức còn lại = hạn mức - công nợ hiện tại
+    const remaining = debtLimit - currentDebt;
+    const remainEl = $('co-debt-remaining');
+    remainEl.textContent = debtLimit > 0 ? fmtMoney(remaining) : '—';
+    remainEl.classList.toggle('co-debt-panel__value--danger', remaining < 0);
+    remainEl.classList.toggle('co-debt-panel__value--warning', remaining >= 0 && remaining < debtLimit * 0.2);
+
+    // Quá hạn quá số ngày cho phép → chặn hoàn toàn
+    state.debtBlocked = Boolean(info.isBlocked || info.hasOverdueDebt);
+
+    // Kiểm tra cần duyệt
+    checkDebtApproval();
+
+    // Cập nhật thông báo
+    if (state.debtBlocked) {
+      alertEl.hidden = false;
+      alertEl.className = 'co-debt-panel__alert co-debt-panel__alert--blocked';
+      alertEl.textContent = info.blockReason || 'Đại lý có khoản nợ quá hạn hoặc đã bị khoá giao dịch. Không thể tạo đơn.';
+      panel.className = 'co-debt-panel co-debt-panel--blocked';
+    } else if (state.debtNeedsApproval) {
+      alertEl.hidden = false;
+      alertEl.className = 'co-debt-panel__alert co-debt-panel__alert--warning';
+      alertEl.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Tổng đơn cộng công nợ vượt hạn mức. Đơn sẽ cần duyệt trước khi xử lý.</span>`;
+      panel.className = 'co-debt-panel co-debt-panel--warning';
+    } else {
+      alertEl.hidden = true;
+      panel.className = 'co-debt-panel';
+    }
+
+    syncBlockedState();
+  }
+
+  function checkDebtApproval() {
+    const info = state.debtInfo;
+    if (!info) {
+      state.debtNeedsApproval = false;
+      return;
+    }
+    const currentDebt = Number(info.currentDebt || 0);
+    const debtLimit = Number(info.debtLimit || 0);
+    if (debtLimit <= 0) {
+      state.debtNeedsApproval = false;
+      return;
+    }
+    let orderTotal = 0;
+    state.items.forEach((item) => {
+      orderTotal += Math.max(0, item.qty * item.unitPrice - (item.discountAmount || 0));
+    });
+    state.debtNeedsApproval = (currentDebt + orderTotal) > debtLimit;
+  }
+
+  function syncBlockedState() {
+    const blocked = state.debtBlocked;
+    $('co-product-search').disabled = blocked;
+    $('btn-save-draft').disabled = blocked;
+    $('btn-submit-order').disabled = blocked;
   }
 
   /* ── Group badge ─────────────────────────────────────────── */
@@ -619,6 +741,10 @@
     $('co-subtotal').textContent = fmtMoney(subtotal);
     $('co-total-discount').textContent = totalDiscount > 0 ? `−${fmtMoney(totalDiscount)}` : '−0 ₫';
     $('co-grand-total').textContent = fmtMoney(grandTotal);
+
+    // S4-02: kiểm tra lại trạng thái công nợ khi tổng đơn thay đổi
+    checkDebtApproval();
+    updateDebtPanel();
   }
 
   async function refreshPricingPreview() {
@@ -935,6 +1061,10 @@
       showToast('Đang tải thông tin đại lý. Vui lòng thử lại sau khi tải xong.', 'warning');
       return false;
     }
+    if (state.debtBlocked) {
+      showToast('Đại lý có khoản nợ quá hạn. Không thể tạo đơn cho đại lý này.', 'error');
+      return false;
+    }
     if (!$('co-dealer').value) {
       showToast('Vui lòng chọn đại lý.', 'warning');
       $('co-dealer').focus();
@@ -988,6 +1118,15 @@
       <div class="co-cs-row"><span>Tổng phải thu</span><span>${fmtMoney(grandTotal)}</span></div>
     `;
 
+    const debtNotice = document.querySelector('.co-confirm-debt-notice');
+    if (debtNotice) debtNotice.remove();
+    if (state.debtNeedsApproval) {
+      const notice = document.createElement('div');
+      notice.className = 'co-confirm-debt-notice';
+      notice.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Đơn vượt hạn mức công nợ và sẽ cần duyệt trước khi xử lý.</span>';
+      $('confirm-summary').after(notice);
+    }
+
     $('confirm-msg').hidden = true;
     $('btn-confirm-order').disabled = false;
     $('btn-confirm-order').textContent = 'Xác nhận tạo đơn';
@@ -1026,6 +1165,11 @@
       $('order-form').reset();
       state.items = [];
       state.selectedDealer = null;
+      state.debtInfo = null;
+      state.debtBlocked = false;
+      state.debtNeedsApproval = false;
+      state.debtError = '';
+      $('co-debt-panel').hidden = true;
       $('co-dealer-info').hidden = true;
       $('co-delivery-point').innerHTML = '<option value="">— Chọn điểm giao hàng —</option>';
       $('co-delivery-point').disabled = true;

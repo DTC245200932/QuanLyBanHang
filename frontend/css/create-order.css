@@ -698,6 +698,134 @@
 
 /* ── Topbar breadcrumb in mobile (hide section) ──────── */
 
+/* ── Debt panel (S4-02) ─────────────────────────────── */
+
+.co-debt-panel {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line-light);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.co-debt-panel--warning {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.co-debt-panel--blocked {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.co-debt-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--ink-700);
+  margin-bottom: 12px;
+}
+
+.co-debt-panel__header svg {
+  color: var(--teal-deep);
+  flex-shrink: 0;
+}
+
+.co-debt-panel--warning .co-debt-panel__header svg {
+  color: #7a4d0e;
+}
+
+.co-debt-panel--blocked .co-debt-panel__header svg {
+  color: var(--danger);
+}
+
+.co-debt-panel__body {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.co-debt-panel__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.co-debt-panel__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--ink-500);
+  letter-spacing: 0.02em;
+}
+
+.co-debt-panel__value {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--ink-900);
+  font-variant-numeric: tabular-nums;
+}
+
+.co-debt-panel__value--remaining {
+  color: var(--teal-deep);
+}
+
+.co-debt-panel__value--warning {
+  color: #7a4d0e;
+}
+
+.co-debt-panel__value--danger {
+  color: var(--danger);
+}
+
+.co-debt-panel__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.co-debt-panel__alert svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.co-debt-panel__alert--warning {
+  background: rgba(230, 162, 60, 0.15);
+  color: #7a4d0e;
+}
+
+.co-debt-panel__alert--blocked {
+  background: rgba(200, 73, 73, 0.12);
+  color: #9c3333;
+}
+
+/* Confirm modal debt notice */
+.co-confirm-debt-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  border-left: 3px solid var(--amber);
+  color: #7a4d0e;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.co-confirm-debt-notice svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 /* ── Responsive: 360px+ ──────────────────────────────── */
 
 @media (max-width: 768px) {
@@ -729,6 +857,17 @@
 
   .co-actions .btn {
     justify-content: center;
+  }
+
+  .co-debt-panel__body {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .co-debt-panel__stat {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: baseline;
   }
 }
 

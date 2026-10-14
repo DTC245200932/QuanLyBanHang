@@ -1407,8 +1407,19 @@
     $('co-delivery-date').min = today;
     await loadDealers();
 
-    // Show draft banner if draft exists
-    if (await hasDraft()) {
+    const query = new URLSearchParams(window.location.search);
+    const copiedDraft = query.get('copied') === '1';
+
+    if (copiedDraft) {
+      // A copied order is already saved in the database as a draft.
+      // Loading it also recalculates current prices and discounts in selectDealer().
+      if (await loadDraft()) {
+        showToast('Đã sao chép đơn cũ thành bản nháp. Giá và chiết khấu đã được tính lại.', 'success');
+      } else {
+        showToast('Không tải được bản sao đơn hàng. Vui lòng thử lại.', 'error');
+      }
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (await hasDraft()) {
       showDraftBanner();
     }
   }

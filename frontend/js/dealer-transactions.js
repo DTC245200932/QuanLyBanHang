@@ -33,5 +33,16 @@ const DealerTransactions = (() => {
     return request(`/orders/${orderId}/${action}`, { method: 'PUT' });
   }
 
-  return { lock, unlock, getInProgressOrders, processOrder };
+  async function cancelOrder(orderId, reason) {
+    const normalizedReason = String(reason ?? '').trim();
+    if (!normalizedReason) throw new Error('Vui lòng nhập lý do huỷ đơn hàng.');
+    if (normalizedReason.length > 500) throw new Error('Lý do huỷ tối đa 500 ký tự.');
+    return request(`/orders/${orderId}/cancel`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: normalizedReason }),
+    });
+  }
+
+  return { lock, unlock, getInProgressOrders, processOrder, cancelOrder };
 })();

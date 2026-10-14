@@ -407,10 +407,42 @@
         <div class="modal__body">
           <p id="dealer-orders-warning" class="lock-warning-banner" role="alert" hidden></p>
           <div class="dealer-orders-table-wrap">
-            <table class="dlr-table"><thead><tr><th>Mã đơn</th><th>Trạng thái</th><th>Tổng phải thu</th><th>Thao tác</th></tr></thead><tbody id="dealer-orders-body"></tbody></table>
+            <table class="dlr-table"><thead><tr><th>Mã đơn</th><th>Trạng thái vòng đời</th><th>Tổng phải thu</th><th>Thao tác</th></tr></thead><tbody id="dealer-orders-body"></tbody></table>
           </div>
           <div id="dealer-orders-message" class="form-message" role="alert" hidden></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: Huỷ đơn hàng (S4-06) ── -->
+    <div class="modal-overlay" id="cancel-order-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="cancel-order-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="cancel-order-title">Huỷ đơn hàng</h2>
+            <p class="modal-subtitle" id="cancel-order-sub"></p>
+          </div>
+          <button class="modal__close" type="button" data-close-cancel-order aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <form class="modal__body" id="cancel-order-form" novalidate>
+          <input type="hidden" id="cancel-order-id" />
+          <div class="cancel-order-notice" id="cancel-order-notice">
+            <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>Khi huỷ đơn hàng, hệ thống sẽ <strong>tự động nhả toàn bộ tồn kho đang giữ chỗ</strong> của đơn này. Đơn đã huỷ không thể phục hồi.</span>
+          </div>
+          <div class="form-field">
+            <label for="cancel-order-reason">Lý do huỷ đơn <span class="req">*</span></label>
+            <textarea id="cancel-order-reason" rows="3" maxlength="500" required placeholder="Nhập lý do huỷ đơn hàng (khách đổi ý, trùng đơn, hết nhu cầu…)"></textarea>
+            <small class="form-hint">Bắt buộc nhập lý do (tối đa 500 ký tự).</small>
+          </div>
+          <div id="cancel-order-message" class="form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-cancel-order>Quay lại</button>
+            <button type="submit" class="btn btn--danger" id="btn-submit-cancel-order">Xác nhận huỷ đơn</button>
+          </div>
+        </form>
       </div>
     </div>
 

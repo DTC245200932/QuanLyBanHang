@@ -61,3 +61,17 @@ test('đơn đang dở giữ cảnh báo server, chỉ gọi các thao tác có 
   await assert.rejects(client.processOrder(12, 'dispatch'), /không hợp lệ/);
   assert.equal(calls.length, 2);
 });
+
+test('huỷ đơn hàng bắt buộc nhập lý do, không vượt quá 500 ký tự và gửi đúng method PUT', async () => {
+  const { client, calls } = loadClient(() => response(true, { id: 12, status: 'CANCELLED' }));
+  await assert.rejects(client.cancelOrder(12, ''), /lý do/);
+  await assert.rejects(client.cancelOrder(12, '   '), /lý do/);
+  await assert.rejects(client.cancelOrder(12, 'a'.repeat(501)), /500/);
+  assert.equal(calls.length, 0);
+
+  const res = await client.cancelOrder(12, 'Khách hàng đổi ý');
+  assert.equal(res.status, 'CANCELLED');
+  assert.equal(calls[0].url, '/orders/12/cancel');
+  assert.equal(calls[0].options.method, 'PUT');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { reason: 'Khách hàng đổi ý' });
+});

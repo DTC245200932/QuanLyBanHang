@@ -109,23 +109,73 @@ Server chỉ phục vụ thư mục frontend; không mở trang bằng `file://`
 
 Dùng mật khẩu riêng cho mỗi môi trường và cập nhật hồ sơ quản trị bằng thông tin thực tế.
 
-### Dữ liệu nghiệp vụ
+### Tài khoản và dữ liệu demo
 
-Backend không tự chèn kho, địa bàn, nhóm hàng, sản phẩm, đại lý, bảng giá,
-chiết khấu hay tài khoản demo. Database mới chỉ có vai trò hệ thống và tài khoản
-`admin`. `APP_BOOTSTRAP_ADMIN_EMAIL` phải là email quản trị thực tế; không đặt
-số điện thoại giả cho tài khoản ban đầu. Database đã có `admin` không cần khai
-báo lại hai biến bootstrap và giữ nguyên hồ sơ/mật khẩu hiện có.
+Hai chế độ seed mặc định tắt. Để tạo bộ dữ liệu demo trong MySQL, đặt các biến
+sau trước khi khởi động backend (hoặc dùng `run_backend_example.ps1` sau khi
+cấu hình kết nối database và các bí mật của môi trường):
 
-Quản trị viên tạo nhân sự, khai báo/nhập danh mục thực tế và thiết lập bảng giá,
-chiết khấu qua các trang quản lý. Kho và địa bàn phải được cấu hình bằng dữ liệu
-thực trong database trước khi gán nhân sự hoặc ghi phiếu kho. Chưa có dữ liệu
-thì trang hiển thị trạng thái trống hoặc thông báo thiếu cấu hình.
+```powershell
+$env:APP_SEED_DEMO_USERS="true"
+$env:APP_DEMO_USER_PASSWORD="mat-khau-demo-ban-tu-chon"
+$env:APP_SEED_DEMO_DATA="true"
+cd D:\GitHub\QuanLyBanHang\backend
+.\mvnw.cmd spring-boot:run
+```
 
-Các biến `APP_SEED_DEMO_USERS` và `APP_DEMO_USER_PASSWORD` không còn được dùng.
-Thay đổi này không tự xoá các bản ghi đã tạo ở phiên bản trước: cần đối chiếu
-lịch sử giao dịch và sao lưu trước khi dọn database của nhóm. Doanh số giả trong
-cột `products.revenue` cũ đã được bỏ qua; API tính từ đơn hàng đã ghi sổ.
+| Biến | Mặc định | Tác dụng |
+|---|---|---|
+| `APP_SEED_DEMO_USERS` | `false` | Tạo các tài khoản bên dưới cùng 2 kho và 3 địa bàn demo |
+| `APP_DEMO_USER_PASSWORD` | Không có | Bắt buộc khi bật seed tài khoản; mã hóa bằng password encoder của hệ thống |
+| `APP_SEED_DEMO_DATA` | `false` | Tạo danh mục và giao dịch mẫu; có thể bật riêng mà không tạo tài khoản demo |
+
+| Tên đăng nhập | Mật khẩu của tài khoản mới | Vai trò |
+|---|---|---|
+| `sales.manager` | Giá trị `APP_DEMO_USER_PASSWORD` | Quản lý kinh doanh |
+| `sales.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Nhân viên kinh doanh, được gán 3 địa bàn demo |
+| `warehouse.manager` | Giá trị `APP_DEMO_USER_PASSWORD` | Quản lý kho, được gán 2 kho demo |
+| `warehouse.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Thủ kho, được gán 2 kho demo |
+| `accountant.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Kế toán |
+| `viewer.demo` | Giá trị `APP_DEMO_USER_PASSWORD` | Chỉ xem |
+
+Tài khoản `admin` vẫn dùng mật khẩu bootstrap riêng. Tên đăng nhập đã tồn tại
+được giữ nguyên mật khẩu, vai trò, trạng thái và phạm vi; thay đổi biến mật khẩu
+không đặt lại các tài khoản cũ. Seeder không gửi email đến địa chỉ demo.
+
+Bộ dữ liệu nghiệp vụ demo gồm:
+
+- 2 kho, 3 địa bàn và 3 nhà cung cấp.
+- 12 nhóm hàng theo cây 3 cấp; 8 sản phẩm điện tử, gia dụng và đồ uống.
+- 8 đơn vị quy đổi (lốc 6, thùng 24) và lịch sử giá khởi tạo cho sản phẩm mới.
+- 5 đại lý thuộc 3 nhóm khách hàng, gồm 1 đại lý bị khóa; hạn mức tiền/số ngày nợ,
+  6 điểm giao hàng và lịch sử phân công khi có `sales.demo` đang hoạt động.
+- 3 bảng giá, mỗi bảng có 8 dòng; 3 chính sách chiết khấu theo SKU/nhóm hàng,
+  có bậc phần trăm và số tiền trên đơn vị cơ sở. Hiệu lực demo: 2020–2099.
+- 4 phiếu nhập gắn nhà cung cấp, 4 phiếu xuất gắn mã đơn trong ghi chú và
+  12 dòng tồn kho tính theo đơn vị cơ sở.
+- 7 đơn: 4 đã ghi sổ, 1 chờ duyệt vì bán dưới giá sàn, 1 đã hủy, 1 bị từ chối.
+  Doanh số và chiết khấu được tính từ các đơn đã ghi sổ qua service hiện có.
+- Nhật ký thực hiện tạo danh mục, ghi đơn và thay đổi tồn kho.
+
+Số lượng trên là bộ demo đầy đủ khi khởi tạo mới. Mã nghiệp vụ có tiền tố
+`DEMO-`, tên/ghi chú có nhãn Demo. Có thể tìm các mã này trên trang quản lý.
+Seeder tìm từng bản ghi theo mã/tên đăng nhập, thêm phần còn thiếu và không
+ghi đè dữ liệu đã lưu. Khởi động lại không nhân đôi đơn/phiếu hoặc cộng tồn
+kho lần nữa. Toàn bộ một lần seed demo dùng cùng transaction; lỗi sẽ rollback.
+Kho/địa bàn được tạo khi bật một trong hai chế độ vì là quan hệ bắt buộc.
+
+Để ngừng seed ở các lần chạy sau:
+
+```powershell
+$env:APP_SEED_DEMO_USERS="false"
+$env:APP_SEED_DEMO_DATA="false"
+```
+
+Tắt seed không xóa bản ghi đã tạo. Nếu không bật seed, database mới chỉ được
+khởi tạo vai trò và `admin`, với `APP_BOOTSTRAP_ADMIN_PASSWORD` cùng
+`APP_BOOTSTRAP_ADMIN_EMAIL` thực tế. Chỉ bật dữ liệu demo trong môi trường
+phát triển/kiểm thử. Số dư công nợ và định mức tồn kho vẫn cần nguồn dữ liệu
+nghiệp vụ tương ứng; seeder chỉ tạo hạn mức trong hồ sơ đại lý.
 
 ## 6. Ví dụ gọi API đăng nhập
 

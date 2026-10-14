@@ -418,10 +418,139 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | GET | `/orders/draft` | Vai trò tạo đơn | Lấy bản nháp tạo đơn của người dùng hiện tại |
 | PUT | `/orders/draft` | Vai trò tạo đơn | Lưu đè bản nháp tạo đơn của người dùng hiện tại |
 | DELETE | `/orders/draft` | Vai trò tạo đơn | Xoá bản nháp tạo đơn của người dùng hiện tại |
-| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng cho đại lý (có thể truyền `deliveryPointId`, `expectedDeliveryDate`; tự động áp bảng giá theo nhóm khách hàng; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
+| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
+| POST | `/orders/line-item/pricing` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
+| POST | `/orders/calculate` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
 | PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng |
 | PUT | `/orders/{id}/approve` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng bán dưới giá sàn (chuyển trạng thái sang `RECORDED`) |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng bán dưới giá sàn (chuyển trạng thái sang `REJECTED`) |
+
+### Tự động áp dụng Bảng giá, Chiết khấu sản lượng & Kiểm soát Giá sàn khi Đặt hàng (S4-01)
+
+Nhằm đảm bảo tính chính xác và minh bạch trong chính sách giá khi tạo đơn:
+1. **Giá tự động lấy từ bảng giá đang hiệu lực của nhóm khách hàng mà đại lý thuộc về**:
+   - Khi chọn đại lý (hoặc nhóm khách hàng), hệ thống tự động tìm bảng giá đang có hiệu lực (`startDate <= orderDate <= endDate`).
+   - Đơn giá bán (`sellingPrice`) và giá sàn (`floorPrice`) được tự động nhân theo hệ số quy đổi đơn vị tính (thùng, lốc, lon...).
+2. **Chiết khấu theo sản lượng tự động tính lại mỗi khi số lượng thay đổi**:
+   - Khi số lượng thay đổi (hoặc khi thêm mặt hàng mới), hệ thống tự động đánh giá các chính sách chiết khấu theo sản lượng (`VolumeDiscountPolicy`) đang hiệu lực đối với nhóm khách hàng đó.
+   - Luôn tự động chọn chính sách tối ưu nhất (chiết khấu cao nhất) cho khách hàng.
+   - Endpoint `POST /api/orders/line-item/pricing` hỗ trợ preview ngay trên màn hình khi nhập số lượng cho từng mặt hàng.
+   - Endpoint `POST /api/orders/calculate` tính lại chiết khấu và tổng thanh toán toàn đơn hàng.
+3. **Sửa giá thủ công nhưng dưới giá sàn thì đơn bị đánh dấu cần duyệt**:
+   - Nhân viên kinh doanh được phép sửa đơn giá bán thủ công (`manualPrice` / `price`).
+   - Nếu giá bán thủ công < giá sàn (`floorPrice` đã quy đổi theo đơn vị tính):
+     - Dòng sản phẩm được đánh dấu `belowFloorPrice = true`.
+     - Đơn hàng được gắn cờ `requiresApproval = true`, trạng thái chuyển thành **`PENDING_APPROVAL` (Chờ duyệt)** và ghi nhận `approvalReason` chi tiết (Ví dụ: `Sản phẩm 'Bia Heineken Sleek lon 330ml' bán giá 14000 < giá sàn 15500 (lon)`).
+     - Chỉ Quản lý kinh doanh (`ROLE_SALES_MANAGER`) hoặc Admin mới có quyền phê duyệt (`PUT /api/orders/{id}/approve`) hoặc từ chối (`PUT /api/orders/{id}/reject`).
+4. **Chặn thêm dòng hàng nếu SKU không có trong bảng giá hiệu lực**:
+   - Nếu nhóm khách hàng chưa có bảng giá hiệu lực: Hệ thống chặn và trả về lỗi `400 Bad Request` kèm thông báo rõ lý do:
+     `"Không tìm thấy bảng giá hiệu lực cho nhóm khách hàng '{nhóm}'. Không thể thêm dòng hàng cho sản phẩm '{tên}'."`
+   - Nếu sản phẩm (SKU) không có trong bảng giá hiệu lực của nhóm khách hàng đó: Hệ thống chặn và trả về lỗi `400 Bad Request`:
+     `"Sản phẩm '{tên}' (mã: {mã}) chưa có trong bảng giá hiệu lực của nhóm khách hàng '{nhóm}'. Không thể thêm dòng hàng."`
+
+#### Request / Response `POST /api/orders/line-item/pricing`
+
+**Request:**
+```json
+POST /api/orders/line-item/pricing
+{
+  "dealerId": 1,
+  "productId": 10,
+  "unit": "thùng",
+  "quantity": 5,
+  "manualPrice": 360000,
+  "orderDate": "2026-10-13"
+}
+```
+
+**Response thành công (`200 OK`):**
+```json
+{
+  "success": true,
+  "message": "Tính giá dòng hàng thành công",
+  "data": {
+    "productId": 10,
+    "productCode": "SP-KEN330",
+    "productName": "Bia Heineken Sleek lon 330ml",
+    "dealerId": 1,
+    "customerGroup": "DAI_LY_CAP_1",
+    "customerGroupName": "Đại lý cấp 1",
+    "priceListCode": "BG-DLC1-2026",
+    "unit": "thùng",
+    "conversionFactor": 24.0,
+    "baseUnit": "lon",
+    "quantity": 5.0,
+    "baseQuantity": 120.0,
+    "priceListSellingPrice": 396000.0,
+    "floorPrice": 372000.0,
+    "unitPrice": 360000.0,
+    "isManualPrice": true,
+    "belowFloorPrice": true,
+    "requiresApproval": true,
+    "approvalReason": "Sản phẩm 'Bia Heineken Sleek lon 330ml' bán giá 360000 < giá sàn 372000.0000 (thùng)",
+    "subtotalAmount": 1800000.0,
+    "discountAmount": 90000.0,
+    "discountPercent": 5.0,
+    "appliedPolicyCode": "CK-SL-01",
+    "appliedPolicyName": "Chiết khấu sản lượng Đại lý Cấp 1",
+    "discountReason": "Đạt mốc sản lượng >= 100 lon (5%)",
+    "totalAmount": 1710000.0
+  }
+}
+```
+
+#### Request / Response `POST /api/orders/calculate`
+
+**Request:**
+```json
+POST /api/orders/calculate
+{
+  "dealerId": 1,
+  "items": [
+    {
+      "productId": 10,
+      "unit": "lon",
+      "quantity": 200
+    }
+  ]
+}
+```
+
+**Response thành công (`200 OK`):**
+```json
+{
+  "success": true,
+  "message": "Tính toán đơn hàng thành công",
+  "data": {
+    "dealerId": 1,
+    "customerGroup": "DAI_LY_CAP_1",
+    "customerGroupName": "Đại lý cấp 1",
+    "priceListCode": "BG-DLC1-2026",
+    "subtotalAmount": 3300000.0,
+    "discountAmount": 330000.0,
+    "totalAmount": 2970000.0,
+    "requiresApproval": false,
+    "items": [
+      {
+        "productId": 10,
+        "productCode": "SP-KEN330",
+        "productName": "Bia Heineken Sleek lon 330ml",
+        "unit": "lon",
+        "quantity": 200.0,
+        "price": 16500.0,
+        "floorPrice": 15500.0,
+        "belowFloorPrice": false,
+        "subtotalAmount": 3300000.0,
+        "discountAmount": 330000.0,
+        "discountPercent": 10.0,
+        "appliedPolicyCode": "CK-SL-02",
+        "selectionReason": "Chiết khấu theo bậc số lượng >= 200 lon (10%)",
+        "totalAmount": 2970000.0
+      }
+    ]
+  }
+}
+```
 
 ### Bản nháp tạo đơn và ngày giao mong muốn (S3-09)
 
@@ -848,3 +977,40 @@ Mọi chức năng đều kiểm quyền ở tầng server. Endpoint chưa đư�
 
 Tài khoản khởi tạo cho môi trường phát triển là `admin`; mật khẩu lấy từ
 `APP_BOOTSTRAP_ADMIN_PASSWORD`. Hãy đổi ngay sau lần đăng nhập đầu tiên.
+
+### Seed demo tùy chọn
+
+Đặt các biến môi trường trước khi chạy backend:
+
+```powershell
+$env:APP_SEED_DEMO_USERS="true"
+$env:APP_DEMO_USER_PASSWORD="mat-khau-demo-ban-tu-chon"
+$env:APP_SEED_DEMO_DATA="true"
+```
+
+`APP_SEED_DEMO_USERS` và `APP_SEED_DEMO_DATA` mặc định `false`, có thể bật
+độc lập. Seed tài khoản bắt buộc có `APP_DEMO_USER_PASSWORD`; không có mật khẩu
+hardcode hoặc API seed công khai. Các tài khoản mới là `sales.manager`,
+`sales.demo`, `warehouse.manager`, `warehouse.demo`, `accountant.demo` và
+`viewer.demo`, mỗi tài khoản có vai trò tương ứng. Tài khoản cũ giữ nguyên
+mật khẩu, quyền và phạm vi đã lưu. Seed không gửi email.
+
+Hai chế độ đều cung cấp 2 kho và 3 địa bàn demo. Chế độ nghiệp vụ bổ sung
+3 nhà cung cấp, cây 12 nhóm hàng/3 cấp, 8 SKU và 8 đơn vị quy đổi, lịch sử giá
+khởi tạo, 5 đại lý (1 bị khóa), hạn mức công nợ, 6 điểm giao, 3 bảng giá/24 dòng,
+3 chính sách/5 bậc chiết khấu, 7 đơn và 8 phiếu kho. Có 4 đơn `RECORDED`,
+1 `PENDING_APPROVAL`, 1 `CANCELLED`, 1 `REJECTED`; chỉ đơn `RECORDED` góp doanh số.
+
+Đơn và phiếu được ghi qua `OrderService`/`WarehouseService`, nên hệ số quy đổi,
+giá sàn, chiết khấu, tồn kho và nhật ký tuân theo logic API. Phiếu nhập mới
+được gắn nhà cung cấp. Tồn kho được tính từ 4 phiếu nhập/4 phiếu xuất, không
+gán số dư hoặc doanh số giả vào trường legacy. Lịch sử phân công được tạo
+cho đại lý mới nếu có tài khoản `sales.demo` đang hoạt động với vai trò Sales.
+Bảng giá/chính sách demo có hiệu lực 2020–2099.
+
+Mã nghiệp vụ bắt đầu bằng `DEMO-`; các bản ghi đã có được giữ nguyên. Seed
+demo dùng cùng transaction và rollback khi lỗi. Chạy lại không nhân đôi
+đơn/phiếu, không đặt lại mật khẩu hoặc cộng tồn kho lần nữa. Tắt hai cờ không
+xóa dữ liệu. Số dư công nợ/định mức tồn kho chưa có nguồn dữ liệu vẫn trả theo
+hợp đồng API hiện tại. Xem [README](../README.md#5-tài-khoản-đăng-nhập) để chạy
+và xem danh sách tài khoản đầy đủ.

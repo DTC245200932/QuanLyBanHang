@@ -10,8 +10,25 @@ const ids = user => Array.from(menu.getMenuForUser(user), item => item.id);
 
 test('admin can reach implemented account, audit and catalog pages', () => {
   const visible = ids({roles:['ROLE_ADMIN'], permissions:['USER_VIEW', 'PRODUCT_VIEW', 'WAREHOUSE_VIEW', 'WAREHOUSE_IMPORT']});
-  for (const id of ['dashboard', 'profile', 'users', 'audit-logs', 'products', 'product-groups', 'suppliers']) assert.ok(visible.includes(id));
+  for (const id of ['dashboard', 'profile', 'users', 'audit-logs', 'products', 'product-groups', 'suppliers', 'price-lists', 'discount-policies']) assert.ok(visible.includes(id));
   for (const id of ['orders', 'customers', 'finance', 'reports']) assert.ok(!visible.includes(id));
+});
+
+test('admin keeps management menus when the session has stale permissions', () => {
+  const visible = ids({roles:['ROLE_ADMIN'], permissions:[]});
+  for (const id of ['products', 'price-lists', 'discount-policies', 'debt-limits', 'users']) {
+    assert.ok(visible.includes(id), id);
+  }
+});
+
+test('permission removal hides permission-gated menus for non-admin roles', () => {
+  const sales = ids({roles:['ROLE_SALES'], permissions:['PRODUCT_VIEW', 'CUSTOMER_VIEW']});
+  assert.ok(sales.includes('products'));
+  assert.ok(sales.includes('product-groups'));
+  assert.ok(sales.includes('dealers'));
+  assert.ok(!sales.includes('create-order'));
+  assert.ok(ids({roles:['ROLE_SALES'], permissions:['PRODUCT_VIEW', 'ORDER_CREATE', 'CUSTOMER_VIEW']}).includes('create-order'));
+  assert.ok(!ids({roles:['ROLE_SALES'], permissions:['PRODUCT_VIEW', 'ORDER_CREATE']}).includes('dealers'));
 });
 
 test('warehouse staff and viewers do not receive admin or business management menus', () => {
@@ -40,7 +57,8 @@ test('every visible page has an absolute, extensionless link even from a nested 
 });
 
 test('debt limit menu follows finance roles and view permission', () => {
-  for (const role of ['ROLE_ADMIN', 'ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER']) {
+  assert.ok(ids({roles:['ROLE_ADMIN'], permissions:[]}).includes('debt-limits'));
+  for (const role of ['ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER']) {
     assert.ok(ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
     assert.ok(!ids({roles:[role], permissions:[]}).includes('debt-limits'));
   }
@@ -86,7 +104,7 @@ test('breadcrumbs use home, actual section and current page; section labels have
 });
 
 test('group labels remain correct when earlier menu items are hidden by permissions', () => {
-  const sales = menu.getMenuForUser({ roles: ['ROLE_SALES'], permissions: [] });
+  const sales = menu.getMenuForUser({ roles: ['ROLE_SALES'], permissions: ['ORDER_CREATE'] });
   assert.equal(sales.find(item => item.id === 'create-order').section, 'Kinh doanh');
   const warehouse = menu.getMenuForUser({ roles: ['ROLE_VIEWER'], permissions: ['WAREHOUSE_VIEW'] });
   assert.ok(warehouse.some(item => item.id === 'product-units'));

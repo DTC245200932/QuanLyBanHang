@@ -2,8 +2,12 @@ package com.quanlybanhang.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.quanlybanhang.dto.request.OrderCalculateRequest;
+import com.quanlybanhang.dto.request.OrderLineItemPricingRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
+import com.quanlybanhang.dto.response.OrderCalculateResponse;
+import com.quanlybanhang.dto.response.OrderLineItemPricingResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.model.OrderDraft;
 import com.quanlybanhang.repository.OrderDraftRepository;
@@ -92,6 +96,31 @@ public class OrderController {
         OrderResponse response = orderService.createOrder(request, username);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Tạo đơn hàng thành công", response));
+    }
+
+    /**
+     * S4-01: Tính giá và chiết khấu áp tự động khi thêm dòng hàng cho đại lý.
+     * Giá lấy từ bảng giá đang hiệu lực của nhóm khách hàng mà đại lý thuộc về.
+     * Chiết khấu theo sản lượng tính lại tự động.
+     * Sửa giá thủ công được nhưng dưới giá sàn thì cảnh báo cần duyệt.
+     * Không có bảng giá hiệu lực cho SKU đó thì chặn thêm dòng hàng kèm thông báo rõ lý do.
+     */
+    @PostMapping("/line-item/pricing")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public ApiResponse calculateLineItemPricing(@Valid @RequestBody OrderLineItemPricingRequest request) {
+        OrderLineItemPricingResponse response = orderService.calculateLineItemPricing(request);
+        return ApiResponse.success("Áp giá và chiết khấu dòng hàng thành công", response);
+    }
+
+    /**
+     * S4-01: Tính lại toàn bộ giá và chiết khấu cho danh sách dòng hàng khi số lượng thay đổi hoặc sửa giá thủ công.
+     * Chặn thêm dòng hàng nếu có SKU chưa có trong bảng giá hiệu lực.
+     */
+    @PostMapping("/calculate")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public ApiResponse calculateOrder(@Valid @RequestBody OrderCalculateRequest request) {
+        OrderCalculateResponse response = orderService.calculateOrder(request);
+        return ApiResponse.success("Tính toán giá và chiết khấu đơn hàng thành công", response);
     }
 
     @PutMapping("/{id}/cancel")

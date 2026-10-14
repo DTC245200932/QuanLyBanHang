@@ -38,4 +38,17 @@ public interface OrderService {
      */
     com.quanlybanhang.dto.response.OrderCalculateResponse calculateOrder(
             com.quanlybanhang.dto.request.OrderCalculateRequest request);
+
+    /**
+     * S4-09: Sao chép một đơn cũ thành đơn mới ở trạng thái Nháp (DRAFT).
+     * Toàn bộ dòng hàng của đơn đã chọn được sao chép.
+     * Giá và chiết khấu được áp lại theo bảng giá và chính sách hiện hành, không kế thừa giá cũ.
+     * Bản sao luôn bắt đầu ở trạng thái Nháp.
+     */
+    OrderResponse copyOrder(Long id, String username);
+
+    /**
+     * S4-09: Sao chép các dòng hàng của đơn cũ trực tiếp vào bản nháp tạo đơn của người dùng.
+     */
+    com.fasterxml.jackson.databind.JsonNode copyOrderToDraft(Long id, String username);
 }

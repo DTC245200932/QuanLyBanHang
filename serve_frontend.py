@@ -18,6 +18,7 @@ ROUTES = {
     "/discount-policies": "discount-policies.html",
     "/dealers": "dealers.html",
     "/create-order": "create-order.html",
+    "/dealer-portal": "dealer-portal.html",
     "/suppliers": "suppliers.html",
     "/product-units": "product-units.html",
     "/warehouse/units": "warehouse/units.html",

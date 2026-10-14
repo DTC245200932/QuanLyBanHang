@@ -13,6 +13,7 @@ const MenuConfig = (() => {
     "ROLE_WAREHOUSE_STAFF",
     "ROLE_ACCOUNTANT",
     "ROLE_VIEWER",
+    "ROLE_DEALER",
   ];
 
   const menuItems = [
@@ -56,6 +57,15 @@ const MenuConfig = (() => {
       href: "/create-order",
       permission: "ORDER_CREATE",
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_SALES", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF"],
+    },
+    {
+      id: "dealer-portal",
+      section: "Kinh doanh",
+      label: "Cổng đại lý",
+      icon: '<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+      href: "/dealer-portal",
+      permission: "ORDER_CREATE",
+      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_SALES", "ROLE_DEALER"],
     },
     {
       id: "price-lists",
@@ -257,6 +267,7 @@ const MenuConfig = (() => {
       ROLE_WAREHOUSE_STAFF: "Thủ kho",
       ROLE_ACCOUNTANT: "Kế toán",
       ROLE_VIEWER: "Chỉ xem",
+      ROLE_DEALER: "Đại lý",
     };
     return names[role] || role;
   }

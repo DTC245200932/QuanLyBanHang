@@ -1329,9 +1329,10 @@
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Không tạo được đơn hàng');
 
+      const createdOrder = result.data;
+
       closeConfirmModal();
       clearDraft();
-      showToast('Đơn hàng đã được tạo thành công!', 'success');
 
       // Reset form
       $('order-form').reset();
@@ -1352,6 +1353,9 @@
       $('co-pricing-status').hidden = true;
       renderItems();
       updateSummary();
+
+      // Open print modal with order data
+      openPrintModal(createdOrder);
     } catch (err) {
       const msgEl = $('confirm-msg');
       msgEl.textContent = err.message || 'Lỗi không xác định. Vui lòng thử lại.';
@@ -1360,6 +1364,7 @@
       btn.textContent = 'Thử lại';
     }
   });
+
 
   function buildOrderPayload() {
     const dealerId = $('co-dealer').value;

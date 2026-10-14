@@ -49,6 +49,14 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "orders",
+      section: "Kinh doanh",
+      label: "Đơn hàng",
+      icon: '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 12h6M9 16h4"/>',
+      href: "/orders",
+      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_SALES", "ROLE_ACCOUNTANT", "ROLE_VIEWER", "ROLE_WAREHOUSE_MANAGER"],
+    },
+    {
       id: "create-order",
       section: "Kinh doanh",
       label: "Tạo đơn hàng",

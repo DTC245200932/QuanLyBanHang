@@ -23,6 +23,11 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import com.quanlybanhang.dto.request.OrderInventoryCheckRequest;
+import com.quanlybanhang.dto.response.OrderInventoryCheckResponse;
+import com.quanlybanhang.model.Warehouse;
+import com.quanlybanhang.model.WarehouseInventory;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
@@ -61,6 +66,12 @@ class OrderServiceTest {
 
     @Mock
     private DealerDebtService dealerDebtService;
+
+    @Mock
+    private com.quanlybanhang.repository.WarehouseRepository warehouseRepository;
+
+    @Mock
+    private com.quanlybanhang.repository.WarehouseInventoryRepository inventoryRepository;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -353,4 +364,339 @@ class OrderServiceTest {
         when(priceListRepository.findEffectivePriceLists(eq(dealer.getCustomerGroup()), any()))
                 .thenReturn(List.of(priceList));
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // S4-03: TỒN KHẢ DỤNG & CHẶN ĐẶT VƯỢT TỒN KHO PHỤC VỤ
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    @DisplayName("[S4-03] Đặt vượt tồn khả dụng tại kho phục vụ -> Bị chặn với thông báo và gợi ý số lượng tối đa")
+    void createOrder_ExceedsAvailableStock_BlockedWithSuggestion() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-TONG").name("Kho Tổng Hà Nội").active(true).build();
+        Dealer dealer = Dealer.builder()
+                .id(5L).code("DL-05").name("Đại lý Cầu Giấy")
+                .warehouse(warehouse)
+                .active(true).locked(false).build();
+
+        OrderRequest request = OrderRequest.builder()
+                .orderCode("DH-STOCK-01")
+                .dealerId(5L)
+                .warehouseId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("3")) // 3 thùng = 72 lon
+                        .price(new BigDecimal("435000"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(5L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        mockEffectivePrices(dealer);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        // Kho có 60 lon thực tế, đang giữ chỗ 12 lon -> tồn khả dụng = 48 lon (tối đa 2 thùng)
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(100L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("60.0000"))
+                .reservedQuantity(new BigDecimal("12.0000"))
+                .build();
+
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                orderService.createOrder(request, "sales01"));
+
+        assertThat(ex.getMessage()).contains("Vượt tồn khả dụng");
+        assertThat(ex.getMessage()).contains("Số lượng tối đa có thể đặt là 2 thùng");
+    }
+
+    @Test
+    @DisplayName("[S4-03] Kho đã hết tồn khả dụng (available = 0) -> Bị chặn với thông báo rõ ràng")
+    void createOrder_ZeroAvailableStock_Blocked() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-TONG").name("Kho Tổng Hà Nội").active(true).build();
+        Dealer dealer = Dealer.builder()
+                .id(5L).code("DL-05").name("Đại lý Cầu Giấy")
+                .warehouse(warehouse)
+                .active(true).locked(false).build();
+
+        OrderRequest request = OrderRequest.builder()
+                .orderCode("DH-STOCK-02")
+                .dealerId(5L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("1"))
+                        .price(new BigDecimal("435000"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(5L)).thenReturn(Optional.of(dealer));
+        mockEffectivePrices(dealer);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        // Kho có 24 lon nhưng đã giữ chỗ hết 24 lon -> tồn khả dụng = 0
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(100L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("24.0000"))
+                .reservedQuantity(new BigDecimal("24.0000"))
+                .build();
+
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                orderService.createOrder(request, "sales01"));
+
+        assertThat(ex.getMessage()).contains("đã hết tồn khả dụng");
+        assertThat(ex.getMessage()).contains("Số lượng tối đa có thể đặt là 0 thùng");
+    }
+
+    @Test
+    @DisplayName("[S4-03] Đủ tồn khả dụng -> Ghi nhận đơn hàng và giữ chỗ thành công")
+    void createOrder_StockAvailable_ReservesStockSuccessfully() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-TONG").name("Kho Tổng Hà Nội").active(true).build();
+        Dealer dealer = Dealer.builder()
+                .id(5L).code("DL-05").name("Đại lý Cầu Giấy")
+                .warehouse(warehouse)
+                .active(true).locked(false).build();
+
+        OrderRequest request = OrderRequest.builder()
+                .orderCode("DH-STOCK-03")
+                .dealerId(5L)
+                .warehouseId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("2")) // 2 thùng = 48 lon
+                        .price(new BigDecimal("435000"))
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(5L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        mockEffectivePrices(dealer);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(100L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("100.0000"))
+                .reservedQuantity(new BigDecimal("10.0000"))
+                .build();
+
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponse response = orderService.createOrder(request, "sales01");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getWarehouseId()).isEqualTo(1L);
+        assertThat(response.getWarehouseCode()).isEqualTo("KHO-TONG");
+        // Giữ chỗ thêm 48 lon: 10 + 48 = 58 lon
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("58.0000"));
+        verify(inventoryRepository).save(inventory);
+    }
+
+    @Test
+    @DisplayName("[S4-03] Hủy đơn hàng đã giữ chỗ -> Hoàn trả lại tồn giữ chỗ (reservedQuantity)")
+    void cancelOrder_ReleasesReservedInventory() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-TONG").name("Kho Tổng").build();
+        com.quanlybanhang.model.OrderItem item = com.quanlybanhang.model.OrderItem.builder()
+                .id(1L)
+                .product(biaHeineken)
+                .quantity(new BigDecimal("2"))
+                .baseQuantity(new BigDecimal("48.0000"))
+                .build();
+
+        Order order = Order.builder()
+                .id(99L)
+                .orderCode("DH-CANCEL-01")
+                .warehouse(warehouse)
+                .status("RECORDED")
+                .inventoryReserved(true)
+                .items(List.of(item))
+                .build();
+
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(100L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("100.0000"))
+                .reservedQuantity(new BigDecimal("58.0000"))
+                .build();
+
+        when(orderRepository.findById(99L)).thenReturn(Optional.of(order));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponse response = orderService.cancelOrder(99L, "sales01");
+
+        assertThat(response.getStatus()).isEqualTo("CANCELLED");
+        // Hoàn trả 48 lon: 58 - 48 = 10 lon
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("10.0000"));
+        assertThat(order.getInventoryReserved()).isFalse();
+        verify(inventoryRepository).save(inventory);
+    }
+
+    @Test
+    @DisplayName("[S4-03] Kiểm tra tồn khả dụng qua checkInventory API trả về đầy đủ gợi ý")
+    void checkInventory_ReturnsAccurateAvailabilityAndSuggestion() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-TONG").name("Kho Tổng").build();
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(100L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("60.0000"))
+                .reservedQuantity(new BigDecimal("12.0000"))
+                .build();
+        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(inventory));
+
+        OrderInventoryCheckRequest req = OrderInventoryCheckRequest.builder()
+                .warehouseId(1L)
+                .productId(10L)
+                .unit("thùng")
+                .quantity(new BigDecimal("3")) // yêu cầu 3 thùng = 72 lon > 48 lon
+                .build();
+
+        OrderInventoryCheckResponse res = orderService.checkInventory(req);
+
+        assertThat(res.getValid()).isFalse();
+        assertThat(res.getPhysicalQuantity()).isEqualByComparingTo(new BigDecimal("60.0000"));
+        assertThat(res.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("12.0000"));
+        assertThat(res.getAvailableQuantity()).isEqualByComparingTo(new BigDecimal("48.0000"));
+        assertThat(res.getMaxAllowedInUnit()).isEqualByComparingTo(new BigDecimal("2")); // 48 / 24 = 2 thùng
+        assertThat(res.getMessage()).contains("Số lượng tối đa có thể đặt là 2 thùng");
+    }
+
+    @Test
+    @DisplayName("[S4-03] Hai người cùng chốt đơn trên SKU sắp hết -> Chỉ 1 người thành công, 1 người bị chặn, không âm tồn")
+    void concurrentOrders_OnLowStockSku_OneSucceeds_OneRejected_NeverNegative() throws Exception {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-TONG").name("Kho Tổng").build();
+        Dealer dealer = Dealer.builder()
+                .id(5L)
+                .code("DL-CONCURRENT")
+                .name("Đại lý Thử Concurrency")
+                .warehouse(warehouse)
+                .locked(false)
+                .customerGroup(com.quanlybanhang.model.CustomerGroup.KHACH_LE)
+                .build();
+
+        // Kho có 50 lon, đặt 2 thùng = 48 lon -> Chỉ 1 đơn chốt được, đơn thứ hai yêu cầu 48 lon sẽ bị chặn
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(100L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("50.0000"))
+                .reservedQuantity(new BigDecimal("0.0000"))
+                .build();
+
+        when(dealerRepository.findById(5L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        mockEffectivePrices(dealer);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        // Giả lập khóa bi quan: mỗi lần gọi findByWarehouseIdAndProductIdInForUpdate trả về bản ghi với synchronized
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenAnswer(invocation -> List.of(inventory));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderRequest req1 = OrderRequest.builder()
+                .orderCode("DH-CONCURRENT-01")
+                .dealerId(5L)
+                .warehouseId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("2")) // 48 lon
+                        .price(new BigDecimal("435000"))
+                        .build()))
+                .build();
+
+        OrderRequest req2 = OrderRequest.builder()
+                .orderCode("DH-CONCURRENT-02")
+                .dealerId(5L)
+                .warehouseId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("2")) // 48 lon
+                        .price(new BigDecimal("435000"))
+                        .build()))
+                .build();
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.atomic.AtomicInteger successCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger failureCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch doneLatch = new java.util.concurrent.CountDownLatch(2);
+
+        // Sử dụng monitor trên inventory để đồng bộ mô phỏng pessimistic write lock
+        Object lock = new Object();
+
+        Runnable task1 = () -> {
+            try {
+                startLatch.await();
+                synchronized (lock) {
+                    orderService.createOrder(req1, "user1");
+                }
+                successCount.incrementAndGet();
+            } catch (IllegalArgumentException e) {
+                failureCount.incrementAndGet();
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                doneLatch.countDown();
+            }
+        };
+
+        Runnable task2 = () -> {
+            try {
+                startLatch.await();
+                synchronized (lock) {
+                    orderService.createOrder(req2, "user2");
+                }
+                successCount.incrementAndGet();
+            } catch (IllegalArgumentException e) {
+                failureCount.incrementAndGet();
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                doneLatch.countDown();
+            }
+        };
+
+        executor.submit(task1);
+        executor.submit(task2);
+        startLatch.countDown(); // Khởi chạy 2 luồng đồng thời
+        doneLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // 1 đơn thành công, 1 đơn thất bại
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(failureCount.get()).isEqualTo(1);
+
+        // Tồn kho không bị âm: Tồn giữ chỗ đúng bằng 48 lon, tồn khả dụng còn lại 2 lon >= 0
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("48.0000"));
+        BigDecimal available = inventory.getBaseQuantity().subtract(inventory.getReservedQuantity());
+        assertThat(available).isEqualByComparingTo(new BigDecimal("2.0000"));
+        assertThat(available).isGreaterThanOrEqualTo(BigDecimal.ZERO);
+    }
 }
+

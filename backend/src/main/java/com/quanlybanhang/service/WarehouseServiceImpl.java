@@ -156,6 +156,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                             ", yêu cầu xuất: " + baseQty + " " + product.getUnit() + " (" + qty + " " + inputUnit + ")");
                 }
                 inventory.subtractBaseQuantity(baseQty);
+                if (inventory.getReservedQuantity() != null && inventory.getReservedQuantity().compareTo(BigDecimal.ZERO) > 0) {
+                    inventory.subtractReservedQuantity(baseQty);
+                }
             } else if (type == WarehouseVoucherType.ADJUSTMENT) {
                 if (request.getDelta() != null) {
                     BigDecimal deltaBase = request.getDelta().multiply(factor);
@@ -306,18 +309,27 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     private WarehouseInventoryResponse mapToInventoryResponse(WarehouseInventory inv) {
         Product p = inv.getProduct();
+        BigDecimal physical = inv.getBaseQuantity() != null ? inv.getBaseQuantity() : BigDecimal.ZERO;
+        BigDecimal reserved = inv.getReservedQuantity() != null ? inv.getReservedQuantity() : BigDecimal.ZERO;
+        BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
+
         Map<String, BigDecimal> converted = new LinkedHashMap<>();
+        Map<String, BigDecimal> convertedAvailable = new LinkedHashMap<>();
 
         // Luôn có đơn vị cơ sở
-        converted.put(inv.getBaseUnit(), inv.getBaseQuantity());
+        converted.put(inv.getBaseUnit(), physical);
+        convertedAvailable.put(inv.getBaseUnit(), available);
 
         // Tính tương đương theo các đơn vị quy đổi đã khai báo của SKU
         if (p != null) {
             List<UnitConversion> conversions = unitConversionRepository.findByProductIdOrderByConversionFactorAsc(p.getId());
             for (UnitConversion uc : conversions) {
                 if (uc.getConversionFactor() != null && uc.getConversionFactor().compareTo(BigDecimal.ZERO) > 0) {
-                    BigDecimal qtyInUnit = inv.getBaseQuantity().divide(uc.getConversionFactor(), 2, RoundingMode.HALF_UP);
+                    BigDecimal qtyInUnit = physical.divide(uc.getConversionFactor(), 2, RoundingMode.HALF_UP);
                     converted.put(uc.getUnitName(), qtyInUnit);
+
+                    BigDecimal availInUnit = available.divide(uc.getConversionFactor(), 0, RoundingMode.FLOOR);
+                    convertedAvailable.put(uc.getUnitName(), availInUnit);
                 }
             }
         }
@@ -330,9 +342,12 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .productId(p != null ? p.getId() : null)
                 .productCode(p != null ? p.getCode() : null)
                 .productName(p != null ? p.getName() : null)
-                .baseQuantity(inv.getBaseQuantity())
+                .baseQuantity(physical)
                 .baseUnit(inv.getBaseUnit())
+                .reservedQuantity(reserved)
+                .availableQuantity(available)
                 .convertedViews(converted)
+                .convertedAvailableViews(convertedAvailable)
                 .updatedAt(inv.getUpdatedAt())
                 .build();
     }

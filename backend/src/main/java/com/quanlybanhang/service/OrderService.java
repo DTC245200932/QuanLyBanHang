@@ -24,4 +24,18 @@ public interface OrderService {
      * Quản lý kinh doanh từ chối đơn hàng có dòng bán dưới giá sàn (S2-10).
      */
     OrderResponse rejectOrder(Long id, String reason, String username);
+
+    /**
+     * Tính giá và chiết khấu tự động khi thêm một dòng hàng cho đại lý (S4-01).
+     * Chặn thêm dòng hàng nếu SKU chưa có trong bảng giá hiệu lực của nhóm khách hàng.
+     */
+    com.quanlybanhang.dto.response.OrderLineItemPricingResponse calculateLineItemPricing(
+            com.quanlybanhang.dto.request.OrderLineItemPricingRequest request);
+
+    /**
+     * Tính lại toàn bộ giá và chiết khấu cho danh sách dòng hàng khi số lượng thay đổi hoặc sửa giá (S4-01).
+     * Chặn nếu có SKU chưa có trong bảng giá hiệu lực của nhóm khách hàng.
+     */
+    com.quanlybanhang.dto.response.OrderCalculateResponse calculateOrder(
+            com.quanlybanhang.dto.request.OrderCalculateRequest request);
 }

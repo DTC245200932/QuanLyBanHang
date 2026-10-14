@@ -310,7 +310,14 @@ const Auth = (() => {
   }
 
   function hasPermission(permission) {
-    return getUser()?.permissions?.includes(permission) || false;
+    const user = getUser();
+    return user?.roles?.includes("ROLE_ADMIN")
+      || user?.permissions?.includes(permission)
+      || false;
+  }
+
+  function hasAnyPermission(...permissions) {
+    return permissions.some((permission) => hasPermission(permission));
   }
 
   function getErrorPageUrl(status) {
@@ -334,6 +341,7 @@ const Auth = (() => {
     hasRole,
     hasAnyRole,
     hasPermission,
+    hasAnyPermission,
     clearSession,
     API_BASE,
   };

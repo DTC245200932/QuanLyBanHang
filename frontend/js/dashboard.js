@@ -51,13 +51,14 @@
     products: "Tra cứu mã hàng, đơn vị tính và quy cách đóng gói.",
     "product-groups": "Tra cứu nhóm hàng và sản phẩm trong từng nhóm.",
     "price-lists": "Khai báo giá bán theo nhóm khách hàng và ngày hiệu lực.",
+    "discount-policies": "Khai báo chiết khấu theo sản lượng cho SKU hoặc nhóm hàng.",
     suppliers: "Tra cứu thông tin liên hệ và điều khoản thanh toán.",
     "product-units": "Khai báo hệ số quy đổi lon, lốc và thùng theo từng mã hàng.",
     "import-export": "Lập phiếu nhập, xuất và tra cứu chứng từ kho.",
     warehouse: "Xem số lượng tồn và quy đổi theo đơn vị đóng gói.",
     profile: "Cập nhật họ tên, số điện thoại và ảnh đại diện.",
   };
-  const workOrder = ["users", "audit-logs", "debt-limits", "price-lists", "products", "product-groups",
+  const workOrder = ["users", "audit-logs", "debt-limits", "price-lists", "discount-policies", "products", "product-groups",
     "import-export", "warehouse", "product-units", "suppliers", "profile"];
   const availableWork = MenuConfig.getMenuForUser(user);
   const work = workOrder.map((id) => availableWork.find((item) => item.id === id))

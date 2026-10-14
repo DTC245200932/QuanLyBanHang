@@ -1,5 +1,5 @@
 /**
- * create-order.js — S3-09 Tạo đơn hàng cho đại lý.
+ * create-order.js — S3-09 Tạo đơn hàng cho đại lý + S4-01 tự động áp giá/chiết khấu.
  *
  * Tính năng:
  * - Chọn đại lý (load từ /dealers/active), điểm giao hàng, ngày giao
@@ -13,6 +13,8 @@
  *   GET  /dealers/{id}/delivery-points         → điểm giao hàng của đại lý
  *   GET  /products?search={q}&active=true      → tìm sản phẩm
  *   GET  /products/{id}/unit-conversions       → đơn vị tính quy đổi
+ *   GET  /price-lists/effective                → bảng giá hiệu lực theo nhóm đại lý
+ *   POST /orders/calculate                     → áp giá và tính chiết khấu toàn bộ đơn
  *   POST /orders                               → tạo đơn hàng
  */
 (() => {
@@ -23,6 +25,10 @@
     'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_SALES',
     'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF',
   )) {
+    location.href = '/error?status=403';
+    return;
+  }
+  if (!Auth.hasPermission('ORDER_CREATE')) {
     location.href = '/error?status=403';
     return;
   }
@@ -48,14 +54,17 @@
     dealers: [],        // list of active dealers
     deliveryPoints: [], // list of delivery points for selected dealer
     selectedDealer: null,
-    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, discountAmount }
+    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, floorPrice, manualPrice, discountAmount }
     productCache: {},   // productId → { unitConversions }
     priceList: null,    // bảng giá hiệu lực theo nhóm đại lý
+    priceListError: '', // lý do không thể áp giá cho đại lý hiện tại
+    pricingSummary: null, // kết quả tính giá/chiết khấu mới nhất từ backend
     pendingDeliveryPointId: null,
     dealerLoading: false,
     debtInfo: null,           // { currentDebt, debtLimit, maxDebtDays, oldestOverdueDays }
     debtBlocked: false,       // true = đại lý bị chặn tạo đơn hoàn toàn
     debtNeedsApproval: false, // true = đơn sẽ cần duyệt
+    debtError: '',
   };
 
   let pricingRequestId = 0;
@@ -168,6 +177,10 @@
     state.debtBlocked = false;
     state.debtNeedsApproval = false;
     $('co-debt-panel').hidden = true;
+    state.debtError = '';
+    state.priceListError = '';
+    state.pricingSummary = null;
+    syncBlockedState();
     setDeliveryStatus('');
     state.dealerLoading = true;
 
@@ -221,20 +234,25 @@
   }
 
   async function loadEffectivePriceList(customerGroup) {
-    if (!customerGroup) return;
+    if (!customerGroup) {
+      state.priceListError = 'Đại lý chưa được gán nhóm khách hàng nên chưa thể xác định bảng giá.';
+      return;
+    }
     try {
       const res = await Auth.apiFetch(`/price-lists/effective?customerGroup=${encodeURIComponent(customerGroup)}`);
-      const result = await res.json();
+      const result = await res.json().catch(() => null);
       if (state.selectedDealer?.customerGroup !== customerGroup) return;
       if (!res.ok || !result.success) {
         state.priceList = null;
+        state.priceListError = result?.message || 'Chưa có bảng giá hiệu lực cho nhóm khách hàng này.';
         return;
       }
       state.priceList = result.data || null;
+      state.priceListError = state.priceList ? '' : 'Chưa có bảng giá hiệu lực cho nhóm khách hàng này.';
     } catch {
       if (state.selectedDealer?.customerGroup !== customerGroup) return;
-      // Giá cuối cùng vẫn được backend tự xác định khi ghi nhận đơn.
       state.priceList = null;
+      state.priceListError = 'Không tải được bảng giá hiệu lực. Vui lòng thử lại trước khi thêm hàng.';
     }
   }
 
@@ -251,19 +269,20 @@
 
   async function loadDebtInfo(dealerId) {
     try {
-      const res = await Auth.apiFetch(`/finance/debt/${dealerId}/check`);
+      const res = await Auth.apiFetch(`/dealers/${dealerId}/debt`);
       const result = await res.json();
       if (state.selectedDealer?.id !== dealerId) return;
       if (!res.ok || !result.success) {
-        state.debtInfo = null;
-        updateDebtPanel();
-        return;
+        throw new Error(result.message || 'Không tải được công nợ. Vui lòng chọn lại đại lý để thử lại.');
       }
       state.debtInfo = result.data || null;
+      if (!state.debtInfo) throw new Error('Chưa nhận được dữ liệu công nợ. Vui lòng chọn lại đại lý.');
+      state.debtError = '';
       updateDebtPanel();
-    } catch {
+    } catch (err) {
       if (state.selectedDealer?.id !== dealerId) return;
       state.debtInfo = null;
+      state.debtError = err.message || 'Không tải được công nợ. Vui lòng chọn lại đại lý để thử lại.';
       updateDebtPanel();
     }
   }
@@ -272,6 +291,17 @@
     const panel = $('co-debt-panel');
     const alertEl = $('co-debt-alert');
     const info = state.debtInfo;
+
+    if (state.debtError && state.selectedDealer) {
+      panel.hidden = false;
+      panel.className = 'co-debt-panel co-debt-panel--blocked';
+      alertEl.hidden = false;
+      alertEl.className = 'co-debt-panel__alert co-debt-panel__alert--blocked';
+      alertEl.textContent = state.debtError;
+      state.debtBlocked = true;
+      syncBlockedState();
+      return;
+    }
 
     if (!info || !state.selectedDealer) {
       panel.hidden = true;
@@ -284,8 +314,6 @@
     panel.hidden = false;
     const currentDebt = Number(info.currentDebt || 0);
     const debtLimit = Number(info.debtLimit || 0);
-    const maxDebtDays = Number(info.maxDebtDays || 0);
-    const oldestOverdueDays = Number(info.oldestOverdueDays || 0);
 
     $('co-debt-current').textContent = fmtMoney(currentDebt);
     $('co-debt-limit').textContent = debtLimit > 0 ? fmtMoney(debtLimit) : 'Chưa khai báo';
@@ -298,7 +326,7 @@
     remainEl.classList.toggle('co-debt-panel__value--warning', remaining >= 0 && remaining < debtLimit * 0.2);
 
     // Quá hạn quá số ngày cho phép → chặn hoàn toàn
-    state.debtBlocked = maxDebtDays > 0 && oldestOverdueDays > maxDebtDays;
+    state.debtBlocked = Boolean(info.isBlocked || info.hasOverdueDebt);
 
     // Kiểm tra cần duyệt
     checkDebtApproval();
@@ -307,7 +335,7 @@
     if (state.debtBlocked) {
       alertEl.hidden = false;
       alertEl.className = 'co-debt-panel__alert co-debt-panel__alert--blocked';
-      alertEl.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><span>Đại lý có khoản nợ quá hạn ${oldestOverdueDays} ngày (cho phép tối đa ${maxDebtDays} ngày). Không thể tạo đơn.</span>`;
+      alertEl.textContent = info.blockReason || 'Đại lý có khoản nợ quá hạn hoặc đã bị khoá giao dịch. Không thể tạo đơn.';
       panel.className = 'co-debt-panel co-debt-panel--blocked';
     } else if (state.debtNeedsApproval) {
       alertEl.hidden = false;
@@ -441,6 +469,25 @@
   let itemSeq = 0;
 
   async function addItem(product) {
+    if (!state.selectedDealer) {
+      showToast('Vui lòng chọn đại lý trước để áp đúng bảng giá.', 'warning');
+      $('co-dealer').focus();
+      return;
+    }
+    if (state.dealerLoading) {
+      showToast('Đang tải bảng giá của đại lý. Vui lòng thử lại sau giây lát.', 'warning');
+      return;
+    }
+    if (!state.priceList) {
+      showToast(state.priceListError || 'Chưa có bảng giá hiệu lực cho đại lý này.', 'error');
+      return;
+    }
+    const priceLine = findPriceLine(product.id);
+    if (!priceLine) {
+      showToast(`SKU ${product.sku || product.code || product.name} chưa có trong bảng giá hiệu lực, không thể thêm vào đơn.`, 'error');
+      return;
+    }
+
     // Check duplicate
     const existing = state.items.find((it) => it.productId === product.id);
     if (existing) {
@@ -480,9 +527,12 @@
       qty: 1,
       basePrice: Number(product.sellingPrice || product.price || 0),
       unitPrice: 0,
+      floorPrice: 0,
+      manualPrice: false,
       discountAmount: 0,
     };
     item.unitPrice = getUnitPrice(item);
+    item.floorPrice = getUnitFloorPrice(item);
     state.items.push(item);
     renderItems();
     updateSummary();
@@ -534,7 +584,10 @@
         <td style="text-align:right">
           <input class="co-qty-input" type="number" data-field="qty" min="1" step="1" value="${item.qty}" />
         </td>
-        <td style="text-align:right"><span class="co-price-value" data-price>${fmtMoney(item.unitPrice)}</span></td>
+        <td style="text-align:right">
+          <input class="co-price-input" type="number" data-field="price" data-price min="0" step="1" value="${escHtml(item.unitPrice)}" aria-label="Đơn giá ${escHtml(item.name)}" />
+          <small class="co-floor-hint" data-floor>Giá sàn: ${fmtMoney(item.floorPrice)}</small>
+        </td>
         <td style="text-align:right"><span class="co-discount-value" data-discount>${item.discountAmount > 0 ? '−' + fmtMoney(item.discountAmount) : '—'}</span></td>
         <td style="text-align:right">
           <span class="co-item-total" data-total>${fmtMoney(lineTotal)}</span>
@@ -556,6 +609,7 @@
         item.qty = quantity;
         refreshRowTotal(row, item);
         updateSummary();
+        updateApprovalNotice();
         saveDraftSilently();
         refreshPricingPreview();
       });
@@ -564,8 +618,31 @@
         e.target.value = item.qty;
         refreshRowTotal(row, item);
         updateSummary();
+        updateApprovalNotice();
         saveDraftSilently();
         refreshPricingPreview();
+      });
+
+      // Cho phép sửa giá thủ công; backend sẽ đánh dấu đơn chờ duyệt nếu thấp hơn giá sàn.
+      row.querySelector('[data-field="price"]').addEventListener('input', (e) => {
+        const price = Number(e.target.value);
+        if (!e.target.value || !Number.isFinite(price) || price < 0) return;
+        item.unitPrice = price;
+        item.manualPrice = true;
+        refreshRowTotal(row, item);
+        updateSummary();
+        updateApprovalNotice();
+        saveDraftSilently();
+      });
+      row.querySelector('[data-field="price"]').addEventListener('change', (e) => {
+        const price = Math.max(0, Number(e.target.value) || 0);
+        item.unitPrice = price;
+        item.manualPrice = true;
+        e.target.value = price;
+        refreshRowTotal(row, item);
+        updateSummary();
+        updateApprovalNotice();
+        saveDraftSilently();
       });
 
       // Unit
@@ -575,7 +652,9 @@
         );
         if (selected) {
           item.selectedUnit = selected;
+          item.manualPrice = false;
           item.unitPrice = getUnitPrice(item);
+          item.floorPrice = getUnitFloorPrice(item);
           refreshRowTotal(row, item);
           updateSummary();
           refreshPricingPreview();
@@ -592,7 +671,10 @@
     const el = row.querySelector('[data-total]');
     if (el) el.textContent = fmtMoney(total);
     const priceEl = row.querySelector('[data-price]');
-    if (priceEl) priceEl.textContent = fmtMoney(item.unitPrice);
+    if (priceEl) priceEl.value = item.unitPrice;
+    const floorEl = row.querySelector('[data-floor]');
+    if (floorEl) floorEl.textContent = `Giá sàn: ${fmtMoney(item.floorPrice)}`;
+    row.classList.toggle('co-item-row--approval', isBelowFloor(item));
     const discountEl = row.querySelector('[data-discount]');
     if (discountEl) discountEl.textContent = item.discountAmount > 0 ? `−${fmtMoney(item.discountAmount)}` : '—';
   }
@@ -603,14 +685,44 @@
 
   function getUnitPrice(item) {
     const factor = Number(item.selectedUnit?.conversionFactor ?? 1) || 1;
-    const priceLine = state.priceList?.items?.find((line) => Number(line.productId) === Number(item.productId));
+    if (item.manualPrice) return Number(item.unitPrice || 0);
+    const priceLine = findPriceLine(item.productId);
     if (priceLine?.sellingPrice != null) return Number(priceLine.sellingPrice) * factor;
     return Number(item.basePrice || 0) * factor;
   }
 
+  function findPriceLine(productId) {
+    return state.priceList?.items?.find((line) => Number(line.productId) === Number(productId)) || null;
+  }
+
+  function getUnitFloorPrice(item) {
+    const factor = Number(item.selectedUnit?.conversionFactor ?? 1) || 1;
+    const priceLine = findPriceLine(item.productId);
+    return priceLine?.floorPrice != null ? Number(priceLine.floorPrice) * factor : 0;
+  }
+
+  function isBelowFloor(item) {
+    return Number(item.floorPrice || 0) > 0 && Number(item.unitPrice || 0) < Number(item.floorPrice);
+  }
+
+  function updateApprovalNotice(pricingSummary = state.pricingSummary) {
+    const statusEl = $('co-pricing-status');
+    if (!statusEl || !state.items.length || !state.priceList) return;
+    const approvalItems = state.items.filter(isBelowFloor);
+    const requiresApproval = pricingSummary?.requiresApproval ?? approvalItems.length > 0;
+    statusEl.className = requiresApproval
+      ? 'co-pricing-status co-pricing-status--warning'
+      : 'co-pricing-status co-pricing-status--success';
+    statusEl.textContent = requiresApproval
+      ? (pricingSummary?.approvalReason || `Có ${approvalItems.length} dòng dưới giá sàn. Đơn sẽ chuyển sang trạng thái chờ duyệt.`)
+      : `Đã áp dụng bảng giá ${pricingSummary?.priceListCode || state.priceList.code || ''} và chiết khấu theo sản lượng.`;
+    statusEl.hidden = false;
+  }
+
   function syncItemPrices() {
     state.items.forEach((item) => {
-      item.unitPrice = getUnitPrice(item);
+      if (!item.manualPrice) item.unitPrice = getUnitPrice(item);
+      item.floorPrice = getUnitFloorPrice(item);
     });
     renderItems();
     updateSummary();
@@ -638,8 +750,28 @@
   async function refreshPricingPreview() {
     const requestId = ++pricingRequestId;
     if (!state.items.length) {
-      $('co-pricing-status').hidden = true;
+      state.pricingSummary = null;
+      const statusEl = $('co-pricing-status');
+      if (state.selectedDealer && !state.priceList) {
+        statusEl.hidden = false;
+        statusEl.className = 'co-pricing-status co-pricing-status--error';
+        statusEl.textContent = state.priceListError || 'Chưa có bảng giá hiệu lực cho đại lý này.';
+      } else {
+        statusEl.hidden = true;
+      }
       return true;
+    }
+
+    if (!state.priceList) {
+      state.pricingSummary = null;
+      state.items.forEach((item) => { item.discountAmount = 0; });
+      refreshItemAmounts();
+      updateSummary();
+      const statusEl = $('co-pricing-status');
+      statusEl.hidden = false;
+      statusEl.className = 'co-pricing-status co-pricing-status--error';
+      statusEl.textContent = state.priceListError || 'Chưa có bảng giá hiệu lực cho đại lý này.';
+      return false;
     }
 
     const statusEl = $('co-pricing-status');
@@ -651,15 +783,20 @@
       const payload = {
         dealerId: state.selectedDealer?.id ? Number(state.selectedDealer.id) : null,
         customerGroup: state.selectedDealer?.customerGroup || null,
+        priceListId: state.priceList?.id || null,
         orderDate: todayInputValue(),
-        items: state.items.map((item) => ({
-          productId: Number(item.productId),
-          unit: item.selectedUnit?.unitName || item.selectedUnit?.unit || 'cái',
-          quantity: item.qty,
-          price: item.unitPrice,
-        })),
+        items: state.items.map((item) => {
+          const line = {
+            productId: Number(item.productId),
+            unit: item.selectedUnit?.unitName || item.selectedUnit?.unit || 'cái',
+            quantity: item.qty,
+          };
+          // Chỉ gửi giá khi người dùng thật sự sửa thủ công.
+          if (item.manualPrice) line.price = item.unitPrice;
+          return line;
+        }),
       };
-      const res = await Auth.apiFetch('/volume-discounts/calculate', {
+      const res = await Auth.apiFetch('/orders/calculate', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -667,16 +804,22 @@
       if (!res.ok || !result.success) throw new Error(result.message || 'Không tính được chiết khấu');
       if (requestId !== pricingRequestId) return false;
 
+      state.pricingSummary = result.data || null;
       const calculatedItems = Array.isArray(result.data?.items) ? result.data.items : [];
       state.items.forEach((item, index) => {
-        item.discountAmount = Number(calculatedItems[index]?.discountAmount || 0);
+        const calculated = calculatedItems[index];
+        if (!calculated) return;
+        if (!item.manualPrice && calculated.price != null) item.unitPrice = Number(calculated.price);
+        if (calculated.floorPrice != null) item.floorPrice = Number(calculated.floorPrice);
+        item.discountAmount = Number(calculated.discountAmount || 0);
       });
       refreshItemAmounts();
       updateSummary();
-      statusEl.hidden = true;
+      updateApprovalNotice();
       return true;
     } catch {
       if (requestId !== pricingRequestId) return false;
+      state.pricingSummary = null;
       state.items.forEach((item) => { item.discountAmount = 0; });
       refreshItemAmounts();
       updateSummary();
@@ -710,6 +853,8 @@
         qty: it.qty,
         basePrice: it.basePrice,
         unitPrice: it.unitPrice,
+        floorPrice: it.floorPrice,
+        manualPrice: it.manualPrice,
         discountAmount: it.discountAmount || 0,
       })),
       _seq: itemSeq,
@@ -805,6 +950,8 @@
           qty: it.qty,
           basePrice: Number(product.price ?? product.sellingPrice ?? 0),
           unitPrice: Number(it.unitPrice || 0),
+          floorPrice: Number(it.floorPrice || 0),
+          manualPrice: Boolean(it.manualPrice),
           discountAmount: Number(it.discountAmount || it.discount || 0),
         };
       }));
@@ -938,6 +1085,15 @@
       $('co-product-search').focus();
       return false;
     }
+    if (!state.priceList) {
+      showToast(state.priceListError || 'Chưa có bảng giá hiệu lực cho đại lý này.', 'error');
+      return false;
+    }
+    const missingPriceLines = state.items.filter((item) => !findPriceLine(item.productId));
+    if (missingPriceLines.length) {
+      showToast(`Có sản phẩm chưa có trong bảng giá hiệu lực: ${missingPriceLines.map((item) => item.sku || item.name).join(', ')}.`, 'error');
+      return false;
+    }
     return true;
   }
 
@@ -1012,12 +1168,14 @@
       state.debtInfo = null;
       state.debtBlocked = false;
       state.debtNeedsApproval = false;
+      state.debtError = '';
       $('co-debt-panel').hidden = true;
       $('co-dealer-info').hidden = true;
       $('co-delivery-point').innerHTML = '<option value="">— Chọn điểm giao hàng —</option>';
       $('co-delivery-point').disabled = true;
       state.deliveryPoints = [];
       state.priceList = null;
+      state.pricingSummary = null;
       setDeliveryStatus('');
       $('co-pricing-status').hidden = true;
       renderItems();
@@ -1041,12 +1199,13 @@
       dealerId: Number(dealerId),
       deliveryPointId: deliveryPointId ? Number(deliveryPointId) : null,
       expectedDeliveryDate: deliveryDate || null,
+      priceListId: state.priceList?.id || null,
       note,
-      needsApproval: state.debtNeedsApproval || false,
       items: state.items.map((it) => ({
         productId: it.productId,
         unit: it.selectedUnit?.unitName || it.selectedUnit?.unit || 'cái',
         quantity: it.qty,
+        ...(it.manualPrice ? { price: it.unitPrice } : {}),
       })),
     };
   }

@@ -1,14 +1,17 @@
 /**
- * create-order.js — S3-09 Tạo đơn hàng cho đại lý + S4-01 tự động áp giá/chiết khấu.
+ * create-order.js — Tạo đơn hàng, áp giá/chiết khấu và xem lịch sử mua hàng đại lý.
  *
  * Tính năng:
  * - Chọn đại lý (load từ /dealers/active), điểm giao hàng, ngày giao
  * - Thêm dòng hàng: tìm kiếm sản phẩm theo SKU/tên, chọn đơn vị tính & số lượng
  * - Hiển thị tổng tiền hàng, chiết khấu, tổng phải thu theo thời gian thực
  * - Lưu bản nháp vào database qua /orders/draft, mở lại tiếp tục
+ * - [S4-04] Hiển thị lịch sử mua hàng 3 tháng gần nhất của đại lý kèm SL bình quân
+ * - [S4-04] Nút "Thêm vào đơn" từng sản phẩm và "Thêm tất cả vào đơn"
  * - Responsive xuống 360px
  *
  * API:
+ *   GET  /dealers/{id}/purchase-history?months=3  → lịch sử mua 3 tháng
  *   GET  /dealers/active                       → đại lý đang hoạt động
  *   GET  /dealers/{id}/delivery-points         → điểm giao hàng của đại lý
  *   GET  /products?search={q}&active=true      → tìm sản phẩm
@@ -165,6 +168,10 @@
       infoStrip.hidden = false;
     } else {
       infoStrip.hidden = true;
+      // Hide purchase history when no dealer is selected
+      $('co-history-section').hidden = true;
+      $('btn-add-all-history').hidden = true;
+      historyItems = [];
     }
 
     // Reset & reload delivery points
@@ -189,6 +196,7 @@
         loadDeliveryPoints(dealerData.id),
         loadEffectivePriceList(dealerData.customerGroup),
         loadDebtInfo(dealerData.id),
+        loadPurchaseHistory(dealerData.id),
       ]);
     }
     if (state.selectedDealer?.id !== dealerData?.id) return;
@@ -395,6 +403,169 @@
     return `<span class="group-badge ${cls}">${escHtml(label)}</span>`;
   }
 
+  /* ── S4-04 Purchase history ─────────────────────────────── */
+  // historyItems: [{ productId, sku, name, unit, avgQty, lastOrderDate }]
+  let historyItems = [];
+
+  async function loadPurchaseHistory(dealerId) {
+    const section = $('co-history-section');
+    const body = $('co-history-body');
+    const addAllBtn = $('btn-add-all-history');
+
+    section.hidden = false;
+    addAllBtn.hidden = true;
+    historyItems = [];
+    body.innerHTML = '<div class="co-history-loading"><span>Đang tải lịch sử…</span></div>';
+
+    try {
+      const res = await Auth.apiFetch(`/dealers/${dealerId}/purchase-history?months=3`);
+      // Guard: dealer changed while fetching
+      if (state.selectedDealer?.id !== dealerId) return;
+
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.message || 'Không tải được lịch sử mua hàng');
+
+      const items = Array.isArray(result.data) ? result.data : [];
+
+      if (!items.length) {
+        body.innerHTML = '<div class="co-history-empty">Chưa có dữ liệu mua hàng trong 3 tháng gần nhất.</div>';
+        return;
+      }
+
+      historyItems = items;
+      renderPurchaseHistory();
+    } catch (err) {
+      if (state.selectedDealer?.id !== dealerId) return;
+      body.innerHTML = `<div class="co-history-error">${escHtml(err.message || 'Không tải được lịch sử mua hàng.')}</div>`;
+    }
+  }
+
+  function renderPurchaseHistory() {
+    const body = $('co-history-body');
+    const addAllBtn = $('btn-add-all-history');
+
+    if (!historyItems.length) return;
+
+    const currentProductIds = new Set(state.items.map((it) => it.productId));
+
+    body.innerHTML = `<div class="co-history-list">${historyItems.map((item) => {
+      const added = currentProductIds.has(item.productId);
+      return `
+        <div class="co-history-item${added ? ' co-history-item--added' : ''}" data-product-id="${item.productId}">
+          <span class="co-history-item__sku">${escHtml(item.sku || item.code || '')}</span>
+          <span class="co-history-item__name">${escHtml(item.name)}</span>
+          <span class="co-history-item__avg">TB: <strong>${Number(item.avgQty || 0).toLocaleString('vi-VN')} ${escHtml(item.unit || 'cái')}</strong>/đơn</span>
+          <button class="co-history-item__add" type="button" data-id="${item.productId}"${added ? ' disabled' : ''}>
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            ${added ? 'Đã thêm' : 'Thêm vào đơn'}
+          </button>
+        </div>
+      `;
+    }).join('')}</div>`;
+
+    // Bind add-one buttons
+    body.querySelectorAll('.co-history-item__add:not([disabled])').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const productId = Number(btn.dataset.id);
+        const hItem = historyItems.find((i) => i.productId === productId);
+        if (!hItem) return;
+        btn.disabled = true;
+        btn.textContent = '…';
+        await addHistoryProduct(hItem);
+        // Re-render to sync added states
+        renderPurchaseHistory();
+      });
+    });
+
+    // Show "add all" button only if there's anything not yet added
+    const hasUnadded = historyItems.some((i) => !currentProductIds.has(i.productId));
+    addAllBtn.hidden = !hasUnadded;
+  }
+
+  /**
+   * Fetch full product data and add it to the order.
+   * Uses avgQty (rounded, min 1) as default quantity suggestion.
+   */
+  async function addHistoryProduct(hItem) {
+    // If already in order, just bump qty by avg
+    const existing = state.items.find((it) => it.productId === hItem.productId);
+    if (existing) {
+      const bump = Math.max(1, Math.round(hItem.avgQty || 1));
+      existing.qty += bump;
+      renderItems();
+      updateSummary();
+      refreshPricingPreview();
+      showToast(`Đã tăng số lượng «${hItem.name}» lên ${existing.qty}.`, 'success');
+      return;
+    }
+
+    // Fetch product details + unit conversions
+    try {
+      const [prodRes, unitsRes] = await Promise.all([
+        Auth.apiFetch(`/products/${hItem.productId}`),
+        Auth.apiFetch(`/products/${hItem.productId}/unit-conversions`),
+      ]);
+      const [prodResult, unitsResult] = await Promise.all([
+        prodRes.json(),
+        unitsRes.json(),
+      ]);
+
+      if (!prodRes.ok || !prodResult.success) throw new Error('Không tải được thông tin sản phẩm');
+
+      const product = prodResult.data;
+      let units = [{ id: null, unitName: product.unit || 'cái', conversionFactor: 1 }];
+      if (unitsRes.ok && unitsResult.success && Array.isArray(unitsResult.data) && unitsResult.data.length) {
+        units = unitsResult.data;
+        state.productCache[product.id] = units;
+      }
+
+      const suggestedQty = Math.max(1, Math.round(hItem.avgQty || 1));
+      const item = {
+        _key: ++itemSeq,
+        productId: product.id,
+        sku: product.sku || product.code || '',
+        name: product.name,
+        unitConversions: units,
+        selectedUnit: units[0],
+        qty: suggestedQty,
+        basePrice: Number(product.sellingPrice || product.price || 0),
+        unitPrice: 0,
+        discountAmount: 0,
+      };
+      item.unitPrice = getUnitPrice(item);
+      state.items.push(item);
+      renderItems();
+      updateSummary();
+      refreshPricingPreview();
+      showToast(`Đã thêm «${product.name}» (SL: ${suggestedQty}) vào đơn.`, 'success');
+    } catch (err) {
+      showToast(err.message || 'Không thêm được sản phẩm từ lịch sử.', 'error');
+    }
+  }
+
+  // "Add all history items" button handler
+  $('btn-add-all-history').addEventListener('click', async () => {
+    const btn = $('btn-add-all-history');
+    btn.disabled = true;
+    const currentIds = new Set(state.items.map((it) => it.productId));
+    const toAdd = historyItems.filter((i) => !currentIds.has(i.productId));
+    for (const hItem of toAdd) {
+      await addHistoryProduct(hItem);
+    }
+    btn.disabled = false;
+    renderPurchaseHistory();
+    showToast(`Đã thêm ${toAdd.length} sản phẩm từ lịch sử vào đơn.`, 'success');
+  });
+
+  /**
+   * Sync "already-added" visual state in the history panel
+   * whenever items list changes.
+   */
+  function syncHistoryAddedState() {
+    if (!historyItems.length) return;
+    renderPurchaseHistory();
+  }
+
   /* ── Product search ──────────────────────────────────────── */
   let searchTimer = null;
   const productInput = $('co-product-search');
@@ -544,6 +715,7 @@
     renderItems();
     updateSummary();
     refreshPricingPreview();
+    syncHistoryAddedState();
   }
 
   function renderItems() {

@@ -859,6 +859,27 @@
 /* Price below floor highlight */
 .oa-price-below {
   color: var(--danger);
+  font-weight: 600;
+}
+
+.oa-row-below-floor {
+  background: rgba(220, 53, 69, 0.04);
+}
+
+.oa-tag-below {
+  display: inline-block;
+  font-size: 0.625rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 600;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.oa-violation-value--price {
+  color: var(--danger);
 }
 
 /* ── Responsive ── */

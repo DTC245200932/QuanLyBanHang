@@ -221,6 +221,12 @@
           <!-- Approval history (immutable) -->
           <div class="order-detail-history" id="order-detail-history"></div>
         </div>
+        <div class="modal__actions" id="order-detail-actions" style="border-top:1px solid var(--line); padding:16px 24px; display:flex; justify-content:flex-end; gap:10px;" hidden>
+          <button type="button" class="btn btn--secondary" data-close-order-detail>Đóng</button>
+          <button type="button" class="btn btn--danger" id="detail-btn-reject">Từ chối</button>
+          <button type="button" class="btn btn--warning" id="detail-btn-return">Trả lại sửa</button>
+          <button type="button" class="btn btn--primary" id="detail-btn-approve">Duyệt đơn hàng</button>
+        </div>
       </div>
     </div>
 

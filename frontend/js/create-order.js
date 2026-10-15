@@ -1412,7 +1412,8 @@
     $('co-delivery-date').min = today;
     await loadDealers();
 
-    const query = new URLSearchParams(window.location.search);
+    const searchString = typeof window !== 'undefined' && window.location ? window.location.search : (typeof location !== 'undefined' ? location.search : '');
+    const query = typeof URLSearchParams !== 'undefined' ? new URLSearchParams(searchString || '') : { get: () => null };
     const copiedDraft = query.get('copied') === '1';
 
     if (copiedDraft) {

@@ -430,4 +430,92 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.dealerId").value(1));
     }
+
+    @Test
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_VIEW"})
+    @DisplayName("[S4-07] GET /api/orders kèm bộ lọc - Quản lý kinh doanh xem danh sách và tổng tiền đang lọc")
+    void getOrders_WithFilters_ReturnsFilteredListAndTotalAmount() throws Exception {
+        OrderResponse order1 = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-MB-001")
+                .dealerId(10L)
+                .dealerCode("DL10")
+                .dealerName("Đại lý Thăng Long")
+                .salesUserId(15L)
+                .salesUserName("sales01")
+                .territoryId(1L)
+                .territoryName("Miền Bắc")
+                .status("RECORDED")
+                .totalAmount(new BigDecimal("15000000"))
+                .build();
+
+        OrderResponse order2 = OrderResponse.builder()
+                .id(2L)
+                .orderCode("DH-MB-002")
+                .dealerId(10L)
+                .dealerCode("DL10")
+                .dealerName("Đại lý Thăng Long")
+                .salesUserId(15L)
+                .salesUserName("sales01")
+                .territoryId(1L)
+                .territoryName("Miền Bắc")
+                .status("RECORDED")
+                .totalAmount(new BigDecimal("25000000"))
+                .build();
+
+        com.quanlybanhang.dto.response.OrderFilterResult filterResult = com.quanlybanhang.dto.response.OrderFilterResult.builder()
+                .orders(List.of(order1, order2))
+                .totalAmount(new BigDecimal("40000000"))
+                .totalOrders(2L)
+                .build();
+
+        when(orderService.getOrders(any())).thenReturn(filterResult);
+
+        mockMvc.perform(get("/api/orders")
+                        .param("dealerId", "10")
+                        .param("status", "RECORDED")
+                        .param("salesUserId", "15")
+                        .param("territoryId", "1")
+                        .param("startDate", "2026-10-01")
+                        .param("endDate", "2026-10-15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].orderCode").value("DH-MB-001"))
+                .andExpect(jsonPath("$.data[0].dealerCode").value("DL10"))
+                .andExpect(jsonPath("$.data[0].salesUserName").value("sales01"))
+                .andExpect(jsonPath("$.data[0].territoryName").value("Miền Bắc"))
+                .andExpect(jsonPath("$.data[1].orderCode").value("DH-MB-002"))
+                .andExpect(jsonPath("$.totalAmount").value(40000000))
+                .andExpect(jsonPath("$.totalOrders").value(2))
+                .andExpect(jsonPath("$.totalElements").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_VIEW"})
+    @DisplayName("[S4-07] GET /api/orders/summary - Quản lý kinh doanh xem thống kê tổng tiền theo bộ lọc")
+    void getOrdersSummary_WithFilters_ReturnsSummary() throws Exception {
+        com.quanlybanhang.dto.response.OrderFilterResult filterResult = com.quanlybanhang.dto.response.OrderFilterResult.builder()
+                .orders(List.of())
+                .totalAmount(new BigDecimal("55000000"))
+                .totalOrders(5L)
+                .build();
+
+        when(orderService.getOrders(any())).thenReturn(filterResult);
+
+        mockMvc.perform(get("/api/orders/summary")
+                        .param("territoryId", "1")
+                        .param("status", "RECORDED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.totalAmount").value(55000000))
+                .andExpect(jsonPath("$.data.totalOrders").value(5));
+    }
+
+    @Test
+    @WithMockUser(username = "unauthorized_user", authorities = {"ROLE_GUEST"})
+    @DisplayName("[S4-07] GET /api/orders không có quyền ORDER_VIEW -> 403 Forbidden")
+    void getOrders_UnauthorizedRole_Returns403() throws Exception {
+        mockMvc.perform(get("/api/orders"))
+                .andExpect(status().isForbidden());
+    }
 }

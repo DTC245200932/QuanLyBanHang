@@ -119,22 +119,6 @@ class RoleBasedAccessControlTest {
 
     @Test
     @WithMockUser(username = "sales_user", roles = {"SALES"})
-    @DisplayName("[ROLE_SALES] Nhân viên kinh doanh ĐƯỢC xem tồn kho phục vụ (200 OK)")
-    void salesCanViewWarehouseInventory() throws Exception {
-        mockMvc.perform(get("/api/warehouse/inventory"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
-    @DisplayName("[ROLE_SALES] Nhân viên kinh doanh ĐƯỢC xem danh sách kho hoạt động (200 OK)")
-    void salesCanViewWarehouseOptions() throws Exception {
-        mockMvc.perform(get("/api/warehouse/options"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG được sửa tồn kho (403 Forbidden)")
     void salesCannotAdjustInventory() throws Exception {
         mockMvc.perform(post("/api/warehouse/adjust")

@@ -34,11 +34,6 @@ public class OrderRequest {
      */
     private Long deliveryPointId;
 
-    /**
-     * ID kho phục vụ đại lý / xuất hàng (S4-03).
-     */
-    private Long warehouseId;
-
     /** Ngày giao mong muốn do nhân viên kinh doanh chọn khi tạo đơn (S3-09). */
     private LocalDate expectedDeliveryDate;
 

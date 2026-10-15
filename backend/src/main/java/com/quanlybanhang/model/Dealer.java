@@ -47,11 +47,6 @@ public class Dealer {
     @JoinColumn(name = "territory_id")
     private Territory territory;
 
-    /** Kho phục vụ đại lý (S4-03). */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id")
-    private Warehouse warehouse;
-
     /** Trạng thái giao dịch: true = Đang giao dịch, false = Ngừng giao dịch (S3-03). */
     @Column(nullable = false)
     @Builder.Default

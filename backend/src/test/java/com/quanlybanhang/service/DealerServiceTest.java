@@ -53,9 +53,6 @@ class DealerServiceTest {
     private DealerAssignmentHistoryRepository dealerAssignmentHistoryRepository;
 
     @Mock
-    private WarehouseRepository warehouseRepository;
-
-    @Mock
     private AuditLogService auditLogService;
 
     @InjectMocks

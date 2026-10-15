@@ -19,9 +19,6 @@ public class OrderCalculateResponse {
 
     private Long dealerId;
     private String dealerName;
-    private Long warehouseId;
-    private String warehouseCode;
-    private String warehouseName;
     private CustomerGroup customerGroup;
     private String customerGroupName;
 

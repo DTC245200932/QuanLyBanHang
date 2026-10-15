@@ -37,8 +37,6 @@ public class DealerRequest {
 
     private Long territoryId;
 
-    private Long warehouseId;
-
     private Long assignedUserId;
 
     private Boolean active;

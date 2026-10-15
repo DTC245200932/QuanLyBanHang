@@ -38,10 +38,4 @@ public interface OrderService {
      */
     com.quanlybanhang.dto.response.OrderCalculateResponse calculateOrder(
             com.quanlybanhang.dto.request.OrderCalculateRequest request);
-
-    /**
-     * Kiểm tra tồn khả dụng của SKU trong kho phục vụ đại lý và gợi ý số lượng tối đa (S4-03).
-     */
-    com.quanlybanhang.dto.response.OrderInventoryCheckResponse checkInventory(
-            com.quanlybanhang.dto.request.OrderInventoryCheckRequest request);
 }

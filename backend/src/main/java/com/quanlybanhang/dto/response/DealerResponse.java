@@ -29,11 +29,6 @@ public class DealerResponse {
     private String territoryCode;
     private String territoryName;
 
-    // Warehouse info (S4-03)
-    private Long warehouseId;
-    private String warehouseCode;
-    private String warehouseName;
-
     // Assigned User info
     private Long assignedUserId;
     private String assignedUsername;

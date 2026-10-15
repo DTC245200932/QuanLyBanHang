@@ -43,13 +43,6 @@ public class WarehouseInventory {
     private BigDecimal baseQuantity = BigDecimal.ZERO;
 
     /**
-     * Số lượng đang giữ chỗ cho các đơn hàng chưa xuất kho (S4-03).
-     */
-    @Column(name = "reserved_quantity", precision = 15, scale = 4, nullable = false)
-    @Builder.Default
-    private BigDecimal reservedQuantity = BigDecimal.ZERO;
-
-    /**
      * Tên đơn vị cơ sở (vd: "lon").
      */
     @Column(name = "base_unit", nullable = false, length = 50)
@@ -65,15 +58,6 @@ public class WarehouseInventory {
         if (this.baseQuantity == null) {
             this.baseQuantity = BigDecimal.ZERO;
         }
-        if (this.reservedQuantity == null) {
-            this.reservedQuantity = BigDecimal.ZERO;
-        }
-    }
-
-    public BigDecimal getAvailableQuantity() {
-        BigDecimal physical = this.baseQuantity != null ? this.baseQuantity : BigDecimal.ZERO;
-        BigDecimal reserved = this.reservedQuantity != null ? this.reservedQuantity : BigDecimal.ZERO;
-        return physical.subtract(reserved).max(BigDecimal.ZERO);
     }
 
     public void addBaseQuantity(BigDecimal amount) {
@@ -91,24 +75,6 @@ public class WarehouseInventory {
                 this.baseQuantity = BigDecimal.ZERO;
             }
             this.baseQuantity = this.baseQuantity.subtract(amount);
-        }
-    }
-
-    public void addReservedQuantity(BigDecimal amount) {
-        if (amount != null) {
-            if (this.reservedQuantity == null) {
-                this.reservedQuantity = BigDecimal.ZERO;
-            }
-            this.reservedQuantity = this.reservedQuantity.add(amount);
-        }
-    }
-
-    public void subtractReservedQuantity(BigDecimal amount) {
-        if (amount != null) {
-            if (this.reservedQuantity == null) {
-                this.reservedQuantity = BigDecimal.ZERO;
-            }
-            this.reservedQuantity = this.reservedQuantity.subtract(amount).max(BigDecimal.ZERO);
         }
     }
 }

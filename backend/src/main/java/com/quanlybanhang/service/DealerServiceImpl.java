@@ -32,7 +32,6 @@ public class DealerServiceImpl implements DealerService {
     private final UserRepository userRepository;
     private final TerritoryRepository territoryRepository;
     private final DealerAssignmentHistoryRepository dealerAssignmentHistoryRepository;
-    private final WarehouseRepository warehouseRepository;
     private final AuditLogService auditLogService;
 
     @Override
@@ -125,12 +124,6 @@ public class DealerServiceImpl implements DealerService {
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy khu vực với ID: " + request.getTerritoryId()));
         }
 
-        Warehouse warehouse = null;
-        if (request.getWarehouseId() != null && warehouseRepository != null) {
-            warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + request.getWarehouseId()));
-        }
-
         Dealer dealer = Dealer.builder()
                 .code(code)
                 .name(request.getName().trim())
@@ -138,7 +131,6 @@ public class DealerServiceImpl implements DealerService {
                 .customerGroup(request.getCustomerGroup() != null ? request.getCustomerGroup() : CustomerGroup.DAI_LY_CAP_1)
                 .assignedUser(assignedUser)
                 .territory(territory)
-                .warehouse(warehouse)
                 .active(request.getActive() != null ? request.getActive() : true)
                 .handoverRequired(false)
                 .debtLimit(request.getDebtLimit() != null ? request.getDebtLimit() : BigDecimal.ZERO)
@@ -196,11 +188,6 @@ public class DealerServiceImpl implements DealerService {
         dealer.setCustomerGroup(request.getCustomerGroup() != null ? request.getCustomerGroup() : CustomerGroup.DAI_LY_CAP_1);
         dealer.setAssignedUser(newAssignedUser);
         dealer.setTerritory(territory);
-        if (request.getWarehouseId() != null && warehouseRepository != null) {
-            Warehouse warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + request.getWarehouseId()));
-            dealer.setWarehouse(warehouse);
-        }
         if (request.getActive() != null) {
             dealer.setActive(request.getActive());
         }
@@ -673,9 +660,6 @@ public class DealerServiceImpl implements DealerService {
                 .territoryId(dealer.getTerritory() != null ? dealer.getTerritory().getId() : null)
                 .territoryCode(dealer.getTerritory() != null ? dealer.getTerritory().getCode() : null)
                 .territoryName(dealer.getTerritory() != null ? dealer.getTerritory().getName() : null)
-                .warehouseId(dealer.getWarehouse() != null ? dealer.getWarehouse().getId() : null)
-                .warehouseCode(dealer.getWarehouse() != null ? dealer.getWarehouse().getCode() : null)
-                .warehouseName(dealer.getWarehouse() != null ? dealer.getWarehouse().getName() : null)
                 .assignedUserId(dealer.getAssignedUser() != null ? dealer.getAssignedUser().getId() : null)
                 .assignedUsername(dealer.getAssignedUser() != null ? dealer.getAssignedUser().getUsername() : null)
                 .assignedUserFullName(dealer.getAssignedUser() != null ? dealer.getAssignedUser().getFullName() : null)

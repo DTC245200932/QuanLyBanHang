@@ -38,24 +38,9 @@ public class WarehouseInventoryResponse {
     private String baseUnit;
 
     /**
-     * Số lượng đang giữ chỗ cho các đơn hàng khác (S4-03).
-     */
-    private BigDecimal reservedQuantity;
-
-    /**
-     * Tồn khả dụng = Tồn thực tế - Tồn đang giữ chỗ (S4-03).
-     */
-    private BigDecimal availableQuantity;
-
-    /**
      * Quy đổi tương đương theo các đơn vị tính khác (vd: "thùng": 10.0, "lốc": 40.0).
      */
     private Map<String, BigDecimal> convertedViews;
-
-    /**
-     * Quy đổi tương đương tồn khả dụng theo các đơn vị tính khác (vd: "thùng": 7.0, "lốc": 28.0) (S4-03).
-     */
-    private Map<String, BigDecimal> convertedAvailableViews;
 
     private LocalDateTime updatedAt;
 }

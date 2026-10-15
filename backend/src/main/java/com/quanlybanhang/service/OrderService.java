@@ -11,7 +11,15 @@ public interface OrderService {
 
     List<OrderResponse> getAllOrders();
 
+    /**
+     * Lấy danh sách đơn hàng kèm bộ lọc và tính tổng tiền tập kết quả (S4-07).
+     * Áp dụng phân quyền dòng dữ liệu: Nhân viên kinh doanh chỉ thấy đơn của đại lý mình phụ trách.
+     */
+    com.quanlybanhang.dto.response.OrderFilterResult getOrders(com.quanlybanhang.dto.request.OrderFilterRequest filter);
+
     OrderResponse getOrderById(Long id);
+
+    OrderResponse getOrderById(Long id, String username);
 
     OrderResponse cancelOrder(Long id, String username);
 

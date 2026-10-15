@@ -16,10 +16,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.quanlybanhang.dto.request.OrderFilterRequest;
+import com.quanlybanhang.dto.response.OrderFilterResult;
 import com.quanlybanhang.model.OrderDraft;
 import com.quanlybanhang.repository.OrderDraftRepository;
+import com.quanlybanhang.repository.UserRepository;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -46,6 +55,14 @@ public class OrderServiceImpl implements OrderService {
     private final AuditLogService auditLogService;
     private final VolumeDiscountPolicyService volumeDiscountPolicyService;
     private final DealerDebtService dealerDebtService;
+
+    @Autowired(required = false)
+    private UserRepository userRepository;
+
+    @Autowired(required = false)
+    public void setUserRepository(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @Autowired(required = false)
     private OrderDraftRepository orderDraftRepository;
@@ -361,17 +378,126 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderResponse> getAllOrders() {
-        return orderRepository.findAllByOrderByCreatedAtDesc().stream()
+    public OrderFilterResult getOrders(OrderFilterRequest filter) {
+        if (filter == null) {
+            filter = new OrderFilterRequest();
+        }
+
+        final OrderFilterRequest f = filter;
+        final boolean salesOnly = isSalesOnlyUser();
+        final User currentUser = salesOnly ? getCurrentUser() : null;
+        final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        final String currentUsername = auth != null ? auth.getName() : null;
+
+        Specification<Order> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            // 1. Phân quyền dữ liệu (RLS): Nhân viên kinh doanh chỉ thấy đơn của đại lý mình phụ trách (S4-07)
+            if (salesOnly) {
+                Join<Order, Dealer> dealerJoin = root.join("dealer", JoinType.INNER);
+                if (currentUser != null && currentUser.getId() != null) {
+                    predicates.add(cb.equal(dealerJoin.get("assignedUser").get("id"), currentUser.getId()));
+                } else if (currentUsername != null && !currentUsername.isBlank()) {
+                    predicates.add(cb.equal(dealerJoin.get("assignedUser").get("username"), currentUsername));
+                } else {
+                    predicates.add(cb.disjunction());
+                }
+            }
+
+            // 2. Lọc theo trạng thái đơn hàng (status)
+            if (f.getStatus() != null && !f.getStatus().isBlank()) {
+                predicates.add(cb.equal(cb.upper(root.get("status")), f.getStatus().trim().toUpperCase()));
+            }
+
+            // 3. Lọc theo đại lý (dealerId)
+            if (f.getDealerId() != null) {
+                predicates.add(cb.equal(root.get("dealer").get("id"), f.getDealerId()));
+            }
+
+            // 4. Lọc theo nhân viên kinh doanh phụ trách (salesUserId)
+            if (!salesOnly && f.getResolvedSalesUserId() != null) {
+                Join<Order, Dealer> dealerJoin = root.join("dealer", JoinType.INNER);
+                predicates.add(cb.equal(dealerJoin.get("assignedUser").get("id"), f.getResolvedSalesUserId()));
+            }
+
+            // 5. Lọc theo khu vực / địa bàn (territoryId)
+            if (f.getTerritoryId() != null) {
+                Join<Order, Dealer> dealerJoin = root.join("dealer", JoinType.INNER);
+                predicates.add(cb.equal(dealerJoin.get("territory").get("id"), f.getTerritoryId()));
+            }
+
+            // 6. Lọc theo khoảng thời gian tạo đơn
+            if (f.getResolvedStartDate() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), f.getResolvedStartDate().atStartOfDay()));
+            }
+            if (f.getResolvedEndDate() != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), f.getResolvedEndDate().atTime(LocalTime.MAX)));
+            }
+
+            // 7. Lọc theo điều kiện phê duyệt
+            if (f.getApprovalRequired() != null) {
+                predicates.add(cb.equal(root.get("requiresApproval"), f.getApprovalRequired()));
+            }
+            if (f.getApprovalReason() != null && !f.getApprovalReason().isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("approvalReason")), "%" + f.getApprovalReason().trim().toLowerCase() + "%"));
+            }
+
+            // 8. Tìm kiếm nhanh từ khóa (mã đơn, tên khách, tên/mã đại lý)
+            String kw = f.getResolvedKeyword();
+            if (kw != null && !kw.isBlank()) {
+                String pattern = "%" + kw.toLowerCase() + "%";
+                Join<Order, Dealer> dealerJoin = root.join("dealer", JoinType.LEFT);
+                Predicate kwPredicate = cb.or(
+                        cb.like(cb.lower(root.get("orderCode")), pattern),
+                        cb.like(cb.lower(root.get("customerName")), pattern),
+                        cb.like(cb.lower(dealerJoin.get("name")), pattern),
+                        cb.like(cb.lower(dealerJoin.get("code")), pattern)
+                );
+                predicates.add(kwPredicate);
+            }
+
+            return predicates.isEmpty() ? cb.conjunction() : cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        List<Order> orders = orderRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        // Tính tổng tiền của tập kết quả đang lọc (S4-07)
+        BigDecimal totalAmount = orders.stream()
+                .map(Order::getTotalAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<OrderResponse> responses = orders.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+
+        return OrderFilterResult.builder()
+                .orders(responses)
+                .totalAmount(totalAmount)
+                .totalOrders((long) responses.size())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrders() {
+        return getOrders(new OrderFilterRequest()).getOrders();
     }
 
     @Override
     @Transactional(readOnly = true)
     public OrderResponse getOrderById(Long id) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String username = auth != null ? auth.getName() : null;
+        return getOrderById(id, username);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderById(Long id, String username) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
+        validateSalesViewAccess(order, username);
         return mapToResponse(order);
     }
 
@@ -481,12 +607,31 @@ public class OrderServiceImpl implements OrderService {
             warning = order.getApprovalReason();
         }
 
+        String dealerCode = dealer != null ? dealer.getCode() : null;
+        String dealerName = dealer != null ? dealer.getName() : null;
+        User assignedUser = dealer != null ? dealer.getAssignedUser() : null;
+        Long salesUserId = assignedUser != null ? assignedUser.getId() : null;
+        String salesUserName = assignedUser != null ? assignedUser.getUsername() : null;
+        String salesUserFullName = assignedUser != null ? assignedUser.getFullName() : null;
+        Territory territory = dealer != null ? dealer.getTerritory() : null;
+        Long territoryId = territory != null ? territory.getId() : null;
+        String territoryCode = territory != null ? territory.getCode() : null;
+        String territoryName = territory != null ? territory.getName() : null;
+
         return OrderResponse.builder()
                 .id(order.getId())
                 .orderCode(order.getOrderCode())
                 .customerName(order.getCustomerName())
                 .customerGroup(order.getCustomerGroup())
-                .dealerId(order.getDealer() != null ? order.getDealer().getId() : null)
+                .dealerId(dealer != null ? dealer.getId() : null)
+                .dealerCode(dealerCode)
+                .dealerName(dealerName)
+                .salesUserId(salesUserId)
+                .salesUserName(salesUserName)
+                .salesUserFullName(salesUserFullName)
+                .territoryId(territoryId)
+                .territoryCode(territoryCode)
+                .territoryName(territoryName)
                 .deliveryPointId(order.getDeliveryPoint() != null ? order.getDeliveryPoint().getId() : null)
                 .expectedDeliveryDate(order.getExpectedDeliveryDate())
                 .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
@@ -1251,5 +1396,65 @@ public class OrderServiceImpl implements OrderService {
             orderDraftRepository.save(orderDraft);
         } catch (Exception ignored) {
         }
+    }
+
+    private boolean isSalesOnlyUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return false;
+        boolean hasSales = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_SALES".equals(a.getAuthority()));
+        boolean hasElevated = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
+                        || "ROLE_SALES_MANAGER".equals(a.getAuthority())
+                        || "ROLE_ACCOUNTANT".equals(a.getAuthority())
+                        || "ROLE_VIEWER".equals(a.getAuthority())
+                        || "ROLE_WAREHOUSE_MANAGER".equals(a.getAuthority())
+                        || "ROLE_WAREHOUSE_STAFF".equals(a.getAuthority()));
+        return hasSales && !hasElevated;
+    }
+
+    private User getCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || userRepository == null) return null;
+        return userRepository.findByUsername(auth.getName()).orElse(null);
+    }
+
+    private void validateSalesViewAccess(Order order, String username) {
+        if (username == null || username.isBlank() || "system".equalsIgnoreCase(username) || "admin".equalsIgnoreCase(username)) {
+            return;
+        }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return;
+        }
+        boolean isElevated = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
+                        || "ROLE_SALES_MANAGER".equals(a.getAuthority())
+                        || "ROLE_ACCOUNTANT".equals(a.getAuthority())
+                        || "ROLE_VIEWER".equals(a.getAuthority())
+                        || "ROLE_WAREHOUSE_MANAGER".equals(a.getAuthority())
+                        || "ROLE_WAREHOUSE_STAFF".equals(a.getAuthority()));
+        if (isElevated) {
+            return;
+        }
+
+        boolean isSales = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_SALES".equals(a.getAuthority()));
+        if (!isSales) {
+            return;
+        }
+
+        if (order.getCreatedBy() != null && order.getCreatedBy().equalsIgnoreCase(username)) {
+            return;
+        }
+
+        Dealer dealer = order.getDealer();
+        if (dealer != null && dealer.getAssignedUser() != null
+                && dealer.getAssignedUser().getUsername() != null
+                && dealer.getAssignedUser().getUsername().equalsIgnoreCase(username)) {
+            return;
+        }
+
+        throw new AccessDeniedException("Bạn chỉ có quyền xem đơn hàng của đại lý do mình phụ trách");
     }
 }

@@ -40,7 +40,7 @@ public class OrderController {
     private final OrderDraftRepository orderDraftRepository;
     private final ObjectMapper objectMapper;
 
-    private static final String DRAFT_ROLES = "hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')";
+    private static final String DRAFT_ROLES = "hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')";
 
     @GetMapping
     public ApiResponse getAllOrders() {
@@ -192,5 +192,31 @@ public class OrderController {
             @RequestParam(required = false, defaultValue = "0") BigDecimal orderAmount) {
         OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(dealerId, orderAmount);
         return ApiResponse.success("Kiểm tra công nợ thành công", response);
+    }
+
+    /**
+     * S4-09: Sao chép một đơn cũ thành đơn mới ở trạng thái Nháp (DRAFT).
+     * Toàn bộ dòng hàng của đơn đã chọn được sao chép.
+     * Giá và chiết khấu được áp lại theo bảng giá và chính sách hiện hành, không kế thừa giá cũ.
+     * Bản sao luôn bắt đầu ở trạng thái Nháp.
+     */
+    @PostMapping("/{id}/copy")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public ResponseEntity<ApiResponse> copyOrder(@PathVariable Long id, Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        OrderResponse response = orderService.copyOrder(id, username);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Sao chép đơn hàng thành công", response));
+    }
+
+    /**
+     * S4-09: Sao chép các dòng hàng của đơn cũ trực tiếp vào bản nháp tạo đơn của người dùng.
+     */
+    @PostMapping("/{id}/copy-to-draft")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public ApiResponse copyOrderToDraft(@PathVariable Long id, Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        JsonNode draftNode = orderService.copyOrderToDraft(id, username);
+        return ApiResponse.success("Đã sao chép đơn cũ vào bản nháp tạo đơn", draftNode);
     }
 }

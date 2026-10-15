@@ -392,4 +392,42 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.exceedsLimit").value(true))
                 .andExpect(jsonPath("$.data.requiresApproval").value(true));
     }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @DisplayName("[S4-09] POST /api/orders/{id}/copy - Sao chép đơn hàng thành đơn mới ở trạng thái DRAFT")
+    void copyOrder_Returns201Created() throws Exception {
+        OrderResponse copyResp = OrderResponse.builder()
+                .id(2L)
+                .orderCode("DH-20261014-002")
+                .status("DRAFT")
+                .customerName("Đại lý Minh Phát")
+                .totalAmount(new BigDecimal("2350000"))
+                .build();
+
+        when(orderService.copyOrder(eq(1L), eq("sales01"))).thenReturn(copyResp);
+
+        mockMvc.perform(post("/api/orders/1/copy"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(2))
+                .andExpect(jsonPath("$.data.orderCode").value("DH-20261014-002"))
+                .andExpect(jsonPath("$.data.status").value("DRAFT"));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @DisplayName("[S4-09] POST /api/orders/{id}/copy-to-draft - Sao chép các dòng hàng sang draft của người dùng")
+    void copyOrderToDraft_Returns200Ok() throws Exception {
+        com.fasterxml.jackson.databind.node.ObjectNode draftNode = objectMapper.createObjectNode();
+        draftNode.put("dealerId", 1L);
+        draftNode.putArray("items");
+
+        when(orderService.copyOrderToDraft(eq(1L), eq("sales01"))).thenReturn(draftNode);
+
+        mockMvc.perform(post("/api/orders/1/copy-to-draft"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.dealerId").value(1));
+    }
 }

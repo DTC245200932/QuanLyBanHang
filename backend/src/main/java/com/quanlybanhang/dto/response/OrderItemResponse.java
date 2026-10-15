@@ -69,4 +69,11 @@ public class OrderItemResponse {
 
     private BigDecimal totalAmount;
     private String note;
+
+    /** Alias đơn giá cho frontend order-approval (S4-05). */
+    private BigDecimal unitPrice;
+
+    /** Alias thành tiền cho frontend order-approval (S4-05). */
+    private BigDecimal lineTotal;
 }
+

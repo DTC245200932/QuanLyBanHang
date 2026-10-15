@@ -7,12 +7,18 @@ import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.exception.DealerLockedException;
 import com.quanlybanhang.model.*;
+import com.quanlybanhang.dto.request.OrderStatusUpdateRequest;
 import com.quanlybanhang.repository.DealerRepository;
 import com.quanlybanhang.repository.DealerDeliveryPointRepository;
+import com.quanlybanhang.repository.OrderApprovalHistoryRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +42,13 @@ public class OrderServiceImpl implements OrderService {
     private final AuditLogService auditLogService;
     private final VolumeDiscountPolicyService volumeDiscountPolicyService;
     private final DealerDebtService dealerDebtService;
+
+    private OrderApprovalHistoryRepository orderApprovalHistoryRepository;
+
+    @Autowired(required = false)
+    public void setOrderApprovalHistoryRepository(OrderApprovalHistoryRepository orderApprovalHistoryRepository) {
+        this.orderApprovalHistoryRepository = orderApprovalHistoryRepository;
+    }
 
     private record ItemPreData(
             Product product,
@@ -335,6 +348,19 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
+        if (orderRequiresApproval && orderApprovalHistoryRepository != null) {
+            try {
+                OrderApprovalHistory history = OrderApprovalHistory.builder()
+                        .order(saved)
+                        .orderCode(saved.getOrderCode())
+                        .action("PENDING_APPROVAL")
+                        .comment(saved.getApprovalReason())
+                        .performedBy(username != null ? username : "system")
+                        .build();
+                orderApprovalHistoryRepository.save(history);
+            } catch (Exception ignored) {
+            }
+        }
         String auditSuffix = orderRequiresApproval ? " (Chờ duyệt: " + order.getApprovalReason() + ")" : "";
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "CREATE", null,
                 "Tổng tiền: " + saved.getTotalAmount().toPlainString() + auditSuffix,
@@ -361,20 +387,53 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @Deprecated
     public OrderResponse cancelOrder(Long id, String username) {
+        return cancelOrder(id, "Hủy bởi hệ thống", username);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse cancelOrder(Long id, String reason, String username) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Vui lòng nhập lý do huỷ đơn hàng");
+        }
+
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
-        String oldStatus = order.getStatus();
+
+        String currentStatus = order.getStatus();
+        // S4-06: Không cho huỷ đơn đã được xuất kho hoặc đã giao
+        if ("EXPORTED".equalsIgnoreCase(currentStatus) || "DELIVERED".equalsIgnoreCase(currentStatus)) {
+            throw new IllegalArgumentException(
+                "Không thể huỷ đơn hàng đã " + ("EXPORTED".equalsIgnoreCase(currentStatus) ? "xuất kho" : "giao hàng") +
+                ". Trạng thái hiện tại: " + currentStatus);
+        }
+        if ("CANCELLED".equalsIgnoreCase(currentStatus)) {
+            throw new IllegalArgumentException("Đơn hàng đã được huỷ trước đó.");
+        }
+
+        String cleanReason = reason.trim();
         order.setStatus("CANCELLED");
+        order.setCancelReason(cleanReason);
+        order.setCancelledBy(username != null ? username : "system");
+        order.setCancelledAt(LocalDateTime.now());
+
         Order saved = orderRepository.save(order);
-        auditLogService.logAction("INVOICE", saved.getOrderCode(), "CANCEL", oldStatus,
-                saved.getStatus(), username != null ? username : "system");
+        auditLogService.logAction("INVOICE", saved.getOrderCode(), "CANCEL", currentStatus,
+                "Lý do huỷ: " + cleanReason, username != null ? username : "system");
         return mapToResponse(saved);
     }
 
     @Override
     @Transactional
     public OrderResponse approveOrder(Long id, String username) {
+        return approveOrder(id, null, username);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse approveOrder(Long id, String comment, String username) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
@@ -382,14 +441,38 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Chỉ có thể phê duyệt đơn hàng đang ở trạng thái Chờ duyệt (PENDING_APPROVAL)");
         }
 
+        // Đơn được duyệt mới chuyển sang giữ chỗ tồn kho và chờ xuất kho (chuyển sang trạng thái RECORDED)
         order.setStatus("RECORDED");
         order.setApprovedBy(username != null ? username : "system");
         order.setApprovedAt(LocalDateTime.now());
+        order.setRecordedAt(LocalDateTime.now());
+
+        if (comment != null && !comment.isBlank()) {
+            String note = order.getNote();
+            order.setNote((note != null && !note.isBlank() ? note + " | " : "") + "Ý kiến duyệt: " + comment.trim());
+        }
 
         Order saved = orderRepository.save(order);
+
+        // Lưu lịch sử duyệt bất biến (S4-05)
+        if (orderApprovalHistoryRepository != null) {
+            try {
+                OrderApprovalHistory history = OrderApprovalHistory.builder()
+                        .order(saved)
+                        .orderCode(saved.getOrderCode())
+                        .action("APPROVED")
+                        .comment(comment != null && !comment.isBlank() ? comment.trim() : "Đã duyệt đơn hàng")
+                        .performedBy(username != null ? username : "system")
+                        .build();
+                orderApprovalHistoryRepository.save(history);
+            } catch (Exception ignored) {
+            }
+        }
+
         Dealer dealer = order.getDealer();
         boolean dealerLocked = dealer != null && Boolean.TRUE.equals(dealer.getLocked());
-        String auditDetail = "Quản lý kinh doanh duyệt đơn bán dưới giá sàn" +
+        String auditDetail = "Quản lý kinh doanh duyệt đơn" +
+                (comment != null && !comment.isBlank() ? " (Ý kiến: " + comment.trim() + ")" : "") +
                 (dealerLocked ? " [Cảnh báo: Đại lý '" + dealer.getName() + "' đang bị khoá giao dịch. Lý do: " + dealer.getLockReason() + "]" : "");
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "APPROVE", "PENDING_APPROVAL",
                 auditDetail, username != null ? username : "system");
@@ -399,6 +482,10 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse rejectOrder(Long id, String reason, String username) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Vui lòng nhập lý do/ý kiến từ chối đơn hàng");
+        }
+
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
@@ -406,17 +493,209 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Chỉ có thể từ chối đơn hàng đang ở trạng thái Chờ duyệt (PENDING_APPROVAL)");
         }
 
+        String cleanReason = reason.trim();
         order.setStatus("REJECTED");
         order.setApprovedBy(username != null ? username : "system");
         order.setApprovedAt(LocalDateTime.now());
-        if (reason != null && !reason.isBlank()) {
-            order.setNote((order.getNote() != null ? order.getNote() + " | " : "") + "Lý do từ chối: " + reason.trim());
-        }
+        order.setNote((order.getNote() != null && !order.getNote().isBlank() ? order.getNote() + " | " : "") + "Lý do từ chối: " + cleanReason);
 
         Order saved = orderRepository.save(order);
+
+        // Lưu lịch sử duyệt bất biến (S4-05)
+        if (orderApprovalHistoryRepository != null) {
+            try {
+                OrderApprovalHistory history = OrderApprovalHistory.builder()
+                        .order(saved)
+                        .orderCode(saved.getOrderCode())
+                        .action("REJECTED")
+                        .comment(cleanReason)
+                        .performedBy(username != null ? username : "system")
+                        .build();
+                orderApprovalHistoryRepository.save(history);
+            } catch (Exception ignored) {
+            }
+        }
+
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "REJECT", "PENDING_APPROVAL",
-                "Từ chối đơn bán dưới giá sàn: " + (reason != null ? reason : ""), username != null ? username : "system");
+                "Từ chối đơn: " + cleanReason, username != null ? username : "system");
         return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse returnOrder(Long id, String reason, String username) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Vui lòng nhập lý do/ý kiến trả lại sửa đơn hàng");
+        }
+
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
+
+        if (!"PENDING_APPROVAL".equalsIgnoreCase(order.getStatus())) {
+            throw new IllegalArgumentException("Chỉ có thể trả lại sửa đơn hàng đang ở trạng thái Chờ duyệt (PENDING_APPROVAL)");
+        }
+
+        String cleanReason = reason.trim();
+        order.setStatus("RETURNED");
+        order.setApprovedBy(username != null ? username : "system");
+        order.setApprovedAt(LocalDateTime.now());
+        order.setNote((order.getNote() != null && !order.getNote().isBlank() ? order.getNote() + " | " : "") + "Lý do trả lại sửa: " + cleanReason);
+
+        Order saved = orderRepository.save(order);
+
+        // Lưu lịch sử duyệt bất biến (S4-05)
+        if (orderApprovalHistoryRepository != null) {
+            try {
+                OrderApprovalHistory history = OrderApprovalHistory.builder()
+                        .order(saved)
+                        .orderCode(saved.getOrderCode())
+                        .action("RETURNED")
+                        .comment(cleanReason)
+                        .performedBy(username != null ? username : "system")
+                        .build();
+                orderApprovalHistoryRepository.save(history);
+            } catch (Exception ignored) {
+            }
+        }
+
+        auditLogService.logAction("INVOICE", saved.getOrderCode(), "RETURN", "PENDING_APPROVAL",
+                "Trả lại sửa đơn: " + cleanReason, username != null ? username : "system");
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updateOrderStatus(Long id, OrderStatusUpdateRequest request, String username) {
+        if (request == null || request.getStatus() == null || request.getStatus().isBlank()) {
+            throw new IllegalArgumentException("Trạng thái không được để trống");
+        }
+        String status = request.getStatus().trim().toUpperCase();
+        String comment = request.getEffectiveComment();
+        return switch (status) {
+            case "APPROVED", "RECORDED" -> approveOrder(id, comment, username);
+            case "REJECTED" -> rejectOrder(id, comment, username);
+            case "RETURNED" -> returnOrder(id, comment, username);
+            default -> throw new IllegalArgumentException("Trạng thái duyệt không hợp lệ: " + status + ". Chỉ chấp nhận APPROVED, REJECTED, RETURNED");
+        };
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderApprovalHistoryResponse> getOrderApprovalHistory(Long orderId) {
+        if (orderApprovalHistoryRepository != null) {
+            List<OrderApprovalHistory> list = orderApprovalHistoryRepository.findByOrderIdOrderByCreatedAtAsc(orderId);
+            if (!list.isEmpty()) {
+                return list.stream().map(h -> OrderApprovalHistoryResponse.builder()
+                        .id(h.getId())
+                        .orderId(h.getOrder().getId())
+                        .orderCode(h.getOrderCode())
+                        .action(h.getAction())
+                        .comment(h.getComment())
+                        .performedBy(h.getPerformedBy())
+                        .username(h.getPerformedBy())
+                        .createdAt(h.getCreatedAt())
+                        .timestamp(h.getCreatedAt())
+                        .build()).toList();
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderResponse> getOrders(
+            String status,
+            String approvalReason,
+            String search,
+            Boolean approvalRequired,
+            Long dealerId,
+            String createdBy,
+            Long territoryId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            Pageable pageable) {
+
+        Specification<Order> spec = (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+
+            // Lọc theo trạng thái
+            if (status != null && !status.isBlank()) {
+                String cleanStatus = status.trim().toUpperCase();
+                if ("APPROVED".equals(cleanStatus)) {
+                    predicates.add(cb.or(
+                            cb.equal(root.get("status"), "APPROVED"),
+                            cb.and(cb.equal(root.get("status"), "RECORDED"), cb.isNotNull(root.get("approvedAt"))),
+                            cb.and(cb.equal(root.get("status"), "RECORDED"), cb.isTrue(root.get("requiresApproval")))
+                    ));
+                } else {
+                    predicates.add(cb.equal(cb.upper(root.get("status")), cleanStatus));
+                }
+            }
+
+            // Lọc đơn chờ duyệt
+            if (Boolean.TRUE.equals(approvalRequired)) {
+                predicates.add(cb.or(
+                        cb.isTrue(root.get("requiresApproval")),
+                        cb.equal(root.get("status"), "PENDING_APPROVAL"),
+                        cb.equal(root.get("status"), "RETURNED")
+                ));
+            }
+
+            // Tìm kiếm theo mã đơn, tên, đại lý
+            if (search != null && !search.isBlank()) {
+                String kw = "%" + search.trim().toLowerCase() + "%";
+                jakarta.persistence.criteria.Join<Order, Dealer> dealerJoin = root.join("dealer", jakarta.persistence.criteria.JoinType.LEFT);
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("orderCode")), kw),
+                        cb.like(cb.lower(root.get("customerName")), kw),
+                        cb.like(cb.lower(dealerJoin.get("name")), kw),
+                        cb.like(cb.lower(dealerJoin.get("code")), kw)
+                ));
+            }
+
+            // Lọc theo lý do cần duyệt
+            if (approvalReason != null && !approvalReason.isBlank()) {
+                String r = approvalReason.trim().toUpperCase();
+                if ("OVER_DEBT_LIMIT".equals(r)) {
+                    predicates.add(cb.or(
+                            cb.like(cb.lower(root.get("approvalReason")), "%hạn mức%"),
+                            cb.like(cb.lower(root.get("approvalReason")), "%công nợ%")
+                    ));
+                } else if ("BELOW_FLOOR_PRICE".equals(r)) {
+                    predicates.add(cb.like(cb.lower(root.get("approvalReason")), "%giá sàn%"));
+                } else {
+                    predicates.add(cb.like(cb.lower(root.get("approvalReason")), "%" + approvalReason.trim().toLowerCase() + "%"));
+                }
+            }
+
+            // S4-07: Lọc theo đại lý cụ thể
+            if (dealerId != null) {
+                predicates.add(cb.equal(root.get("dealer").get("id"), dealerId));
+            }
+
+            // S4-07: Lọc theo người tạo đơn (nhân viên kinh doanh)
+            if (createdBy != null && !createdBy.isBlank()) {
+                predicates.add(cb.equal(root.get("createdBy"), createdBy.trim()));
+            }
+
+            // S4-07: Lọc theo khu vực / địa bàn của đại lý
+            if (territoryId != null) {
+                jakarta.persistence.criteria.Join<Order, Dealer> dJoin = root.join("dealer", jakarta.persistence.criteria.JoinType.LEFT);
+                predicates.add(cb.equal(dJoin.get("territory").get("id"), territoryId));
+            }
+
+            // S4-07: Lọc theo khoảng ngày tạo đơn
+            if (dateFrom != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), dateFrom.atStartOfDay()));
+            }
+            if (dateTo != null) {
+                predicates.add(cb.lessThan(root.get("createdAt"), dateTo.plusDays(1).atStartOfDay()));
+            }
+
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+
+        return orderRepository.findAll(spec, pageable).map(this::mapToResponse);
     }
 
     private Product resolveProduct(OrderItemRequest itemReq) {
@@ -465,12 +744,114 @@ public class OrderServiceImpl implements OrderService {
             warning = order.getApprovalReason();
         }
 
+        // Danh sách lý do cần duyệt và mức vi phạm (S4-05)
+        List<String> approvalReasonsList = new ArrayList<>();
+        List<OrderViolationResponse> violations = new ArrayList<>();
+        BigDecimal debtExceeded = null;
+        BigDecimal priceGap = BigDecimal.ZERO;
+
+        if (order.getApprovalReason() != null && !order.getApprovalReason().isBlank()) {
+            String reasonText = order.getApprovalReason();
+            if (reasonText.contains("hạn mức") || reasonText.contains("công nợ") || exceedsDebt) {
+                approvalReasonsList.add("OVER_DEBT_LIMIT");
+                if (currentDebt != null && debtLimit != null) {
+                    BigDecimal projected = currentDebt.add(order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO);
+                    if (projected.compareTo(debtLimit) > 0) {
+                        debtExceeded = projected.subtract(debtLimit);
+                    }
+                }
+                violations.add(OrderViolationResponse.builder()
+                        .type("OVER_DEBT_LIMIT")
+                        .title("Vượt hạn mức công nợ")
+                        .description(reasonText)
+                        .displayValue(debtExceeded != null ? "+" + formatMoney(debtExceeded) : "Vượt hạn mức")
+                        .value(debtExceeded)
+                        .build());
+            }
+
+            if (reasonText.contains("giá sàn")) {
+                approvalReasonsList.add("BELOW_FLOOR_PRICE");
+                BigDecimal totalGap = BigDecimal.ZERO;
+                if (order.getItems() != null) {
+                    for (OrderItem it : order.getItems()) {
+                        if (Boolean.TRUE.equals(it.getBelowFloorPrice()) && it.getFloorPrice() != null && it.getPrice() != null) {
+                            BigDecimal diff = it.getFloorPrice().subtract(it.getPrice());
+                            if (diff.compareTo(BigDecimal.ZERO) > 0) {
+                                BigDecimal lineGap = diff.multiply(it.getQuantity() != null ? it.getQuantity() : BigDecimal.ONE);
+                                totalGap = totalGap.add(lineGap);
+                            }
+                        }
+                    }
+                }
+                if (totalGap.compareTo(BigDecimal.ZERO) > 0) {
+                    priceGap = totalGap;
+                }
+                violations.add(OrderViolationResponse.builder()
+                        .type("BELOW_FLOOR_PRICE")
+                        .title("Bán dưới giá sàn")
+                        .description(reasonText)
+                        .displayValue(priceGap != null && priceGap.compareTo(BigDecimal.ZERO) > 0 ? "-" + formatMoney(priceGap) : "Dưới giá sàn")
+                        .value(priceGap)
+                        .build());
+            }
+        }
+
+        // Lấy lịch sử duyệt đơn hàng (S4-05) - bất biến, không sửa xoá
+        List<OrderApprovalHistoryResponse> historyResponses = new ArrayList<>();
+        if (orderApprovalHistoryRepository != null) {
+            try {
+                List<OrderApprovalHistory> historyEntities = orderApprovalHistoryRepository.findByOrderIdOrderByCreatedAtAsc(order.getId());
+                for (OrderApprovalHistory h : historyEntities) {
+                    historyResponses.add(OrderApprovalHistoryResponse.builder()
+                            .id(h.getId())
+                            .orderId(order.getId())
+                            .orderCode(order.getOrderCode())
+                            .action(h.getAction())
+                            .comment(h.getComment())
+                            .performedBy(h.getPerformedBy())
+                            .username(h.getPerformedBy())
+                            .createdAt(h.getCreatedAt())
+                            .timestamp(h.getCreatedAt())
+                            .build());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (historyResponses.isEmpty() && (Boolean.TRUE.equals(order.getRequiresApproval()) || order.getApprovedAt() != null)) {
+            historyResponses.add(OrderApprovalHistoryResponse.builder()
+                    .orderId(order.getId())
+                    .orderCode(order.getOrderCode())
+                    .action("PENDING_APPROVAL")
+                    .comment(order.getApprovalReason())
+                    .performedBy(order.getCreatedBy() != null ? order.getCreatedBy() : "system")
+                    .username(order.getCreatedBy() != null ? order.getCreatedBy() : "system")
+                    .createdAt(order.getCreatedAt())
+                    .timestamp(order.getCreatedAt())
+                    .build());
+            if (order.getApprovedAt() != null) {
+                String action = "REJECTED".equalsIgnoreCase(order.getStatus()) ? "REJECTED"
+                        : "RETURNED".equalsIgnoreCase(order.getStatus()) ? "RETURNED" : "APPROVED";
+                historyResponses.add(OrderApprovalHistoryResponse.builder()
+                        .orderId(order.getId())
+                        .orderCode(order.getOrderCode())
+                        .action(action)
+                        .comment(order.getNote())
+                        .performedBy(order.getApprovedBy() != null ? order.getApprovedBy() : "Quản lý kinh doanh")
+                        .username(order.getApprovedBy() != null ? order.getApprovedBy() : "Quản lý kinh doanh")
+                        .createdAt(order.getApprovedAt())
+                        .timestamp(order.getApprovedAt())
+                        .build());
+            }
+        }
+
         return OrderResponse.builder()
                 .id(order.getId())
                 .orderCode(order.getOrderCode())
                 .customerName(order.getCustomerName())
                 .customerGroup(order.getCustomerGroup())
                 .dealerId(order.getDealer() != null ? order.getDealer().getId() : null)
+                .dealerName(dealer != null ? dealer.getName() : null)
+                .dealerCode(dealer != null ? dealer.getCode() : null)
                 .deliveryPointId(order.getDeliveryPoint() != null ? order.getDeliveryPoint().getId() : null)
                 .expectedDeliveryDate(order.getExpectedDeliveryDate())
                 .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
@@ -478,11 +859,17 @@ public class OrderServiceImpl implements OrderService {
                 .status(order.getStatus())
                 .requiresApproval(order.getRequiresApproval())
                 .approvalReason(order.getApprovalReason())
+                .approvalReasons(approvalReasonsList)
+                .violations(violations)
+                .debtExceeded(debtExceeded)
+                .priceGap(priceGap)
+                .approvalHistory(historyResponses)
                 .approvedBy(order.getApprovedBy())
                 .approvedAt(order.getApprovedAt())
                 .subtotalAmount(order.getSubtotalAmount() != null ? order.getSubtotalAmount() : order.getTotalAmount())
                 .discountAmount(order.getDiscountAmount() != null ? order.getDiscountAmount() : BigDecimal.ZERO)
                 .totalAmount(order.getTotalAmount())
+                .grandTotal(order.getTotalAmount())
                 .note(order.getNote())
                 .createdBy(order.getCreatedBy())
                 .createdAt(order.getCreatedAt())
@@ -495,6 +882,9 @@ public class OrderServiceImpl implements OrderService {
                 .currentDebt(currentDebt)
                 .debtLimit(debtLimit)
                 .remainingDebtLimit(remainingLimit)
+                .cancelReason(order.getCancelReason())
+                .cancelledBy(order.getCancelledBy())
+                .cancelledAt(order.getCancelledAt())
                 .build();
     }
 
@@ -515,6 +905,7 @@ public class OrderServiceImpl implements OrderService {
                 .baseUnit(item.getBaseUnit())
                 .baseQuantity(item.getBaseQuantity())
                 .price(item.getPrice())
+                .unitPrice(item.getPrice())
                 .floorPrice(item.getFloorPrice())
                 .belowFloorPrice(item.getBelowFloorPrice())
                 .subtotalAmount(item.getSubtotalAmount() != null ? item.getSubtotalAmount() : item.getTotalAmount())
@@ -524,6 +915,7 @@ public class OrderServiceImpl implements OrderService {
                 .appliedPolicyCode(item.getAppliedPolicyCode())
                 .appliedPolicyName(item.getAppliedPolicyName())
                 .totalAmount(item.getTotalAmount())
+                .lineTotal(item.getTotalAmount())
                 .note(item.getNote())
                 .build();
     }
@@ -896,5 +1288,319 @@ public class OrderServiceImpl implements OrderService {
                 .approvalReason(orderRequiresApproval ? String.join("; ", belowFloorReasons) : null)
                 .items(calculatedItems)
                 .build();
+    }
+
+    // ── S4-04: Lịch sử mua hàng đại lý ──
+
+    @Override
+    @Transactional(readOnly = true)
+    public DealerPurchaseHistoryResult getDealerPurchaseHistory(Long dealerId, int months, String currentUsername) {
+        Dealer dealer = dealerRepository.findById(dealerId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + dealerId));
+
+        LocalDate toDate = LocalDate.now();
+        LocalDate fromDate = toDate.minusMonths(Math.max(1, Math.min(months, 24)));
+
+        // Lấy các đơn hàng RECORDED của đại lý trong khoảng thời gian
+        List<Order> orders = orderRepository.findAll((root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("dealer").get("id"), dealerId));
+            predicates.add(cb.equal(root.get("status"), "RECORDED"));
+            predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), fromDate.atStartOfDay()));
+            predicates.add(cb.lessThan(root.get("createdAt"), toDate.plusDays(1).atStartOfDay()));
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        });
+
+        // Tổng hợp theo sản phẩm
+        Map<Long, ProductPurchaseSummary> productMap = new LinkedHashMap<>();
+        for (Order order : orders) {
+            if (order.getItems() == null) continue;
+            for (OrderItem item : order.getItems()) {
+                if (item.getProduct() == null) continue;
+                Long pid = item.getProduct().getId();
+                ProductPurchaseSummary existing = productMap.get(pid);
+                BigDecimal baseQty = item.getBaseQuantity() != null ? item.getBaseQuantity() : BigDecimal.ZERO;
+                int existingCount = existing != null ? existing.orderCount() : 0;
+                BigDecimal existingQty = existing != null ? existing.totalBaseQuantity() : BigDecimal.ZERO;
+                LocalDateTime lastAt = (existing == null || order.getCreatedAt().isAfter(existing.lastOrderAt() != null ? existing.lastOrderAt() : LocalDateTime.MIN))
+                        ? order.getCreatedAt() : existing.lastOrderAt();
+                BigDecimal lastPrice = (existing == null || order.getCreatedAt().isAfter(existing.lastOrderAt() != null ? existing.lastOrderAt() : LocalDateTime.MIN))
+                        ? (item.getPrice() != null ? item.getPrice() : BigDecimal.ZERO) : existing.lastPrice();
+                Product p = item.getProduct();
+                String catName = p.getCategory() != null ? p.getCategory().getName() : null;
+                BigDecimal totalQty = existingQty.add(baseQty);
+                double avgMonthly = months > 0 ? totalQty.doubleValue() / months : 0;
+                productMap.put(pid, new ProductPurchaseSummary(
+                        pid, p.getCode(), p.getName(), catName,
+                        totalQty, p.getUnit(),
+                        BigDecimal.valueOf(avgMonthly).setScale(2, java.math.RoundingMode.HALF_UP),
+                        existingCount + 1, lastPrice, lastAt));
+            }
+        }
+
+        // Danh sách đơn gần nhất (tối đa 5)
+        List<RecentOrderSummary> recentOrders = orders.stream()
+                .sorted(Comparator.comparing(Order::getCreatedAt).reversed())
+                .limit(5)
+                .map(o -> {
+                    List<String> names = o.getItems() != null
+                            ? o.getItems().stream()
+                                .filter(it -> it.getProduct() != null)
+                                .map(it -> it.getProduct().getName())
+                                .collect(Collectors.toList())
+                            : Collections.emptyList();
+                    return new RecentOrderSummary(o.getId(), o.getOrderCode(), o.getStatus(),
+                            o.getTotalAmount(), o.getCreatedAt(), names);
+                })
+                .collect(Collectors.toList());
+
+        List<ProductPurchaseSummary> products = new ArrayList<>(productMap.values());
+        products.sort(Comparator.comparing(ProductPurchaseSummary::totalBaseQuantity).reversed());
+
+        return new DealerPurchaseHistoryResult(dealerId, dealer.getName(), dealer.getCode(),
+                months, fromDate, toDate, products, recentOrders);
+    }
+
+    // ── S4-09: Sao chép đơn hàng ──
+
+    @Override
+    @Transactional
+    public OrderResponse copyOrder(Long sourceOrderId, String username) {
+        Order source = orderRepository.findById(sourceOrderId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng nguồn với ID: " + sourceOrderId));
+
+        // Tạo mã đơn mới
+        String newCode = "DH-COPY-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+
+        // Lấy thông tin đại lý và xác định bảng giá hiện hành
+        Dealer dealer = source.getDealer();
+        CustomerGroup customerGroup = source.getCustomerGroup();
+        if (dealer != null) {
+            if (Boolean.TRUE.equals(dealer.getLocked())) {
+                throw new com.quanlybanhang.exception.DealerLockedException(
+                        dealer.getCode(), dealer.getName(), dealer.getLockReason());
+            }
+            customerGroup = dealer.getCustomerGroup();
+        }
+
+        // Tra bảng giá hiện hành cho nhóm khách hàng
+        PriceList currentPriceList = null;
+        if (customerGroup != null) {
+            List<PriceList> pl = priceListRepository.findEffectivePriceLists(customerGroup, LocalDate.now());
+            if (!pl.isEmpty()) currentPriceList = pl.get(0);
+        }
+
+        Map<Long, PriceListItem> priceMap = new HashMap<>();
+        if (currentPriceList != null && currentPriceList.getItems() != null) {
+            for (PriceListItem pli : currentPriceList.getItems()) {
+                if (pli.getProduct() != null) priceMap.put(pli.getProduct().getId(), pli);
+            }
+        }
+
+        Order newOrder = Order.builder()
+                .orderCode(newCode)
+                .customerName(source.getCustomerName())
+                .customerGroup(customerGroup)
+                .dealer(dealer)
+                .deliveryPoint(source.getDeliveryPoint())
+                .priceList(currentPriceList)
+                .status("RECORDED")
+                .requiresApproval(false)
+                .note("Sao chép từ đơn hàng: " + source.getOrderCode())
+                .createdBy(username)
+                .build();
+
+        boolean requiresApproval = false;
+        List<String> approvalReasonsList = new ArrayList<>();
+        BigDecimal grandSubtotal = BigDecimal.ZERO;
+        BigDecimal grandDiscount = BigDecimal.ZERO;
+
+        if (source.getItems() != null) {
+            for (OrderItem srcItem : source.getItems()) {
+                Product product = srcItem.getProduct();
+                if (product == null) continue;
+
+                String unit = srcItem.getUnit() != null ? srcItem.getUnit() : product.getUnit();
+                BigDecimal factor = unitConversionService.getConversionFactor(product, unit);
+                BigDecimal qty = srcItem.getQuantity() != null ? srcItem.getQuantity() : BigDecimal.ONE;
+                BigDecimal baseQty = qty.multiply(factor);
+
+                // Áp giá từ bảng giá hiện hành nếu có
+                PriceListItem pli = priceMap.get(product.getId());
+                BigDecimal price;
+                BigDecimal floorPrice = null;
+                boolean belowFloor = false;
+                if (pli != null) {
+                    price = pli.getSellingPrice().multiply(factor);
+                    floorPrice = pli.getFloorPrice().multiply(factor);
+                    belowFloor = price.compareTo(floorPrice) < 0;
+                } else {
+                    // Dùng giá từ đơn gốc nếu SKU không còn trong bảng giá
+                    price = srcItem.getPrice() != null ? srcItem.getPrice() : BigDecimal.ZERO;
+                }
+
+                if (belowFloor) {
+                    requiresApproval = true;
+                    approvalReasonsList.add(String.format("Sản phẩm '%s' bán giá %s < giá sàn %s",
+                            product.getName(), price.toPlainString(),
+                            floorPrice != null ? floorPrice.toPlainString() : "N/A"));
+                }
+
+                BigDecimal subtotal = price.multiply(qty);
+                grandSubtotal = grandSubtotal.add(subtotal);
+
+                OrderItem newItem = OrderItem.builder()
+                        .product(product)
+                        .unit(unit)
+                        .quantity(qty)
+                        .conversionFactor(factor)
+                        .baseUnit(product.getUnit())
+                        .baseQuantity(baseQty)
+                        .price(price)
+                        .floorPrice(floorPrice)
+                        .belowFloorPrice(belowFloor)
+                        .subtotalAmount(subtotal)
+                        .discountAmount(BigDecimal.ZERO)
+                        .totalAmount(subtotal)
+                        .note(srcItem.getNote())
+                        .build();
+                newOrder.addItem(newItem);
+            }
+        }
+
+        newOrder.setSubtotalAmount(grandSubtotal);
+        newOrder.setDiscountAmount(grandDiscount);
+        newOrder.setTotalAmount(grandSubtotal.subtract(grandDiscount).max(BigDecimal.ZERO));
+
+        if (requiresApproval) {
+            newOrder.setStatus("PENDING_APPROVAL");
+            newOrder.setRequiresApproval(true);
+            newOrder.setApprovalReason(String.join("; ", approvalReasonsList));
+        }
+
+        Order saved = orderRepository.save(newOrder);
+        auditLogService.logAction("INVOICE", saved.getOrderCode(), "COPY", null,
+                "Sao chép từ: " + source.getOrderCode(), username != null ? username : "system");
+        return mapToResponse(saved);
+    }
+
+    // ── S4-08: Xuất HTML đơn hàng để in/PDF ──
+
+    @Override
+    @Transactional(readOnly = true)
+    public String generateOrderPrintHtml(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + orderId));
+
+        Dealer dealer = order.getDealer();
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html lang='vi'><head><meta charset='UTF-8'>");
+        sb.append("<title>Đơn hàng ").append(escapeHtml(order.getOrderCode())).append("</title>");
+        sb.append("<style>");
+        sb.append("body{font-family:Arial,sans-serif;font-size:13px;margin:20px;color:#222}");
+        sb.append(".header{text-align:center;margin-bottom:16px}");
+        sb.append(".header h2{margin:0;font-size:18px}");
+        sb.append(".info-table{width:100%;margin-bottom:14px;border-collapse:collapse}");
+        sb.append(".info-table td{padding:4px 8px;vertical-align:top}");
+        sb.append(".info-table .label{font-weight:bold;width:160px}");
+        sb.append("table.items{width:100%;border-collapse:collapse;margin-bottom:14px}");
+        sb.append("table.items th,table.items td{border:1px solid #bbb;padding:5px 8px;text-align:left}");
+        sb.append("table.items th{background:#f0f0f0;font-weight:bold}");
+        sb.append("table.items td.num{text-align:right}");
+        sb.append(".totals{text-align:right;margin-top:8px}");
+        sb.append(".totals td{padding:3px 8px}");
+        sb.append(".totals .label{font-weight:bold}");
+        sb.append(".footer{margin-top:30px;display:flex;justify-content:space-between}");
+        sb.append(".footer .sign{text-align:center;width:200px}");
+        sb.append("</style></head><body>");
+
+        // Header
+        sb.append("<div class='header'>");
+        sb.append("<h2>ĐƠN ĐẶT HÀNG</h2>");
+        sb.append("<p>Mã đơn: <strong>").append(escapeHtml(order.getOrderCode())).append("</strong></p>");
+        sb.append("</div>");
+
+        // Thông tin đại lý và đơn hàng
+        sb.append("<table class='info-table'><tr>");
+        sb.append("<td><table class='info-table'>");
+        sb.append("<tr><td class='label'>Đại lý:</td><td>").append(dealer != null ? escapeHtml(dealer.getName()) : "").append("</td></tr>");
+        sb.append("<tr><td class='label'>Mã đại lý:</td><td>").append(dealer != null ? escapeHtml(dealer.getCode()) : "").append("</td></tr>");
+        sb.append("<tr><td class='label'>Địa chỉ:</td><td>").append(dealer != null && dealer.getAddress() != null ? escapeHtml(dealer.getAddress()) : "").append("</td></tr>");
+        sb.append("<tr><td class='label'>Điện thoại:</td><td>").append(dealer != null && dealer.getPhone() != null ? escapeHtml(dealer.getPhone()) : "").append("</td></tr>");
+        sb.append("</table></td>");
+        sb.append("<td><table class='info-table'>");
+        sb.append("<tr><td class='label'>Ngày tạo:</td><td>").append(order.getCreatedAt() != null ? order.getCreatedAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "").append("</td></tr>");
+        sb.append("<tr><td class='label'>Ngày giao dự kiến:</td><td>").append(order.getExpectedDeliveryDate() != null ? order.getExpectedDeliveryDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "").append("</td></tr>");
+        sb.append("<tr><td class='label'>Người tạo:</td><td>").append(order.getCreatedBy() != null ? escapeHtml(order.getCreatedBy()) : "").append("</td></tr>");
+        sb.append("<tr><td class='label'>Trạng thái:</td><td>").append(escapeHtml(translateStatus(order.getStatus()))).append("</td></tr>");
+        if (order.getPriceList() != null) {
+            sb.append("<tr><td class='label'>Bảng giá:</td><td>").append(escapeHtml(order.getPriceList().getCode())).append("</td></tr>");
+        }
+        sb.append("</table></td>");
+        sb.append("</tr></table>");
+
+        // Bảng dòng hàng
+        sb.append("<table class='items'><thead><tr>");
+        sb.append("<th>STT</th><th>Mã SP</th><th>Tên sản phẩm</th><th>ĐVT</th><th class='num'>SL</th><th class='num'>Đơn giá</th><th class='num'>Chiết khấu</th><th class='num'>Thành tiền</th>");
+        sb.append("</tr></thead><tbody>");
+
+        java.text.DecimalFormat df = new java.text.DecimalFormat("#,###");
+        int i = 1;
+        if (order.getItems() != null) {
+            for (OrderItem item : order.getItems()) {
+                sb.append("<tr>");
+                sb.append("<td>").append(i++).append("</td>");
+                sb.append("<td>").append(item.getProduct() != null ? escapeHtml(item.getProduct().getCode()) : "").append("</td>");
+                sb.append("<td>").append(item.getProduct() != null ? escapeHtml(item.getProduct().getName()) : "").append("</td>");
+                sb.append("<td>").append(item.getUnit() != null ? escapeHtml(item.getUnit()) : "").append("</td>");
+                sb.append("<td class='num'>").append(item.getQuantity() != null ? df.format(item.getQuantity()) : "").append("</td>");
+                sb.append("<td class='num'>").append(item.getPrice() != null ? df.format(item.getPrice()) : "").append("</td>");
+                sb.append("<td class='num'>").append(item.getDiscountAmount() != null && item.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0 ? df.format(item.getDiscountAmount()) : "-").append("</td>");
+                sb.append("<td class='num'>").append(item.getTotalAmount() != null ? df.format(item.getTotalAmount()) : "").append("</td>");
+                sb.append("</tr>");
+            }
+        }
+        sb.append("</tbody></table>");
+
+        // Tổng tiền
+        sb.append("<table class='totals' style='margin-left:auto'>");
+        sb.append("<tr><td class='label'>Tổng tiền hàng:</td><td>").append(df.format(order.getSubtotalAmount() != null ? order.getSubtotalAmount() : BigDecimal.ZERO)).append(" đ</td></tr>");
+        sb.append("<tr><td class='label'>Chiết khấu:</td><td>-").append(df.format(order.getDiscountAmount() != null ? order.getDiscountAmount() : BigDecimal.ZERO)).append(" đ</td></tr>");
+        sb.append("<tr><td class='label' style='font-size:15px'>Tổng thanh toán:</td><td style='font-size:15px;font-weight:bold'>").append(df.format(order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO)).append(" đ</td></tr>");
+        sb.append("</table>");
+
+        if (order.getNote() != null && !order.getNote().isBlank()) {
+            sb.append("<p><strong>Ghi chú:</strong> ").append(escapeHtml(order.getNote())).append("</p>");
+        }
+
+        // Chữ ký
+        sb.append("<div class='footer'>");
+        sb.append("<div class='sign'><p>Người đặt hàng</p><br/><br/><p>(Ký, ghi rõ họ tên)</p></div>");
+        sb.append("<div class='sign'><p>Người giao hàng</p><br/><br/><p>(Ký, ghi rõ họ tên)</p></div>");
+        sb.append("<div class='sign'><p>Người nhận hàng</p><br/><br/><p>(Ký, ghi rõ họ tên)</p></div>");
+        sb.append("</div>");
+
+        sb.append("</body></html>");
+        return sb.toString();
+    }
+
+    private String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    private String translateStatus(String status) {
+        if (status == null) return "";
+        return switch (status.toUpperCase()) {
+            case "RECORDED" -> "Đã ghi sổ";
+            case "PENDING_APPROVAL" -> "Chờ duyệt";
+            case "APPROVED" -> "Đã duyệt";
+            case "REJECTED" -> "Từ chối";
+            case "RETURNED" -> "Trả lại sửa";
+            case "CANCELLED" -> "Đã huỷ";
+            case "EXPORTED" -> "Đã xuất kho";
+            case "DELIVERED" -> "Đã giao hàng";
+            default -> status;
+        };
     }
 }

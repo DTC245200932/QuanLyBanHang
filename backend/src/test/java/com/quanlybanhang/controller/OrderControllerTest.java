@@ -392,4 +392,87 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.exceedsLimit").value(true))
                 .andExpect(jsonPath("$.data.requiresApproval").value(true));
     }
+
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-06] Huỷ đơn hàng kèm lý do thành công (200 OK)")
+    void cancelOrder_WithReason_Success() throws Exception {
+        OrderResponse resp = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .status("CANCELLED")
+                .cancelReason("Khách hàng đổi ý không muốn lấy hàng")
+                .cancelledBy("sales01")
+                .build();
+
+        when(orderService.cancelOrder(eq(1L), eq("Khách hàng đổi ý không muốn lấy hàng"), eq("sales01")))
+                .thenReturn(resp);
+
+        mockMvc.perform(put("/api/orders/1/cancel")
+                        .param("reason", "Khách hàng đổi ý không muốn lấy hàng"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.cancelReason").value("Khách hàng đổi ý không muốn lấy hàng"));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-08] In phiếu đơn hàng trả về HTML (200 OK)")
+    void printOrder_ReturnsHtml() throws Exception {
+        String html = "<html><body><h1>ĐƠN ĐẶT HÀNG DH-001</h1></body></html>";
+        when(orderService.generateOrderPrintHtml(1L)).thenReturn(html);
+
+        mockMvc.perform(get("/api/orders/1/print"))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(
+                        result.getResponse().getContentAsString().contains("DH-001")));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-09] Sao chép đơn hàng thành công (200 OK)")
+    void copyOrder_Success() throws Exception {
+        OrderResponse resp = OrderResponse.builder()
+                .id(2L)
+                .orderCode("DH-002")
+                .status("RECORDED")
+                .totalAmount(new java.math.BigDecimal("5000000"))
+                .build();
+
+        when(orderService.copyOrder(eq(1L), eq("sales01"))).thenReturn(resp);
+
+        mockMvc.perform(post("/api/orders/1/copy"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderCode").value("DH-002"))
+                .andExpect(jsonPath("$.data.status").value("RECORDED"));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-07] Lọc danh sách đơn hàng với bộ lọc mở rộng (200 OK)")
+    void getOrders_ExtendedFilters_Success() throws Exception {
+        OrderResponse resp = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .status("RECORDED")
+                .build();
+
+        org.springframework.data.domain.Page<OrderResponse> page =
+                new org.springframework.data.domain.PageImpl<>(List.of(resp));
+
+        when(orderService.getOrders(any(), any(), any(), any(), eq(1L), eq("sales01"), eq(2L), any(), any(), any()))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/orders")
+                        .param("dealerId", "1")
+                        .param("createdBy", "sales01")
+                        .param("territoryId", "2")
+                        .param("dateFrom", "2026-01-01")
+                        .param("dateTo", "2026-01-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].orderCode").value("DH-001"));
+    }
 }

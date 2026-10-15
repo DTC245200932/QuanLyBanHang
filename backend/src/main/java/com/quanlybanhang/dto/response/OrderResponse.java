@@ -47,4 +47,36 @@ public class OrderResponse {
     private BigDecimal currentDebt;
     private BigDecimal debtLimit;
     private BigDecimal remainingDebtLimit;
+
+    /** Thông tin đại lý mở rộng cho giao diện duyệt đơn (S4-05). */
+    private String dealerName;
+    private String dealerCode;
+
+    /** Alias tổng thanh toán phục vụ frontend order-approval (S4-05). */
+    private BigDecimal grandTotal;
+
+    /** Danh sách mã lý do cần duyệt: OVER_DEBT_LIMIT, BELOW_FLOOR_PRICE, v.v. (S4-05). */
+    private List<String> approvalReasons;
+
+    /** Chi tiết các mức vi phạm (S4-05). */
+    private List<OrderViolationResponse> violations;
+
+    /** Số tiền công nợ vượt hạn mức (S4-05). */
+    private BigDecimal debtExceeded;
+
+    /** Chênh lệch bán dưới giá sàn (S4-05). */
+    private BigDecimal priceGap;
+
+    /** Lịch sử các bước duyệt đơn hàng (S4-05) - bất biến, không thể sửa/xoá. */
+    private List<OrderApprovalHistoryResponse> approvalHistory;
+
+    /** Lý do huỷ đơn hàng (S4-06). */
+    private String cancelReason;
+
+    /** Người thực hiện huỷ đơn (S4-06). */
+    private String cancelledBy;
+
+    /** Thời điểm huỷ đơn (S4-06). */
+    private java.time.LocalDateTime cancelledAt;
 }
+

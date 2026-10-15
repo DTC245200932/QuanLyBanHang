@@ -41,6 +41,7 @@ public class DealerController {
 
     private final DealerService dealerService;
     private final DealerDebtService dealerDebtService;
+    private final com.quanlybanhang.service.OrderService orderService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
@@ -266,5 +267,21 @@ public class DealerController {
     public ApiResponse getDealerDebtInfo(@PathVariable Long id) {
         DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(id);
         return ApiResponse.success("Lấy thông tin công nợ đại lý thành công", response);
+    }
+
+    /**
+     * Tra cứu lịch sử mua hàng của đại lý trong N tháng gần nhất (mặc định 3 tháng) (S4-04).
+     * Phục vụ gợi ý mặt hàng thường mua khi lên đơn hàng mới.
+     */
+    @GetMapping("/{id}/purchase-history")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')")
+    public ApiResponse getDealerPurchaseHistory(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "3") int months,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        com.quanlybanhang.service.OrderService.DealerPurchaseHistoryResult history =
+                orderService.getDealerPurchaseHistory(id, months, username);
+        return ApiResponse.success("Lấy lịch sử mua hàng của đại lý thành công", history);
     }
 }

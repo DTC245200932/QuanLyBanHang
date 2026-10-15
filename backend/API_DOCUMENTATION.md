@@ -1107,3 +1107,55 @@ demo dùng cùng transaction và rollback khi lỗi. Chạy lại không nhân �
 xóa dữ liệu. Số dư công nợ/định mức tồn kho chưa có nguồn dữ liệu vẫn trả theo
 hợp đồng API hiện tại. Xem [README](../README.md#5-tài-khoản-đăng-nhập) để chạy
 và xem danh sách tài khoản đầy đủ.
+
+---
+
+## Các API Bổ sung Sprint 4 (Quản lý Đơn hàng Nâng cao & Phê duyệt)
+
+### 1. Phê duyệt đơn hàng vượt hạn mức / bán dưới giá sàn (S4-05)
+- **PATCH `/api/orders/{id}/status`**: Cập nhật trạng thái duyệt đơn (`APPROVED`, `REJECTED`, `RETURNED`).
+  - Quyền: `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+  - Body: `{ "status": "APPROVED|REJECTED|RETURNED", "comment": "Ý kiến phê duyệt" }`.
+  - Quy tắc: Khi `REJECTED` hoặc `RETURNED`, bắt buộc phải nhập `comment` (nếu thiếu hoặc rỗng sẽ trả về `400 Bad Request`).
+  - Đơn được duyệt mới chuyển sang trạng thái giữ chỗ tồn kho (`RECORDED`) và cho phép xuất kho.
+  - Lịch sử phê duyệt được ghi nhận vào nhật ký kiểm toán hệ thống (`audit_logs`) không cho phép chỉnh sửa/xoá.
+- **PUT `/api/orders/{id}/approve`**: Phê duyệt nhanh đơn hàng kèm ý kiến.
+- **PUT `/api/orders/{id}/reject`**: Từ chối đơn hàng kèm ý kiến bắt buộc.
+- **PUT `/api/orders/{id}/return`**: Trả lại đơn để nhân viên kinh doanh chỉnh sửa kèm ý kiến bắt buộc.
+
+### 2. Huỷ đơn hàng có lý do bắt buộc (S4-06)
+- **PUT `/api/orders/{id}/cancel`**: Huỷ đơn hàng.
+  - Quyền: `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+  - Query params hoặc Body: `reason` (hoặc JSON `{ "reason": "Lý do huỷ" }`). Bắt buộc phải có lý do (không được để trống).
+  - Quy tắc chặn: Không được phép huỷ đơn hàng đã xuất kho (`EXPORTED`) hoặc đã giao hàng (`DELIVERED`).
+  - Lưu trữ: Lưu `cancelReason`, `cancelledBy`, `cancelledAt` vào bảng `orders` và ghi nhật ký kiểm toán.
+
+### 3. Tra cứu lịch sử mua hàng của Đại lý (S4-04)
+- **GET `/api/dealers/{id}/purchase-history?months=3`**: Tra cứu các mặt hàng đại lý thường mua trong N tháng gần nhất.
+  - Quyền: `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER`.
+  - Hỗ trợ nhân viên kinh doanh gợi ý nhanh sản phẩm khi lên đơn mới.
+  - Response: Danh sách sản phẩm kèm tổng số lượng quy về đơn vị chuẩn, đơn vị cơ sở, số lượng trung bình tháng, số lần mua, giá mua gần nhất và top 5 đơn hàng gần nhất.
+
+### 4. Sao chép đơn hàng (S4-09)
+- **POST `/api/orders/{id}/copy`**: Tạo đơn hàng mới từ một đơn hàng đã có trong quá khứ.
+  - Quyền: `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+  - Quy tắc: Giữ nguyên đại lý, điểm giao hàng và số lượng dòng hàng; tự động áp bảng giá hiệu lực hiện hành và tính lại chiết khấu sản lượng. Kiểm tra chặn nếu đại lý đang bị khoá giao dịch.
+  - Response: Đơn hàng mới ở trạng thái `RECORDED` hoặc `PENDING_APPROVAL` (nếu vượt hạn mức / dưới sàn).
+
+### 5. In phiếu đặt hàng (S4-08)
+- **GET `/api/orders/{id}/print`**: Xuất bản in phiếu đặt hàng định dạng HTML chuyên nghiệp sẵn sàng in hoặc lưu PDF (`window.print()`).
+  - Content-Type: `text/html;charset=UTF-8`.
+  - Nội dung: Thông tin công ty, mã đơn hàng, ngày tạo, thông tin đại lý, địa chỉ giao hàng, bảng chi tiết sản phẩm, đơn vị, đơn giá, chiết khấu, thành tiền, tổng thanh toán và các ô ký nhận.
+
+### 6. Bộ lọc đơn hàng nâng cao (S4-07)
+- **GET `/api/orders`**: Hỗ trợ đầy đủ bộ lọc kết hợp:
+  - `status`: Trạng thái đơn (`DRAFT`, `PENDING_APPROVAL`, `RECORDED`, `CANCELLED`, `EXPORTED`, `DELIVERED`, ...).
+  - `approvalReason`: Lý do cần duyệt (`BELOW_FLOOR_PRICE`, `OVER_DEBT_LIMIT`, ...).
+  - `approvalRequired`: `true/false` (lọc các đơn cần duyệt).
+  - `search`: Tìm kiếm theo mã đơn hoặc tên/mã đại lý.
+  - `dealerId`: Lọc theo ID đại lý.
+  - `createdBy`: Lọc theo tên người tạo đơn.
+  - `territoryId`: Lọc theo khu vực/địa bàn của đại lý.
+  - `dateFrom` & `dateTo`: Khoảng ngày tạo đơn (`yyyy-MM-dd`).
+  - `page`, `size`, `sort`: Phân trang và sắp xếp.
+

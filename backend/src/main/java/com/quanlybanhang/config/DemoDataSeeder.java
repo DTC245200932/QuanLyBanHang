@@ -120,7 +120,8 @@ public class DemoDataSeeder {
                 new DemoUser("warehouse.manager", "Quản lý kho Demo", ERole.ROLE_WAREHOUSE_MANAGER),
                 new DemoUser("warehouse.demo", "Thủ kho Demo", ERole.ROLE_WAREHOUSE_STAFF),
                 new DemoUser("accountant.demo", "Kế toán Demo", ERole.ROLE_ACCOUNTANT),
-                new DemoUser("viewer.demo", "Người xem Demo", ERole.ROLE_VIEWER));
+                new DemoUser("viewer.demo", "Người xem Demo", ERole.ROLE_VIEWER),
+                new DemoUser("dealer.demo", "Đại lý Minh Phát Demo", ERole.ROLE_DEALER));
         for (DemoUser account : accounts) {
             if (users.existsByUsername(account.username())) continue;
             Role role = roles.findByName(account.role())
@@ -237,6 +238,10 @@ public class DemoDataSeeder {
             deliveryPoint(dealer, dealer.getName(), dealer.getAddress(), "0900000001");
         }
         deliveryPoint(customers.get("cap1"), "Kho phụ Minh Phát (Demo)", "50 Võ Văn Kiệt, TP.HCM (Demo)", "0900000002");
+        users.findByUsername("dealer.demo").ifPresent(dealerUser -> {
+            dealerUser.setDealer(customers.get("cap1"));
+            users.save(dealerUser);
+        });
         return customers;
     }
 
@@ -377,6 +382,42 @@ public class DemoDataSeeder {
                 orderItem(catalog.get("COCA330"), "thùng", "1", null)), "CANCELLED", scope.hcm());
         seedOrder("DEMO-DH-TUCHOI", customers.get("cap2"), prices, List.of(
                 orderItem(catalog.get("S24U"), "chiếc", "1", "10000000")), "REJECTED", scope.hcm());
+        seedOrderWithDelivery("DEMO-DH-GIAOTHIEU", customers.get("cap1"), prices, List.of(
+                orderItem(catalog.get("KEN330"), "thùng", "5", null),
+                orderItem(catalog.get("TIGER330"), "thùng", "4", null)),
+                List.of(new BigDecimal("3"), new BigDecimal("4")),
+                "Tạm thiếu 2 thùng Heineken do xe đầy, sẽ giao bù đợt sau");
+    }
+
+    private void seedOrderWithDelivery(String code, Dealer dealer, Map<CustomerGroup, PriceList> prices,
+                                       List<OrderItemRequest> items, List<BigDecimal> deliveredQuantities,
+                                       String deliveryNote) {
+        if (orders.existsByOrderCode(code)) return;
+        if (!Boolean.TRUE.equals(dealer.getActive()) || Boolean.TRUE.equals(dealer.getLocked())) return;
+        OrderResponse response = orderService.createOrder(OrderRequest.builder().orderCode(code).dealerId(dealer.getId())
+                .priceListId(prices.get(dealer.getCustomerGroup()).getId()).expectedDeliveryDate(LocalDate.now().plusDays(2))
+                .note(NOTE + ": giao hàng có thiếu (S5-01)").items(items).build(), ACTOR);
+        if ("PENDING_APPROVAL".equals(response.getStatus())) {
+            response = orderService.approveOrder(response.getId(), ACTOR);
+        }
+        List<com.quanlybanhang.dto.request.OrderItemDeliveryRequest> delivItems = new java.util.ArrayList<>();
+        for (int i = 0; i < response.getItems().size(); i++) {
+            BigDecimal qty = (i < deliveredQuantities.size()) ? deliveredQuantities.get(i) : response.getItems().get(i).getQuantity();
+            String itemNote = (qty.compareTo(response.getItems().get(i).getQuantity()) < 0)
+                    ? "Giao thiếu " + response.getItems().get(i).getQuantity().subtract(qty) + " " + response.getItems().get(i).getUnit()
+                    : "Giao đủ";
+            delivItems.add(com.quanlybanhang.dto.request.OrderItemDeliveryRequest.builder()
+                    .orderItemId(response.getItems().get(i).getId())
+                    .deliveredQuantity(qty)
+                    .note(itemNote)
+                    .build());
+        }
+        orderService.updateOrderDelivery(response.getId(), com.quanlybanhang.dto.request.OrderDeliveryUpdateRequest.builder()
+                .status("DELIVERED")
+                .actualDeliveryDate(LocalDate.now().minusDays(1))
+                .deliveryNote(deliveryNote)
+                .items(delivItems)
+                .build(), ACTOR);
     }
 
     private OrderItemRequest orderItem(Product product, String unit, String quantity, String price) {

@@ -47,6 +47,11 @@ public class Order {
     @JoinColumn(name = "delivery_point_id")
     private DealerDeliveryPoint deliveryPoint;
 
+    /** Kho phục vụ / xuất hàng cho đơn (S4-03). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id")
+    private Warehouse warehouse;
+
     /** Ngày giao mong muốn của đơn hàng (S3-09). */
     @Column(name = "expected_delivery_date")
     private LocalDate expectedDeliveryDate;
@@ -58,6 +63,13 @@ public class Order {
     @Column(length = 30)
     @Builder.Default
     private String status = "RECORDED";
+
+    /**
+     * Đánh dấu đơn hàng đã giữ chỗ tồn kho (S4-03).
+     */
+    @Column(name = "inventory_reserved", nullable = false)
+    @Builder.Default
+    private Boolean inventoryReserved = false;
 
     /**
      * Đánh dấu đơn hàng có dòng sản phẩm bán dưới giá sàn cần qua duyệt (S2-10).

@@ -121,8 +121,8 @@ Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý l
 | POST | `/warehouse/adjust` | `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho; Nhân viên kinh doanh và Thủ kho bị cấm |
 | POST | `/warehouse/import` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Nhập kho |
 | POST | `/warehouse/export` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xuất kho |
-| GET | `/warehouse/options` | Vai trò được xem kho | Danh sách kho đang hoạt động dùng cho bộ chọn frontend |
-| GET | `/warehouse/inventory` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem danh sách tồn kho |
+| GET | `/warehouse/options` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_SALES`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách kho đang hoạt động dùng cho bộ chọn frontend (S4-03) |
+| GET | `/warehouse/inventory` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_SALES`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem danh sách tồn kho (gồm tồn thực tế `baseQuantity`, tồn giữ chỗ `reservedQuantity` và tồn khả dụng `availableQuantity`) (S4-03) |
 | GET | `/warehouse/vouchers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem các phiếu kho và snapshot quy đổi |
 
 Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` với người thực hiện và giá trị trước/sau.
@@ -1042,6 +1042,114 @@ Quy tắc nghiệp vụ:
     "maxDebtDays": 30,
     "overdueAmount": 15000000,
     "errorType": "DEALER_DEBT_OVERDUE"
+  }
+}
+```
+
+### Hiển thị tồn khả dụng và chặn đặt vượt tồn kho phục vụ (S4-03 - SCRUM-83)
+
+Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) nhìn thấy tồn khả dụng và bị chặn khi đặt vượt tồn kho phục vụ của đại lý, nhằm tránh việc hứa hẹn với đại lý mặt hàng mà kho đã hết hoặc không đủ giao.
+
+#### Quy tắc nghiệp vụ cốt lõi:
+1. **Công thức tồn khả dụng**:
+   - `Tồn khả dụng (availableQuantity) = max(0, Tồn thực tế (baseQuantity) - Tồn đang giữ chỗ (reservedQuantity))`
+   - Tất cả phép tính tồn kho được quy chuẩn về đơn vị cơ sở (`baseUnit`, ví dụ: lon, chai, chiếc).
+   - Khi trả về cho người dùng hoặc màn hình đặt hàng, hệ thống hỗ trợ quy đổi tồn khả dụng theo đơn vị đã chọn (`availableInUnit`) và số lượng nguyên tối đa còn đặt được (`maxAllowedInUnit = floor(availableQuantity / factor)`).
+
+2. **Kho phục vụ của đại lý**:
+   - Mỗi đại lý có một kho phục vụ mặc định được cấu hình trong hồ sơ đại lý (`warehouseId` / `warehouseCode` / `warehouseName`).
+   - Khi tạo đơn hàng (`POST /api/orders`) hoặc tính toán đơn hàng (`POST /api/orders/calculate`), nếu request không chỉ định `warehouseId`, hệ thống sẽ tự động ưu tiên lấy kho phục vụ của đại lý; nếu đại lý chưa gán kho thì lấy kho đang hoạt động đầu tiên.
+
+3. **Chặn đặt vượt tồn khả dụng & Gợi ý số lượng tối đa**:
+   - Khi chốt đơn (`POST /api/orders`):
+     + Nếu số lượng đặt quy về đơn vị cơ sở vượt quá tồn khả dụng tại kho phục vụ: Hệ thống chặn và trả về lỗi **HTTP 400 Bad Request**.
+     + Thông báo lỗi hiển thị rõ ràng: mặt hàng, mã hàng, kho phục vụ, tồn khả dụng hiện tại, và gợi ý số lượng tối đa có thể đặt theo đơn vị tính đã chọn (ví dụ: *"Vượt tồn khả dụng cho sản phẩm 'Bia Heineken' (mã: SP01) tại kho 'Kho Tổng'. Tồn khả dụng hiện tại: 48 lon. Số lượng tối đa có thể đặt là 2 thùng."*).
+     + Nếu tồn khả dụng bằng 0: Thông báo rõ *"Mặt hàng '...' đã hết tồn khả dụng trong kho phục vụ '...'. Số lượng tối đa có thể đặt là 0 ...".*
+
+4. **Giữ chỗ và Giải phóng tồn kho (Vòng đời đơn hàng)**:
+   - **Khi tạo đơn thành công**: Hệ thống tự động tăng `reservedQuantity` của sản phẩm tại kho phục vụ tương ứng với số lượng cơ sở của đơn, đồng thời đánh dấu `inventoryReserved = true` trên đơn hàng.
+   - **Khi xuất kho thực tế** (`POST /api/warehouse/export`): Hệ thống trừ tồn thực tế (`baseQuantity`) và hoàn trừ tương ứng `reservedQuantity` (nếu `reservedQuantity > 0`).
+   - **Khi huỷ đơn** (`PUT /api/orders/{id}/cancel`) hoặc **từ chối đơn** (`PUT /api/orders/{id}/reject`): Nếu đơn đã được giữ chỗ (`inventoryReserved = true`), hệ thống tự động hoàn trả lại tồn giữ chỗ (`reservedQuantity = reservedQuantity - baseQuantity`) và cập nhật `inventoryReserved = false`.
+
+5. **Chống Race Condition / Bán âm kho khi chốt đơn đồng thời (Concurrency Safety)**:
+   - Sử dụng cơ chế khóa bi quan `LockModeType.PESSIMISTIC_WRITE` (`SELECT ... FOR UPDATE`) trên bảng `warehouse_inventories`.
+   - Các dòng sản phẩm được khóa theo thứ tự `productId` tăng dần (`sorted productIds`) để triệt tiêu nguy cơ xảy ra Deadlock giữa nhiều giao dịch đồng thời.
+   - Khi 2 người dùng (hoặc 2 tiến trình) cùng chốt đơn mặt hàng sắp hết: Người chốt trước giữ chỗ thành công (HTTP 201 Created), người chốt sau ngay lập tức bị chặn với HTTP 400 Bad Request, tồn kho thực tế và tồn khả dụng tuyệt đối không bao giờ bị âm (`acceptedOrders <= 1`).
+
+6. **Phân quyền vai trò (Role-Based Access Control)**:
+   - Nhân viên kinh doanh (`ROLE_SALES`) được phép tra cứu danh sách kho hoạt động (`GET /api/warehouse/options`) và danh sách tồn kho (`GET /api/warehouse/inventory`).
+   - Thao tác điều chỉnh tồn kho (`POST /api/warehouse/adjust`) vẫn nghiêm ngặt chỉ dành cho Quản lý kho (`ROLE_WAREHOUSE_MANAGER`) và Quản trị viên (`ROLE_ADMIN`).
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| POST | `/orders/check-inventory` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa trước khi đặt hàng |
+| POST | `/orders/calculate` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tính toán giá, chiết khấu và tồn khả dụng (`availableQuantity`, `availableInUnit`, `maxAllowedInUnit`, `exceedsStock`) cho từng dòng đơn |
+| GET | `/warehouse/inventory` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem tồn thực tế, tồn giữ chỗ và tồn khả dụng kèm quy đổi tương đương |
+| GET | `/warehouse/options` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách kho đang hoạt động |
+
+#### Ví dụ Request kiểm tra tồn khả dụng (`POST /api/orders/check-inventory`):
+```json
+{
+  "warehouseId": 1,
+  "dealerId": 5,
+  "productId": 10,
+  "unit": "thùng",
+  "quantity": 3
+}
+```
+
+#### Ví dụ Response khi còn đủ tồn khả dụng:
+```json
+{
+  "success": true,
+  "message": "Kiểm tra tồn khả dụng thành công",
+  "data": {
+    "warehouseId": 1,
+    "warehouseCode": "KHO-TONG",
+    "warehouseName": "Kho Tổng Hà Nội",
+    "productId": 10,
+    "productCode": "SP-KEN330",
+    "productName": "Bia Heineken Sleek lon 330ml",
+    "unit": "thùng",
+    "quantity": 2,
+    "conversionFactor": 24,
+    "baseUnit": "lon",
+    "baseQuantity": 48,
+    "physicalQuantity": 100,
+    "reservedQuantity": 10,
+    "availableQuantity": 90,
+    "availableInUnit": 3.75,
+    "maxAllowedInUnit": 3,
+    "valid": true,
+    "message": "Còn đủ tồn khả dụng trong kho 'Kho Tổng Hà Nội'. Tồn khả dụng: 3.75 thùng (90 lon)."
+  }
+}
+```
+
+#### Ví dụ Response khi vượt tồn khả dụng:
+```json
+{
+  "success": true,
+  "message": "Kiểm tra tồn khả dụng thành công",
+  "data": {
+    "warehouseId": 1,
+    "warehouseCode": "KHO-TONG",
+    "warehouseName": "Kho Tổng Hà Nội",
+    "productId": 10,
+    "productCode": "SP-KEN330",
+    "productName": "Bia Heineken Sleek lon 330ml",
+    "unit": "thùng",
+    "quantity": 5,
+    "conversionFactor": 24,
+    "baseUnit": "lon",
+    "baseQuantity": 120,
+    "physicalQuantity": 60,
+    "reservedQuantity": 12,
+    "availableQuantity": 48,
+    "availableInUnit": 2.0,
+    "maxAllowedInUnit": 2,
+    "valid": false,
+    "message": "Vượt tồn khả dụng cho sản phẩm 'Bia Heineken Sleek lon 330ml' (mã: SP-KEN330) tại kho 'Kho Tổng Hà Nội'. Tồn khả dụng hiện tại: 48 lon. Số lượng tối đa có thể đặt là 2 thùng."
   }
 }
 ```

@@ -70,6 +70,21 @@ public class OrderServiceImpl implements OrderService {
     @Autowired(required = false)
     private ObjectMapper objectMapper;
 
+    @Autowired(required = false)
+    private OrderPdfService orderPdfService;
+
+    @Autowired(required = false)
+    public void setOrderPdfService(OrderPdfService orderPdfService) {
+        this.orderPdfService = orderPdfService;
+    }
+
+    private OrderPdfService getPdfService() {
+        if (this.orderPdfService == null) {
+            this.orderPdfService = new OrderPdfServiceImpl(orderRepository);
+        }
+        return this.orderPdfService;
+    }
+
     private record ItemPreData(
             Product product,
             String unit,
@@ -1456,5 +1471,15 @@ public class OrderServiceImpl implements OrderService {
         }
 
         throw new AccessDeniedException("Bạn chỉ có quyền xem đơn hàng của đại lý do mình phụ trách");
+    }
+
+    @Override
+    public byte[] generateOrderPdf(Long id, String username) {
+        return getPdfService().generateOrderPdf(id, username);
+    }
+
+    @Override
+    public byte[] generateOrderBarcode(Long id, String username) {
+        return getPdfService().generateOrderBarcode(id, username);
     }
 }

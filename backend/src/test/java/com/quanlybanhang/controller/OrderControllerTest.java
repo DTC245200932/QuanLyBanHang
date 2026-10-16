@@ -41,6 +41,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -516,6 +518,57 @@ class OrderControllerTest {
     @DisplayName("[S4-07] GET /api/orders không có quyền ORDER_VIEW -> 403 Forbidden")
     void getOrders_UnauthorizedRole_Returns403() throws Exception {
         mockMvc.perform(get("/api/orders"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_VIEW"})
+    @DisplayName("[S4-08] GET /api/orders/{id}/pdf có quyền ORDER_VIEW -> 200 OK và Content-Type application/pdf")
+    void getOrderPdf_Sales_Returns200AndPdfContentType() throws Exception {
+        byte[] fakePdfBytes = "%PDF-1.4 Fake Order PDF Content".getBytes();
+        when(orderService.generateOrderPdf(eq(100L), any())).thenReturn(fakePdfBytes);
+        when(orderService.getOrderById(eq(100L), any())).thenReturn(
+                OrderResponse.builder().id(100L).orderCode("DH20261016-0001").build());
+
+        mockMvc.perform(get("/api/orders/100/pdf"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", MediaType.APPLICATION_PDF_VALUE))
+                .andExpect(header().string("Content-Disposition", "inline; filename=\"don-hang-DH20261016-0001.pdf\""))
+                .andExpect(content().bytes(fakePdfBytes));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_VIEW"})
+    @DisplayName("[S4-08] GET /api/orders/{id}/pdf?download=true -> header attachment để tải file")
+    void getOrderPdf_WithDownloadParam_ReturnsAttachmentDisposition() throws Exception {
+        byte[] fakePdfBytes = "%PDF-1.4 Fake Order PDF Content".getBytes();
+        when(orderService.generateOrderPdf(eq(100L), any())).thenReturn(fakePdfBytes);
+        when(orderService.getOrderById(eq(100L), any())).thenReturn(
+                OrderResponse.builder().id(100L).orderCode("DH20261016-0001").build());
+
+        mockMvc.perform(get("/api/orders/100/pdf").param("download", "true"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"don-hang-DH20261016-0001.pdf\""));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_VIEW"})
+    @DisplayName("[S4-08] GET /api/orders/{id}/barcode -> 200 OK và Content-Type image/png")
+    void getOrderBarcode_Sales_Returns200AndImagePng() throws Exception {
+        byte[] fakePngBytes = new byte[]{(byte) 0x89, 'P', 'N', 'G'};
+        when(orderService.generateOrderBarcode(eq(100L), any())).thenReturn(fakePngBytes);
+
+        mockMvc.perform(get("/api/orders/100/barcode"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", MediaType.IMAGE_PNG_VALUE))
+                .andExpect(content().bytes(fakePngBytes));
+    }
+
+    @Test
+    @WithMockUser(username = "guest", authorities = {"ROLE_GUEST"})
+    @DisplayName("[S4-08] GET /api/orders/{id}/pdf không có quyền ORDER_VIEW -> 403 Forbidden")
+    void getOrderPdf_NoPermission_Returns403() throws Exception {
+        mockMvc.perform(get("/api/orders/100/pdf"))
                 .andExpect(status().isForbidden());
     }
 }

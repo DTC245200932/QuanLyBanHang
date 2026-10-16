@@ -19,7 +19,9 @@ import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -274,5 +276,44 @@ public class OrderController {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyOrderToDraft(id, username);
         return ApiResponse.success("Đã sao chép đơn cũ vào bản nháp tạo đơn", draftNode);
+    }
+
+    /**
+     * S4-08: In hoặc xuất PDF đơn hàng để đưa đại lý xem lại đơn ngay tại chỗ để xác nhận trước khi rời đi.
+     * Mẫu in gồm thông tin đại lý, điểm giao, chi tiết dòng hàng, chiết khấu, tổng tiền và mã vạch để kho tra cứu.
+     */
+    @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    @PreAuthorize(VIEW_ROLES)
+    public ResponseEntity<byte[]> getOrderPdf(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "false") boolean download,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        byte[] pdfBytes = orderService.generateOrderPdf(id, username);
+        OrderResponse order = orderService.getOrderById(id, username);
+        String disposition = download ? "attachment" : "inline";
+        String orderCode = order != null && order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(id);
+        String filename = "don-hang-" + orderCode + ".pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition + "; filename=\"" + filename + "\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
+    }
+
+    /**
+     * S4-08: Lấy ảnh mã vạch (Barcode Code 128) theo mã đơn hàng để kho tra cứu nhanh hoặc in tem nhãn.
+     */
+    @GetMapping(value = "/{id}/barcode", produces = MediaType.IMAGE_PNG_VALUE)
+    @PreAuthorize(VIEW_ROLES)
+    public ResponseEntity<byte[]> getOrderBarcode(
+            @PathVariable Long id,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        byte[] barcodeBytes = orderService.generateOrderBarcode(id, username);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_PNG)
+                .body(barcodeBytes);
     }
 }

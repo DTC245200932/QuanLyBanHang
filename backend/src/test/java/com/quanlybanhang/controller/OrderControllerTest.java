@@ -364,37 +364,6 @@ class OrderControllerTest {
 
     @Test
     @WithMockUser(username = "sales01", roles = {"SALES"})
-    @DisplayName("[S4-02] GET /api/orders/check-debt - Kiểm tra công nợ đại lý qua query params")
-    void checkDebt_Get_Success() throws Exception {
-        com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
-                .dealerId(1L)
-                .dealerCode("DL01")
-                .dealerName("Đại lý Minh Phát")
-                .currentDebt(new BigDecimal("45000000"))
-                .debtLimit(new BigDecimal("50000000"))
-                .remainingLimit(new BigDecimal("5000000"))
-                .newOrderTotal(new BigDecimal("10000000"))
-                .projectedDebt(new BigDecimal("55000000"))
-                .exceedsLimit(true)
-                .hasOverdueDebt(false)
-                .isBlocked(false)
-                .requiresApproval(true)
-                .approvalReason("Đơn hàng làm vượt hạn mức công nợ")
-                .build();
-
-        when(dealerDebtService.checkOrderDebt(eq(1L), any(BigDecimal.class))).thenReturn(checkResponse);
-
-        mockMvc.perform(get("/api/orders/check-debt")
-                        .param("dealerId", "1")
-                        .param("orderAmount", "10000000"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.exceedsLimit").value(true))
-                .andExpect(jsonPath("$.data.requiresApproval").value(true));
-    }
-
-    @Test
-    @WithMockUser(username = "sales01", roles = {"SALES"})
     @DisplayName("[S4-03] POST /api/orders/check-inventory - Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa")
     void checkInventory_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderInventoryCheckResponse checkResp = com.quanlybanhang.dto.response.OrderInventoryCheckResponse.builder()
@@ -437,6 +406,37 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.maxAllowedInUnit").value(2))
                 .andExpect(jsonPath("$.data.availableQuantity").value(48))
                 .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.containsString("Số lượng tối đa có thể đặt là 2 thùng")));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-02] GET /api/orders/check-debt - Kiểm tra công nợ đại lý qua query params")
+    void checkDebt_Get_Success() throws Exception {
+        com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
+                .dealerId(1L)
+                .dealerCode("DL01")
+                .dealerName("Đại lý Minh Phát")
+                .currentDebt(new BigDecimal("45000000"))
+                .debtLimit(new BigDecimal("50000000"))
+                .remainingLimit(new BigDecimal("5000000"))
+                .newOrderTotal(new BigDecimal("10000000"))
+                .projectedDebt(new BigDecimal("55000000"))
+                .exceedsLimit(true)
+                .hasOverdueDebt(false)
+                .isBlocked(false)
+                .requiresApproval(true)
+                .approvalReason("Đơn hàng làm vượt hạn mức công nợ")
+                .build();
+
+        when(dealerDebtService.checkOrderDebt(eq(1L), any(BigDecimal.class))).thenReturn(checkResponse);
+
+        mockMvc.perform(get("/api/orders/check-debt")
+                        .param("dealerId", "1")
+                        .param("orderAmount", "10000000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.exceedsLimit").value(true))
+                .andExpect(jsonPath("$.data.requiresApproval").value(true));
     }
 }
 

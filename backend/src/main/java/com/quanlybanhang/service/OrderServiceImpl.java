@@ -13,8 +13,6 @@ import com.quanlybanhang.repository.DealerDeliveryPointRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
-import com.quanlybanhang.repository.WarehouseRepository;
-import com.quanlybanhang.repository.WarehouseInventoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +24,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.quanlybanhang.dto.request.OrderInventoryCheckRequest;
+import com.quanlybanhang.repository.WarehouseRepository;
+import com.quanlybanhang.repository.WarehouseInventoryRepository;
+import java.math.RoundingMode;
 
 @Service
 @RequiredArgsConstructor
@@ -653,6 +655,104 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
+    public OrderInventoryCheckResponse checkInventory(OrderInventoryCheckRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Dữ liệu kiểm tra tồn kho không được để trống");
+        }
+        if (request.getProductId() == null) {
+            throw new IllegalArgumentException("ID sản phẩm không được để trống");
+        }
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + request.getProductId()));
+
+        Warehouse warehouse = null;
+        if (request.getWarehouseId() != null) {
+            warehouse = warehouseRepository.findById(request.getWarehouseId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho hàng với ID: " + request.getWarehouseId()));
+        } else if (request.getDealerId() != null) {
+            Dealer dealer = dealerRepository.findById(request.getDealerId()).orElse(null);
+            if (dealer != null && dealer.getWarehouse() != null) {
+                warehouse = dealer.getWarehouse();
+            }
+        }
+
+        if (warehouse == null && warehouseRepository != null) {
+            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
+            if (!activeWarehouses.isEmpty()) {
+                warehouse = activeWarehouses.get(0);
+            }
+        }
+
+        if (warehouse == null) {
+            throw new IllegalArgumentException("Hệ thống chưa có kho hàng nào đang hoạt động");
+        }
+
+        String inputUnit = request.getUnit();
+        if (inputUnit == null || inputUnit.isBlank()) {
+            inputUnit = product.getUnit();
+        } else {
+            inputUnit = inputUnit.trim();
+        }
+
+        BigDecimal qty = request.getQuantity() != null ? request.getQuantity() : BigDecimal.ZERO;
+        BigDecimal factor = unitConversionService.getConversionFactor(product, inputUnit);
+        BigDecimal baseQty = qty.multiply(factor);
+
+        WarehouseInventory inv = inventoryRepository != null
+                ? inventoryRepository.findByWarehouseIdAndProductId(warehouse.getId(), product.getId()).orElse(null)
+                : null;
+
+        BigDecimal physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
+        BigDecimal reserved = (inv != null && inv.getReservedQuantity() != null) ? inv.getReservedQuantity() : BigDecimal.ZERO;
+        BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
+
+        BigDecimal effectiveFactor = (factor != null && factor.compareTo(BigDecimal.ZERO) > 0) ? factor : BigDecimal.ONE;
+        BigDecimal availableInUnit = available.divide(effectiveFactor, 2, RoundingMode.HALF_UP);
+        BigDecimal maxAllowedInUnit = available.divide(effectiveFactor, 0, RoundingMode.FLOOR);
+
+        boolean valid = baseQty.compareTo(available) <= 0;
+        String message;
+        if (valid) {
+            message = String.format("Còn đủ tồn khả dụng trong kho '%s'. Tồn khả dụng: %s %s (%s %s).",
+                    warehouse.getName(),
+                    availableInUnit.stripTrailingZeros().toPlainString(), inputUnit,
+                    available.stripTrailingZeros().toPlainString(), product.getUnit());
+        } else {
+            if (available.compareTo(BigDecimal.ZERO) <= 0) {
+                message = String.format("Mặt hàng '%s' (mã: %s) đã hết tồn khả dụng tại kho phục vụ '%s'. Tối đa có thể đặt: 0 %s.",
+                        product.getName(), product.getCode(), warehouse.getName(), inputUnit);
+            } else {
+                message = String.format("Vượt tồn khả dụng cho sản phẩm '%s' (mã: %s) tại kho '%s'. Tồn khả dụng hiện tại: %s %s. Số lượng tối đa có thể đặt là %s %s.",
+                        product.getName(), product.getCode(), warehouse.getName(),
+                        available.stripTrailingZeros().toPlainString(), product.getUnit(),
+                        maxAllowedInUnit.stripTrailingZeros().toPlainString(), inputUnit);
+            }
+        }
+
+        return OrderInventoryCheckResponse.builder()
+                .warehouseId(warehouse.getId())
+                .warehouseCode(warehouse.getCode())
+                .warehouseName(warehouse.getName())
+                .productId(product.getId())
+                .productCode(product.getCode())
+                .productName(product.getName())
+                .unit(inputUnit)
+                .quantity(qty)
+                .conversionFactor(factor)
+                .baseUnit(product.getUnit())
+                .baseQuantity(baseQty)
+                .physicalQuantity(physical)
+                .reservedQuantity(reserved)
+                .availableQuantity(available)
+                .availableInUnit(availableInUnit)
+                .maxAllowedInUnit(maxAllowedInUnit)
+                .valid(valid)
+                .message(message)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public OrderLineItemPricingResponse calculateLineItemPricing(OrderLineItemPricingRequest request) {
         if (request.getProductId() == null && (request.getProductCode() == null || request.getProductCode().isBlank())) {
             throw new IllegalArgumentException("Cần cung cấp productId hoặc productCode");
@@ -1072,104 +1172,6 @@ public class OrderServiceImpl implements OrderService {
                 .requiresApproval(orderRequiresApproval)
                 .approvalReason(orderRequiresApproval ? String.join("; ", belowFloorReasons) : null)
                 .items(calculatedItems)
-                .build();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public OrderInventoryCheckResponse checkInventory(OrderInventoryCheckRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Dữ liệu kiểm tra tồn kho không được để trống");
-        }
-        if (request.getProductId() == null) {
-            throw new IllegalArgumentException("ID sản phẩm không được để trống");
-        }
-        Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + request.getProductId()));
-
-        Warehouse warehouse = null;
-        if (request.getWarehouseId() != null) {
-            warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho hàng với ID: " + request.getWarehouseId()));
-        } else if (request.getDealerId() != null) {
-            Dealer dealer = dealerRepository.findById(request.getDealerId()).orElse(null);
-            if (dealer != null && dealer.getWarehouse() != null) {
-                warehouse = dealer.getWarehouse();
-            }
-        }
-
-        if (warehouse == null && warehouseRepository != null) {
-            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
-            if (!activeWarehouses.isEmpty()) {
-                warehouse = activeWarehouses.get(0);
-            }
-        }
-
-        if (warehouse == null) {
-            throw new IllegalArgumentException("Hệ thống chưa có kho hàng nào đang hoạt động");
-        }
-
-        String inputUnit = request.getUnit();
-        if (inputUnit == null || inputUnit.isBlank()) {
-            inputUnit = product.getUnit();
-        } else {
-            inputUnit = inputUnit.trim();
-        }
-
-        BigDecimal qty = request.getQuantity() != null ? request.getQuantity() : BigDecimal.ZERO;
-        BigDecimal factor = unitConversionService.getConversionFactor(product, inputUnit);
-        BigDecimal baseQty = qty.multiply(factor);
-
-        WarehouseInventory inv = inventoryRepository != null
-                ? inventoryRepository.findByWarehouseIdAndProductId(warehouse.getId(), product.getId()).orElse(null)
-                : null;
-
-        BigDecimal physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
-        BigDecimal reserved = (inv != null && inv.getReservedQuantity() != null) ? inv.getReservedQuantity() : BigDecimal.ZERO;
-        BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
-
-        BigDecimal effectiveFactor = (factor != null && factor.compareTo(BigDecimal.ZERO) > 0) ? factor : BigDecimal.ONE;
-        BigDecimal availableInUnit = available.divide(effectiveFactor, 2, RoundingMode.HALF_UP);
-        BigDecimal maxAllowedInUnit = available.divide(effectiveFactor, 0, RoundingMode.FLOOR);
-
-        boolean valid = baseQty.compareTo(available) <= 0;
-        String message;
-        if (valid) {
-            message = String.format("Còn đủ tồn khả dụng trong kho '%s'. Tồn khả dụng: %s %s (%s %s).",
-                    warehouse.getName(),
-                    availableInUnit.stripTrailingZeros().toPlainString(), inputUnit,
-                    available.stripTrailingZeros().toPlainString(), product.getUnit());
-        } else {
-            if (available.compareTo(BigDecimal.ZERO) <= 0) {
-                message = String.format("Mặt hàng '%s' (mã: %s) đã hết tồn khả dụng tại kho phục vụ '%s'. Tối đa có thể đặt: 0 %s.",
-                        product.getName(), product.getCode(), warehouse.getName(), inputUnit);
-            } else {
-                message = String.format("Vượt tồn khả dụng cho sản phẩm '%s' (mã: %s) tại kho '%s'. Tồn khả dụng hiện tại: %s %s. Số lượng tối đa có thể đặt là %s %s.",
-                        product.getName(), product.getCode(), warehouse.getName(),
-                        available.stripTrailingZeros().toPlainString(), product.getUnit(),
-                        maxAllowedInUnit.stripTrailingZeros().toPlainString(), inputUnit);
-            }
-        }
-
-        return OrderInventoryCheckResponse.builder()
-                .warehouseId(warehouse.getId())
-                .warehouseCode(warehouse.getCode())
-                .warehouseName(warehouse.getName())
-                .productId(product.getId())
-                .productCode(product.getCode())
-                .productName(product.getName())
-                .unit(inputUnit)
-                .quantity(qty)
-                .conversionFactor(factor)
-                .baseUnit(product.getUnit())
-                .baseQuantity(baseQty)
-                .physicalQuantity(physical)
-                .reservedQuantity(reserved)
-                .availableQuantity(available)
-                .availableInUnit(availableInUnit)
-                .maxAllowedInUnit(maxAllowedInUnit)
-                .valid(valid)
-                .message(message)
                 .build();
     }
 }

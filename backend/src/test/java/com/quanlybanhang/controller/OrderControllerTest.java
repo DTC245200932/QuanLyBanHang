@@ -364,6 +364,52 @@ class OrderControllerTest {
 
     @Test
     @WithMockUser(username = "sales01", roles = {"SALES"})
+    @DisplayName("[S4-03] POST /api/orders/check-inventory - Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa")
+    void checkInventory_Post_Success() throws Exception {
+        com.quanlybanhang.dto.response.OrderInventoryCheckResponse checkResp = com.quanlybanhang.dto.response.OrderInventoryCheckResponse.builder()
+                .warehouseId(1L)
+                .warehouseCode("KHO-TONG")
+                .warehouseName("Kho Tổng Hà Nội")
+                .productId(10L)
+                .productCode("SP-KEN330")
+                .productName("Bia Heineken Sleek lon 330ml")
+                .unit("thùng")
+                .quantity(new BigDecimal("3"))
+                .conversionFactor(new BigDecimal("24"))
+                .baseUnit("lon")
+                .baseQuantity(new BigDecimal("72"))
+                .physicalQuantity(new BigDecimal("60"))
+                .reservedQuantity(new BigDecimal("12"))
+                .availableQuantity(new BigDecimal("48"))
+                .availableInUnit(new BigDecimal("2.00"))
+                .maxAllowedInUnit(new BigDecimal("2"))
+                .valid(false)
+                .message("Vượt tồn khả dụng cho sản phẩm 'Bia Heineken Sleek lon 330ml' (mã: SP-KEN330) tại kho 'Kho Tổng Hà Nội'. Tồn khả dụng hiện tại: 48 lon. Số lượng tối đa có thể đặt là 2 thùng.")
+                .build();
+
+        when(orderService.checkInventory(any(com.quanlybanhang.dto.request.OrderInventoryCheckRequest.class))).thenReturn(checkResp);
+
+        com.quanlybanhang.dto.request.OrderInventoryCheckRequest req = com.quanlybanhang.dto.request.OrderInventoryCheckRequest.builder()
+                .warehouseId(1L)
+                .productId(10L)
+                .unit("thùng")
+                .quantity(new BigDecimal("3"))
+                .build();
+
+        mockMvc.perform(post("/api/orders/check-inventory")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.warehouseCode").value("KHO-TONG"))
+                .andExpect(jsonPath("$.data.valid").value(false))
+                .andExpect(jsonPath("$.data.maxAllowedInUnit").value(2))
+                .andExpect(jsonPath("$.data.availableQuantity").value(48))
+                .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.containsString("Số lượng tối đa có thể đặt là 2 thùng")));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", roles = {"SALES"})
     @DisplayName("[S4-02] GET /api/orders/check-debt - Kiểm tra công nợ đại lý qua query params")
     void checkDebt_Get_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
@@ -519,3 +565,4 @@ class OrderControllerTest {
                 .andExpect(status().isForbidden());
     }
 }
+

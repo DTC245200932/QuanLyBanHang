@@ -18,6 +18,7 @@
  *   GET  /products/{id}/unit-conversions       → đơn vị tính quy đổi
  *   GET  /price-lists/effective                → bảng giá hiệu lực theo nhóm đại lý
  *   POST /orders/calculate                     → áp giá và tính chiết khấu toàn bộ đơn
+ *   POST /orders/check-inventory               → kiểm tra tồn khả dụng theo dòng hàng (S4-03)
  *   POST /orders                               → tạo đơn hàng
  */
 (() => {
@@ -57,7 +58,7 @@
     dealers: [],        // list of active dealers
     deliveryPoints: [], // list of delivery points for selected dealer
     selectedDealer: null,
-    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, floorPrice, manualPrice, discountAmount }
+    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, floorPrice, manualPrice, discountAmount, inventory }
     productCache: {},   // productId → { unitConversions }
     priceList: null,    // bảng giá hiệu lực theo nhóm đại lý
     priceListError: '', // lý do không thể áp giá cho đại lý hiện tại
@@ -203,6 +204,7 @@
     state.dealerLoading = false;
     syncItemPrices();
     await refreshPricingPreview();
+    await refreshInventoryPreview();
   }
 
   async function loadDeliveryPoints(dealerId) {
@@ -667,6 +669,7 @@
       renderItems();
       updateSummary();
       refreshPricingPreview();
+      scheduleInventoryCheck(existing);
       showToast(`Đã tăng số lượng «${product.name}» lên ${existing.qty}.`, 'success');
       return;
     }
@@ -708,6 +711,7 @@
     renderItems();
     updateSummary();
     refreshPricingPreview();
+    scheduleInventoryCheck(item);
   }
 
   function removeItem(key) {
@@ -753,8 +757,14 @@
             ${unitOptions}
           </select>
         </td>
-        <td style="text-align:right">
+        <td data-stock>
+          <div class="co-stock-display">
+            <span class="co-stock-detail">Đang kiểm tra…</span>
+          </div>
+        </td>
+        <td class="co-qty-cell" style="text-align:right">
           <input class="co-qty-input" type="number" data-field="qty" min="1" step="1" value="${item.qty}" />
+          <div class="co-qty-alert" data-qty-alert hidden></div>
         </td>
         <td style="text-align:right">
           <input class="co-price-input" type="number" data-field="price" data-price min="0" step="1" value="${escHtml(item.unitPrice)}" aria-label="Đơn giá ${escHtml(item.name)}" />
@@ -780,6 +790,7 @@
         if (!e.target.value || !Number.isFinite(quantity) || quantity <= 0) return;
         item.qty = quantity;
         refreshRowTotal(row, item);
+        scheduleInventoryCheck(item);
         updateSummary();
         updateApprovalNotice();
         saveDraftSilently();
@@ -789,6 +800,7 @@
         item.qty = Math.max(1, Number(e.target.value) || 1);
         e.target.value = item.qty;
         refreshRowTotal(row, item);
+        scheduleInventoryCheck(item, true);
         updateSummary();
         updateApprovalNotice();
         saveDraftSilently();
@@ -828,14 +840,151 @@
           item.unitPrice = getUnitPrice(item);
           item.floorPrice = getUnitFloorPrice(item);
           refreshRowTotal(row, item);
+          scheduleInventoryCheck(item, true);
           updateSummary();
           refreshPricingPreview();
         }
         saveDraftSilently();
       });
 
+      renderInventoryState(row, item);
       tbody.insertBefore(row, emptyRow);
     });
+  }
+
+  function formatQuantity(value) {
+    return Number(value || 0).toLocaleString('vi-VN', {
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function getInventoryUnit(item) {
+    return item.selectedUnit?.unitName || item.selectedUnit?.unit || 'cái';
+  }
+
+  function renderInventoryState(row, item) {
+    const stockCell = row?.querySelector('[data-stock]');
+    const qtyInput = row?.querySelector('[data-field="qty"]');
+    const alert = row?.querySelector('[data-qty-alert]');
+    if (!stockCell || !qtyInput || !alert) return;
+
+    let stockMarkup = '<div class="co-stock-display"><span class="co-stock-detail">Chưa kiểm tra</span></div>';
+    const inventory = item.inventory;
+    const isOverstock = Boolean(inventory && inventory.valid === false);
+
+    if (item.inventoryLoading) {
+      stockMarkup = '<div class="co-stock-display"><span class="co-stock-detail">Đang kiểm tra…</span></div>';
+    } else if (item.inventoryError) {
+      stockMarkup = `<div class="co-stock-display"><span class="co-stock-detail">${escHtml(item.inventoryError)}</span></div>`;
+    } else if (inventory) {
+      const available = Number(inventory.availableInUnit ?? 0);
+      const badgeClass = available <= 0
+        ? 'co-stock-badge--out'
+        : (isOverstock ? 'co-stock-badge--low' : 'co-stock-badge--ok');
+      const unit = inventory.unit || getInventoryUnit(item);
+      stockMarkup = `
+        <div class="co-stock-display">
+          <span class="co-stock-badge ${badgeClass}">${formatQuantity(available)} ${escHtml(unit)}</span>
+          <span class="co-stock-detail">Thực tế ${formatQuantity(inventory.physicalQuantity)} · Giữ chỗ ${formatQuantity(inventory.reservedQuantity)}</span>
+        </div>
+      `;
+    }
+
+    stockCell.innerHTML = stockMarkup;
+    row.classList.toggle('co-item-row--overstock', isOverstock);
+    qtyInput.classList.toggle('co-qty-input--error', isOverstock);
+    alert.hidden = !isOverstock;
+    alert.innerHTML = '';
+
+    if (isOverstock) {
+      const maxAllowed = Math.max(0, Number(inventory.maxAllowedInUnit || 0));
+      const message = inventory.message || `Vượt tồn khả dụng. Tối đa ${formatQuantity(maxAllowed)} ${getInventoryUnit(item)}.`;
+      alert.innerHTML = `<span class="co-qty-alert__msg">${escHtml(message)}</span>`;
+      if (maxAllowed > 0) {
+        const suggestButton = document.createElement('button');
+        suggestButton.type = 'button';
+        suggestButton.className = 'btn-suggest-max';
+        suggestButton.textContent = `Đặt tối đa ${formatQuantity(maxAllowed)}`;
+        suggestButton.addEventListener('click', () => {
+          item.qty = maxAllowed;
+          qtyInput.value = maxAllowed;
+          refreshRowTotal(row, item);
+          updateSummary();
+          saveDraftSilently();
+          scheduleInventoryCheck(item, true);
+          refreshPricingPreview();
+        });
+        alert.appendChild(suggestButton);
+      }
+    }
+  }
+
+  function scheduleInventoryCheck(item, immediate = false) {
+    clearTimeout(item.inventoryTimer);
+    item.inventory = null;
+    item.inventoryError = '';
+    item.inventoryLoading = true;
+
+    const row = $('co-items-body').querySelector(`[data-key="${item._key}"]`);
+    if (row) renderInventoryState(row, item);
+
+    const run = () => checkItemInventory(item);
+    if (immediate) return run();
+    item.inventoryTimer = setTimeout(run, 280);
+    return Promise.resolve(true);
+  }
+
+  async function checkItemInventory(item) {
+    const requestId = (item.inventoryRequestId || 0) + 1;
+    item.inventoryRequestId = requestId;
+    item.inventoryLoading = true;
+    item.inventoryError = '';
+    const row = $('co-items-body').querySelector(`[data-key="${item._key}"]`);
+    if (row) renderInventoryState(row, item);
+
+    try {
+      const res = await Auth.apiFetch('/orders/check-inventory', {
+        method: 'POST',
+        body: JSON.stringify({
+          dealerId: state.selectedDealer?.id ? Number(state.selectedDealer.id) : null,
+          productId: Number(item.productId),
+          unit: getInventoryUnit(item),
+          quantity: Number(item.qty),
+        }),
+      });
+      const result = await res.json().catch(() => null);
+      if (!res.ok || !result?.success || !result.data) {
+        throw new Error(result?.message || 'Không kiểm tra được tồn khả dụng.');
+      }
+      if (item.inventoryRequestId !== requestId) return false;
+      item.inventory = result.data;
+      return result.data.valid !== false;
+    } catch (error) {
+      if (item.inventoryRequestId !== requestId) return false;
+      item.inventory = null;
+      item.inventoryError = error.message || 'Không kiểm tra được tồn khả dụng.';
+      return false;
+    } finally {
+      if (item.inventoryRequestId === requestId) {
+        item.inventoryLoading = false;
+        const currentRow = $('co-items-body').querySelector(`[data-key="${item._key}"]`);
+        if (currentRow) renderInventoryState(currentRow, item);
+      }
+    }
+  }
+
+  async function refreshInventoryPreview() {
+    if (!state.items.length || !state.selectedDealer) return true;
+    const results = await Promise.all(state.items.map((item) => checkItemInventory(item)));
+    if (results.every(Boolean)) return true;
+
+    const invalidItem = state.items.find((item) => item.inventory?.valid === false);
+    if (invalidItem) {
+      showToast(invalidItem.inventory.message || `Sản phẩm ${invalidItem.name} vượt tồn khả dụng.`, 'error');
+    } else {
+      showToast('Chưa kiểm tra được tồn khả dụng. Vui lòng thử lại.', 'error');
+    }
+    return false;
   }
 
   function refreshRowTotal(row, item) {
@@ -1222,6 +1371,7 @@
         showToast('Chưa xác định được tổng tiền. Vui lòng cập nhật chiết khấu và thử lại.', 'error');
         return;
       }
+      if (!await refreshInventoryPreview()) return;
       openConfirmModal();
     } finally {
       button.disabled = false;

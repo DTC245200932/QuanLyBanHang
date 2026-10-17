@@ -34,7 +34,7 @@ public class WarehouseController {
     private final WarehouseService warehouseService;
 
     @GetMapping("/options")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
     public ApiResponse warehouseOptions() {
         return ApiResponse.success("Danh sách kho đang hoạt động", warehouseService.getWarehouseOptions());
     }
@@ -86,7 +86,7 @@ public class WarehouseController {
      * Sổ sách hiển thị số lượng theo đơn vị cơ sở (số lon) kèm các quy đổi tương đương (thùng, lốc).
      */
     @GetMapping("/inventory")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
     public ApiResponse getInventory(@RequestParam(required = false) Long warehouseId) {
         List<WarehouseInventoryResponse> stock = warehouseService.getInventory(warehouseId);
         return ApiResponse.success("Danh sách tồn kho", stock);

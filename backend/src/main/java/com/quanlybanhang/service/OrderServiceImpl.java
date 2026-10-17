@@ -1,6 +1,7 @@
 package com.quanlybanhang.service;
 
 import com.quanlybanhang.dto.request.OrderCalculateRequest;
+import com.quanlybanhang.dto.request.OrderInventoryCheckRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.request.OrderLineItemPricingRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
@@ -35,12 +36,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.quanlybanhang.dto.request.OrderInventoryCheckRequest;
+import com.quanlybanhang.repository.WarehouseRepository;
+import com.quanlybanhang.repository.WarehouseInventoryRepository;
+import java.math.RoundingMode;
 
 @Service
 @RequiredArgsConstructor
@@ -51,6 +57,8 @@ public class OrderServiceImpl implements OrderService {
     private final DealerRepository dealerRepository;
     private final DealerDeliveryPointRepository deliveryPointRepository;
     private final PriceListRepository priceListRepository;
+    private final WarehouseRepository warehouseRepository;
+    private final WarehouseInventoryRepository inventoryRepository;
     private final UnitConversionService unitConversionService;
     private final AuditLogService auditLogService;
     private final VolumeDiscountPolicyService volumeDiscountPolicyService;
@@ -152,6 +160,23 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        // 2c. Xác định kho phục vụ đại lý / xuất hàng (S4-03)
+        Warehouse warehouse = null;
+        if (request.getWarehouseId() != null && warehouseRepository != null) {
+            warehouse = warehouseRepository.findById(request.getWarehouseId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + request.getWarehouseId()));
+            if (!Boolean.TRUE.equals(warehouse.getActive())) {
+                throw new IllegalArgumentException("Kho đã ngừng hoạt động: " + warehouse.getName());
+            }
+        } else if (dealer != null && dealer.getWarehouse() != null) {
+            warehouse = dealer.getWarehouse();
+        } else if (warehouseRepository != null) {
+            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
+            if (!activeWarehouses.isEmpty()) {
+                warehouse = activeWarehouses.get(0);
+            }
+        }
+
         // Nếu bảng giá được sử dụng, đánh dấu đã phát sinh đơn (hasOrders = true)
         if (priceList != null) {
             priceList.setHasOrders(true);
@@ -174,11 +199,13 @@ public class OrderServiceImpl implements OrderService {
                 .customerGroup(customerGroup)
                 .dealer(dealer)
                 .deliveryPoint(deliveryPoint)
+                .warehouse(warehouse)
                 .expectedDeliveryDate(request.getExpectedDeliveryDate())
                 .priceList(priceList)
                 .note(request.getNote())
                 .status("RECORDED")
                 .requiresApproval(false)
+                .inventoryReserved(false)
                 .createdBy(username != null ? username : "system")
                 .recordedAt(LocalDateTime.now())
                 .items(new ArrayList<>())
@@ -270,6 +297,72 @@ public class OrderServiceImpl implements OrderService {
                     .build());
 
             preDataList.add(new ItemPreData(product, inputUnit, qty, factor, baseQty, price, unitFloorPrice, isBelowFloor, subtotalAmount, itemReq.getNote()));
+        }
+
+        // 3b. Kiểm tra tồn khả dụng và giữ chỗ tại kho phục vụ (S4-03)
+        // Sử dụng khóa PESSIMISTIC_WRITE theo thứ tự productId tăng dần để chặn race condition khi hai người cùng chốt đơn
+        if (warehouse != null && inventoryRepository != null) {
+            List<Long> sortedProductIds = preDataList.stream()
+                    .map(d -> d.product().getId())
+                    .distinct()
+                    .sorted()
+                    .toList();
+
+            Map<Long, WarehouseInventory> inventoryMap = inventoryRepository
+                    .findByWarehouseIdAndProductIdInForUpdate(warehouse.getId(), sortedProductIds)
+                    .stream()
+                    .collect(Collectors.toMap(inv -> inv.getProduct().getId(), inv -> inv));
+
+            Map<Long, BigDecimal> requestedBaseQtyByProduct = new HashMap<>();
+            for (ItemPreData d : preDataList) {
+                requestedBaseQtyByProduct.merge(d.product().getId(), d.baseQuantity(), BigDecimal::add);
+            }
+
+            for (ItemPreData d : preDataList) {
+                Product product = d.product();
+                Long pId = product.getId();
+                WarehouseInventory inv = inventoryMap.get(pId);
+
+                BigDecimal physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
+                BigDecimal reserved = (inv != null && inv.getReservedQuantity() != null) ? inv.getReservedQuantity() : BigDecimal.ZERO;
+                BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
+
+                BigDecimal totalRequestedBase = requestedBaseQtyByProduct.get(pId);
+                if (totalRequestedBase.compareTo(available) > 0) {
+                    BigDecimal factor = d.conversionFactor() != null && d.conversionFactor().compareTo(BigDecimal.ZERO) > 0
+                            ? d.conversionFactor()
+                            : BigDecimal.ONE;
+                    BigDecimal maxAllowedInUnit = available.divide(factor, 0, RoundingMode.FLOOR);
+
+                    if (available.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new IllegalArgumentException(String.format(
+                                "Mặt hàng '%s' (mã: %s) đã hết tồn khả dụng trong kho phục vụ '%s'. Tồn khả dụng hiện tại: 0 %s. Số lượng tối đa có thể đặt là 0 %s.",
+                                product.getName(), product.getCode(), warehouse.getName(), product.getUnit(), d.unit()
+                        ));
+                    } else {
+                        throw new IllegalArgumentException(String.format(
+                                "Vượt tồn khả dụng cho sản phẩm '%s' (mã: %s) tại kho '%s'. Tồn khả dụng hiện tại: %s %s. Yêu cầu đặt: %s %s (%s %s). Số lượng tối đa có thể đặt là %s %s.",
+                                product.getName(), product.getCode(), warehouse.getName(),
+                                available.stripTrailingZeros().toPlainString(), product.getUnit(),
+                                d.quantity().stripTrailingZeros().toPlainString(), d.unit(),
+                                totalRequestedBase.stripTrailingZeros().toPlainString(), product.getUnit(),
+                                maxAllowedInUnit.stripTrailingZeros().toPlainString(), d.unit()
+                        ));
+                    }
+                }
+            }
+
+            // Đủ tồn khả dụng -> Thực hiện giữ chỗ
+            for (Map.Entry<Long, BigDecimal> entry : requestedBaseQtyByProduct.entrySet()) {
+                Long pId = entry.getKey();
+                BigDecimal reqBase = entry.getValue();
+                WarehouseInventory inv = inventoryMap.get(pId);
+                if (inv != null) {
+                    inv.addReservedQuantity(reqBase);
+                    inventoryRepository.save(inv);
+                }
+            }
+            order.setInventoryReserved(true);
         }
 
         // 4. Áp dụng chính sách chiết khấu theo sản lượng (S3-01)
@@ -507,6 +600,7 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
         String oldStatus = order.getStatus();
+        releaseReservedInventory(order);
         order.setStatus("CANCELLED");
         Order saved = orderRepository.save(order);
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "CANCEL", oldStatus,
@@ -548,6 +642,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Chỉ có thể từ chối đơn hàng đang ở trạng thái Chờ duyệt (PENDING_APPROVAL)");
         }
 
+        releaseReservedInventory(order);
         order.setStatus("REJECTED");
         order.setApprovedBy(username != null ? username : "system");
         order.setApprovedAt(LocalDateTime.now());
@@ -559,6 +654,33 @@ public class OrderServiceImpl implements OrderService {
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "REJECT", "PENDING_APPROVAL",
                 "Từ chối đơn bán dưới giá sàn: " + (reason != null ? reason : ""), username != null ? username : "system");
         return mapToResponse(saved);
+    }
+
+    private void releaseReservedInventory(Order order) {
+        if (Boolean.TRUE.equals(order.getInventoryReserved()) && order.getWarehouse() != null && inventoryRepository != null && order.getItems() != null && !order.getItems().isEmpty()) {
+            Map<Long, BigDecimal> baseQtyByProduct = new HashMap<>();
+            for (OrderItem item : order.getItems()) {
+                if (item.getProduct() != null && item.getBaseQuantity() != null) {
+                    baseQtyByProduct.merge(item.getProduct().getId(), item.getBaseQuantity(), BigDecimal::add);
+                }
+            }
+
+            if (!baseQtyByProduct.isEmpty()) {
+                List<Long> sortedProductIds = baseQtyByProduct.keySet().stream().sorted().toList();
+                List<WarehouseInventory> inventories = inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(order.getWarehouse().getId(), sortedProductIds);
+                Map<Long, WarehouseInventory> inventoryMap = inventories.stream()
+                        .collect(Collectors.toMap(inv -> inv.getProduct().getId(), inv -> inv));
+
+                for (Map.Entry<Long, BigDecimal> entry : baseQtyByProduct.entrySet()) {
+                    WarehouseInventory inv = inventoryMap.get(entry.getKey());
+                    if (inv != null) {
+                        inv.subtractReservedQuantity(entry.getValue());
+                        inventoryRepository.save(inv);
+                    }
+                }
+            }
+            order.setInventoryReserved(false);
+        }
     }
 
     private Product resolveProduct(OrderItemRequest itemReq) {
@@ -633,6 +755,9 @@ public class OrderServiceImpl implements OrderService {
                 .territoryCode(territoryCode)
                 .territoryName(territoryName)
                 .deliveryPointId(order.getDeliveryPoint() != null ? order.getDeliveryPoint().getId() : null)
+                .warehouseId(order.getWarehouse() != null ? order.getWarehouse().getId() : null)
+                .warehouseCode(order.getWarehouse() != null ? order.getWarehouse().getCode() : null)
+                .warehouseName(order.getWarehouse() != null ? order.getWarehouse().getName() : null)
                 .expectedDeliveryDate(order.getExpectedDeliveryDate())
                 .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
                 .priceListCode(order.getPriceList() != null ? order.getPriceList().getCode() : null)
@@ -686,6 +811,104 @@ public class OrderServiceImpl implements OrderService {
                 .appliedPolicyName(item.getAppliedPolicyName())
                 .totalAmount(item.getTotalAmount())
                 .note(item.getNote())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderInventoryCheckResponse checkInventory(OrderInventoryCheckRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Dữ liệu kiểm tra tồn kho không được để trống");
+        }
+        if (request.getProductId() == null) {
+            throw new IllegalArgumentException("ID sản phẩm không được để trống");
+        }
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + request.getProductId()));
+
+        Warehouse warehouse = null;
+        if (request.getWarehouseId() != null) {
+            warehouse = warehouseRepository.findById(request.getWarehouseId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho hàng với ID: " + request.getWarehouseId()));
+        } else if (request.getDealerId() != null) {
+            Dealer dealer = dealerRepository.findById(request.getDealerId()).orElse(null);
+            if (dealer != null && dealer.getWarehouse() != null) {
+                warehouse = dealer.getWarehouse();
+            }
+        }
+
+        if (warehouse == null && warehouseRepository != null) {
+            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
+            if (!activeWarehouses.isEmpty()) {
+                warehouse = activeWarehouses.get(0);
+            }
+        }
+
+        if (warehouse == null) {
+            throw new IllegalArgumentException("Hệ thống chưa có kho hàng nào đang hoạt động");
+        }
+
+        String inputUnit = request.getUnit();
+        if (inputUnit == null || inputUnit.isBlank()) {
+            inputUnit = product.getUnit();
+        } else {
+            inputUnit = inputUnit.trim();
+        }
+
+        BigDecimal qty = request.getQuantity() != null ? request.getQuantity() : BigDecimal.ZERO;
+        BigDecimal factor = unitConversionService.getConversionFactor(product, inputUnit);
+        BigDecimal baseQty = qty.multiply(factor);
+
+        WarehouseInventory inv = inventoryRepository != null
+                ? inventoryRepository.findByWarehouseIdAndProductId(warehouse.getId(), product.getId()).orElse(null)
+                : null;
+
+        BigDecimal physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
+        BigDecimal reserved = (inv != null && inv.getReservedQuantity() != null) ? inv.getReservedQuantity() : BigDecimal.ZERO;
+        BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
+
+        BigDecimal effectiveFactor = (factor != null && factor.compareTo(BigDecimal.ZERO) > 0) ? factor : BigDecimal.ONE;
+        BigDecimal availableInUnit = available.divide(effectiveFactor, 2, RoundingMode.HALF_UP);
+        BigDecimal maxAllowedInUnit = available.divide(effectiveFactor, 0, RoundingMode.FLOOR);
+
+        boolean valid = baseQty.compareTo(available) <= 0;
+        String message;
+        if (valid) {
+            message = String.format("Còn đủ tồn khả dụng trong kho '%s'. Tồn khả dụng: %s %s (%s %s).",
+                    warehouse.getName(),
+                    availableInUnit.stripTrailingZeros().toPlainString(), inputUnit,
+                    available.stripTrailingZeros().toPlainString(), product.getUnit());
+        } else {
+            if (available.compareTo(BigDecimal.ZERO) <= 0) {
+                message = String.format("Mặt hàng '%s' (mã: %s) đã hết tồn khả dụng tại kho phục vụ '%s'. Tối đa có thể đặt: 0 %s.",
+                        product.getName(), product.getCode(), warehouse.getName(), inputUnit);
+            } else {
+                message = String.format("Vượt tồn khả dụng cho sản phẩm '%s' (mã: %s) tại kho '%s'. Tồn khả dụng hiện tại: %s %s. Số lượng tối đa có thể đặt là %s %s.",
+                        product.getName(), product.getCode(), warehouse.getName(),
+                        available.stripTrailingZeros().toPlainString(), product.getUnit(),
+                        maxAllowedInUnit.stripTrailingZeros().toPlainString(), inputUnit);
+            }
+        }
+
+        return OrderInventoryCheckResponse.builder()
+                .warehouseId(warehouse.getId())
+                .warehouseCode(warehouse.getCode())
+                .warehouseName(warehouse.getName())
+                .productId(product.getId())
+                .productCode(product.getCode())
+                .productName(product.getName())
+                .unit(inputUnit)
+                .quantity(qty)
+                .conversionFactor(factor)
+                .baseUnit(product.getUnit())
+                .baseQuantity(baseQty)
+                .physicalQuantity(physical)
+                .reservedQuantity(reserved)
+                .availableQuantity(available)
+                .availableInUnit(availableInUnit)
+                .maxAllowedInUnit(maxAllowedInUnit)
+                .valid(valid)
+                .message(message)
                 .build();
     }
 
@@ -985,6 +1208,31 @@ public class OrderServiceImpl implements OrderService {
             discountSummary = volumeDiscountPolicyService.calculateOrderDiscount(discountInputs, customerGroup, orderDate);
         }
 
+        // Tra cứu tồn kho phục vụ nếu có
+        Warehouse warehouse = null;
+        if (request.getWarehouseId() != null) {
+            warehouse = warehouseRepository.findById(request.getWarehouseId()).orElse(null);
+        } else if (dealer != null && dealer.getWarehouse() != null) {
+            warehouse = dealer.getWarehouse();
+        }
+        if (warehouse == null && warehouseRepository != null) {
+            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
+            if (!activeWarehouses.isEmpty()) {
+                warehouse = activeWarehouses.get(0);
+            }
+        }
+
+        Map<Long, WarehouseInventory> inventoryMap = new HashMap<>();
+        if (warehouse != null && inventoryRepository != null) {
+            List<Long> productIds = preDataList.stream().map(d -> d.product().getId()).distinct().toList();
+            List<WarehouseInventory> inventories = inventoryRepository.findByWarehouseIdAndProductIdIn(warehouse.getId(), productIds);
+            for (WarehouseInventory inv : inventories) {
+                if (inv.getProduct() != null) {
+                    inventoryMap.put(inv.getProduct().getId(), inv);
+                }
+            }
+        }
+
         BigDecimal grandSubtotal = BigDecimal.ZERO;
         BigDecimal grandDiscount = BigDecimal.ZERO;
         List<OrderCalculateItemResponse> calculatedItems = new ArrayList<>();
@@ -1017,6 +1265,26 @@ public class OrderServiceImpl implements OrderService {
             PriceListItem priceListItem = priceItemMap.get(d.product().getId());
             BigDecimal priceListSelling = priceListItem != null ? priceListItem.getSellingPrice().multiply(d.conversionFactor()) : null;
 
+            BigDecimal physical = BigDecimal.ZERO;
+            BigDecimal reserved = BigDecimal.ZERO;
+            BigDecimal available = BigDecimal.ZERO;
+            BigDecimal availableInUnit = BigDecimal.ZERO;
+            BigDecimal maxAllowedInUnit = BigDecimal.ZERO;
+            Boolean exceedsStock = false;
+
+            if (warehouse != null) {
+                WarehouseInventory inv = inventoryMap.get(d.product().getId());
+                physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
+                reserved = (inv != null && inv.getReservedQuantity() != null) ? inv.getReservedQuantity() : BigDecimal.ZERO;
+                available = physical.subtract(reserved).max(BigDecimal.ZERO);
+                BigDecimal factor = (d.conversionFactor() != null && d.conversionFactor().compareTo(BigDecimal.ZERO) > 0)
+                        ? d.conversionFactor()
+                        : BigDecimal.ONE;
+                availableInUnit = available.divide(factor, 2, RoundingMode.HALF_UP);
+                maxAllowedInUnit = available.divide(factor, 0, RoundingMode.FLOOR);
+                exceedsStock = d.baseQuantity().compareTo(available) > 0;
+            }
+
             calculatedItems.add(OrderCalculateItemResponse.builder()
                     .productId(d.product().getId())
                     .productCode(d.product().getCode())
@@ -1039,12 +1307,21 @@ public class OrderServiceImpl implements OrderService {
                     .appliedPolicyName(appliedPolicyName)
                     .selectionReason(reason)
                     .totalAmount(lineTotal)
+                    .physicalQuantity(physical)
+                    .reservedQuantity(reserved)
+                    .availableQuantity(available)
+                    .availableInUnit(availableInUnit)
+                    .maxAllowedInUnit(maxAllowedInUnit)
+                    .exceedsStock(exceedsStock)
                     .build());
         }
 
         return OrderCalculateResponse.builder()
                 .dealerId(dealer != null ? dealer.getId() : null)
                 .dealerName(dealer != null ? dealer.getName() : null)
+                .warehouseId(warehouse != null ? warehouse.getId() : null)
+                .warehouseCode(warehouse != null ? warehouse.getCode() : null)
+                .warehouseName(warehouse != null ? warehouse.getName() : null)
                 .customerGroup(customerGroup)
                 .customerGroupName(customerGroup != null ? customerGroup.getDisplayName() : null)
                 .priceListId(priceList != null ? priceList.getId() : null)

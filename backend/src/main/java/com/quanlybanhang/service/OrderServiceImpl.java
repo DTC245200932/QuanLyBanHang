@@ -22,6 +22,7 @@ import com.quanlybanhang.dto.response.OrderFilterResult;
 import com.quanlybanhang.model.OrderDraft;
 import com.quanlybanhang.repository.OrderDraftRepository;
 import com.quanlybanhang.repository.UserRepository;
+import com.quanlybanhang.repository.WarehouseLocationProductRepository;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -77,6 +78,14 @@ public class OrderServiceImpl implements OrderService {
 
     @Autowired(required = false)
     private ObjectMapper objectMapper;
+
+    @Autowired(required = false)
+    private WarehouseLocationProductRepository locationProductRepository;
+
+    @Autowired(required = false)
+    public void setLocationProductRepository(WarehouseLocationProductRepository locationProductRepository) {
+        this.locationProductRepository = locationProductRepository;
+    }
 
     private record ItemPreData(
             Product product,
@@ -696,8 +705,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponse mapToResponse(Order order) {
+        Warehouse orderWh = order.getWarehouse() != null
+                ? order.getWarehouse()
+                : (order.getDealer() != null ? order.getDealer().getWarehouse() : null);
+
         List<OrderItemResponse> items = order.getItems() != null
-                ? order.getItems().stream().map(this::mapToItemResponse).collect(Collectors.toList())
+                ? order.getItems().stream().map(it -> mapToItemResponse(it, orderWh)).collect(Collectors.toList())
                 : Collections.emptyList();
 
         Dealer dealer = order.getDealer();
@@ -790,6 +803,41 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderItemResponse mapToItemResponse(OrderItem item) {
+        return mapToItemResponse(item, item.getOrder() != null ? item.getOrder().getWarehouse() : null);
+    }
+
+    private OrderItemResponse mapToItemResponse(OrderItem item, Warehouse warehouse) {
+        Long locationId = null;
+        String locationCode = null;
+        String locationName = null;
+        String locationType = null;
+        String zoneName = null;
+        String shelfName = null;
+        String locationDisplay = null;
+
+        if (locationProductRepository != null && warehouse != null && item.getProduct() != null) {
+            List<WarehouseLocationProduct> mappings =
+                    locationProductRepository.findByWarehouseIdAndProductId(warehouse.getId(), item.getProduct().getId());
+            if (!mappings.isEmpty()) {
+                WarehouseLocation loc = mappings.get(0).getLocation();
+                locationId = loc.getId();
+                locationCode = loc.getCode();
+                locationName = loc.getName();
+                locationType = loc.getLocationType() != null ? loc.getLocationType().name() : null;
+                if (loc.getParent() != null) {
+                    zoneName = loc.getParent().getName();
+                    shelfName = loc.getName();
+                    locationDisplay = loc.getParent().getName() + " > " + loc.getName();
+                } else if (loc.getLocationType() == LocationType.ZONE) {
+                    zoneName = loc.getName();
+                    locationDisplay = loc.getName();
+                } else {
+                    shelfName = loc.getName();
+                    locationDisplay = loc.getName();
+                }
+            }
+        }
+
         return OrderItemResponse.builder()
                 .id(item.getId())
                 .productId(item.getProduct() != null ? item.getProduct().getId() : null)
@@ -811,6 +859,13 @@ public class OrderServiceImpl implements OrderService {
                 .appliedPolicyName(item.getAppliedPolicyName())
                 .totalAmount(item.getTotalAmount())
                 .note(item.getNote())
+                .locationId(locationId)
+                .locationCode(locationCode)
+                .locationName(locationName)
+                .locationType(locationType)
+                .zoneName(zoneName)
+                .shelfName(shelfName)
+                .locationDisplay(locationDisplay)
                 .build();
     }
 

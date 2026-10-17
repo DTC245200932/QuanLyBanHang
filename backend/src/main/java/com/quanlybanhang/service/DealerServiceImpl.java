@@ -126,9 +126,10 @@ public class DealerServiceImpl implements DealerService {
         }
 
         Warehouse warehouse = null;
-        if (request.getWarehouseId() != null && warehouseRepository != null) {
-            warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + request.getWarehouseId()));
+        Long targetWarehouseId = request.getEffectiveWarehouseId();
+        if (targetWarehouseId != null && warehouseRepository != null) {
+            warehouse = warehouseRepository.findById(targetWarehouseId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + targetWarehouseId));
         }
 
         Dealer dealer = Dealer.builder()
@@ -196,9 +197,10 @@ public class DealerServiceImpl implements DealerService {
         dealer.setCustomerGroup(request.getCustomerGroup() != null ? request.getCustomerGroup() : CustomerGroup.DAI_LY_CAP_1);
         dealer.setAssignedUser(newAssignedUser);
         dealer.setTerritory(territory);
-        if (request.getWarehouseId() != null && warehouseRepository != null) {
-            Warehouse warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + request.getWarehouseId()));
+        Long targetWarehouseId = request.getEffectiveWarehouseId();
+        if (targetWarehouseId != null && warehouseRepository != null) {
+            Warehouse warehouse = warehouseRepository.findById(targetWarehouseId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + targetWarehouseId));
             dealer.setWarehouse(warehouse);
         }
         if (request.getActive() != null) {
@@ -676,6 +678,9 @@ public class DealerServiceImpl implements DealerService {
                 .warehouseId(dealer.getWarehouse() != null ? dealer.getWarehouse().getId() : null)
                 .warehouseCode(dealer.getWarehouse() != null ? dealer.getWarehouse().getCode() : null)
                 .warehouseName(dealer.getWarehouse() != null ? dealer.getWarehouse().getName() : null)
+                .defaultWarehouseId(dealer.getWarehouse() != null ? dealer.getWarehouse().getId() : null)
+                .defaultWarehouseCode(dealer.getWarehouse() != null ? dealer.getWarehouse().getCode() : null)
+                .defaultWarehouseName(dealer.getWarehouse() != null ? dealer.getWarehouse().getName() : null)
                 .assignedUserId(dealer.getAssignedUser() != null ? dealer.getAssignedUser().getId() : null)
                 .assignedUsername(dealer.getAssignedUser() != null ? dealer.getAssignedUser().getUsername() : null)
                 .assignedUserFullName(dealer.getAssignedUser() != null ? dealer.getAssignedUser().getFullName() : null)
@@ -781,5 +786,43 @@ public class DealerServiceImpl implements DealerService {
                 .performedByFullName(history.getPerformedByName())
                 .transferredAt(history.getTransferredAt())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public DealerResponse assignDefaultWarehouse(Long id, Long warehouseId, String currentUsername) {
+        if (id == null) {
+            throw new IllegalArgumentException("ID đại lý không được để trống");
+        }
+        Dealer dealer = dealerRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + id));
+
+        Warehouse warehouse = null;
+        if (warehouseId != null) {
+            warehouse = warehouseRepository.findById(warehouseId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + warehouseId));
+            if (Boolean.FALSE.equals(warehouse.getActive())) {
+                throw new IllegalArgumentException("Kho '" + warehouse.getName() + "' đã ngừng hoạt động");
+            }
+        }
+
+        dealer.setWarehouse(warehouse);
+        Dealer saved = dealerRepository.save(dealer);
+
+        if (auditLogService != null) {
+            String note = warehouse != null
+                    ? "Gán kho phục vụ mặc định '" + warehouse.getName() + "' (" + warehouse.getCode() + ")"
+                    : "Hủy gán kho phục vụ mặc định";
+            auditLogService.logAction(
+                    "DEALER",
+                    saved.getId() != null ? saved.getId().toString() : "N/A",
+                    "ASSIGN_DEFAULT_WAREHOUSE",
+                    null,
+                    note,
+                    currentUsername != null ? currentUsername : "system"
+            );
+        }
+
+        return mapToResponse(saved);
     }
 }

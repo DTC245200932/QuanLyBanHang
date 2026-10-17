@@ -43,7 +43,7 @@ public class DealerController {
     private final DealerDebtService dealerDebtService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER', 'WAREHOUSE_MANAGER')")
     public ApiResponse getAllDealers(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) CustomerGroup customerGroup,
@@ -71,24 +71,39 @@ public class DealerController {
     }
 
     @GetMapping("/active")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER', 'WAREHOUSE_MANAGER')")
     public ApiResponse getActiveDealers() {
         List<DealerResponse> dealers = dealerService.getActiveDealers();
         return ApiResponse.success("Lấy danh sách đại lý đang hoạt động thành công", dealers);
     }
 
     @GetMapping("/options")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER', 'WAREHOUSE_MANAGER')")
     public ApiResponse getDealerOptions() {
         DealerOptionsResponse options = dealerService.getDealerOptions();
         return ApiResponse.success("Lấy danh mục tham chiếu đại lý thành công", options);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER', 'WAREHOUSE_MANAGER')")
     public ApiResponse getDealerById(@PathVariable Long id) {
         DealerResponse dealer = dealerService.getDealerById(id);
         return ApiResponse.success("Lấy chi tiết đại lý thành công", dealer);
+    }
+
+    /**
+     * Gán kho phục vụ mặc định cho đại lý (S5-03).
+     * Cho phép Quản lý kho (ROLE_WAREHOUSE_MANAGER), Quản lý kinh doanh (ROLE_SALES_MANAGER), Quản trị viên (ROLE_ADMIN).
+     */
+    @PutMapping("/{id}/default-warehouse")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAuthority('CUSTOMER_EDIT') or hasAnyRole('WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN')")
+    public ApiResponse assignDefaultWarehouse(
+            @PathVariable Long id,
+            @Valid @RequestBody com.quanlybanhang.dto.request.DealerWarehouseAssignRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        DealerResponse dealer = dealerService.assignDefaultWarehouse(id, request.getWarehouseId(), username);
+        return ApiResponse.success("Gán kho phục vụ mặc định cho đại lý thành công", dealer);
     }
 
     @PostMapping

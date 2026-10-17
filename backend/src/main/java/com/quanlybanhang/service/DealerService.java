@@ -83,4 +83,9 @@ public interface DealerService {
             Pageable pageable);
 
     List<DealerAssignmentHistoryResponse> getDealerAssignmentHistory(Long dealerId);
+
+    /**
+     * Gán kho phục vụ mặc định cho đại lý (S5-03).
+     */
+    DealerResponse assignDefaultWarehouse(Long id, Long warehouseId, String currentUsername);
 }

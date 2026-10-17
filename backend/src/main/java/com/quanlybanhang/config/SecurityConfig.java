@@ -101,6 +101,14 @@ public class SecurityConfig {
                 .requestMatchers("/api/warehouse/vouchers", "/api/warehouse/vouchers/**")
                         .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "VIEWER")
 
+                // Danh mục kho & vị trí lưu (S5-03): hỗ trợ tra cứu cho các vai trò kinh doanh/kho; thao tác quản trị bảo vệ bằng @PreAuthorize
+                .requestMatchers("/api/warehouses", "/api/warehouses/**",
+                        "/api/warehouse-locations", "/api/warehouse-locations/**",
+                        "/api/warehouse/warehouses", "/api/warehouse/warehouses/**",
+                        "/api/warehouse/locations", "/api/warehouse/locations/**",
+                        "/api/warehouse/products/**", "/api/warehouse/orders/**")
+                        .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "SALES", "VIEWER")
+
                 // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
                 .requestMatchers("/api/warehouse/**").hasAnyRole(
                         "ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF")

@@ -628,4 +628,55 @@ class DealerServiceTest {
         assertThat(pending).hasSize(1);
         assertThat(pending.get(0).getCode()).isEqualTo("DL01");
     }
+
+    @Test
+    @DisplayName("[S5-03] Gán kho phục vụ mặc định cho đại lý thành công")
+    void assignDefaultWarehouse_success() {
+        Dealer dealer = Dealer.builder().id(10L).code("DL10").name("Đại lý Alpha").build();
+        Warehouse warehouse = Warehouse.builder().id(2L).code("KHO-DN").name("Kho Đà Nẵng").active(true).build();
+
+        when(dealerRepository.findById(10L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(2L)).thenReturn(Optional.of(warehouse));
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DealerResponse res = dealerService.assignDefaultWarehouse(10L, 2L, "manager");
+
+        assertThat(res).isNotNull();
+        assertThat(res.getDefaultWarehouseId()).isEqualTo(2L);
+        assertThat(res.getDefaultWarehouseName()).isEqualTo("Kho Đà Nẵng");
+        assertThat(dealer.getWarehouse()).isEqualTo(warehouse);
+        verify(dealerRepository).save(dealer);
+        verify(auditLogService).logAction(eq("DEALER"), eq("10"), eq("ASSIGN_DEFAULT_WAREHOUSE"), any(), any(), eq("manager"));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Gán kho không hoạt động -> ném ngoại lệ")
+    void assignDefaultWarehouse_inactiveWarehouse_throwsException() {
+        Dealer dealer = Dealer.builder().id(10L).code("DL10").name("Đại lý Alpha").build();
+        Warehouse inactiveWarehouse = Warehouse.builder().id(2L).code("KHO-DN").name("Kho Đà Nẵng").active(false).build();
+
+        when(dealerRepository.findById(10L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(2L)).thenReturn(Optional.of(inactiveWarehouse));
+
+        assertThatThrownBy(() -> dealerService.assignDefaultWarehouse(10L, 2L, "manager"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("đã ngừng hoạt động");
+        verify(dealerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("[S5-03] Huỷ gán kho mặc định khi warehouseId = null")
+    void assignDefaultWarehouse_clearWarehouse_success() {
+        Warehouse oldWarehouse = Warehouse.builder().id(2L).code("KHO-DN").name("Kho Đà Nẵng").active(true).build();
+        Dealer dealer = Dealer.builder().id(10L).code("DL10").name("Đại lý Alpha").warehouse(oldWarehouse).build();
+
+        when(dealerRepository.findById(10L)).thenReturn(Optional.of(dealer));
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DealerResponse res = dealerService.assignDefaultWarehouse(10L, null, "manager");
+
+        assertThat(res.getDefaultWarehouseId()).isNull();
+        assertThat(dealer.getWarehouse()).isNull();
+        verify(dealerRepository).save(dealer);
+    }
 }

@@ -39,6 +39,13 @@ public class DealerRequest {
 
     private Long warehouseId;
 
+    /** Kho phục vụ mặc định (S5-03, alias của warehouseId) */
+    private Long defaultWarehouseId;
+
+    public Long getEffectiveWarehouseId() {
+        return defaultWarehouseId != null ? defaultWarehouseId : warehouseId;
+    }
+
     private Long assignedUserId;
 
     private Boolean active;

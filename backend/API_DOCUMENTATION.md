@@ -1180,6 +1180,122 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) nhìn thấy tồn khả dụng
 }
 ```
 
+## Quản lý danh mục kho & Vị trí lưu kho (S5-03)
+
+Hệ thống cho phép Quản lý kho (`ROLE_WAREHOUSE_MANAGER`) và Quản trị viên (`ROLE_ADMIN`) khai báo nhiều kho, phân cấp vị trí lưu trữ (Khu vực `ZONE`, Kệ `SHELF`), gán sản phẩm vào vị trí, và gán kho phục vụ mặc định cho từng đại lý để phục vụ xuất danh sách soạn hàng (Picking List) chính xác.
+
+### Danh mục kho hàng
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/warehouses` | Xem danh mục kho | Lấy danh sách kho hàng kèm bộ lọc `keyword`, `active` |
+| GET | `/api/warehouses/{id}` | Xem chi tiết kho | Xem chi tiết thông tin kho hàng |
+| POST | `/api/warehouses` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Tạo mới kho hàng (mã, tên, địa chỉ, người phụ trách, trạng thái) |
+| PUT | `/api/warehouses/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Cập nhật thông tin kho hàng |
+| DELETE | `/api/warehouses/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Xóa kho hàng (tự động chuyển `active = false` nếu đã có phiếu kho hoặc vị trí lưu) |
+| GET | `/api/warehouses/{id}/locations` | Xem vị trí kho | Lấy danh sách vị trí lưu trữ của một kho |
+| GET | `/api/warehouses/{id}/tree` | Xem vị trí kho | Lấy cấu trúc cây phân cấp vị trí (Khu vực -> Kệ) |
+
+#### Tạo mới kho hàng:
+```http
+POST /api/warehouses
+Content-Type: application/json
+
+{
+  "code": "KHO-HN",
+  "name": "Kho Hà Nội",
+  "address": "123 Phố Huế, Q. Hai Bà Trưng, Hà Nội",
+  "managerUserId": 2,
+  "managerName": "Trần Quản Lý",
+  "active": true
+}
+```
+
+### Vị trí lưu kho (Khu vực / Kệ)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/warehouse-locations` | Xem vị trí kho | Lấy danh sách vị trí kho kèm bộ lọc `warehouseId`, `locationType`, `parentId`, `active`, `keyword` |
+| GET | `/api/warehouse-locations/{id}` | Xem vị trí kho | Xem chi tiết vị trí, danh sách kệ con (nếu là Khu), và sản phẩm đang lưu |
+| POST | `/api/warehouse-locations` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Khai báo vị trí lưu mới (`ZONE` hoặc `SHELF` trực thuộc `ZONE`) |
+| PUT | `/api/warehouse-locations/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Cập nhật vị trí lưu kho |
+| DELETE | `/api/warehouse-locations/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Xóa vị trí lưu kho (chặn xóa nếu có kệ con hoặc sản phẩm đang gán) |
+| POST | `/api/warehouse-locations/{locationId}/products` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Gán sản phẩm vào vị trí kệ/khu (hỗ trợ cờ `isDefault`) |
+| DELETE | `/api/warehouse-locations/{locationId}/products/{productId}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Hủy gán sản phẩm khỏi vị trí kệ/khu |
+| GET | `/api/warehouse-locations/{locationId}/products` | Xem vị trí kho | Lấy danh sách sản phẩm được gán tại vị trí |
+
+#### Khai báo vị trí Kệ thuộc Khu:
+```http
+POST /api/warehouse-locations
+Content-Type: application/json
+
+{
+  "warehouseId": 1,
+  "code": "SHELF-A1",
+  "name": "Kệ A1 - Tầng 2",
+  "locationType": "SHELF",
+  "parentLocationId": 10,
+  "description": "Kệ đồ uống giải khát",
+  "active": true
+}
+```
+
+#### Gán sản phẩm vào Kệ lưu trữ:
+```http
+POST /api/warehouse-locations/15/products
+Content-Type: application/json
+
+{
+  "productId": 10,
+  "isDefault": true,
+  "note": "Kệ chính lấy hàng bia Sleek"
+}
+```
+
+### Danh sách soạn hàng (Picking List) & Gán kho mặc định đại lý
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/orders/{id}/picking-list` | `ORDER_VIEW` hoặc thủ kho | Xuất danh sách soạn hàng hiển thị chính xác tên Kệ, Khu vực, tồn khả dụng |
+| PUT | `/api/dealers/{id}/default-warehouse` | `DEALER_MANAGE`, `WAREHOUSE_MANAGE` hoặc `ADMIN` | Gán kho phục vụ mặc định cho đại lý |
+
+#### Ví dụ Response Picking List (`GET /api/orders/1001/picking-list`):
+```json
+{
+  "success": true,
+  "message": "Lấy danh sách soạn hàng thành công",
+  "data": {
+    "orderId": 1001,
+    "orderCode": "ORD-20261018-001",
+    "orderStatus": "PENDING",
+    "expectedDeliveryDate": "2026-10-20",
+    "dealerId": 5,
+    "dealerCode": "DL-HN",
+    "dealerName": "Đại lý Hà Nội",
+    "warehouseId": 1,
+    "warehouseCode": "KHO-HCM",
+    "warehouseName": "Kho Tổng TP.HCM",
+    "warehouseAddress": "Lô 5 KCN Tân Bình, TP.HCM",
+    "items": [
+      {
+        "orderItemId": 501,
+        "productId": 10,
+        "productCode": "SP-KEN330",
+        "productName": "Bia Heineken Sleek lon 330ml",
+        "unit": "thùng",
+        "quantity": 10,
+        "locationId": 202,
+        "locationCode": "SHELF-A1",
+        "shelfName": "Kệ A1 - Tầng 2",
+        "zoneName": "Khu Đồ Uống",
+        "locationDisplay": "Khu Đồ Uống > Kệ A1 - Tầng 2",
+        "availableQuantity": 500
+      }
+    ]
+  }
+}
+```
+
 ## Bảy vai trò
 
 - `ROLE_ADMIN`: quản trị tài khoản và hệ thống; không mặc nhiên xem giá vốn.

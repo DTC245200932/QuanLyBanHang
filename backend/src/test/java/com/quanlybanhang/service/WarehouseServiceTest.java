@@ -1,9 +1,7 @@
 package com.quanlybanhang.service;
 
-import com.quanlybanhang.dto.request.WarehouseVoucherItemRequest;
-import com.quanlybanhang.dto.request.WarehouseVoucherRequest;
-import com.quanlybanhang.dto.response.WarehouseInventoryResponse;
-import com.quanlybanhang.dto.response.WarehouseVoucherResponse;
+import com.quanlybanhang.dto.request.*;
+import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +13,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,11 +25,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("WarehouseService - Nhập xuất kho theo thùng/lốc, sổ sách ghi theo lon (S2-07)")
+@DisplayName("WarehouseService - Quản lý kho, vị trí lưu trữ, soạn hàng (S5-03) & Nhập xuất tồn (S2-07)")
 class WarehouseServiceTest {
 
     @Mock
     private WarehouseRepository warehouseRepository;
+
+    @Mock
+    private WarehouseLocationRepository warehouseLocationRepository;
+
+    @Mock
+    private WarehouseLocationProductRepository locationProductRepository;
 
     @Mock
     private ProductRepository productRepository;
@@ -44,6 +51,15 @@ class WarehouseServiceTest {
 
     @Mock
     private WarehouseInventoryRepository inventoryRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private DealerRepository dealerRepository;
+
+    @Mock
+    private OrderRepository orderRepository;
 
     @Mock
     private AuditLogService auditLogService;
@@ -264,5 +280,347 @@ class WarehouseServiceTest {
         assertThat(item.getConvertedViews().get("lon")).isEqualByComparingTo(new BigDecimal("240.0000"));
         assertThat(item.getConvertedViews().get("thùng")).isEqualByComparingTo(new BigDecimal("10.00"));
         assertThat(item.getConvertedViews().get("lốc")).isEqualByComparingTo(new BigDecimal("40.00"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // S5-03: QUẢN LÝ KHO, VỊ TRÍ LƯU VÀ SOẠN HÀNG
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    @DisplayName("[S5-03] Tạo mới kho hàng thành công với đầy đủ mã, tên, địa chỉ, người phụ trách, trạng thái")
+    void createWarehouse_success() {
+        WarehouseRequest req = WarehouseRequest.builder()
+                .code("KHO-HN")
+                .name("Kho Hà Nội")
+                .address("123 Phố Huế, Hà Nội")
+                .managerUserId(2L)
+                .managerName("Trần Quản Lý")
+                .active(true)
+                .build();
+
+        User manager = User.builder().id(2L).username("qlhn").fullName("Trần Quản Lý").build();
+
+        when(warehouseRepository.existsByCode("KHO-HN")).thenReturn(false);
+        when(userRepository.findById(2L)).thenReturn(Optional.of(manager));
+        when(warehouseRepository.save(any(Warehouse.class))).thenAnswer(invocation -> {
+            Warehouse w = invocation.getArgument(0);
+            w.setId(100L);
+            return w;
+        });
+
+        WarehouseResponse res = warehouseService.createWarehouse(req, "admin");
+
+        assertThat(res).isNotNull();
+        assertThat(res.getCode()).isEqualTo("KHO-HN");
+        assertThat(res.getName()).isEqualTo("Kho Hà Nội");
+        assertThat(res.getAddress()).isEqualTo("123 Phố Huế, Hà Nội");
+        assertThat(res.getManagerUserId()).isEqualTo(2L);
+        assertThat(res.getManagerName()).isEqualTo("Trần Quản Lý");
+        assertThat(res.getActive()).isTrue();
+
+        verify(warehouseRepository).save(any(Warehouse.class));
+        verify(auditLogService).logAction(eq("WAREHOUSE"), eq("100"), eq("CREATE_WAREHOUSE"), any(), any(), eq("admin"));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Tạo mới kho hàng trùng mã -> ném ngoại lệ")
+    void createWarehouse_duplicateCode_throwsException() {
+        WarehouseRequest req = WarehouseRequest.builder()
+                .code("KHO-HCM")
+                .name("Kho Trùng")
+                .build();
+
+        when(warehouseRepository.existsByCode("KHO-HCM")).thenReturn(true);
+
+        assertThatThrownBy(() -> warehouseService.createWarehouse(req, "admin"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("đã tồn tại");
+        verify(warehouseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("[S5-03] Cập nhật kho hàng thành công")
+    void updateWarehouse_success() {
+        Warehouse warehouse = Warehouse.builder()
+                .id(1L)
+                .code("KHO-HCM")
+                .name("Kho Cũ")
+                .address("Địa chỉ cũ")
+                .active(true)
+                .build();
+
+        WarehouseRequest req = WarehouseRequest.builder()
+                .name("Kho HCM Mới")
+                .address("456 Lê Lợi, Q1, HCM")
+                .active(true)
+                .build();
+
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        when(warehouseRepository.save(any(Warehouse.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        WarehouseResponse res = warehouseService.updateWarehouse(1L, req, "admin");
+
+        assertThat(res.getName()).isEqualTo("Kho HCM Mới");
+        assertThat(res.getAddress()).isEqualTo("456 Lê Lợi, Q1, HCM");
+        verify(warehouseRepository).save(warehouse);
+        verify(auditLogService).logAction(eq("WAREHOUSE"), eq("1"), eq("UPDATE_WAREHOUSE"), any(), any(), eq("admin"));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Xóa kho đã có phiếu kho -> chỉ chuyển trạng thái ngừng hoạt động")
+    void deleteWarehouse_withVouchers_deactivatesInsteadOfDeleting() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").active(true).build();
+        WarehouseVoucher voucher = WarehouseVoucher.builder().id(99L).warehouse(warehouse).build();
+
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        when(voucherRepository.findByWarehouseIdOrderByRecordedAtDesc(1L)).thenReturn(List.of(voucher));
+
+        warehouseService.deleteWarehouse(1L, "admin");
+
+        assertThat(warehouse.getActive()).isFalse();
+        verify(warehouseRepository).save(warehouse);
+        verify(warehouseRepository, never()).delete(any(Warehouse.class));
+        verify(auditLogService).logAction(eq("WAREHOUSE"), eq("1"), eq("DEACTIVATE_WAREHOUSE"), any(), any(), eq("admin"));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Xóa kho sạch chưa có dữ liệu ràng buộc -> xóa thành công")
+    void deleteWarehouse_clean_deletesSuccessfully() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").active(true).build();
+
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        when(voucherRepository.findByWarehouseIdOrderByRecordedAtDesc(1L)).thenReturn(Collections.emptyList());
+        when(warehouseLocationRepository.countByWarehouseId(1L)).thenReturn(0L);
+
+        warehouseService.deleteWarehouse(1L, "admin");
+
+        verify(warehouseRepository).delete(warehouse);
+        verify(auditLogService).logAction(eq("WAREHOUSE"), eq("1"), eq("DELETE_WAREHOUSE"), any(), any(), eq("admin"));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Khai báo vị trí Khu vực (ZONE) thành công")
+    void createLocation_zone_success() {
+        WarehouseLocationRequest req = WarehouseLocationRequest.builder()
+                .warehouseId(1L)
+                .code("ZONE-A")
+                .name("Khu vực Đồ uống")
+                .locationType(LocationType.ZONE)
+                .build();
+
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseLocationRepository.existsByWarehouseIdAndCode(1L, "ZONE-A")).thenReturn(false);
+        when(warehouseLocationRepository.save(any(WarehouseLocation.class))).thenAnswer(invocation -> {
+            WarehouseLocation loc = invocation.getArgument(0);
+            loc.setId(201L);
+            return loc;
+        });
+
+        WarehouseLocationResponse res = warehouseService.createLocation(1L, req, "thukho");
+
+        assertThat(res).isNotNull();
+        assertThat(res.getCode()).isEqualTo("ZONE-A");
+        assertThat(res.getLocationType()).isEqualTo(LocationType.ZONE);
+        assertThat(res.getParentLocationId()).isNull();
+        verify(warehouseLocationRepository).save(any(WarehouseLocation.class));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Khai báo vị trí Kệ (SHELF) thuộc Khu vực (ZONE) thành công")
+    void createLocation_shelfWithParentZone_success() {
+        WarehouseLocation zoneA = WarehouseLocation.builder()
+                .id(201L)
+                .warehouse(khoHcm)
+                .code("ZONE-A")
+                .name("Khu vực A")
+                .locationType(LocationType.ZONE)
+                .build();
+
+        WarehouseLocationRequest req = WarehouseLocationRequest.builder()
+                .warehouseId(1L)
+                .code("SHELF-A1")
+                .name("Kệ A1")
+                .locationType(LocationType.SHELF)
+                .parentLocationId(201L)
+                .build();
+
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseLocationRepository.existsByWarehouseIdAndCode(1L, "SHELF-A1")).thenReturn(false);
+        when(warehouseLocationRepository.findById(201L)).thenReturn(Optional.of(zoneA));
+        when(warehouseLocationRepository.save(any(WarehouseLocation.class))).thenAnswer(invocation -> {
+            WarehouseLocation loc = invocation.getArgument(0);
+            loc.setId(202L);
+            return loc;
+        });
+
+        WarehouseLocationResponse res = warehouseService.createLocation(1L, req, "thukho");
+
+        assertThat(res).isNotNull();
+        assertThat(res.getCode()).isEqualTo("SHELF-A1");
+        assertThat(res.getLocationType()).isEqualTo(LocationType.SHELF);
+        assertThat(res.getParentLocationId()).isEqualTo(201L);
+        assertThat(res.getParentLocationCode()).isEqualTo("ZONE-A");
+        assertThat(res.getFullDisplayName()).isEqualTo("Khu vực A > Kệ A1");
+        verify(warehouseLocationRepository).save(any(WarehouseLocation.class));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Khai báo kệ con nhưng cha không phải là ZONE -> ném ngoại lệ")
+    void createLocation_shelfWithNonZoneParent_throwsException() {
+        WarehouseLocation parentShelf = WarehouseLocation.builder()
+                .id(202L)
+                .warehouse(khoHcm)
+                .code("SHELF-A1")
+                .name("Kệ A1")
+                .locationType(LocationType.SHELF)
+                .build();
+
+        WarehouseLocationRequest req = WarehouseLocationRequest.builder()
+                .warehouseId(1L)
+                .code("SHELF-A1-1")
+                .name("Ngăn con")
+                .locationType(LocationType.SHELF)
+                .parentLocationId(202L)
+                .build();
+
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseLocationRepository.existsByWarehouseIdAndCode(1L, "SHELF-A1-1")).thenReturn(false);
+        when(warehouseLocationRepository.findById(202L)).thenReturn(Optional.of(parentShelf));
+
+        assertThatThrownBy(() -> warehouseService.createLocation(1L, req, "thukho"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Vị trí cha phải là Khu vực (ZONE)");
+        verify(warehouseLocationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("[S5-03] Gán sản phẩm vào kệ lưu trữ và tự động cập nhật vị trí mặc định")
+    void assignProductToLocation_resetsOldDefaultInSameWarehouse() {
+        WarehouseLocation zoneA = WarehouseLocation.builder()
+                .id(201L)
+                .warehouse(khoHcm)
+                .code("ZONE-A")
+                .name("Khu vực A")
+                .locationType(LocationType.ZONE)
+                .build();
+
+        WarehouseLocation shelf1 = WarehouseLocation.builder()
+                .id(202L)
+                .warehouse(khoHcm)
+                .code("SHELF-A1")
+                .name("Kệ A1")
+                .locationType(LocationType.SHELF)
+                .parent(zoneA)
+                .build();
+
+        WarehouseLocation shelf2 = WarehouseLocation.builder()
+                .id(203L)
+                .warehouse(khoHcm)
+                .code("SHELF-A2")
+                .name("Kệ A2")
+                .locationType(LocationType.SHELF)
+                .parent(zoneA)
+                .build();
+
+        // Đã có gán mặc định cũ tại shelf1
+        WarehouseLocationProduct oldMapping = WarehouseLocationProduct.builder()
+                .id(1L)
+                .location(shelf1)
+                .product(biaHeineken)
+                .isDefault(true)
+                .build();
+
+        when(warehouseLocationRepository.findById(203L)).thenReturn(Optional.of(shelf2));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(locationProductRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(List.of(oldMapping));
+        when(locationProductRepository.findByLocationIdAndProductId(203L, 10L)).thenReturn(Optional.empty());
+        when(locationProductRepository.save(any(WarehouseLocationProduct.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProductLocationRequest req = ProductLocationRequest.builder()
+                .productId(10L)
+                .isDefault(true)
+                .note("Vị trí chính mới")
+                .build();
+
+        ProductLocationResponse res = warehouseService.assignProductToLocation(203L, req, "thukho");
+
+        // Old mapping phải bị gỡ mặc định
+        assertThat(oldMapping.getIsDefault()).isFalse();
+        verify(locationProductRepository).save(oldMapping);
+
+        // New mapping phải là mặc định
+        assertThat(res.getLocationCode()).isEqualTo("SHELF-A2");
+        assertThat(res.getIsDefault()).isTrue();
+        assertThat(res.getParentZoneName()).isEqualTo("Khu vực A");
+    }
+
+    @Test
+    @DisplayName("[S5-03] Lấy danh sách soạn hàng (Picking List) cho đơn hàng hiển thị chính xác Kệ và Khu")
+    void getOrderPickingList_showsExactShelfAndZone() {
+        Dealer dealer = Dealer.builder().id(5L).code("DL-HN").name("Đại lý Hà Nội").warehouse(khoHcm).build();
+
+        WarehouseLocation zoneA = WarehouseLocation.builder()
+                .id(201L)
+                .warehouse(khoHcm)
+                .code("ZONE-A")
+                .name("Khu Đồ Uống")
+                .locationType(LocationType.ZONE)
+                .build();
+
+        WarehouseLocation shelfA1 = WarehouseLocation.builder()
+                .id(202L)
+                .warehouse(khoHcm)
+                .code("SHELF-A1")
+                .name("Kệ A1 - Tầng 2")
+                .locationType(LocationType.SHELF)
+                .parent(zoneA)
+                .build();
+
+        WarehouseLocationProduct mapping = WarehouseLocationProduct.builder()
+                .id(101L)
+                .location(shelfA1)
+                .product(biaHeineken)
+                .isDefault(true)
+                .build();
+
+        OrderItem item = OrderItem.builder()
+                .id(501L)
+                .product(biaHeineken)
+                .quantity(new BigDecimal("10"))
+                .unit("thùng")
+                .price(new BigDecimal("19000"))
+                .totalAmount(new BigDecimal("190000"))
+                .build();
+
+        Order order = Order.builder()
+                .id(1001L)
+                .orderCode("ORD-20261018-001")
+                .dealer(dealer)
+                .warehouse(khoHcm)
+                .status("PENDING")
+                .expectedDeliveryDate(LocalDate.now().plusDays(2))
+                .items(List.of(item))
+                .build();
+
+        when(orderRepository.findById(1001L)).thenReturn(Optional.of(order));
+        when(locationProductRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(List.of(mapping));
+        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(
+                WarehouseInventory.builder().baseQuantity(new BigDecimal("500")).build()
+        ));
+
+        OrderPickingListResponse pickingList = warehouseService.getOrderPickingList(1001L);
+
+        assertThat(pickingList).isNotNull();
+        assertThat(pickingList.getOrderCode()).isEqualTo("ORD-20261018-001");
+        assertThat(pickingList.getWarehouseCode()).isEqualTo("KHO-HCM");
+        assertThat(pickingList.getItems()).hasSize(1);
+
+        OrderPickingItemResponse pickingItem = pickingList.getItems().get(0);
+        assertThat(pickingItem.getProductCode()).isEqualTo("SP-KEN330");
+        assertThat(pickingItem.getLocationCode()).isEqualTo("SHELF-A1");
+        assertThat(pickingItem.getShelfName()).isEqualTo("Kệ A1 - Tầng 2");
+        assertThat(pickingItem.getZoneName()).isEqualTo("Khu Đồ Uống");
+        assertThat(pickingItem.getLocationDisplay()).isEqualTo("Khu Đồ Uống > Kệ A1 - Tầng 2");
+        assertThat(pickingItem.getAvailableQuantity()).isEqualByComparingTo(new BigDecimal("500"));
     }
 }

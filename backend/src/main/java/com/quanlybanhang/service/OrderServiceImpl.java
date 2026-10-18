@@ -173,6 +173,50 @@ public class OrderServiceImpl implements OrderService {
             String note
     ) {}
 
+    /**
+     * S4-01: Resolve the price list selected by the client or the currently
+     * effective list, while keeping the dealer/customer-group boundary intact.
+     */
+    private PriceList resolveOrderPriceList(Long requestedPriceListId,
+                                             CustomerGroup customerGroup,
+                                             LocalDate orderDate) {
+        if (requestedPriceListId != null) {
+            PriceList requested = priceListRepository.findById(requestedPriceListId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Không tìm thấy bảng giá với ID: " + requestedPriceListId));
+
+            if (customerGroup != null && requested.getCustomerGroup() != customerGroup) {
+                throw new IllegalArgumentException(String.format(
+                        "Bảng giá '%s' không thuộc nhóm khách hàng '%s'.",
+                        requested.getName(), customerGroup.getDisplayName()));
+            }
+
+            if (!Boolean.TRUE.equals(requested.getActive())
+                    || requested.getStartDate() == null
+                    || requested.getEndDate() == null
+                    || requested.getStartDate().isAfter(orderDate)
+                    || requested.getEndDate().isBefore(orderDate)) {
+                throw new IllegalArgumentException(String.format(
+                        "Bảng giá '%s' không có hiệu lực tại ngày %s.",
+                        requested.getName(), orderDate));
+            }
+            return requested;
+        }
+
+        if (customerGroup == null) {
+            return null;
+        }
+
+        List<PriceList> effectivePriceLists = priceListRepository
+                .findEffectivePriceLists(customerGroup, orderDate);
+        if (effectivePriceLists.isEmpty()) {
+            throw new IllegalArgumentException(String.format(
+                    "Không tìm thấy bảng giá hiệu lực cho nhóm khách hàng '%s'. Không thể thêm dòng hàng.",
+                    customerGroup.getDisplayName()));
+        }
+        return effectivePriceLists.get(0);
+    }
+
     @Override
     @Transactional
     public OrderResponse createOrder(OrderRequest request, String username) {
@@ -231,20 +275,12 @@ public class OrderServiceImpl implements OrderService {
             customerGroup = dealer.getCustomerGroup();
         }
 
-        // 2. Tự động tìm bảng giá hiệu lực phù hợp (S2-10, S4-01)
-        PriceList priceList = null;
-        if (request.getPriceListId() != null) {
-            priceList = priceListRepository.findById(request.getPriceListId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy bảng giá với ID: " + request.getPriceListId()));
-            if (customerGroup == null) {
-                customerGroup = priceList.getCustomerGroup();
-            }
-        } else if (customerGroup != null) {
-            LocalDate queryDate = request.getExpectedDeliveryDate() != null ? request.getExpectedDeliveryDate() : LocalDate.now();
-            List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, queryDate);
-            if (!effectivePriceLists.isEmpty()) {
-                priceList = effectivePriceLists.get(0);
-            }
+        // 2. Tự động tìm và xác thực bảng giá hiệu lực phù hợp (S2-10, S4-01)
+        LocalDate queryDate = request.getExpectedDeliveryDate() != null
+                ? request.getExpectedDeliveryDate() : LocalDate.now();
+        PriceList priceList = resolveOrderPriceList(request.getPriceListId(), customerGroup, queryDate);
+        if (customerGroup == null && priceList != null) {
+            customerGroup = priceList.getCustomerGroup();
         }
 
         // 2b. Lấy thông tin điểm giao hàng (S3-04)
@@ -1948,23 +1984,10 @@ public class OrderServiceImpl implements OrderService {
             customerGroup = dealer.getCustomerGroup();
         }
 
-        PriceList priceList = null;
         LocalDate orderDate = request.getOrderDate() != null ? request.getOrderDate() : LocalDate.now();
-
-        if (request.getPriceListId() != null) {
-            priceList = priceListRepository.findById(request.getPriceListId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy bảng giá với ID: " + request.getPriceListId()));
-            if (customerGroup == null) {
-                customerGroup = priceList.getCustomerGroup();
-            }
-        } else if (customerGroup != null) {
-            List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, orderDate);
-            if (!effectivePriceLists.isEmpty()) {
-                priceList = effectivePriceLists.get(0);
-            } else {
-                throw new IllegalArgumentException(String.format("Không tìm thấy bảng giá hiệu lực cho nhóm khách hàng '%s'. Không thể thêm dòng hàng.",
-                        customerGroup.getDisplayName()));
-            }
+        PriceList priceList = resolveOrderPriceList(request.getPriceListId(), customerGroup, orderDate);
+        if (customerGroup == null && priceList != null) {
+            customerGroup = priceList.getCustomerGroup();
         }
 
         Map<Long, PriceListItem> priceItemMap = new HashMap<>();

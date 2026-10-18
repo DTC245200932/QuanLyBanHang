@@ -590,9 +590,9 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | GET | `/orders/draft` | Vai trò tạo đơn | Lấy bản nháp tạo đơn của người dùng hiện tại |
 | PUT | `/orders/draft` | Vai trò tạo đơn | Lưu đè bản nháp tạo đơn của người dùng hiện tại |
 | DELETE | `/orders/draft` | Vai trò tạo đơn | Xoá bản nháp tạo đơn của người dùng hiện tại |
-| POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
-| POST | `/orders/line-item/pricing` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
-| POST | `/orders/calculate` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
+| POST | `/orders` | `ORDER_CREATE` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
+| POST | `/orders/line-item/pricing` | `ORDER_CREATE` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
+| POST | `/orders/calculate` | `ORDER_CREATE` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
 | PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
 | GET | `/orders/{id}/tracking` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Theo dõi vòng đời đơn hàng (7 bước chuẩn, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS cho Nhân viên kinh doanh) |
 | PUT | `/orders/{id}/status` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Cập nhật trạng thái vòng đời đơn hàng; tự động trừ tồn kho và giải phóng lượng giữ chỗ khi chuyển sang `EXPORTED` |
@@ -632,6 +632,7 @@ Dành cho vai trò **Quản lý kinh doanh (`ROLE_SALES_MANAGER`)** nhằm nắm
 Nhằm đảm bảo tính chính xác và minh bạch trong chính sách giá khi tạo đơn:
 1. **Giá tự động lấy từ bảng giá đang hiệu lực của nhóm khách hàng mà đại lý thuộc về**:
    - Khi chọn đại lý (hoặc nhóm khách hàng), hệ thống tự động tìm bảng giá đang có hiệu lực (`startDate <= orderDate <= endDate`).
+   - Nếu request truyền `priceListId`, backend bắt buộc bảng giá đó thuộc đúng nhóm khách hàng, đang `active` và còn hiệu lực tại `orderDate`; không thể dùng bảng giá của nhóm khác hoặc bảng giá đã hết hiệu lực để tính/chốt đơn.
    - Đơn giá bán (`sellingPrice`) và giá sàn (`floorPrice`) được tự động nhân theo hệ số quy đổi đơn vị tính (thùng, lốc, lon...).
 2. **Chiết khấu theo sản lượng tự động tính lại mỗi khi số lượng thay đổi**:
    - Khi số lượng thay đổi (hoặc khi thêm mặt hàng mới), hệ thống tự động đánh giá các chính sách chiết khấu theo sản lượng (`VolumeDiscountPolicy`) đang hiệu lực đối với nhóm khách hàng đó.
@@ -1443,7 +1444,7 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) nhìn thấy tồn khả dụng
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | POST | `/orders/check-inventory` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa trước khi đặt hàng |
-| POST | `/orders/calculate` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tính toán giá, chiết khấu và tồn khả dụng (`availableQuantity`, `availableInUnit`, `maxAllowedInUnit`, `exceedsStock`) cho từng dòng đơn |
+| POST | `/orders/calculate` | `ORDER_CREATE` | Tính toán giá, chiết khấu và tồn khả dụng (`availableQuantity`, `availableInUnit`, `maxAllowedInUnit`, `exceedsStock`) cho từng dòng đơn |
 | GET | `/warehouse/inventory` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem tồn thực tế, tồn giữ chỗ và tồn khả dụng kèm quy đổi tương đương |
 | GET | `/warehouse/options` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách kho đang hoạt động |
 

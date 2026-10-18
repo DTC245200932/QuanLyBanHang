@@ -197,7 +197,7 @@ public class OrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ResponseEntity<ApiResponse> createOrder(
             @Valid @RequestBody OrderRequest request,
             Principal principal) {
@@ -215,7 +215,7 @@ public class OrderController {
      * Không có bảng giá hiệu lực cho SKU đó thì chặn thêm dòng hàng kèm thông báo rõ lý do.
      */
     @PostMapping("/line-item/pricing")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ApiResponse calculateLineItemPricing(@Valid @RequestBody OrderLineItemPricingRequest request) {
         OrderLineItemPricingResponse response = orderService.calculateLineItemPricing(request);
         return ApiResponse.success("Áp giá và chiết khấu dòng hàng thành công", response);
@@ -226,7 +226,7 @@ public class OrderController {
      * Chặn thêm dòng hàng nếu có SKU chưa có trong bảng giá hiệu lực.
      */
     @PostMapping("/calculate")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ApiResponse calculateOrder(@Valid @RequestBody OrderCalculateRequest request) {
         OrderCalculateResponse response = orderService.calculateOrder(request);
         return ApiResponse.success("Tính toán giá và chiết khấu đơn hàng thành công", response);

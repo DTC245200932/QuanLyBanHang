@@ -61,7 +61,7 @@ Cập nhật **18/10/2026**, theo backlog nhóm gửi và bản tích hợp vào
 
 | Task | Tính năng | Backend | Frontend | BE ↔ FE | Quyền BE / FE | Nghiệm thu / còn thiếu |
 |---|---|---|---|---|---|---|
-| S4-01 | Áp giá và chiết khấu | Một phần | Có | Đã nối `/orders/calculate` | Quyền một phần | Cần kiểm `priceListId` đúng nhóm/hiệu lực. Đã sửa thêm từ lịch sử dùng chung áp giá/kiểm tồn. |
+| S4-01 | Áp giá và chiết khấu | Có | Có | Đã nối `/orders/calculate` và `/orders/line-item/pricing` | Đã nối ma trận `ORDER_CREATE`; Admin luôn được phép | Tự động áp bảng giá/chiết khấu, kiểm giá sàn; `priceListId` bắt buộc đúng nhóm, `active` và hiệu lực theo ngày. |
 | S4-02 | Kiểm hạn mức công nợ | Một phần | Có | Đã nối nợ/cảnh báo/quá hạn | Có scope đọc nợ; quyền một phần | Số dư cộng đơn RECORDED, chưa phải tiền chưa thu. Chuyển trạng thái làm mất khoản đó khỏi phép tính. |
 | S4-03 | Tồn khả dụng, chống bán vượt tồn | Một phần | Có | Đã nối kiểm tồn/giữ chỗ server | SALES đọc được tồn; thiếu scope kho | Test hai người chốt cùng SKU: 1 thành công, 1 bị chặn. Cần kiểm pending/phiếu xuất/chuyển và đồng thời trên MySQL. |
 | S4-04 | Lịch sử 3 tháng, thêm đơn gần nhất | Có | Có | **Đã sửa nối luồng chính** | Có RLS lịch sử | FE đọc đúng DTO; thêm tất cả chỉ lấy đơn gần nhất qua áp giá/tồn. Loại DRAFT/RETURNED/EXPIRED khỏi lịch sử mua. |

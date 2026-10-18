@@ -118,7 +118,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders tạo đơn hàng thành công -> 201 Created")
     void createOrder_Sales_Returns201() throws Exception {
         OrderRequest req = OrderRequest.builder()
@@ -158,7 +158,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("Tạo đơn hàng cho đại lý bị khoá giao dịch bị từ chối 400 Bad Request (S3-07)")
     void createOrder_LockedDealer_Returns400() throws Exception {
         OrderRequest req = OrderRequest.builder()
@@ -291,7 +291,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/line-item/pricing thành công -> 200 OK")
     void calculateLineItemPricing_Success_Returns200() throws Exception {
         OrderLineItemPricingRequest req = OrderLineItemPricingRequest.builder()
@@ -335,7 +335,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/line-item/pricing chặn khi SKU chưa có trong bảng giá hiệu lực -> 400 Bad Request")
     void calculateLineItemPricing_SkuNotInPriceList_Returns400() throws Exception {
         OrderLineItemPricingRequest req = OrderLineItemPricingRequest.builder()
@@ -357,7 +357,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/calculate tính lại đơn hàng thành công -> 200 OK")
     void calculateOrder_Success_Returns200() throws Exception {
         OrderCalculateRequest req = OrderCalculateRequest.builder()
@@ -401,6 +401,26 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.totalAmount").value(2970000))
                 .andExpect(jsonPath("$.data.items[0].productCode").value("SP-KEN330"));
     }
+
+    @Test
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES"})
+    @DisplayName("S4-01: Thu hồi ORDER_CREATE thì API tính giá trả về 403")
+    void calculateOrder_WithoutCreatePermission_Returns403() throws Exception {
+        OrderCalculateRequest req = OrderCalculateRequest.builder()
+                .dealerId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(new BigDecimal("1"))
+                        .build()))
+                .build();
+
+        mockMvc.perform(post("/api/orders/calculate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     @WithMockUser(username = "sales01", roles = {"SALES"})
     @DisplayName("[S4-02] POST /api/orders/check-debt - Kiểm tra công nợ khi tạo đơn")

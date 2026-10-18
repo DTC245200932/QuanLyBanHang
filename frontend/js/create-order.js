@@ -25,13 +25,6 @@
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
 
-  if (!Auth.hasAnyRole(
-    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_SALES',
-    'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF',
-  )) {
-    location.href = '/error?status=403';
-    return;
-  }
   if (!Auth.hasPermission('ORDER_CREATE')) {
     location.href = '/error?status=403';
     return;

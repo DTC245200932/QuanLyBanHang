@@ -207,6 +207,50 @@ class OrderPriceListTest {
     }
 
     @Test
+    @DisplayName("S4-01: Không cho dùng bảng giá của nhóm đại lý khác khi tính đơn")
+    void calculateOrder_RejectsPriceListFromAnotherCustomerGroup() {
+        OrderCalculateRequest request = OrderCalculateRequest.builder()
+                .dealerId(1L)
+                .priceListId(priceListDl2.getId())
+                .orderDate(LocalDate.of(2026, 6, 1))
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(BigDecimal.ONE)
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findById(priceListDl2.getId())).thenReturn(Optional.of(priceListDl2));
+
+        assertThatThrownBy(() -> orderService.calculateOrder(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("không thuộc nhóm khách hàng");
+    }
+
+    @Test
+    @DisplayName("S4-01: Không cho dùng bảng giá đã hết hiệu lực khi tính đơn")
+    void calculateOrder_RejectsInactivePriceList() {
+        priceListDl1.setActive(false);
+        OrderCalculateRequest request = OrderCalculateRequest.builder()
+                .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .priceListId(priceListDl1.getId())
+                .orderDate(LocalDate.of(2026, 6, 1))
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(BigDecimal.ONE)
+                        .build()))
+                .build();
+
+        when(priceListRepository.findById(priceListDl1.getId())).thenReturn(Optional.of(priceListDl1));
+
+        assertThatThrownBy(() -> orderService.calculateOrder(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("không có hiệu lực");
+    }
+
+    @Test
     @DisplayName("Bán DƯỚI GIÁ SÀN -> Đơn hàng chuyển sang PENDING_APPROVAL và cần Quản lý duyệt")
     void createOrder_BelowFloorPrice_RequiresApproval() {
         // Giá sàn Đại lý cấp 1 là 15,500đ; nhân viên nhập giá bán 14,000đ (dưới giá sàn)
@@ -324,7 +368,6 @@ class OrderPriceListTest {
                 .build();
 
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
-        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
         when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
                 .thenReturn(List.of()); // Không có bảng giá nào hiệu lực
 

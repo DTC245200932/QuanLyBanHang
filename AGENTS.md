@@ -1,3 +1,4 @@
 read all the skills in the SKILLS folder and the codebase
 After completing a feature, always check whether it is connected to the permission matrix in both the backend and frontend.
 and after that, update status.md and use a table to show that if backend or fe are done, and if they are properly connected
+Every feature must enforce permissions from the database-backed permission matrix on both backend and frontend. Do not use role-based fallback as a substitute for permissions. Verify that removing a permission causes the backend API to return 403 and the frontend hides or disables the related menu/action. ROLE_ADMIN is always allowed.

@@ -320,7 +320,7 @@ public class OrderController {
      * Đơn được duyệt mới chuyển sang giữ chỗ tồn kho và chờ xuất kho.
      */
     @PutMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
     public ApiResponse approveOrder(
             @PathVariable Long id,
             @RequestParam(required = false) Integer reservationHours,
@@ -340,7 +340,7 @@ public class OrderController {
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
     public ApiResponse rejectOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -373,7 +373,7 @@ public class OrderController {
      * Bắt buộc có ý kiến/lý do trả lại (400 Bad Request nếu thiếu hoặc để trống).
      */
     @PutMapping("/{id}/return")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse returnOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -392,7 +392,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/return")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse returnOrderPost(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -405,7 +405,7 @@ public class OrderController {
      * S4-05: Lấy lịch sử duyệt đơn hàng (bất biến, không thể sửa/xoá).
      */
     @GetMapping("/{id}/approval-history")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse getOrderApprovalHistory(@PathVariable Long id) {
         List<OrderApprovalHistoryResponse> history = orderService.getOrderApprovalHistory(id);
         return ApiResponse.success("Lịch sử duyệt đơn hàng", history);
@@ -484,7 +484,7 @@ public class OrderController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse reviewOrderStatus(
             @PathVariable Long id,
             @Valid @RequestBody OrderStatusUpdateRequest request,

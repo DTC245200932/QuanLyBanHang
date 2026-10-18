@@ -182,7 +182,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "manager_user", roles = "SALES_MANAGER")
+    @WithMockUser(username = "manager_user", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("Phê duyệt đơn hàng của đại lý bị khoá vẫn xử lý tiếp được kèm cảnh báo (S3-07)")
     void approveOrder_LockedDealer_Returns200WithWarning() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -720,6 +720,16 @@ class OrderControllerTest {
     @DisplayName("[S5-06] PUT /api/orders/{id}/approve không có quyền ORDER_APPROVE -> 403 Forbidden")
     void approveOrder_WithoutPermission_Returns403() throws Exception {
         mockMvc.perform(put("/api/orders/1/approve"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER"})
+    @DisplayName("[S4-05] PATCH /api/orders/{id}/status bị từ chối khi thiếu ORDER_APPROVE")
+    void reviewOrderStatus_WithoutPermission_Returns403() throws Exception {
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"APPROVED\"}"))
                 .andExpect(status().isForbidden());
     }
 

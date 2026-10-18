@@ -1088,12 +1088,11 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse approveOrder(Long id, String username) {
-        return approveOrder(id, (Integer) null, username);
+        return approveOrderInternal(id, null, username, null);
     }
 
-    @Override
     @Transactional
-    public OrderResponse approveOrder(Long id, Integer reservationHours, String username) {
+    private OrderResponse approveOrderInternal(Long id, Integer reservationHours, String username, String historyComment) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
@@ -1101,35 +1100,11 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Chỉ có thể phê duyệt đơn hàng đang ở trạng thái Chờ duyệt (PENDING_APPROVAL)");
         }
 
-        // S5-06: Đơn chuyển sang Đã duyệt thì tồn tương ứng được giữ chỗ ngay trong cùng giao dịch (@Transactional)
-        reserveInventoryForOrder(order, reservationHours, null);
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean isElevated = true;
-        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
-            isElevated = auth.getAuthorities().stream()
-                    .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()) || "ROLE_SALES_MANAGER".equals(a.getAuthority()));
+        boolean isElevated = validateApprovalActor(order, username, auth, true);
 
-            if (!isElevated) {
-                boolean isSales = auth.getAuthorities().stream()
-                        .anyMatch(a -> "ROLE_SALES".equals(a.getAuthority()));
-                if (isSales) {
-                    boolean isAssignedSales = order.getDealer() != null
-                            && order.getDealer().getAssignedUser() != null
-                            && order.getDealer().getAssignedUser().getUsername() != null
-                            && order.getDealer().getAssignedUser().getUsername().equalsIgnoreCase(username);
-
-                    if (!isAssignedSales) {
-                        throw new AccessDeniedException("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh mới có quyền xác nhận đơn hàng này");
-                    }
-
-                    if (order.getApprovalReason() != null && order.getApprovalReason().contains("dưới giá sàn")) {
-                        throw new AccessDeniedException("Đơn hàng bán dưới giá sàn cần Quản lý kinh doanh phê duyệt");
-                    }
-                } else {
-                    throw new AccessDeniedException("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh mới có quyền xác nhận đơn hàng này");
-                }
-            }
-        }
+        // S5-06: Chỉ giữ chỗ tồn sau khi đã xác thực quyền và phạm vi thao tác.
+        reserveInventoryForOrder(order, reservationHours, null);
 
         order.setStatus("RECORDED");
         order.setApprovedBy(username != null ? username : "system");
@@ -1140,6 +1115,11 @@ public class OrderServiceImpl implements OrderService {
 
         Order saved = orderRepository.save(order);
         recordStatusHistory(saved, "PENDING_APPROVAL", "RECORDED", "Quản lý kinh doanh phê duyệt đơn hàng, đã giữ chỗ tồn kho", username);
+
+        String approvalComment = historyComment == null || historyComment.isBlank()
+                ? saved.getApprovalReason()
+                : historyComment.trim();
+        saveApprovalHistory(saved, "APPROVED", approvalComment, username);
 
         Dealer dealer = order.getDealer();
         boolean dealerLocked = dealer != null && Boolean.TRUE.equals(dealer.getLocked());
@@ -1191,28 +1171,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean isElevated = true;
-        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
-            isElevated = auth.getAuthorities().stream()
-                    .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()) || "ROLE_SALES_MANAGER".equals(a.getAuthority()));
-
-            if (!isElevated) {
-                boolean isSales = auth.getAuthorities().stream()
-                        .anyMatch(a -> "ROLE_SALES".equals(a.getAuthority()));
-                if (isSales) {
-                    boolean isAssignedSales = order.getDealer() != null
-                            && order.getDealer().getAssignedUser() != null
-                            && order.getDealer().getAssignedUser().getUsername() != null
-                            && order.getDealer().getAssignedUser().getUsername().equalsIgnoreCase(username);
-
-                    if (!isAssignedSales) {
-                        throw new AccessDeniedException("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh mới có quyền từ chối đơn hàng này");
-                    }
-                } else {
-                    throw new AccessDeniedException("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh mới có quyền từ chối đơn hàng này");
-                }
-            }
-        }
+        validateApprovalActor(order, username, auth, false);
 
         releaseReservedInventory(order);
         String cleanReason = reason.trim();
@@ -1225,19 +1184,7 @@ public class OrderServiceImpl implements OrderService {
         recordStatusHistory(saved, "PENDING_APPROVAL", "REJECTED", "Từ chối duyệt: " + (reason != null ? reason : ""), username);
 
         // Lưu lịch sử duyệt bất biến (S4-05)
-        if (orderApprovalHistoryRepository != null) {
-            try {
-                OrderApprovalHistory history = OrderApprovalHistory.builder()
-                        .order(saved)
-                        .orderCode(saved.getOrderCode())
-                        .action("REJECTED")
-                        .comment(cleanReason)
-                        .performedBy(username != null ? username : "system")
-                        .build();
-                orderApprovalHistoryRepository.save(history);
-            } catch (Exception ignored) {
-            }
-        }
+        saveApprovalHistory(saved, "REJECTED", cleanReason, username);
 
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "REJECT", "PENDING_APPROVAL",
                 "Từ chối đơn: " + cleanReason, username != null ? username : "system");
@@ -2897,6 +2844,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         String cleanReason = reason.trim();
+        releaseReservedInventory(order);
         order.setStatus("RETURNED");
         order.setApprovedBy(username != null ? username : "system");
         order.setApprovedAt(LocalDateTime.now());
@@ -2904,24 +2852,87 @@ public class OrderServiceImpl implements OrderService {
 
         Order saved = orderRepository.save(order);
 
-        // Lưu lịch sử duyệt bất biến (S4-05)
-        if (orderApprovalHistoryRepository != null) {
-            try {
-                OrderApprovalHistory history = OrderApprovalHistory.builder()
-                        .order(saved)
-                        .orderCode(saved.getOrderCode())
-                        .action("RETURNED")
-                        .comment(cleanReason)
-                        .performedBy(username != null ? username : "system")
-                        .build();
-                orderApprovalHistoryRepository.save(history);
-            } catch (Exception ignored) {
-            }
-        }
+        saveApprovalHistory(saved, "RETURNED", cleanReason, username);
 
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "RETURN", "PENDING_APPROVAL",
                 "Trả lại sửa đơn: " + cleanReason, username != null ? username : "system");
         return mapToResponse(saved);
+    }
+
+    /**
+     * Kiểm tra phạm vi thao tác duyệt theo quyền trong ma trận.
+     * ORDER_APPROVE cho phép xử lý đầy đủ; ORDER_CREATE chỉ cho phép nhân viên
+     * kinh doanh xác nhận đơn do đại lý tự đặt, đúng đại lý được phân công và
+     * không có vi phạm cần quản lý phê duyệt.
+     */
+    private boolean validateApprovalActor(Order order, String username, Authentication auth, boolean approving) {
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return true;
+        }
+
+        boolean isAdmin = hasAuthority(auth, "ROLE_ADMIN");
+        boolean hasApprovalPermission = isAdmin || hasAuthority(auth, "ORDER_APPROVE");
+        if (hasApprovalPermission) {
+            return true;
+        }
+
+        boolean isSales = hasAuthority(auth, "ROLE_SALES");
+        // API controller đã kiểm tra ORDER_CREATE cho luồng cổng đại lý. Ở tầng
+        // service vẫn kiểm tra vai trò/phạm vi để các lời gọi nội bộ không vượt
+        // quá đại lý được phân công.
+        if (!isSales || !isPortalOrder(order)) {
+            throw new AccessDeniedException("Bạn không có quyền xử lý đơn hàng này theo ma trận phân quyền");
+        }
+
+        boolean isAssignedSales = order.getDealer() != null
+                && order.getDealer().getAssignedUser() != null
+                && order.getDealer().getAssignedUser().getUsername() != null
+                && order.getDealer().getAssignedUser().getUsername().equalsIgnoreCase(username);
+        if (!isAssignedSales) {
+            throw new AccessDeniedException("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh mới có quyền xác nhận đơn hàng này");
+        }
+
+        if (approving && hasApprovalViolation(order.getApprovalReason())) {
+            throw new AccessDeniedException("Đơn hàng có vi phạm cần Quản lý kinh doanh phê duyệt");
+        }
+        return false;
+    }
+
+    private boolean hasAuthority(Authentication auth, String authority) {
+        return auth.getAuthorities().stream().anyMatch(a -> authority.equals(a.getAuthority()));
+    }
+
+    private boolean isPortalOrder(Order order) {
+        String reason = order.getApprovalReason();
+        if (reason == null) return false;
+        String normalized = reason.toLowerCase(Locale.ROOT);
+        return normalized.contains("đại lý tự đặt qua cổng")
+                || normalized.contains("cổng đại lý");
+    }
+
+    private boolean hasApprovalViolation(String reason) {
+        if (reason == null || reason.isBlank()) return false;
+        String normalized = reason.toLowerCase(Locale.ROOT);
+        return normalized.contains("giá sàn")
+                || normalized.contains("hạn mức")
+                || normalized.contains("công nợ")
+                || normalized.contains("vượt tồn")
+                || normalized.contains("tồn khả dụng");
+    }
+
+    private void saveApprovalHistory(Order order, String action, String comment, String username) {
+        if (orderApprovalHistoryRepository == null) return;
+        try {
+            orderApprovalHistoryRepository.save(OrderApprovalHistory.builder()
+                    .order(order)
+                    .orderCode(order.getOrderCode())
+                    .action(action)
+                    .comment(comment)
+                    .performedBy(username != null ? username : "system")
+                    .build());
+        } catch (Exception ignored) {
+            // Lịch sử không được làm hỏng giao dịch chính nếu repository tuỳ chọn chưa có.
+        }
     }
 
     @Override
@@ -3249,15 +3260,14 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse approveOrder(Long id, String comment, String username) {
-        OrderResponse response = approveOrder(id, (Integer) null, username);
-        Order order = orderRepository.findById(id).orElseThrow();
-        if (orderApprovalHistoryRepository != null) {
-            orderApprovalHistoryRepository.save(OrderApprovalHistory.builder().order(order)
-                    .orderCode(order.getOrderCode()).action("APPROVED")
-                    .comment(comment == null || comment.isBlank() ? "Đã duyệt đơn hàng" : comment.trim())
-                    .performedBy(username).build());
-        }
-        return response;
+        return approveOrderInternal(id, null, username,
+                comment == null || comment.isBlank() ? "Đã duyệt đơn hàng" : comment.trim());
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse approveOrder(Long id, Integer reservationHours, String username) {
+        return approveOrderInternal(id, reservationHours, username, null);
     }
 
     @Override

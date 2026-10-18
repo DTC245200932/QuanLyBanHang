@@ -91,7 +91,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("GET /api/orders có phân trang và bộ lọc trả về dữ liệu chuẩn S4-05")
     void getOrders_PaginationAndFilter_ReturnsPage() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -126,7 +126,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("PATCH /api/orders/{id}/status - Duyệt đơn (APPROVED) thành công")
     void updateOrderStatus_Approve_Returns200() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -151,7 +151,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("PATCH /api/orders/{id}/status - Từ chối không nhập lý do -> trả về 400 Bad Request")
     void updateOrderStatus_RejectWithoutReason_Returns400() throws Exception {
         OrderStatusUpdateRequest req = new OrderStatusUpdateRequest();
@@ -170,7 +170,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("PUT /api/orders/{id}/reject - Từ chối không có lý do -> trả về 400 Bad Request")
     void rejectOrder_WithoutReason_Returns400() throws Exception {
         when(orderService.rejectOrder(eq(1L), any(), any()))
@@ -183,7 +183,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("PUT /api/orders/{id}/return - Trả lại sửa không có lý do -> trả về 400 Bad Request")
     void returnOrder_WithoutReason_Returns400() throws Exception {
         when(orderService.returnOrder(eq(1L), any(), any()))
@@ -196,7 +196,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("PUT /api/orders/{id}/return - Trả lại sửa có lý do -> thành công 200")
     void returnOrder_WithReason_Returns200() throws Exception {
         OrderResponse resp = OrderResponse.builder()

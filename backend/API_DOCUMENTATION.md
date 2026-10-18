@@ -68,6 +68,10 @@ một trong hai màn hình.
 
 - `PUT /orders/{id}/status`: vòng đời kho; `PATCH /orders/{id}/status`: duyệt đơn
   `APPROVED/REJECTED/RETURNED`. Request hỗ trợ `status`, `note`, `comment`, `reason`.
+- Các thao tác duyệt/trả lại của màn hình S4-05 yêu cầu `ORDER_APPROVE` trong
+  ma trận quyền; `ROLE_ADMIN` luôn được phép. Nhân viên kinh doanh chỉ dùng
+  `ORDER_CREATE` để xác nhận đơn do đại lý tự đặt, đúng đại lý được phân công
+  và không có vi phạm cần Quản lý kinh doanh xử lý.
 - Từ chối/trả lại phải có ý kiến; hủy phải có lý do. `PUT /orders/{id}/approve`
   nhận tùy chọn `reservationHours`. Hạn giữ chỗ mặc định hiện là 48 giờ khi không
   có thời điểm yêu cầu/ngày giao tương lai.
@@ -596,8 +600,11 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
 | GET | `/orders/{id}/tracking` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Theo dõi vòng đời đơn hàng (7 bước chuẩn, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS cho Nhân viên kinh doanh) |
 | PUT | `/orders/{id}/status` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Cập nhật trạng thái vòng đời đơn hàng; tự động trừ tồn kho và giải phóng lượng giữ chỗ khi chuyển sang `EXPORTED` |
-| PUT | `/orders/{id}/approve` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng bán dưới giá sàn (chuyển trạng thái sang `RECORDED`) |
-| PUT | `/orders/{id}/reject?reason={ly_do}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng bán dưới giá sàn (chuyển trạng thái sang `REJECTED`) |
+| PUT | `/orders/{id}/approve` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xác nhận đơn cổng được phân công | Phê duyệt đơn hàng (chuyển trạng thái sang `RECORDED`) và giữ chỗ tồn kho sau khi kiểm quyền |
+| PUT | `/orders/{id}/reject?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xử lý đơn cổng được phân công | Từ chối đơn hàng với lý do bắt buộc (chuyển trạng thái sang `REJECTED`) |
+| PUT | `/orders/{id}/return?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Trả lại đơn để sửa với lý do bắt buộc (chuyển trạng thái sang `RETURNED`) |
+| PATCH | `/orders/{id}/status` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Duyệt, từ chối hoặc trả lại đơn trên màn hình S4-05 |
+| GET | `/orders/{id}/approval-history` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Xem lịch sử duyệt bất biến của đơn hàng |
 | POST | `/orders/{id}/copy` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sao chép đơn cũ thành đơn mới ở trạng thái Nháp (áp lại giá và chiết khấu hiện hành) (S4-09) |
 | POST | `/orders/{id}/copy-to-draft` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sao chép các dòng hàng của đơn cũ vào bản nháp tạo đơn của người dùng (S4-09) |
 | POST | `/orders/dealer/{dealerId}/last-order-to-draft` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới (S4-04) |

@@ -1,5 +1,33 @@
 /** Sidebar và breadcrumb dùng cùng một cấu hình trang trên toàn ứng dụng. */
 const AppNavigation = (() => {
+  const SIDEBAR_SCROLL_PARAM = 'sidebarScroll';
+
+  function restoreSidebarScroll(nav) {
+    const url = new URL(window.location.href);
+    const rawScrollTop = url.searchParams.get(SIDEBAR_SCROLL_PARAM);
+    if (rawScrollTop === null) return;
+
+    const scrollTop = Number.parseInt(rawScrollTop, 10);
+    url.searchParams.delete(SIDEBAR_SCROLL_PARAM);
+    window.history.replaceState(
+      window.history.state,
+      document.title,
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+
+    window.requestAnimationFrame(() => {
+      nav.scrollTop = Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0;
+    });
+  }
+
+  function rememberSidebarScroll(nav, link) {
+    const target = new URL(link.href, window.location.href);
+    const scrollTop = Math.round(nav.scrollTop);
+    if (scrollTop > 0) target.searchParams.set(SIDEBAR_SCROLL_PARAM, String(scrollTop));
+    else target.searchParams.delete(SIDEBAR_SCROLL_PARAM);
+    link.href = target.href;
+  }
+
   function renderSidebar(user) {
     const nav = document.getElementById('sidebar-nav');
     if (!nav) return;
@@ -22,6 +50,15 @@ const AppNavigation = (() => {
       fragment.append(link);
     }
     nav.replaceChildren(fragment);
+
+    if (!nav.dataset.scrollTransferBound) {
+      nav.addEventListener('click', (event) => {
+        const link = event.target.closest('a[href]');
+        if (link) rememberSidebarScroll(nav, link);
+      });
+      nav.dataset.scrollTransferBound = 'true';
+    }
+    restoreSidebarScroll(nav);
   }
 
   function renderBreadcrumb(page) {

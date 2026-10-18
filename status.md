@@ -9,6 +9,14 @@ Cập nhật **18/10/2026**, theo backlog nhóm gửi và bản tích hợp vào
 - **499 test backend, 55 test JavaScript và 5 test định tuyến đều qua**; `mvn verify` tạo được JAR. Có 5 test tích hợp HTTP + Spring Security + H2 thật, không mock service/repository.
 - Chưa nghiệm thu trên MySQL thật, SMTP thật, toàn bộ giao diện 360px hoặc tệp 5.000 SKU trong đợt này.
 
+## UI dùng chung
+
+| Hạng mục | Backend | Frontend | BE ↔ FE | Phân quyền |
+|---|---|---|---|---|
+| Hiệu ứng chuyển nội dung khi điều hướng | Không áp dụng | Có | Không áp dụng | Không thay đổi; sidebar/menu giữ nguyên và vẫn do ma trận quyền quyết định |
+
+Hiệu ứng chỉ chạy trên vùng nội dung bên phải dưới topbar, có hỗ trợ `prefers-reduced-motion`; vị trí cuộn của sidebar được giữ lại khi mở trang mới, không dùng `localStorage`.
+
 ## Cách đọc bảng
 
 **Có** = có mã triển khai; **một phần** = thiếu nghiệp vụ của story; **chưa** = chưa có triển khai đáp ứng story. Cột kết nối nói về hợp đồng API/luồng sử dụng, không thay thế nghiệm thu AC. “Quyền một phần” nghĩa là đã kiểm vai trò nhưng chưa chặn đồng bộ ở BE/FE khi thu hồi quyền trong ma trận.

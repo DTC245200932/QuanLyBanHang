@@ -96,6 +96,7 @@ public class AdminUserController {
         data.put("roles", Arrays.stream(ERole.values()).map(Enum::name).toList());
         data.put("warehouses", adminUserService.warehouses());
         data.put("territories", adminUserService.territories());
+        data.put("dealers", adminUserService.dealers());
         return ApiResponse.success("Dữ liệu gán vai trò", data);
     }
 

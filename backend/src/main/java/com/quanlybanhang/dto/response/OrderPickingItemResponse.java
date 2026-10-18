@@ -50,4 +50,3 @@ public class OrderPickingItemResponse {
     /** Tồn khả dụng tại kho */
     private BigDecimal availableQuantity;
 }
-

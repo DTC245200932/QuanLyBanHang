@@ -30,4 +30,3 @@ public class WarehouseTransferReceiveItemRequest {
 
     private String note;
 }
-

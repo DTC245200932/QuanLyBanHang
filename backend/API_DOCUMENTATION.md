@@ -1,8 +1,88 @@
-# SaleStock API — Sprint 1
+# SaleStock API — Sprint 1–5
 
 Base URL: `http://localhost:8080/api`
 
 Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
+
+## Hợp đồng đã đồng bộ ngày 18/10/2026
+
+Phần này cập nhật hợp đồng của bản ghép sprint 1–5. Các giới hạn nghiệm thu được ghi ở
+[`status.md`](../status.md) và [báo cáo rà soát](../docs/SPRINT_1_5_AUDIT_20261018.md).
+
+### Cổng đại lý và tài khoản liên kết
+
+Tài khoản `ROLE_DEALER` phải có `dealerId` gắn với hồ sơ đại lý. Quản trị viên chọn
+đại lý ở form tài khoản; `GET /admin/assignment-options` trả thêm `dealers` gồm
+`id`, `code`, `name`. `POST/PUT /admin/users` nhận `dealerId`; thiếu liên kết khi
+có vai trò đại lý trả 400. Thông tin tài khoản trả lại có `dealerId/dealerCode/dealerName`.
+
+| Method | Endpoint | Quyền |
+|---|---|---|
+| GET | `/portal/profile` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/catalog` | DEALER + PRODUCT_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/debt` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/delivery-points` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/orders` | DEALER + ORDER_VIEW; dữ liệu giới hạn theo đại lý liên kết |
+| GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW; truy cập đại lý khác trả 403 |
+| POST | `/portal/orders` | DEALER + ORDER_CREATE; server xác định đại lý và giá |
+
+API cổng cũng cho ADMIN hỗ trợ theo liên kết tài khoản; không có tham số chọn tùy ý
+đại lý trên các endpoint này. Tài khoản DEALER bị chặn API nội bộ như `/products`,
+`/orders`, `/dealers`, `/warehouse/**`; sử dụng hợp đồng cổng để đọc dữ liệu của mình.
+Xác thực, hồ sơ cá nhân và ảnh sản phẩm có xác thực vẫn sử dụng API tương ứng.
+
+`catalog` trả `id/sku/name/categoryId/categoryName/baseUnit/basePrice/units`;
+mỗi đơn vị có `unitName/factor/price`. Giá đơn vị = giá nhóm hiệu lực × hệ số,
+không lấy giá quy cách chung và không trả giá vốn. Đại lý chưa có nhóm trả 400;
+không tự coi là nhóm cấp 1.
+
+Body đặt hàng hoặc đặt lại các dòng đã chọn:
+
+```json
+{
+  "deliveryPointId": 1,
+  "expectedDeliveryDate": "2026-10-20",
+  "note": "Giao buổi sáng",
+  "items": [{ "productId": 10, "unit": "thùng", "quantity": 2 }]
+}
+```
+
+Không có endpoint `/portal/orders/reorder`. FE chọn dòng/đơn vị/số lượng rồi gọi
+một lần `POST /portal/orders`. Server bỏ giá do client gửi, tự tính giá/chiết khấu
+và lấy đại lý của tài khoản; đơn của DEALER luôn là `PENDING_APPROVAL`, chưa giữ tồn.
+Giá và tổng sau chiết khấu khi lưu là kết quả phía server. FE hiện còn thiếu preview
+chiết khấu cho giỏ/đặt lại; không xem tổng giỏ hiện tại là nguồn xác nhận kế toán.
+
+### Danh sách, duyệt đơn và lịch sử
+
+`GET /orders` nhận `status`, `dealerId`, `salesUserId` (alias `assignedUserId`,
+`employeeId`, `userId`), `territoryId`, `createdBy`, `keyword/search`,
+`approvalRequired`, `approvalReason`, `startDate/endDate` (alias `fromDate/toDate`,
+`dateFrom/dateTo`). `page` bắt đầu 0, `size` từ 1–100. Không gửi phân trang thì giữ
+list đầy đủ tương thích các trang hiện có.
+
+Response trả `data` và alias `content` là danh sách, `totalAmount/totalOrders/totalElements`
+của toàn tập lọc; có `totalPages` khi yêu cầu phân trang. Tổng tiền được tính trước
+khi cắt trang. API không được đổi sang một hợp đồng phân trang khác chỉ để phục vụ
+một trong hai màn hình.
+
+- `PUT /orders/{id}/status`: vòng đời kho; `PATCH /orders/{id}/status`: duyệt đơn
+  `APPROVED/REJECTED/RETURNED`. Request hỗ trợ `status`, `note`, `comment`, `reason`.
+- Từ chối/trả lại phải có ý kiến; hủy phải có lý do. `PUT /orders/{id}/approve`
+  nhận tùy chọn `reservationHours`. Hạn giữ chỗ mặc định hiện là 48 giờ khi không
+  có thời điểm yêu cầu/ngày giao tương lai.
+- `GET /dealers/{id}/purchase-history?months=3` trả mảng `productId/sku/code/name/unit/avgQty`,
+  `lastOrderQuantity/lastOrderUnit/inLastOrder/lastOrderCode`. Không tổng hợp các đơn
+  `DRAFT/PENDING_APPROVAL/REJECTED/RETURNED/CANCELLED/EXPIRED`.
+- `GET /orders/{id}/pdf` trả `application/pdf`, tùy chọn `download=true`;
+  `/orders/{id}/barcode` trả PNG. FE gọi PDF bằng JWT rồi hiển thị blob của đơn đã lưu.
+  Tải PDF lỗi không có nghĩa tạo đơn lỗi và không được gửi lại POST tạo đơn.
+
+### Dữ liệu nhạy cảm
+
+`GET /finance/cost-price` và `/finance/profit-margin` chỉ cho `ROLE_SALES_MANAGER`.
+Tài khoản chỉ có ADMIN bị 403 theo yêu cầu backlog. Các vấn đề ma trận/phạm vi còn
+lại của API nội bộ chưa được xem là nghiệm thu xong; xem bảng trạng thái.
 
 ## Xác thực
 
@@ -2217,6 +2297,3 @@ HTTP/1.1 200 OK
 Content-Type: image/png
 ```
 Response Body: Binary data PNG (ảnh mã vạch Code 128)
-
-
-

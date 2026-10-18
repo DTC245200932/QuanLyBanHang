@@ -78,4 +78,3 @@ public class WarehouseLocation {
         updatedAt = LocalDateTime.now();
     }
 }
-

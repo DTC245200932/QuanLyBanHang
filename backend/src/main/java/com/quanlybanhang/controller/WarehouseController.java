@@ -8,7 +8,6 @@ import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.LocationType;
 import com.quanlybanhang.dto.request.WarehouseTransferReceiveRequest;
 import com.quanlybanhang.dto.request.WarehouseTransferRequest;
-import com.quanlybanhang.dto.request.WarehouseVoucherRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.dto.response.WarehouseInventoryResponse;
 import com.quanlybanhang.dto.response.WarehouseTransferResponse;

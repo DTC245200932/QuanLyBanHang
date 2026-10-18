@@ -136,7 +136,7 @@ public class ProductServiceImpl implements ProductService {
             if (product.getPrice() == null || product.getPrice().compareTo(request.getPrice()) != 0) {
                 Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
                 String username = authentication != null ? authentication.getName() : "SYSTEM";
-                
+
                 ProductPriceHistory history = ProductPriceHistory.builder()
                         .product(product)
                         .oldPrice(product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO)
@@ -656,7 +656,7 @@ public class ProductServiceImpl implements ProductService {
     public List<ProductPriceHistoryResponse> getPriceHistory(Long productId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + productId));
-        
+
         return productPriceHistoryRepository.findByProductIdOrderByAppliedAtDesc(productId)
                 .stream()
                 .map(h -> ProductPriceHistoryResponse.builder()
@@ -730,4 +730,3 @@ public class ProductServiceImpl implements ProductService {
                 || warehouseVoucherItemRepository.existsByProductId(productId));
     }
 }
-

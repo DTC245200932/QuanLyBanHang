@@ -28,5 +28,5 @@ public class OrderFilterResult {
     /** Tổng số đơn hàng trong tập kết quả đang lọc. */
     @Builder.Default
     private Long totalOrders = 0L;
+    private Integer totalPages;
 }
-

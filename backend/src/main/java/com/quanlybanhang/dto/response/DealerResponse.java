@@ -73,4 +73,3 @@ public class DealerResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

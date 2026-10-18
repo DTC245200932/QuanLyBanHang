@@ -12,7 +12,6 @@ import com.quanlybanhang.dto.request.OrderCalculateRequest;
 import com.quanlybanhang.dto.request.OrderFilterRequest;
 import com.quanlybanhang.dto.request.OrderLineItemPricingRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
-import com.quanlybanhang.dto.request.OrderStatusUpdateRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.dto.response.OrderApprovalHistoryResponse;
 import com.quanlybanhang.dto.response.OrderCalculateResponse;
@@ -111,6 +110,8 @@ public class OrderController {
                 .success(true)
                 .message("Danh sách đơn hàng")
                 .data(result.getOrders())
+                .content(result.getOrders())
+                .totalPages(result.getTotalPages())
                 .totalAmount(result.getTotalAmount())
                 .totalOrders(result.getTotalOrders())
                 .totalElements(result.getTotalOrders())

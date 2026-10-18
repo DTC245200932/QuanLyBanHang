@@ -94,4 +94,3 @@ public class WarehouseTransferItem {
     @Column(length = 255)
     private String note;
 }
-

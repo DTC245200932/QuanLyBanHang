@@ -58,4 +58,3 @@ public class OrderTrackingResponse {
     /** Lịch sử chi tiết từng sự kiện chuyển trạng thái */
     private List<OrderStatusHistoryResponse> history;
 }
-

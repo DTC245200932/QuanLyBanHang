@@ -4,6 +4,7 @@ import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
 import com.quanlybanhang.security.RestAccessDeniedHandler;
+import com.quanlybanhang.security.DealerApiScopeFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -160,7 +161,8 @@ public class SecurityConfig {
             )
 
             .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(new DealerApiScopeFilter(accessDeniedHandler), JwtAuthenticationFilter.class);
 
         return http.build();
     }

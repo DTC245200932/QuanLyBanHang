@@ -27,6 +27,16 @@ public class OrderFilterRequest {
 
     /** Trạng thái đơn hàng (RECORDED, PENDING_APPROVAL, CANCELLED, DRAFT, v.v.). */
     private String status;
+    private String createdBy;
+    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+    private LocalDate dateFrom;
+    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+    private LocalDate dateTo;
+    @jakarta.validation.constraints.Min(0)
+    private Integer page;
+    @jakarta.validation.constraints.Min(1)
+    @jakarta.validation.constraints.Max(100)
+    private Integer size;
 
     /** ID đại lý. */
     private Long dealerId;
@@ -82,11 +92,11 @@ public class OrderFilterRequest {
     }
 
     public LocalDate getResolvedStartDate() {
-        return startDate != null ? startDate : fromDate;
+        return startDate != null ? startDate : (fromDate != null ? fromDate : dateFrom);
     }
 
     public LocalDate getResolvedEndDate() {
-        return endDate != null ? endDate : toDate;
+        return endDate != null ? endDate : (toDate != null ? toDate : dateTo);
     }
 
     public String getResolvedKeyword() {
@@ -107,4 +117,3 @@ public class OrderFilterRequest {
                 && (approvalReason == null || approvalReason.isBlank());
     }
 }
-

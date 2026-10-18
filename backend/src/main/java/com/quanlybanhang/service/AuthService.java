@@ -112,7 +112,7 @@ public class AuthService {
                 throw new AccountTemporarilyLockedException(LOCK_DURATION_MINUTES);
             }
             throw new BadCredentialsException(
-                    "Đăng nhập thất bại. Còn " + remainingAttempts + " lần thử.");
+                    "Tên đăng nhập hoặc mật khẩu không đúng");
         }
     }
 
@@ -250,4 +250,3 @@ public class AuthService {
         return builder.build();
     }
 }
-

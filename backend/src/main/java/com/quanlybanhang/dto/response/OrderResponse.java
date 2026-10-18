@@ -34,9 +34,6 @@ public class OrderResponse {
     private LocalDate expectedDeliveryDate;
     private Long priceListId;
     private String priceListCode;
-    private Long warehouseId;
-    private String warehouseCode;
-    private String warehouseName;
     private String status;
     private String statusDisplayName;
     private Boolean canCancel;
@@ -82,9 +79,6 @@ public class OrderResponse {
     private BigDecimal debtLimit;
     private BigDecimal remainingDebtLimit;
 
-    /** Thông tin đại lý mở rộng cho giao diện duyệt đơn (S4-05). */
-    private String dealerName;
-    private String dealerCode;
 
     /** Alias tổng thanh toán phục vụ frontend order-approval (S4-05). */
     private BigDecimal grandTotal;
@@ -104,14 +98,8 @@ public class OrderResponse {
     /** Lịch sử các bước duyệt đơn hàng (S4-05) - bất biến, không thể sửa/xoá. */
     private List<OrderApprovalHistoryResponse> approvalHistory;
 
-    /** Lý do huỷ đơn hàng (S4-06). */
-    private String cancelReason;
 
-    /** Người thực hiện huỷ đơn (S4-06). */
-    private String cancelledBy;
 
-    /** Thời điểm huỷ đơn (S4-06). */
-    private java.time.LocalDateTime cancelledAt;
     /** Ngày thực tế giao hàng (S5-01). */
     private LocalDate actualDeliveryDate;
 
@@ -124,4 +112,3 @@ public class OrderResponse {
     /** Tổng số dòng hàng trong đơn (S5-01). */
     private Integer totalLineItems;
 }
-

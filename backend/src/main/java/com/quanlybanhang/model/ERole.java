@@ -22,4 +22,3 @@ public enum ERole {
     ROLE_VIEWER,             // Chỉ xem báo cáo
     ROLE_DEALER              // Đại lý (S4-10, S5-01)
 }
-

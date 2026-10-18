@@ -46,4 +46,3 @@ public class ProductLocationResponse {
     private Boolean isDefault;
     private String note;
 }
-

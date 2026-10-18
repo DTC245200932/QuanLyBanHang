@@ -36,4 +36,3 @@ public class OrderPickingListResponse {
     // Danh sách dòng hàng cần soạn với vị trí kệ
     private List<OrderPickingItemResponse> items;
 }
-

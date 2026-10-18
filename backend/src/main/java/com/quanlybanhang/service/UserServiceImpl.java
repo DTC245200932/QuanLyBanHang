@@ -25,7 +25,7 @@ public class UserServiceImpl implements UserService {
     public UserProfileResponse getUserProfile(String username) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
-        
+
         return UserProfileResponse.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -57,17 +57,17 @@ public class UserServiceImpl implements UserService {
     public ApiResponse updateUserProfile(String username, UserProfileRequest request) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
-        
+
         if (request.getFullName() != null && !request.getFullName().isBlank()) {
             user.setFullName(request.getFullName().trim());
         }
-        
+
         if (request.getPhone() != null && !request.getPhone().isBlank()) {
             user.setPhone(request.getPhone().trim());
         }
-        
+
         userRepository.save(user);
-        
+
         return ApiResponse.success("Cập nhật hồ sơ thành công");
     }
 }

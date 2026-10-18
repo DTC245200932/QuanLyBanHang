@@ -17,4 +17,3 @@ public class OrderCancelRequest {
     @NotBlank(message = "Lý do huỷ đơn hàng không được để trống")
     private String reason;
 }
-

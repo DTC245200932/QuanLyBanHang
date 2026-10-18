@@ -20,4 +20,3 @@ public interface WarehouseLotInventoryRepository extends JpaRepository<Warehouse
 
     List<WarehouseLotInventory> findAllByOrderByUpdatedAtDesc();
 }
-

@@ -1041,7 +1041,7 @@ class OrderServiceTest {
         assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
         verify(inventoryRepository).save(inventory);
         verify(auditLogService).logAction(eq("INVOICE"), eq("DH-S506-CANCEL"), eq("CANCEL"), eq("RECORDED"),
-                eq("CANCELLED"), eq("sales01"));
+                contains("Huỷ bởi người dùng sales01"), eq("sales01"));
     }
 
     @Test
@@ -1159,4 +1159,3 @@ class OrderServiceTest {
         verify(inventoryRepository, never()).save(any());
     }
 }
-

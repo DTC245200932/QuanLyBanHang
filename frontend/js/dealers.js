@@ -1314,7 +1314,7 @@
       copyBtn.disabled = true;
       try {
         await DealerTransactions.copyOrderToDraft(Number(copyBtn.dataset.orderCopy));
-        window.location.href = '/create-order.html?copied=1';
+        window.location.href = '/create-order?copied=1';
       } catch (error) {
         showFormError('dealer-orders-message', error.message);
         copyBtn.disabled = false;

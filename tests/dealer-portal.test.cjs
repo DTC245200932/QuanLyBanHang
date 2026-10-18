@@ -64,10 +64,15 @@ function createMockEnvironment(apiResponses = {}) {
     console: { log() {}, warn() {}, error() {} },
     Auth: {
       requireLogin: () => true,
+      hasAnyRole: (...roles) => roles.includes('ROLE_DEALER'),
+      hasPermission: () => true,
       getUser: () => ({ id: 99, username: 'dealer.test', roles: ['ROLE_DEALER'], dealerId: 10 }),
       apiFetch: async (url, opts = {}) => {
         calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
         if (apiResponses[url]) return success(apiResponses[url]);
+        if (url === '/portal/profile') {
+          return success({ id: 10, code: 'DL-HOANGPHAT', name: 'Đại lý Hoàng Phát', customerGroup: 'DAI_LY_CAP_1', active: true });
+        }
         if (url === '/dealers/active') {
           return success([
             { id: 10, code: 'DL-HOANGPHAT', name: 'Đại lý Hoàng Phát', customerGroup: 'DAI_LY_CAP_1' },
@@ -97,6 +102,12 @@ function createMockEnvironment(apiResponses = {}) {
             ],
           });
         }
+        if (url === '/portal/catalog') {
+          return success([
+            { id: 101, sku: 'KEN330', name: 'Bia Heineken 330ml', baseUnit: 'lon', basePrice: 15000, categoryName: 'Bia', units: [{unitName:'lon',factor:1,price:15000},{unitName:'thùng',factor:24,price:360000}] },
+            { id: 102, sku: 'TIGER330', name: 'Bia Tiger 330ml', baseUnit: 'lon', basePrice: 13000, categoryName: 'Bia', units: [{unitName:'lon',factor:1,price:13000}] },
+          ]);
+        }
         if (url.includes('/products?active=true')) {
           return success([
             { id: 101, sku: 'KEN330', name: 'Bia Heineken 330ml', baseUnit: 'lon', category: { name: 'Bia' } },
@@ -107,11 +118,11 @@ function createMockEnvironment(apiResponses = {}) {
         if (url.includes('/unit-conversions')) {
           return success([{ unitName: 'thùng', factor: 24 }]);
         }
-        if (url === '/orders' && opts.method === 'POST') {
+        if (url === '/portal/orders' && opts.method === 'POST') {
           return success({
             id: 501,
             orderCode: 'DH-DL-20261014-001',
-            status: 'RECORDED',
+            status: 'PENDING_APPROVAL',
             totalAmount: 1800000,
           });
         }
@@ -140,10 +151,8 @@ test('S4-10: Cổng đại lý chỉ hiển thị sản phẩm và giá thuộc 
   const { elements, calls } = createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
-  // Verify that price list for dealer's customer group was requested
-  const priceListCall = calls.find((c) => c.url.includes('/price-lists/effective'));
-  assert.ok(priceListCall, 'Phải gọi API bảng giá hiệu lực');
-  assert.ok(priceListCall.url.includes('customerGroup=DAI_LY_CAP_1'), 'Bảng giá phải theo đúng nhóm khách hàng DAI_LY_CAP_1');
+  assert.ok(calls.some((call) => call.url === '/portal/catalog'));
+  assert.ok(calls.every((call) => call.url.startsWith('/portal/')));
 
   // Verify dealer name and group displayed
   assert.equal(elements.get('info-dealer-name').textContent, 'Đại lý Hoàng Phát');
@@ -186,7 +195,7 @@ test('S4-10: Cảnh báo khi đơn hàng làm vượt hạn mức công nợ cò
   assert.match(elements.get('dp-debt-warning-msg').textContent, /vượt hạn mức công nợ còn lại/);
 });
 
-test('S4-10: Đơn gửi lên luôn ở trạng thái Chờ duyệt (RECORDED), gửi đúng payload và reset giỏ hàng', async () => {
+test('S4-10: Đơn gửi lên luôn ở trạng thái Chờ duyệt (PENDING_APPROVAL), gửi đúng payload và reset giỏ hàng', async () => {
   const { context, elements, calls, portal } = createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
@@ -204,9 +213,9 @@ test('S4-10: Đơn gửi lên luôn ở trạng thái Chờ duyệt (RECORDED), 
   await portal.submitDealerOrder();
 
   // Check POST /orders payload
-  const postOrder = calls.find((c) => c.url === '/orders' && c.method === 'POST');
+  const postOrder = calls.find((c) => c.url === '/portal/orders' && c.method === 'POST');
   assert.ok(postOrder, 'Phải gửi POST /orders');
-  assert.equal(postOrder.body.dealerId, 10);
+  assert.equal(postOrder.body.dealerId, undefined);
   assert.equal(postOrder.body.deliveryPointId, 1);
   assert.equal(postOrder.body.expectedDeliveryDate, '2026-10-15');
   assert.match(postOrder.body.note, /Đại lý tự đặt qua cổng/);

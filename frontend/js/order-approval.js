@@ -14,7 +14,7 @@
   const user = Auth.getUser();
 
   // ── Role guard ──
-  if (!Auth.hasAnyRole("ROLE_ADMIN", "ROLE_SALES_MANAGER")) {
+  if (!Auth.hasAnyRole("ROLE_ADMIN", "ROLE_SALES_MANAGER") || !Auth.hasPermission("ORDER_APPROVE")) {
     sessionStorage.setItem("errorMessage", "Bạn không có quyền truy cập chức năng duyệt đơn hàng.");
     window.location.href = "/error?status=403";
     return;

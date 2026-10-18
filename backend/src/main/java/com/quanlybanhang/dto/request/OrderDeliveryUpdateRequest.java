@@ -38,4 +38,3 @@ public class OrderDeliveryUpdateRequest {
     @Valid
     private List<OrderItemDeliveryRequest> items;
 }
-

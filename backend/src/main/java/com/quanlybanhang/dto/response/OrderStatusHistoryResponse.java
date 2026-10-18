@@ -23,4 +23,3 @@ public class OrderStatusHistoryResponse {
     private String changedBy;
     private LocalDateTime changedAt;
 }
-

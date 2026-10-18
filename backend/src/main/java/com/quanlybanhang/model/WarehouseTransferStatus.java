@@ -11,4 +11,3 @@ public enum WarehouseTransferStatus {
     COMPLETED,
     CANCELLED
 }
-

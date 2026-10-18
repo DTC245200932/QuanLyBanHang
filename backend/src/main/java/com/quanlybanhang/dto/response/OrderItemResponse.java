@@ -109,4 +109,3 @@ public class OrderItemResponse {
      */
     private String deliveryNote;
 }
-

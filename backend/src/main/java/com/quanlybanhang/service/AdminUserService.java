@@ -74,6 +74,7 @@ public class AdminUserService {
     public UserResponse create(AdminUserRequest request) {
         validateDuplicates(request.getUsername(), request.getEmail(), null);
         Set<Role> roles = resolveRoles(request.getRoles());
+        validateDealerAssignment(roles, request.getDealerId());
         Set<Warehouse> warehouses = resolveWarehouses(request.getWarehouseIds());
         validateWarehouseAssignment(roles, warehouses);
         Set<Territory> territories = resolveTerritories(request.getTerritoryIds());
@@ -158,6 +159,7 @@ public class AdminUserService {
         User user = findUser(id);
         validateDuplicates(request.getUsername(), request.getEmail(), id);
         Set<Role> roles = resolveRoles(request.getRoles());
+        validateDealerAssignment(roles, request.getDealerId());
         if (user.getUsername().equals(actingUsername)
                 && user.getRoles().stream().anyMatch(r -> r.getName() == ERole.ROLE_ADMIN)
                 && roles.stream().noneMatch(r -> r.getName() == ERole.ROLE_ADMIN)) {
@@ -221,6 +223,18 @@ public class AdminUserService {
     public List<NamedResourceResponse> territories() {
         return territoryRepository.findAllByActiveTrueOrderByNameAsc().stream()
                 .map(t -> new NamedResourceResponse(t.getId(), t.getCode(), t.getName())).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<NamedResourceResponse> dealers() {
+        return dealerRepository.findAll().stream()
+                .map(dealer -> new NamedResourceResponse(dealer.getId(), dealer.getCode(), dealer.getName())).toList();
+    }
+
+    private void validateDealerAssignment(Set<Role> roles, Long dealerId) {
+        if (roles.stream().anyMatch(role -> role.getName() == ERole.ROLE_DEALER) && dealerId == null) {
+            throw new IllegalArgumentException("Tài khoản đại lý phải được liên kết với một hồ sơ đại lý");
+        }
     }
 
     public UserResponse toResponse(User user) {

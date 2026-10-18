@@ -26,4 +26,3 @@ public class WarehouseLotInventoryResponse {
     private String baseUnit;
     private LocalDateTime updatedAt;
 }
-

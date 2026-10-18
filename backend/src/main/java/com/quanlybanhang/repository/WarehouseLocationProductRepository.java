@@ -25,4 +25,3 @@ public interface WarehouseLocationProductRepository extends JpaRepository<Wareho
 
     long countByLocationId(Long locationId);
 }
-

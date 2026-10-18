@@ -158,6 +158,14 @@ async function createDealerOrdersEnvironment(options = {}) {
             json: async () => ({ success: true, data: orderDetail }),
           };
         }
+        if (url === '/portal/catalog') {
+          const priceMap = new Map((effectivePriceList?.items || []).map(item => [item.productId, item.sellingPrice]));
+          const products = catalogProducts.filter(product => product.active !== false).map(product => ({
+            ...product, sku: product.code, baseUnit: product.unit || '—',
+            units: [{unitName: product.unit || '—', factor: 1, price: priceMap.get(product.id) ?? product.price}],
+          }));
+          return {ok: true, status: 200, json: async () => ({success: true, data: products})};
+        }
         if (url.startsWith("/products")) {
           return {
             ok: true,
@@ -388,7 +396,9 @@ test("S5-02: Cho phép đặt lại toàn bộ hoặc một phần dòng hàng v
   assert.equal(payload.items.length, 1);
   assert.equal(payload.items[0].productId, 101);
   assert.equal(payload.items[0].quantity, 10);
-  assert.equal(payload.items[0].price, 320000);
+  assert.equal(payload.items[0].price, undefined);
+  assert.ok(env.apiCalls.filter(call => call.options.method === 'POST').every(call => call.url === '/portal/orders'));
+  assert.ok(env.apiCalls.every(call => call.url.startsWith('/portal/')));
 });
 
 test("S5-02: Khi toàn bộ mặt hàng trong đơn cũ đã ngừng kinh doanh thì chặn gửi đơn", async () => {
@@ -483,4 +493,3 @@ test("S5-02: Thay đổi số lượng mặt hàng cập nhật trực tiếp th
   // Tổng mới: 5 * 310.000 = 1.550.000 đ
   assert.ok(env.element("reorder-summary-total").textContent.includes("1.550.000"));
 });
-

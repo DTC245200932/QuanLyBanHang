@@ -58,4 +58,3 @@ public class DealerPurchaseHistoryResponse {
     /** Mã đơn hàng gần nhất có sản phẩm này */
     private String lastOrderCode;
 }
-

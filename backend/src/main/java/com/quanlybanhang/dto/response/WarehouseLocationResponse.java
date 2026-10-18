@@ -51,4 +51,3 @@ public class WarehouseLocationResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

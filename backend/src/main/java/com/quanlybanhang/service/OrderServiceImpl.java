@@ -34,13 +34,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import com.quanlybanhang.repository.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,10 +50,8 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
-import com.quanlybanhang.dto.request.OrderInventoryCheckRequest;
 import com.quanlybanhang.repository.WarehouseRepository;
 import com.quanlybanhang.repository.WarehouseInventoryRepository;
-import java.math.RoundingMode;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -122,42 +118,6 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private UserRepository userRepository;
-
-    public OrderServiceImpl(OrderRepository orderRepository,
-                            ProductRepository productRepository,
-                            DealerRepository dealerRepository,
-                            DealerDeliveryPointRepository deliveryPointRepository,
-                            PriceListRepository priceListRepository,
-                            UnitConversionService unitConversionService,
-                            AuditLogService auditLogService,
-                            VolumeDiscountPolicyService volumeDiscountPolicyService,
-                            DealerDebtService dealerDebtService) {
-        this.orderRepository = orderRepository;
-        this.productRepository = productRepository;
-        this.dealerRepository = dealerRepository;
-        this.deliveryPointRepository = deliveryPointRepository;
-        this.priceListRepository = priceListRepository;
-        this.unitConversionService = unitConversionService;
-        this.auditLogService = auditLogService;
-        this.volumeDiscountPolicyService = volumeDiscountPolicyService;
-        this.dealerDebtService = dealerDebtService;
-    }
-
-    @Autowired
-    public OrderServiceImpl(OrderRepository orderRepository,
-                            ProductRepository productRepository,
-                            DealerRepository dealerRepository,
-                            DealerDeliveryPointRepository deliveryPointRepository,
-                            PriceListRepository priceListRepository,
-                            UnitConversionService unitConversionService,
-                            AuditLogService auditLogService,
-                            VolumeDiscountPolicyService volumeDiscountPolicyService,
-                            DealerDebtService dealerDebtService,
-                            @Autowired(required = false) UserRepository userRepository) {
-        this(orderRepository, productRepository, dealerRepository, deliveryPointRepository, priceListRepository,
-                unitConversionService, auditLogService, volumeDiscountPolicyService, dealerDebtService);
-        this.userRepository = userRepository;
-    }
 
     @Autowired(required = false)
     public void setUserRepository(UserRepository userRepository) {
@@ -552,12 +512,12 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
-        if (orderRequiresApproval) {
+        if (orderRequiresApproval || isDealer) {
             recordStatusHistory(saved, null, "PENDING_APPROVAL", "Đơn hàng chờ Quản lý kinh doanh duyệt: " + saved.getApprovalReason(), username);
         } else {
             recordStatusHistory(saved, null, "RECORDED", "Đơn hàng đã được duyệt/ghi nhận, đã giữ chỗ tồn kho", username);
         }
-        if (orderRequiresApproval && orderApprovalHistoryRepository != null) {
+        if ((orderRequiresApproval || isDealer) && orderApprovalHistoryRepository != null) {
             try {
                 OrderApprovalHistory history = OrderApprovalHistory.builder()
                         .order(saved)
@@ -646,6 +606,9 @@ public class OrderServiceImpl implements OrderService {
                 predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), f.getResolvedEndDate().atTime(LocalTime.MAX)));
             }
 
+            if (f.getCreatedBy() != null && !f.getCreatedBy().isBlank()) {
+                predicates.add(cb.equal(root.get("createdBy"), f.getCreatedBy().trim()));
+            }
             // 7. Lọc theo điều kiện phê duyệt
             if (f.getApprovalRequired() != null) {
                 predicates.add(cb.equal(root.get("requiresApproval"), f.getApprovalRequired()));
@@ -679,6 +642,15 @@ public class OrderServiceImpl implements OrderService {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        long totalOrders = orders.size();
+        Integer totalPages = null;
+        if (f.getPage() != null || f.getSize() != null) {
+            int size = f.getSize() == null ? 20 : f.getSize();
+            int page = f.getPage() == null ? 0 : f.getPage();
+            totalPages = (int) Math.ceil((double) totalOrders / size);
+            int from = (int) Math.min((long) page * size, totalOrders);
+            orders = orders.subList(from, Math.min(from + size, orders.size()));
+        }
         List<OrderResponse> responses = orders.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -686,7 +658,8 @@ public class OrderServiceImpl implements OrderService {
         return OrderFilterResult.builder()
                 .orders(responses)
                 .totalAmount(totalAmount)
-                .totalOrders((long) responses.size())
+                .totalOrders(totalOrders)
+                .totalPages(totalPages)
                 .build();
     }
 
@@ -747,7 +720,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (order.getDealer() == null || !dealerId.equals(order.getDealer().getId())) {
             throw new org.springframework.security.access.AccessDeniedException(
-                    "Bạn không có quyền xem đơn hàng của đại lý khác");
+                    "Bạn chỉ có quyền xem đơn hàng của chính đại lý mình");
         }
         return mapToResponse(order);
     }
@@ -1135,7 +1108,7 @@ public class OrderServiceImpl implements OrderService {
         Dealer dealer = order.getDealer();
         boolean dealerLocked = dealer != null && Boolean.TRUE.equals(dealer.getLocked());
         String roleLabel = isElevated ? "Quản lý kinh doanh duyệt đơn" : "Nhân viên phụ trách xác nhận đơn";
-        String auditDetail = roleLabel + (order.getApprovalReason() != null ? " (" + order.getApprovalReason() + ")" : "") +
+        String auditDetail = roleLabel + " (Giữ chỗ tồn: " + (Boolean.TRUE.equals(saved.getInventoryReserved()) ? "Thành công" : "Không áp dụng") + ")" + (order.getApprovalReason() != null ? " (" + order.getApprovalReason() + ")" : "") +
                 (dealerLocked ? " [Cảnh báo: Đại lý '" + dealer.getName() + "' đang bị khoá giao dịch. Lý do: " + dealer.getLockReason() + "]" : "");
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "APPROVE", "PENDING_APPROVAL",
                 auditDetail, username != null ? username : "system");
@@ -2771,40 +2744,31 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void deductInventoryOnExport(Order order) {
-        if (warehouseRepository == null || inventoryRepository == null) {
-            order.setInventoryReserved(false);
-            return;
+        if (order.getWarehouse() == null || inventoryRepository == null) {
+            throw new IllegalArgumentException("Đơn hàng chưa có kho xuất");
         }
-        Warehouse warehouse = order.getWarehouse();
-        if (warehouse == null) {
-            warehouse = resolveDefaultWarehouse(null);
-            if (warehouse != null) {
-                order.setWarehouse(warehouse);
-            }
+        Map<Long, BigDecimal> quantities = new TreeMap<>();
+        for (OrderItem item : order.getItems()) {
+            quantities.merge(item.getProduct().getId(), item.getBaseQuantity(), BigDecimal::add);
         }
-        if (warehouse != null && order.getItems() != null) {
-            for (OrderItem item : order.getItems()) {
-                if (item.getProduct() != null && item.getBaseQuantity() != null && item.getBaseQuantity().compareTo(BigDecimal.ZERO) > 0) {
-                    Product product = item.getProduct();
-                    BigDecimal baseQty = item.getBaseQuantity();
-                    WarehouseInventory inv = inventoryRepository
-                            .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
-                            .orElseGet(() -> WarehouseInventory.builder()
-                                    .warehouse(order.getWarehouse())
-                                    .product(product)
-                                    .baseQuantity(BigDecimal.ZERO)
-                                    .reservedQuantity(BigDecimal.ZERO)
-                                    .baseUnit(product.getUnit())
-                                    .build());
-                    if (Boolean.TRUE.equals(order.getInventoryReserved())) {
-                        inv.subtractReservedQuantity(baseQty);
-                    }
-                    inv.subtractBaseQuantity(baseQty);
-                    inventoryRepository.save(inv);
-                }
+        List<WarehouseInventory> locked = inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(
+                order.getWarehouse().getId(), new ArrayList<>(quantities.keySet()));
+        Map<Long, WarehouseInventory> stock = locked.stream().collect(Collectors.toMap(
+                value -> value.getProduct().getId(), value -> value));
+        for (var entry : quantities.entrySet()) {
+            WarehouseInventory inventory = stock.get(entry.getKey());
+            boolean reserved = Boolean.TRUE.equals(order.getInventoryReserved());
+            if (inventory == null || inventory.getBaseQuantity().compareTo(entry.getValue()) < 0
+                    || (!reserved && inventory.getAvailableQuantity().compareTo(entry.getValue()) < 0)
+                    || (reserved && inventory.getReservedQuantity().compareTo(entry.getValue()) < 0)) {
+                throw new IllegalArgumentException("Không đủ tồn kho để xuất sản phẩm " + entry.getKey());
             }
+            if (reserved) inventory.subtractReservedQuantity(entry.getValue());
+            inventory.subtractBaseQuantity(entry.getValue());
+            inventoryRepository.save(inventory);
         }
         order.setInventoryReserved(false);
+        order.setReservationExpiresAt(null);
     }
 
     private void recordStatusHistory(Order order, String prevStatus, String newStatus, String note, String changedBy) {

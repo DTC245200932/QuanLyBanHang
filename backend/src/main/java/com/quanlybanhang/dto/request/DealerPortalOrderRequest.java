@@ -29,4 +29,3 @@ public class DealerPortalOrderRequest {
     @Valid
     private List<OrderItemRequest> items;
 }
-

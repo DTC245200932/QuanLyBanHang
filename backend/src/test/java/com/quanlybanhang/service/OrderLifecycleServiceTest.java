@@ -176,7 +176,7 @@ class OrderLifecycleServiceTest {
                 .build();
 
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(1L, List.of(10L))).thenReturn(List.of(inventory));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         OrderResponse response = orderService.cancelOrder(1L, "Khách đổi ý sang dòng sản phẩm khác", "sales01");
@@ -278,7 +278,7 @@ class OrderLifecycleServiceTest {
                 .build();
 
         when(orderRepository.findById(5L)).thenReturn(Optional.of(pickingOrder));
-        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(1L, List.of(10L))).thenReturn(List.of(inventory));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         OrderResponse response = orderService.updateOrderStatus(5L, "EXPORTED", "Đã bàn giao đơn vị vận chuyển", "warehouse01");

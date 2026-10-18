@@ -297,7 +297,7 @@ class DealerOrderTrackingServiceTest {
 
         assertThatThrownBy(() -> orderService.getOrderByIdForDealer(99L, "dealer.minhphat"))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("Bạn không có quyền xem đơn hàng của đại lý khác");
+                .hasMessageContaining("chính đại lý mình");
     }
 
     @Test
@@ -360,4 +360,3 @@ class DealerOrderTrackingServiceTest {
                 .hasMessageContaining("Đại lý không được phép thao tác kho");
     }
 }
-

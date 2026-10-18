@@ -202,4 +202,3 @@ class WarehouseTransferControllerTest {
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"));
     }
 }
-

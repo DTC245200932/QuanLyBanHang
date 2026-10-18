@@ -23,12 +23,12 @@
     'ROLE_VIEWER',
     'ROLE_WAREHOUSE_MANAGER',
   );
-  if (!CAN_ACCESS) {
+  if (!CAN_ACCESS || !Auth.hasPermission('ORDER_VIEW')) {
     location.href = '/error?status=403';
     return;
   }
 
-  const CAN_APPROVE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
+  const CAN_APPROVE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER') && Auth.hasPermission('ORDER_APPROVE');
   const CAN_CANCEL = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_SALES');
   const IS_SALES_ONLY = Auth.hasRole('ROLE_SALES') && !Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
 
@@ -1114,4 +1114,3 @@
   setupEventListeners();
   loadInitialData();
 })();
-

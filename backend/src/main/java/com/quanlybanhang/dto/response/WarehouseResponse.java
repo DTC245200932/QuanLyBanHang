@@ -42,4 +42,3 @@ public class WarehouseResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

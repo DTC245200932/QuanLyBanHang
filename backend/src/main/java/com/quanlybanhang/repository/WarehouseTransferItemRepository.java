@@ -10,4 +10,3 @@ import java.util.List;
 public interface WarehouseTransferItemRepository extends JpaRepository<WarehouseTransferItem, Long> {
     List<WarehouseTransferItem> findByTransferId(Long transferId);
 }
-

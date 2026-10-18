@@ -27,4 +27,3 @@ public class WarehouseTransferRequest {
     @NotEmpty(message = "Phiếu chuyển kho phải có ít nhất 1 sản phẩm")
     private List<@NotNull @Valid WarehouseTransferItemRequest> items;
 }
-

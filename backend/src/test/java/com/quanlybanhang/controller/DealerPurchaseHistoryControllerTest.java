@@ -159,4 +159,3 @@ class DealerPurchaseHistoryControllerTest {
                 .andExpect(jsonPath("$.data.dealerId").value(1));
     }
 }
-

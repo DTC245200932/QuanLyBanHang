@@ -32,4 +32,3 @@ public class OrderItemDeliveryRequest {
      */
     private String note;
 }
-

@@ -18,4 +18,3 @@ public interface WarehouseTransferRepository extends JpaRepository<WarehouseTran
     List<WarehouseTransfer> findByToWarehouseIdOrderByCreatedAtDesc(Long toWarehouseId);
     List<WarehouseTransfer> findByStatusOrderByCreatedAtDesc(WarehouseTransferStatus status);
 }
-

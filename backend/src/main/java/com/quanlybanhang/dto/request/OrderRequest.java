@@ -48,10 +48,6 @@ public class OrderRequest {
      */
     private Long priceListId;
 
-    /**
-     * ID kho xuất hàng và giữ chỗ tồn kho (S4-06). Nếu không chỉ định, lấy kho mặc định đang hoạt động.
-     */
-    private Long warehouseId;
 
     /**
      * Số giờ giữ chỗ tồn kho mong muốn (S5-06, mặc định 48h nếu không chỉ định).

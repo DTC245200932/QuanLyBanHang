@@ -31,4 +31,3 @@ public class WarehouseTransferItemResponse {
 
     private String note;
 }
-

@@ -60,12 +60,6 @@ public class Order {
     @JoinColumn(name = "price_list_id")
     private PriceList priceList;
 
-    /**
-     * Kho xuất hàng phục vụ đơn hàng và giữ chỗ tồn kho (S4-06).
-     */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id")
-    private Warehouse warehouse;
 
     /**
      * Trạng thái đơn hàng theo vòng đời (S4-06):
@@ -151,19 +145,8 @@ public class Order {
     @Column(length = 500)
     private String note;
 
-    /**
-     * Lý do huỷ đơn hàng (S4-06) - bắt buộc khi huỷ.
-     */
-    @Column(name = "cancel_reason", length = 500)
-    private String cancelReason;
 
-    /** Người thực hiện huỷ đơn (S4-06). */
-    @Column(name = "cancelled_by", length = 100)
-    private String cancelledBy;
 
-    /** Thời điểm huỷ đơn (S4-06). */
-    @Column(name = "cancelled_at")
-    private LocalDateTime cancelledAt;
 
     /**
      * Ngày thực tế giao hàng (S5-01).

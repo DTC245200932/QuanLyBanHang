@@ -112,8 +112,9 @@ class OrderApprovalControllerTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        when(orderService.getOrders(any(), any(), any(), any(), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(resp)));
+        when(orderService.getOrders(any(com.quanlybanhang.dto.request.OrderFilterRequest.class)))
+                .thenReturn(com.quanlybanhang.dto.response.OrderFilterResult.builder()
+                        .orders(List.of(resp)).totalOrders(1L).totalPages(1).build());
 
         mockMvc.perform(get("/api/orders?status=PENDING_APPROVAL&approvalRequired=true&page=0&size=10"))
                 .andExpect(status().isOk())
@@ -219,6 +220,8 @@ class OrderApprovalControllerTest {
     @WithMockUser(username = "sales_user", roles = "SALES")
     @DisplayName("Vai trò SALES không có quyền ORDER_APPROVE -> gọi duyệt đơn bị 403 Forbidden")
     void approveOrder_SalesUser_Returns403() throws Exception {
+        when(orderService.approveOrder(1L, "sales_user"))
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("Đơn ngoài phạm vi phụ trách"));
         mockMvc.perform(put("/api/orders/1/approve"))
                 .andExpect(status().isForbidden());
     }

@@ -165,4 +165,3 @@ public class WarehouseResourceController {
         return ApiResponse.success("Bỏ gán sản phẩm khỏi vị trí kệ thành công", null);
     }
 }
-

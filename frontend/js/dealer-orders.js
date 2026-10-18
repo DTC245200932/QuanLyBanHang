@@ -7,7 +7,7 @@
   if (typeof Auth !== "undefined" && !Auth.requireLogin()) return;
 
   const user = typeof Auth !== "undefined" ? Auth.getUser() : null;
-  if (typeof Auth !== "undefined" && !Auth.hasAnyRole("ROLE_ADMIN", "ROLE_DEALER")) {
+  if (typeof Auth !== "undefined" && (!Auth.hasAnyRole("ROLE_ADMIN", "ROLE_DEALER") || !Auth.hasPermission("ORDER_VIEW"))) {
     if (typeof sessionStorage !== "undefined") {
       sessionStorage.setItem("errorMessage", "Bạn không có quyền truy cập cổng đại lý.");
     }
@@ -403,19 +403,12 @@
 
     try {
       // 1. Tải chi tiết đơn hàng cũ
-      let sourceOrder = null;
-      try {
-        const res = await Auth.apiFetch(`/portal/orders/${encodeURIComponent(orderId)}`);
-        const payload = await res.json().catch(() => ({}));
-        if (res.ok) sourceOrder = unwrap(payload);
-      } catch {}
-      if (!sourceOrder) {
-        try {
-          const res = await Auth.apiFetch(`/orders/${encodeURIComponent(orderId)}`);
-          const payload = await res.json().catch(() => ({}));
-          if (res.ok) sourceOrder = unwrap(payload);
-        } catch {}
+      const sourceResponse = await Auth.apiFetch(`/portal/orders/${encodeURIComponent(orderId)}`);
+      const sourcePayload = await sourceResponse.json();
+      if (!sourceResponse.ok || !sourcePayload.success) {
+        throw new Error(sourcePayload.message || 'Không tải được đơn hàng cũ');
       }
+      const sourceOrder = unwrap(sourcePayload);
       if (!sourceOrder || !Array.isArray(sourceOrder.items)) {
         throw new Error("Không thể tải thông tin đơn hàng cũ để đặt lại.");
       }
@@ -426,44 +419,13 @@
         $("reorder-source-code").textContent = sourceOrder.orderCode || `Đơn #${sourceOrder.id}`;
       }
 
-      // 2. Tải danh mục sản phẩm hiện hành để kiểm tra sản phẩm đã ngừng kinh doanh
-      let catalog = [];
-      try {
-        const res = await Auth.apiFetch("/products");
-        const payload = await res.json().catch(() => ({}));
-        if (res.ok) catalog = unwrap(payload) || [];
-      } catch {}
-
-      const catalogById = new Map();
-      const catalogByCode = new Map();
-      for (const p of catalog) {
-        if (p.id != null) catalogById.set(Number(p.id), p);
-        if (p.code) catalogByCode.set(String(p.code).trim().toUpperCase(), p);
-        if (p.sku) catalogByCode.set(String(p.sku).trim().toUpperCase(), p);
+      const catalogResponse = await Auth.apiFetch('/portal/catalog');
+      const catalogPayload = await catalogResponse.json();
+      if (!catalogResponse.ok || !catalogPayload.success || !Array.isArray(catalogPayload.data)) {
+        throw new Error(catalogPayload.message || 'Không tải được bảng giá hiện hành');
       }
-
-      // 3. Tải bảng giá hiệu lực hiện hành theo nhóm khách hàng của đại lý
-      const customerGroup =
-        sourceOrder.customerGroup ||
-        sourceOrder.dealer?.customerGroup ||
-        user?.customerGroup ||
-        "DAI_LY_CAP_1";
-
-      const effectivePriceMap = new Map();
-      try {
-        const res = await Auth.apiFetch(
-          `/price-lists/effective?customerGroup=${encodeURIComponent(customerGroup)}`
-        );
-        const payload = await res.json().catch(() => ({}));
-        if (res.ok && payload.data && Array.isArray(payload.data.items)) {
-          for (const pli of payload.data.items) {
-            const pid = pli.productId ?? pli.product?.id;
-            if (pid != null) {
-              effectivePriceMap.set(Number(pid), Number(pli.sellingPrice ?? pli.price));
-            }
-          }
-        }
-      } catch {}
+      const catalogById = new Map(catalogPayload.data.map((product) => [Number(product.id), product]));
+      const catalogByCode = new Map(catalogPayload.data.map((product) => [String(product.sku).toUpperCase(), product]));
 
       // 4. Phân loại dòng hàng: mặt hàng ngừng kinh doanh vs mặt hàng khả dụng
       const activeItems = [];
@@ -480,9 +442,9 @@
         // Kiểm tra ngừng kinh doanh:
         // - Sản phẩm trong catalog có active === false hoặc status === 'INACTIVE'
         // - Hoặc item cũ có cờ active === false / status === 'INACTIVE'
-        const isDiscontinued = catalogItem
+        const isDiscontinued = !catalogItem || (catalogItem
           ? catalogItem.active === false || String(catalogItem.status).toUpperCase() === "INACTIVE"
-          : item.active === false || String(item.status).toUpperCase() === "INACTIVE";
+          : item.active === false || String(item.status).toUpperCase() === "INACTIVE");
 
         if (isDiscontinued) {
           discontinuedItems.push({
@@ -495,16 +457,14 @@
           // Áp lại theo giá hiện hành:
           // Ưu tiên bảng giá hiệu lực hiện hành; nếu không có thì lấy giá catalog hiện tại
           const pid = item.productId || catalogItem?.id;
-          let currentPrice = pid != null && effectivePriceMap.has(Number(pid))
-            ? effectivePriceMap.get(Number(pid))
-            : (catalogItem?.price != null ? Number(catalogItem.price) : Number(item.price || 0));
-
-          // Tính theo hệ số quy đổi đơn vị nếu có
-          if (item.conversionFactor && item.conversionFactor > 1 && effectivePriceMap.has(Number(pid))) {
-            currentPrice = currentPrice * Number(item.conversionFactor);
+          const unitName = item.unit || item.baseUnit || catalogItem.baseUnit;
+          const currentUnit = catalogItem.units.find((unit) => unit.unitName === unitName);
+          if (!currentUnit) {
+            discontinuedItems.push(item);
+            return;
           }
-
-          const qty = Math.max(1, Math.round(Number(item.quantity) || 1));
+          const currentPrice = Number(currentUnit.price);
+          const qty = Number(item.quantity || 1);
           const activeItem = {
             id: itemId,
             productId: pid,
@@ -611,7 +571,6 @@
     if (confirmBtn) confirmBtn.disabled = true;
 
     const payload = {
-      dealerId: sourceOrder?.dealerId || sourceOrder?.dealer?.id || null,
       deliveryPointId: sourceOrder?.deliveryPointId || sourceOrder?.deliveryPoint?.id || null,
       expectedDeliveryDate: deliveryDate,
       note: note,
@@ -620,34 +579,16 @@
         productCode: item.productCode,
         unit: item.unit,
         quantity: quantities[item.id] || 1,
-        price: item.currentPrice,
         note: "",
       })),
     };
 
     try {
-      // Ưu tiên endpoint cổng đại lý nếu có, fallback sang /api/orders
-      let response = await Auth.apiFetch("/portal/orders/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await Auth.apiFetch('/portal/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).catch(() => null);
-
-      if (!response || response.status === 404) {
-        response = await Auth.apiFetch("/portal/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }).catch(() => null);
-      }
-
-      if (!response || response.status === 404) {
-        response = await Auth.apiFetch("/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      }
+      });
 
       const resData = await response.json().catch(() => ({}));
       if (!response.ok || (resData.success === false && !resData.data)) {
@@ -820,4 +761,3 @@
 
   loadOrders();
 })();
-

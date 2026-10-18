@@ -28,4 +28,3 @@ public class WarehouseTransferItemRequest {
 
     private String note;
 }
-

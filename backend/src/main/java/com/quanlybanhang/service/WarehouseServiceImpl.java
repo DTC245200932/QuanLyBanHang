@@ -826,29 +826,16 @@ public class WarehouseServiceImpl implements WarehouseService {
                 throw new IllegalArgumentException("Sản phẩm '" + product.getName() + "' đã ngừng kinh doanh");
             }
 
-            BigDecimal qty = itemReq.getQuantity();
-            if (qty == null) {
-                throw new IllegalArgumentException("Số lượng cho sản phẩm '" + product.getName() + "' không được để trống");
-            }
-            if (qty.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new IllegalArgumentException("Số lượng cho sản phẩm '" + product.getName() + "' phải lớn hơn 0");
-            }
-
             String inputUnit = itemReq.getUnit();
             if (inputUnit == null || inputUnit.isBlank()) {
                 inputUnit = product.getUnit();
+            } else {
+                inputUnit = inputUnit.trim();
             }
 
-            // Quy đổi sang đơn vị cơ sở
-            BigDecimal factor = null;
-            if (unitConversionService != null) {
-                try {
-                    factor = unitConversionService.getConversionFactor(product, inputUnit);
-                } catch (Exception ignored) {
-                }
-            }
-            if (factor == null) {
-                factor = BigDecimal.ONE;
+            BigDecimal qty = itemReq.getQuantity();
+            if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Số lượng cho sản phẩm '" + product.getCode() + "' phải lớn hơn 0");
             }
 
             // Lấy hệ số quy đổi tại thời điểm lập phiếu (S2-07)
@@ -894,7 +881,6 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .manufacturingDate(mfgDate)
                     .note(itemReq.getNote())
                     .build();
-            voucher.getItems().add(item);
 
             voucher.addItem(item);
 
@@ -1438,20 +1424,10 @@ public class WarehouseServiceImpl implements WarehouseService {
     }
 
     private Product resolveProduct(WarehouseVoucherItemRequest itemReq) {
-        if (itemReq.getProductId() != null) {
-            return productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + itemReq.getProductId()));
-        }
-        if (productCode != null && !productCode.isBlank()) {
-            return productRepository.findByCode(productCode.trim().toUpperCase())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với mã: " + productCode));
-        }
-        throw new IllegalArgumentException("Cần cung cấp productId hoặc productCode");
-    }
-
-    private Product resolveProduct(WarehouseVoucherItemRequest itemReq) {
         return resolveProduct(itemReq.getProductId(), itemReq.getProductCode());
     }
+
+
 
     private List<WarehouseVoucherItemRequest> normalizeItemRequests(WarehouseVoucherRequest request, WarehouseVoucherType type) {
         if (request.getItems() != null && !request.getItems().isEmpty()) {

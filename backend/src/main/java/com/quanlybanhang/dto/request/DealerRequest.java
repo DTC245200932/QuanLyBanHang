@@ -65,4 +65,3 @@ public class DealerRequest {
     @Size(max = 255, message = "Địa chỉ không được vượt quá 255 ký tự")
     private String address;
 }
-

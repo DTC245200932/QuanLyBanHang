@@ -652,7 +652,7 @@ class OrderControllerTest {
                 .reservationExpiresAt(java.time.LocalDateTime.now().plusHours(24))
                 .build();
 
-        when(orderService.approveOrder(eq(1L), any(), any())).thenReturn(resp);
+        when(orderService.approveOrder(eq(1L), any(Integer.class), any())).thenReturn(resp);
 
         mockMvc.perform(put("/api/orders/1/approve").param("reservationHours", "24"))
                 .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
@@ -734,4 +734,3 @@ class OrderControllerTest {
                 .andExpect(status().isForbidden());
     }
 }
-

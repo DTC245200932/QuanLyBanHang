@@ -85,7 +85,7 @@ class DealerOrderTrackingControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "dealer_user", roles = "DEALER")
+    @WithMockUser(username = "dealer_user", authorities = {"ROLE_DEALER", "ORDER_VIEW"})
     @DisplayName("GET /api/portal/orders - Đại lý xem danh sách đơn hàng kèm trạng thái, ngày giao dự kiến, tổng tiền")
     void getMyOrders_Dealer_Returns200WithOrderList() throws Exception {
         OrderResponse order1 = OrderResponse.builder()
@@ -128,7 +128,7 @@ class DealerOrderTrackingControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "dealer_user", roles = "DEALER")
+    @WithMockUser(username = "dealer_user", authorities = {"ROLE_DEALER", "ORDER_VIEW"})
     @DisplayName("GET /api/portal/orders/{id} - Xem chi tiết dòng hàng và số lượng thực giao nếu giao thiếu")
     void getMyOrderDetail_Dealer_Returns200WithDeliveredAndShortageInfo() throws Exception {
         OrderItemResponse item1 = OrderItemResponse.builder()
@@ -198,7 +198,7 @@ class DealerOrderTrackingControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "dealer_user", roles = "DEALER")
+    @WithMockUser(username = "dealer_user", authorities = {"ROLE_DEALER", "ORDER_VIEW"})
     @DisplayName("GET /api/portal/orders/{id} - Đại lý cố truy cập đơn của đại lý khác bị trả về 403 Forbidden")
     void getMyOrderDetail_OtherDealerOrder_Returns403Forbidden() throws Exception {
         when(orderService.getOrderByIdForDealer(999L, "dealer_user"))

@@ -51,7 +51,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
             @org.springframework.data.repository.query.Param("dealerId") Long dealerId,
             @org.springframework.data.repository.query.Param("excludedStatuses") java.util.Collection<String> excludedStatuses,
             @org.springframework.data.repository.query.Param("cutoffDate") java.time.LocalDateTime cutoffDate);
-    List<Order> findByDealerIdOrderByCreatedAtDesc(Long dealerId);
+
 
     Optional<Order> findByIdAndDealerId(Long id, Long dealerId);
 

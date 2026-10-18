@@ -98,4 +98,3 @@ public enum OrderStatus {
         return "APPROVED".equals(s) || "RECORDED".equals(s);
     }
 }
-

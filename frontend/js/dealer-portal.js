@@ -7,7 +7,7 @@
  * - Thêm sản phẩm vào giỏ hàng với quy cách đóng gói (thùng, lốc, lon...).
  * - Xem tổng tiền, chiết khấu và công nợ còn lại trước khi gửi đơn.
  * - Cảnh báo vượt hạn mức hoặc quá hạn công nợ.
- * - Đơn gửi lên luôn ở trạng thái Chờ duyệt (RECORDED), do nhân viên phụ trách xác nhận.
+ * - Đơn gửi lên luôn ở trạng thái Chờ duyệt, do nhân viên phụ trách xác nhận.
  * - Giao diện mobile-first thuận tiện thao tác bất kỳ lúc nào trên điện thoại.
  *
  * Tuân thủ:
@@ -18,6 +18,11 @@
 (() => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (typeof Auth !== 'undefined' && !Auth.requireLogin()) return;
+
+  if (!Auth.hasAnyRole('ROLE_DEALER', 'ROLE_ADMIN') || !Auth.hasPermission('ORDER_CREATE')) {
+    location.href = '/error?status=403';
+    return;
+  }
 
   /* ── DOM helpers ────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
@@ -69,57 +74,22 @@
 
   /* ── Load Dealer Context ────────────────────────────────── */
   async function loadDealerContext() {
-    state.user = Auth.getUser?.() ?? null;
-
+    state.user = Auth.getUser();
     try {
-      // Load active dealers from backend
-      const res = await Auth.apiFetch('/dealers/active');
+      const res = await Auth.apiFetch('/portal/profile');
       const result = await res.json();
-      if (!res.ok || !result.success) throw new Error(result.message || 'Không tải được danh sách đại lý');
-
-      state.dealers = result.data || [];
-      if (state.dealers.length === 0) {
-        showToast('Chưa có dữ liệu đại lý hoạt động trong hệ thống.', 'warning');
-        return;
+      if (!res.ok || !result.success || !result.data) {
+        throw new Error(result.message || 'Không tải được hồ sơ đại lý');
       }
-
-      // Check if user is associated with a specific dealer ID
-      let matched = null;
-      if (state.user?.dealerId) {
-        matched = state.dealers.find((d) => d.id === Number(state.user.dealerId));
-      } else if (state.user?.username) {
-        // Match by username or dealer code if applicable
-        matched = state.dealers.find((d) => d.code === state.user.username);
-      }
-
-      // Default to matched dealer, or the first active dealer (e.g. for testing)
-      state.currentDealer = matched || state.dealers[0];
-
-      // Setup dealer switcher if more than 1 dealer available
-      const switcherWrap = $('dp-dealer-switcher-wrap');
-      const select = $('dp-dealer-select');
-      if (switcherWrap && select) {
-        switcherWrap.hidden = false;
-        select.innerHTML = state.dealers
-          .map(
-            (d) =>
-              `<option value="${d.id}" ${d.id === state.currentDealer.id ? 'selected' : ''}>${escHtml(d.name)} (${escHtml(d.code)})</option>`,
-          )
-          .join('');
-
-        select.addEventListener('change', async (e) => {
-          const selectedId = Number(e.target.value);
-          const found = state.dealers.find((d) => d.id === selectedId);
-          if (found) {
-            await switchDealer(found);
-          }
-        });
-      }
-
+      const profile = result.data;
+      state.currentDealer = { ...profile, assignedUser: { fullName: profile.salesUserFullName } };
+      state.dealers = [state.currentDealer];
+      const switcher = $('dp-dealer-switcher-wrap');
+      if (switcher) switcher.hidden = true;
       await applyDealer(state.currentDealer);
     } catch (err) {
-      console.error('Error loading dealer:', err);
-      showToast('Lỗi khi tải thông tin đại lý: ' + err.message, 'error');
+      state.currentDealer = null;
+      showToast(err.message, 'error');
     }
   }
 
@@ -172,7 +142,7 @@
     if (!sel) return;
     sel.innerHTML = '<option value="">— Đang tải điểm giao —</option>';
     try {
-      const res = await Auth.apiFetch(`/dealers/${dealerId}/delivery-points`);
+      const res = await Auth.apiFetch('/portal/delivery-points');
       const result = await res.json();
       state.deliveryPoints = (res.ok && result.success ? result.data : []) || [];
 
@@ -194,32 +164,18 @@
   }
 
   /* ── Load Debt Info ─────────────────────────────────────── */
-  async function loadDebtInfo(dealerId) {
+  async function loadDebtInfo() {
     try {
-      const res = await Auth.apiFetch(`/dealers/${dealerId}/debt`);
+      const res = await Auth.apiFetch('/portal/debt');
       const result = await res.json();
-      if (res.ok && result.success && result.data) {
-        state.debtInfo = result.data;
-      } else {
-        state.debtInfo = {
-          debtLimit: 0,
-          currentDebt: 0,
-          remainingLimit: 0,
-          hasOverdueDebt: false,
-          isBlocked: false,
-        };
+      if (!res.ok || !result.success || !result.data) {
+        throw new Error(result.message || 'Không tải được công nợ, vui lòng thử lại');
       }
-    } catch (e) {
-      console.warn('Could not fetch debt:', e);
-      state.debtInfo = {
-        debtLimit: 0,
-        currentDebt: 0,
-        remainingLimit: 0,
-        hasOverdueDebt: false,
-        isBlocked: false,
-      };
+      state.debtInfo = result.data;
+    } catch (err) {
+      state.debtInfo = { isBlocked: true, blockReason: err.message, unavailable: true };
+      showToast(err.message, 'error');
     }
-
     renderDebtMetrics();
   }
 
@@ -230,13 +186,13 @@
     const avail = info.remainingLimit != null ? Number(info.remainingLimit) : Math.max(0, limit - current);
 
     const valLimit = $('val-debt-limit');
-    if (valLimit) valLimit.textContent = formatVND(limit);
+    if (valLimit) valLimit.textContent = info.unavailable ? 'Chưa tải được' : formatVND(limit);
 
     const valCurrent = $('val-current-debt');
-    if (valCurrent) valCurrent.textContent = formatVND(current);
+    if (valCurrent) valCurrent.textContent = info.unavailable ? 'Chưa tải được' : formatVND(current);
 
     const valAvail = $('val-avail-debt');
-    if (valAvail) valAvail.textContent = formatVND(avail);
+    if (valAvail) valAvail.textContent = info.unavailable ? 'Chưa tải được' : formatVND(avail);
 
     const alertEl = $('dp-debt-overdue-alert');
     if (alertEl) {
@@ -254,86 +210,25 @@
   }
 
   /* ── Load Catalog for Dealer Customer Group ─────────────── */
-  async function loadCatalogForDealer(dealer) {
+  async function loadCatalogForDealer() {
     const grid = $('dp-products-grid');
-    if (grid) grid.innerHTML = '<p class="dp-loading">Đang tải bảng giá và danh mục sản phẩm cho đại lý…</p>';
-
     try {
-      // 1. Fetch effective price list for dealer's customer group
-      const cGroup = dealer.customerGroup || 'DAI_LY_CAP_1';
-      const plRes = await Auth.apiFetch(`/price-lists/effective?customerGroup=${encodeURIComponent(cGroup)}`);
-      const plResult = await plRes.json();
-
-      if (!plRes.ok || !plResult.success || !plResult.data) {
-        state.effectivePriceList = null;
-        state.catalog = [];
-        renderCatalog();
-        return;
+      const res = await Auth.apiFetch('/portal/catalog');
+      const result = await res.json();
+      if (!res.ok || !result.success || !Array.isArray(result.data)) {
+        throw new Error(result.message || 'Không tải được sản phẩm và bảng giá');
       }
-
-      state.effectivePriceList = plResult.data;
-      const priceItems = state.effectivePriceList.items || [];
-      const priceMap = new Map();
-      priceItems.forEach((it) => {
-        if (it.product?.id) {
-          priceMap.set(it.product.id, it);
-        } else if (it.productId) {
-          priceMap.set(it.productId, it);
-        }
-      });
-
-      // 2. Fetch active products
-      const prodRes = await Auth.apiFetch('/products?active=true');
-      const prodResult = await prodRes.json();
-      state.allProducts = (prodRes.ok && prodResult.success ? prodResult.data : []) || [];
-
-      // 3. FILTER: ONLY products that exist in the dealer's customer group price list!
-      state.catalog = [];
-      state.categories.clear();
-
-      for (const prod of state.allProducts) {
-        const pli = priceMap.get(prod.id);
-        if (!pli) continue; // Skip products not in price list!
-
-        const basePrice = Number(pli.price) || 0;
-        const categoryName = prod.category?.name || 'Khác';
-        state.categories.add(categoryName);
-
-        // Fetch unit conversions if available, or build standard units
-        let units = [{ unitName: prod.baseUnit || 'cái', factor: 1, price: basePrice }];
-        try {
-          const convRes = await Auth.apiFetch(`/products/${prod.id}/unit-conversions`);
-          const convResult = await convRes.json();
-          if (convRes.ok && convResult.success && Array.isArray(convResult.data)) {
-            convResult.data.forEach((c) => {
-              const factor = Number(c.factor) || 1;
-              units.push({
-                unitName: c.unitName || c.unit,
-                factor: factor,
-                price: Math.round(basePrice * factor),
-              });
-            });
-          }
-        } catch {
-          // ignore conversion fetch error
-        }
-
-        state.catalog.push({
-          id: prod.id,
-          sku: prod.sku,
-          name: prod.name,
-          categoryName,
-          baseUnit: prod.baseUnit || 'cái',
-          basePrice,
-          units,
-        });
-      }
-
+      state.catalog = result.data.map((product) => ({
+        ...product,
+        categoryName: product.categoryName || 'Khác',
+        units: product.units || [],
+      })).filter((product) => product.units.length > 0);
+      state.categories = new Set(state.catalog.map((product) => product.categoryName));
       renderCategoryPills();
       renderCatalog();
     } catch (err) {
-      console.error('Error loading catalog:', err);
-      if (grid) grid.innerHTML = `<div class="dp-empty-state"><p>Lỗi tải sản phẩm: ${escHtml(err.message)}</p></div>`;
+      state.catalog = [];
+      if (grid) grid.innerHTML = `<div class="dp-empty-state"><p>${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -682,7 +577,7 @@
     const debtNotice = $('dp-confirm-debt-notice');
     if (debtNotice) {
       debtNotice.innerHTML = `
-        <p>Trạng thái đơn: <strong style="color: var(--amber)">Chờ duyệt (RECORDED)</strong>.</p>
+        <p>Trạng thái đơn: <strong style="color: var(--amber)">Chờ duyệt</strong>.</p>
         <p>Sau khi gửi, nhân viên kinh doanh phụ trách sẽ kiểm tra công nợ và duyệt xuất hàng cho quý đại lý.</p>
       `;
     }
@@ -697,6 +592,11 @@
   }
 
   async function submitDealerOrder() {
+    if (!state.currentDealer || !state.cart.length || !state.debtInfo || state.debtInfo.isBlocked
+        || state.debtInfo.hasOverdueDebt || state.currentDealer.locked || state.currentDealer.active === false) {
+      showToast(state.debtInfo?.blockReason || 'Đại lý hiện chưa thể gửi đơn hàng.', 'error');
+      return;
+    }
     const btn = $('btn-confirm-send');
     if (btn) {
       btn.disabled = true;
@@ -708,7 +608,6 @@
     const note = $('dp-order-note')?.value?.trim() || '';
 
     const payload = {
-      dealerId: state.currentDealer.id,
       deliveryPointId: deliveryPointId ? Number(deliveryPointId) : null,
       expectedDeliveryDate: deliveryDate || null,
       note: note ? `[Đại lý tự đặt qua cổng] ${note}` : '[Đại lý tự đặt qua cổng]',
@@ -720,7 +619,7 @@
     };
 
     try {
-      const res = await Auth.apiFetch('/orders', {
+      const res = await Auth.apiFetch('/portal/orders', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -767,7 +666,7 @@
         <div><strong>Mã đơn hàng:</strong> ${escHtml(order?.orderCode || '')}</div>
         <div><strong>Đại lý:</strong> ${escHtml(state.currentDealer?.name || '')}</div>
         <div><strong>Tổng tiền:</strong> ${formatVND(order?.totalAmount || 0)}</div>
-        <div><strong>Trạng thái:</strong> <span style="color: var(--amber); font-weight: 700;">Chờ duyệt (RECORDED)</span></div>
+        <div><strong>Trạng thái:</strong> <span style="color: var(--amber); font-weight: 700;">Chờ duyệt</span></div>
       `;
     }
 
@@ -859,4 +758,3 @@
     }
   }
 })();
-

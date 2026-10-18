@@ -584,7 +584,7 @@ public class DealerServiceImpl implements DealerService {
         // S4-04: Chỉ hiện với đại lý mà nhân viên được phân công
         validateSalesAccess(dealer);
 
-        List<String> excludedStatuses = List.of("CANCELLED", "REJECTED", "PENDING_APPROVAL");
+        List<String> excludedStatuses = List.of("CANCELLED", "REJECTED", "PENDING_APPROVAL", "DRAFT", "RETURNED", "EXPIRED");
 
         // Tìm đơn hàng hợp lệ gần nhất của đại lý
         List<Order> latestOrders = orderRepository.findByDealerIdAndStatusNotInOrderByCreatedAtDesc(dealerId, excludedStatuses);

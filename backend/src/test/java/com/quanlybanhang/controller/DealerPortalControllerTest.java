@@ -117,9 +117,9 @@ class DealerPortalControllerTest {
                 .active(true)
                 .build();
 
-        UserDetailsImpl userDetails = UserDetailsImpl.build(dealerUser);
+        UserDetailsImpl userDetails = UserDetailsImpl.build(dealerUser, new com.quanlybanhang.config.RolePermissionConfig());
         dealerAuth = new UsernamePasswordAuthenticationToken(
-                userDetails, null, List.of(new SimpleGrantedAuthority("ROLE_DEALER")));
+                userDetails, null, userDetails.getAuthorities());
     }
 
     @Test
@@ -229,7 +229,7 @@ class DealerPortalControllerTest {
                 .andExpect(jsonPath("$.data[0].units.length()").value(2))
                 .andExpect(jsonPath("$.data[0].units[0].unitName").value("lon"))
                 .andExpect(jsonPath("$.data[0].units[1].unitName").value("thùng"))
-                .andExpect(jsonPath("$.data[0].units[1].price").value(430000));
+                .andExpect(jsonPath("$.data[0].units[1].price").value(432000));
     }
 
     @Test

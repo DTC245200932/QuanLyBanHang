@@ -10,8 +10,8 @@ const ids = user => Array.from(menu.getMenuForUser(user), item => item.id);
 
 test('admin can reach implemented account, audit and catalog pages', () => {
   const visible = ids({roles:['ROLE_ADMIN'], permissions:['USER_VIEW', 'PRODUCT_VIEW', 'WAREHOUSE_VIEW', 'WAREHOUSE_IMPORT']});
-  for (const id of ['dashboard', 'profile', 'users', 'audit-logs', 'products', 'product-groups', 'suppliers', 'price-lists', 'discount-policies']) assert.ok(visible.includes(id));
-  for (const id of ['orders', 'customers', 'finance', 'reports']) assert.ok(!visible.includes(id));
+  for (const id of ['dashboard', 'profile', 'users', 'audit-logs', 'products', 'product-groups', 'suppliers', 'price-lists', 'discount-policies', 'orders', 'order-approval']) assert.ok(visible.includes(id));
+  for (const id of ['customers', 'finance', 'reports']) assert.ok(!visible.includes(id));
 });
 
 test('admin keeps management menus when the session has stale permissions', () => {

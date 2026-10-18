@@ -353,10 +353,10 @@ class RoleBasedAccessControlTest {
 
     @Test
     @WithMockUser(username = "admin_user", roles = {"ADMIN"})
-    @DisplayName("[ROLE_ADMIN] Quản trị viên được xem giá vốn (200 OK)")
-    void adminCanViewCostPrice() throws Exception {
+    @DisplayName("[ROLE_ADMIN] Giá vốn chỉ dành cho Quản lý kinh doanh (403 Forbidden)")
+    void adminCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
     }
 
     // ═══════════════════════════════════════════════════════════════

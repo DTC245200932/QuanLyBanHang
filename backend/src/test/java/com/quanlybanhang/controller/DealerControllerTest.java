@@ -46,6 +46,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(DealerController.class)
 @Import({SecurityConfig.class, RestAccessDeniedHandler.class, AuthEntryPointJwt.class, GlobalExceptionHandler.class})
 class DealerControllerTest {
+    @MockBean
+    private com.quanlybanhang.service.OrderService orderService;
+
 
     @Autowired
     private MockMvc mvc;
@@ -56,8 +59,6 @@ class DealerControllerTest {
     @MockBean
     private DealerDebtService dealerDebtService;
 
-    @MockBean
-    private com.quanlybanhang.service.OrderService orderService;
 
     @MockBean
     private UserDetailsServiceImpl userDetailsService;
@@ -65,8 +66,6 @@ class DealerControllerTest {
     @MockBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @MockBean
-    private com.quanlybanhang.service.OrderService orderService;
 
     @BeforeEach
     void passThroughJwtFilter() throws Exception {
@@ -518,21 +517,11 @@ class DealerControllerTest {
     @Test
     @DisplayName("[S4-04] Nhân viên kinh doanh tra cứu lịch sử mua hàng đại lý thành công (200 OK)")
     void getDealerPurchaseHistory_Success() throws Exception {
-        com.quanlybanhang.service.OrderService.DealerPurchaseHistoryResult historyResult =
-                new com.quanlybanhang.service.OrderService.DealerPurchaseHistoryResult(
-                        1L, "Đại lý Minh Phát", "DL01", 3,
-                        java.time.LocalDate.now().minusMonths(3), java.time.LocalDate.now(),
-                        List.of(), List.of()
-                );
-
-        when(orderService.getDealerPurchaseHistory(eq(1L), eq(3), eq("sales01")))
-                .thenReturn(historyResult);
-
+        var history = com.quanlybanhang.dto.response.DealerPurchaseHistoryResponse.builder()
+                .productId(10L).name("Sản phẩm đã mua").avgQty(new java.math.BigDecimal("5")).build();
+        when(dealerService.getDealerPurchaseHistory(1L, 3, false)).thenReturn(List.of(history));
         mvc.perform(get("/api/dealers/1/purchase-history?months=3").with(user("sales01").roles("SALES")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.dealerName").value("Đại lý Minh Phát"))
-                .andExpect(jsonPath("$.data.dealerCode").value("DL01"))
-                .andExpect(jsonPath("$.data.months").value(3));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].productId").value(10))
+                .andExpect(jsonPath("$.data[0].avgQty").value(5));
     }
 }

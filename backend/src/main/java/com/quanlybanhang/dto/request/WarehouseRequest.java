@@ -37,4 +37,3 @@ public class WarehouseRequest {
     /** Trạng thái: true = Hoạt động, false = Ngừng hoạt động */
     private Boolean active;
 }
-

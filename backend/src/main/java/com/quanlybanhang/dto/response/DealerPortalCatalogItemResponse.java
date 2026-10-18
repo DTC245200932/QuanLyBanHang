@@ -41,4 +41,3 @@ public class DealerPortalCatalogItemResponse {
         private BigDecimal price;
     }
 }
-

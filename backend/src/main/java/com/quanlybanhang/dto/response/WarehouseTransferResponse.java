@@ -43,4 +43,3 @@ public class WarehouseTransferResponse {
 
     private List<WarehouseTransferItemResponse> items;
 }
-

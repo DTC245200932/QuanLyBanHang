@@ -10,4 +10,3 @@ public class OrderCannotBeCancelledException extends RuntimeException {
         super(message);
     }
 }
-

@@ -34,4 +34,3 @@ public class OrderLifecycleStepResponse {
     private String operator;
     private String note;
 }
-

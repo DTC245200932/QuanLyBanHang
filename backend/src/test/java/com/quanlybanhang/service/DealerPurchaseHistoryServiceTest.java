@@ -264,4 +264,3 @@ class DealerPurchaseHistoryServiceTest {
         assertThrows(IllegalArgumentException.class, () -> dealerService.getDealerPurchaseHistory(999L, 3, false));
     }
 }
-

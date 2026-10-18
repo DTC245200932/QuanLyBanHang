@@ -18,4 +18,3 @@ public class DealerWarehouseAssignRequest {
     @NotNull(message = "ID kho phục vụ mặc định không được để trống")
     private Long warehouseId;
 }
-

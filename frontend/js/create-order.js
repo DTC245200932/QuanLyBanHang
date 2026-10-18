@@ -480,7 +480,7 @@
     });
 
     // Show "add all" button only if there's anything not yet added
-    const hasUnadded = historyItems.some((i) => !currentProductIds.has(i.productId));
+    const hasUnadded = historyItems.some((i) => i.inLastOrder && !currentProductIds.has(i.productId));
     addAllBtn.hidden = !hasUnadded;
   }
 
@@ -489,59 +489,29 @@
    * Uses avgQty (rounded, min 1) as default quantity suggestion.
    */
   async function addHistoryProduct(hItem) {
-    // If already in order, just bump qty by avg
-    const existing = state.items.find((it) => it.productId === hItem.productId);
-    if (existing) {
-      const bump = Math.max(1, Math.round(hItem.avgQty || 1));
-      existing.qty += bump;
-      renderItems();
-      updateSummary();
-      refreshPricingPreview();
-      showToast(`Đã tăng số lượng «${hItem.name}» lên ${existing.qty}.`, 'success');
-      return;
-    }
-
-    // Fetch product details + unit conversions
     try {
-      const [prodRes, unitsRes] = await Promise.all([
-        Auth.apiFetch(`/products/${hItem.productId}`),
-        Auth.apiFetch(`/products/${hItem.productId}/unit-conversions`),
-      ]);
-      const [prodResult, unitsResult] = await Promise.all([
-        prodRes.json(),
-        unitsRes.json(),
-      ]);
-
-      if (!prodRes.ok || !prodResult.success) throw new Error('Không tải được thông tin sản phẩm');
-
-      const product = prodResult.data;
-      let units = [{ id: null, unitName: product.unit || 'cái', conversionFactor: 1 }];
-      if (unitsRes.ok && unitsResult.success && Array.isArray(unitsResult.data) && unitsResult.data.length) {
-        units = unitsResult.data;
-        state.productCache[product.id] = units;
+      const res = await Auth.apiFetch(`/products/${hItem.productId}`);
+      const result = await res.json();
+      if (!res.ok || !result.success || result.data.active === false) {
+        throw new Error(result.message || 'Sản phẩm đã ngừng kinh doanh');
       }
-
-      const suggestedQty = Math.max(1, Math.round(hItem.avgQty || 1));
-      const item = {
-        _key: ++itemSeq,
-        productId: product.id,
-        sku: product.sku || product.code || '',
-        name: product.name,
-        unitConversions: units,
-        selectedUnit: units[0],
-        qty: suggestedQty,
-        basePrice: Number(product.sellingPrice || product.price || 0),
-        unitPrice: 0,
-        discountAmount: 0,
-      };
+      const existing = state.items.find((item) => item.productId === hItem.productId);
+      const previousQuantity = existing?.qty || 0;
+      await addItem(result.data);
+      const item = state.items.find((line) => line.productId === hItem.productId);
+      if (!item) return;
+      const historicalUnit = hItem.lastOrderUnit || hItem.unit;
+      const unit = item.unitConversions.find((value) => value.unitName === historicalUnit);
+      if (!existing && unit) item.selectedUnit = unit;
+      item.qty = previousQuantity + Math.max(1, Number(hItem.lastOrderQuantity || hItem.avgQty || 1));
       item.unitPrice = getUnitPrice(item);
-      state.items.push(item);
+      item.floorPrice = getUnitFloorPrice(item);
       renderItems();
       updateSummary();
-      refreshPricingPreview();
-      showToast(`Đã thêm «${product.name}» (SL: ${suggestedQty}) vào đơn.`, 'success');
-    } catch (err) {
-      showToast(err.message || 'Không thêm được sản phẩm từ lịch sử.', 'error');
+      scheduleInventoryCheck(item, true);
+      await refreshPricingPreview();
+    } catch (error) {
+      showToast(error.message, 'error');
     }
   }
 
@@ -550,7 +520,7 @@
     const btn = $('btn-add-all-history');
     btn.disabled = true;
     const currentIds = new Set(state.items.map((it) => it.productId));
-    const toAdd = historyItems.filter((i) => !currentIds.has(i.productId));
+    const toAdd = historyItems.filter((i) => i.inLastOrder && !currentIds.has(i.productId));
     for (const hItem of toAdd) {
       await addHistoryProduct(hItem);
     }
@@ -1482,7 +1452,7 @@
       const createdOrder = result.data;
 
       closeConfirmModal();
-      clearDraft();
+      await clearDraft();
 
       // Reset form
       $('order-form').reset();
@@ -1504,8 +1474,9 @@
       renderItems();
       updateSummary();
 
-      // Open print modal with order data
-      openPrintModal(createdOrder);
+      showToast(`Đã tạo đơn ${createdOrder.orderCode || createdOrder.id}.`, 'success');
+      // Đơn đã được lưu; lỗi tải PDF không được biến thành lỗi tạo đơn.
+      OrderPdf.open(createdOrder).catch((error) => showToast(error.message, 'error'));
     } catch (err) {
       const msgEl = $('confirm-msg');
       msgEl.textContent = err.message || 'Lỗi không xác định. Vui lòng thử lại.';

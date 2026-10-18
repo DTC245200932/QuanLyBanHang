@@ -2,6 +2,7 @@ package com.quanlybanhang.controller;
 
 import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
+import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.PriceListRepository;
@@ -80,6 +81,7 @@ public class DealerPortalController {
      * S4-10: Lấy thông tin hồ sơ đại lý đang đăng nhập kèm nhân viên phụ trách, công nợ và điểm giao hàng.
      */
     @GetMapping("/profile")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse getProfile(Principal principal) {
         Dealer dealer = resolveAuthenticatedDealer(principal, null);
         DealerDebtResponse debt = dealerDebtService.getDealerDebtInfo(dealer);
@@ -122,11 +124,12 @@ public class DealerPortalController {
      * Quy tắc bảo mật: Không hiển thị sản phẩm hoặc bảng giá của các nhóm khách hàng khác.
      */
     @GetMapping({"/catalog", "/products"})
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('PRODUCT_VIEW'))")
     public ApiResponse getCatalog(Principal principal) {
         Dealer dealer = resolveAuthenticatedDealer(principal, null);
         CustomerGroup group = dealer.getCustomerGroup();
         if (group == null) {
-            group = CustomerGroup.DAI_LY_CAP_1;
+            throw new IllegalArgumentException("Đại lý chưa được gán nhóm khách hàng");
         }
 
         // 1. Tìm bảng giá có hiệu lực của nhóm khách hàng đại lý
@@ -175,7 +178,7 @@ public class DealerPortalController {
                     continue; // Đã thêm đơn vị cơ sở ở trên
                 }
                 BigDecimal factor = uc.getConversionFactor() != null ? uc.getConversionFactor() : BigDecimal.ONE;
-                BigDecimal unitPrice = uc.getPrice() != null ? uc.getPrice() : baseSellingPrice.multiply(factor);
+                BigDecimal unitPrice = baseSellingPrice.multiply(factor);
                 units.add(DealerPortalCatalogItemResponse.PackagingUnitInfo.builder()
                         .unitName(uc.getUnitName())
                         .factor(factor)
@@ -204,6 +207,7 @@ public class DealerPortalController {
      * S4-10: Tra cứu thông tin công nợ, hạn mức và công nợ còn lại của đại lý trước khi gửi đơn.
      */
     @GetMapping("/debt")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse getDebt(Principal principal) {
         Dealer dealer = resolveAuthenticatedDealer(principal, null);
         DealerDebtResponse debt = dealerDebtService.getDealerDebtInfo(dealer);
@@ -218,6 +222,7 @@ public class DealerPortalController {
      * - Đơn gửi lên LUÔN ở trạng thái Chờ duyệt (PENDING_APPROVAL), do nhân viên phụ trách xác nhận.
      */
     @PostMapping("/orders")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_CREATE'))")
     public ResponseEntity<ApiResponse> createOrder(
             @Valid @RequestBody DealerPortalOrderRequest request,
             Principal principal) {
@@ -228,7 +233,9 @@ public class DealerPortalController {
                 .deliveryPointId(request.getDeliveryPointId())
                 .expectedDeliveryDate(request.getExpectedDeliveryDate())
                 .note(request.getNote())
-                .items(request.getItems())
+                .items(request.getItems().stream().map(item -> OrderItemRequest.builder()
+                        .productId(item.getProductId()).productCode(item.getProductCode())
+                        .unit(item.getUnit()).quantity(item.getQuantity()).note(item.getNote()).build()).toList())
                 .build();
 
         OrderResponse response = orderService.createOrder(orderRequest, principal.getName());
@@ -240,6 +247,7 @@ public class DealerPortalController {
      * S4-10, S5-01: Lấy danh sách đơn hàng của riêng đại lý đăng nhập.
      */
     @GetMapping("/orders")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse getMyOrders(Principal principal) {
         if (principal == null) {
             throw new AccessDeniedException("Yêu cầu đăng nhập");
@@ -252,6 +260,7 @@ public class DealerPortalController {
      * S4-10, S5-01: Xem chi tiết một đơn hàng của riêng đại lý đăng nhập.
      */
     @GetMapping("/orders/{id}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse getMyOrderDetail(@PathVariable Long id, Principal principal) {
         if (principal == null) {
             throw new AccessDeniedException("Yêu cầu đăng nhập");
@@ -264,6 +273,7 @@ public class DealerPortalController {
      * S4-10: Lấy danh sách điểm giao hàng của đại lý đăng nhập.
      */
     @GetMapping("/delivery-points")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse getDeliveryPoints(Principal principal) {
         Dealer dealer = resolveAuthenticatedDealer(principal, null);
         List<DealerDeliveryPointResponse> points = deliveryPointService.getDeliveryPointsByDealer(dealer.getId());

@@ -527,4 +527,3 @@ class SupplierImportVoucherServiceTest {
         assertThat(result.get(1).getBaseQuantity()).isEqualByComparingTo("120");
     }
 }
-

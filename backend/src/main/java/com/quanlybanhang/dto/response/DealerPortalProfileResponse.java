@@ -48,4 +48,3 @@ public class DealerPortalProfileResponse {
     // Điểm giao hàng
     private List<DealerDeliveryPointResponse> deliveryPoints;
 }
-

@@ -20,4 +20,3 @@ public class WarehouseTransferReceiveRequest {
      */
     private List<@Valid WarehouseTransferReceiveItemRequest> items;
 }
-

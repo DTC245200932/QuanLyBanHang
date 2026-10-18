@@ -42,4 +42,3 @@ public class WarehouseLocationRequest {
     /** Trạng thái vị trí: true = Đang dùng, false = Tạm ngừng */
     private Boolean active;
 }
-

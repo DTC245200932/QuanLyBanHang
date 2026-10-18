@@ -48,8 +48,9 @@ public class RolePermissionConfig {
                 REPORT_SALES, REPORT_INVENTORY, REPORT_FINANCE
         ));
         defaults.put(ERole.ROLE_WAREHOUSE_MANAGER, EnumSet.of(
-                PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, WAREHOUSE_IMPORT,
+                PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, WAREHOUSE_MANAGE, WAREHOUSE_IMPORT,
                 WAREHOUSE_EXPORT, WAREHOUSE_ADJUST, WAREHOUSE_APPROVE,
+                WAREHOUSE_TRANSFER,
                 REPORT_INVENTORY
         ));
         defaults.put(ERole.ROLE_SALES, EnumSet.of(
@@ -58,7 +59,7 @@ public class RolePermissionConfig {
         ));
         defaults.put(ERole.ROLE_WAREHOUSE_STAFF, EnumSet.of(
                 PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, WAREHOUSE_IMPORT,
-                WAREHOUSE_EXPORT
+                WAREHOUSE_EXPORT, WAREHOUSE_TRANSFER
         ));
         defaults.put(ERole.ROLE_ACCOUNTANT, EnumSet.of(
                 PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, FINANCE_VIEW_DEBT,
@@ -67,6 +68,9 @@ public class RolePermissionConfig {
         defaults.put(ERole.ROLE_VIEWER, EnumSet.of(
                 PRODUCT_VIEW, ORDER_VIEW, WAREHOUSE_VIEW, CUSTOMER_VIEW,
                 REPORT_SALES, REPORT_INVENTORY
+        ));
+        defaults.put(ERole.ROLE_DEALER, EnumSet.of(
+                ORDER_VIEW, ORDER_CREATE, PRODUCT_VIEW
         ));
         return defaults;
     }
@@ -143,6 +147,15 @@ public class RolePermissionConfig {
         }
         if (role == ERole.ROLE_SALES && newPermissions.contains(WAREHOUSE_ADJUST)) {
             throw new IllegalArgumentException("Nhân viên kinh doanh không được phép sửa tồn kho");
+        }
+        if (role == ERole.ROLE_DEALER && (newPermissions.contains(WAREHOUSE_ADJUST)
+                || newPermissions.contains(WAREHOUSE_IMPORT)
+                || newPermissions.contains(WAREHOUSE_EXPORT)
+                || newPermissions.contains(WAREHOUSE_APPROVE))) {
+            throw new IllegalArgumentException("Đại lý không được phép thao tác kho");
+        }
+        if (role == ERole.ROLE_SALES && newPermissions.contains(WAREHOUSE_TRANSFER)) {
+            throw new IllegalArgumentException("Nhân viên kinh doanh không được phép thực hiện chuyển kho");
         }
         Set<Permission> permissions = newPermissions.isEmpty()
                 ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(newPermissions);

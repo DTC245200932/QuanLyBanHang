@@ -7,10 +7,12 @@ import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.exception.DealerDebtOverdueException;
 import com.quanlybanhang.model.Dealer;
 import com.quanlybanhang.model.Order;
+import com.quanlybanhang.model.OrderItem;
 import com.quanlybanhang.model.Product;
 import com.quanlybanhang.repository.DealerRepository;
 import com.quanlybanhang.repository.OrderRepository;
 import com.quanlybanhang.repository.ProductRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +20,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -29,6 +35,7 @@ import com.quanlybanhang.model.Warehouse;
 import com.quanlybanhang.model.WarehouseInventory;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
@@ -72,6 +79,8 @@ class OrderServiceTest {
 
     @Mock
     private com.quanlybanhang.repository.WarehouseInventoryRepository inventoryRepository;
+    @Mock
+    private com.quanlybanhang.repository.UserRepository userRepository;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -87,6 +96,11 @@ class OrderServiceTest {
                 .unit("lon")
                 .price(new BigDecimal("19000"))
                 .build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -354,6 +368,173 @@ class OrderServiceTest {
         assertThat(response.getCurrentDebt()).isEqualByComparingTo(new BigDecimal("5000000"));
         assertThat(response.getDebtLimit()).isEqualByComparingTo(new BigDecimal("50000000"));
     }
+
+    // ==========================================
+    // STORY S4-10: CỔNG TỰ ĐẶT HÀNG DÀNH CHO ĐẠI LÝ
+    // ==========================================
+
+    @Test
+    @DisplayName("S4-10: Đơn hàng do Đại lý tạo luôn ở trạng thái Chờ duyệt (PENDING_APPROVAL)")
+    void createOrder_DealerUser_AlwaysSetsPendingApproval() {
+        Dealer dealer = Dealer.builder()
+                .id(100L)
+                .code("DL-PORTAL")
+                .name("Đại lý Portal")
+                .debtLimit(new BigDecimal("100000000"))
+                .locked(false)
+                .build();
+
+        com.quanlybanhang.model.User dealerUser = com.quanlybanhang.model.User.builder()
+                .id(99L)
+                .username("dealer.portal")
+                .dealer(dealer)
+                .build();
+
+        // Setup SecurityContextHolder as ROLE_DEALER
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("dealer.portal", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_DEALER")))
+        );
+
+        orderService.setUserRepository(userRepository);
+        when(userRepository.findByUsername("dealer.portal")).thenReturn(Optional.of(dealerUser));
+        mockEffectivePrices(dealer);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "lon")).thenReturn(BigDecimal.ONE);
+        when(dealerDebtService.getDealerDebtInfo(dealer)).thenReturn(
+                DealerDebtResponse.builder()
+                        .dealerId(100L)
+                        .currentDebt(BigDecimal.ZERO)
+                        .debtLimit(new BigDecimal("100000000"))
+                        .remainingLimit(new BigDecimal("100000000"))
+                        .build()
+        );
+        when(dealerDebtService.checkProjectedDebtExceedsLimit(eq(dealer), any(BigDecimal.class), eq(BigDecimal.ZERO)))
+                .thenReturn(false);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderRequest request = OrderRequest.builder()
+                .dealerId(100L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(BigDecimal.TEN)
+                        .price(new BigDecimal("19000"))
+                        .build()))
+                .build();
+
+        OrderResponse response = orderService.createOrder(request, "dealer.portal");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("PENDING_APPROVAL");
+        assertThat(response.getRequiresApproval()).isTrue();
+        assertThat(response.getApprovalReason()).contains("Đại lý tự đặt qua cổng");
+    }
+
+    @Test
+    @DisplayName("S4-10: NVKD phụ trách đại lý có quyền xác nhận đơn hàng đại lý tự đặt")
+    void approveOrder_AssignedSales_Succeeds() {
+        com.quanlybanhang.model.User salesUser = com.quanlybanhang.model.User.builder()
+                .id(50L)
+                .username("sales.assigned")
+                .build();
+
+        Dealer dealer = Dealer.builder()
+                .id(100L)
+                .code("DL-PORTAL")
+                .name("Đại lý Portal")
+                .assignedUser(salesUser)
+                .build();
+
+        Order order = Order.builder()
+                .id(1001L)
+                .orderCode("DH-DEALER-01")
+                .dealer(dealer)
+                .status("PENDING_APPROVAL")
+                .requiresApproval(true)
+                .approvalReason("Đơn hàng tự đặt từ Cổng Đại lý, chờ NVKD phụ trách xác nhận")
+                .build();
+
+        when(orderRepository.findById(1001L)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // NVKD phụ trách xác nhận
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("sales.assigned", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+        );
+
+        OrderResponse response = orderService.approveOrder(1001L, "sales.assigned");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("RECORDED");
+        assertThat(response.getApprovedBy()).isEqualTo("sales.assigned");
+    }
+
+    @Test
+    @DisplayName("S4-10: NVKD không phụ trách đại lý bị chặn xác nhận đơn hàng (AccessDeniedException)")
+    void approveOrder_UnassignedSales_ThrowsAccessDenied() {
+        com.quanlybanhang.model.User salesAssigned = com.quanlybanhang.model.User.builder()
+                .id(50L)
+                .username("sales.assigned")
+                .build();
+
+        Dealer dealer = Dealer.builder()
+                .id(100L)
+                .code("DL-PORTAL")
+                .name("Đại lý Portal")
+                .assignedUser(salesAssigned)
+                .build();
+
+        Order order = Order.builder()
+                .id(1001L)
+                .orderCode("DH-DEALER-01")
+                .dealer(dealer)
+                .status("PENDING_APPROVAL")
+                .requiresApproval(true)
+                .approvalReason("Đơn hàng tự đặt từ Cổng Đại lý, chờ NVKD phụ trách xác nhận")
+                .build();
+
+        when(orderRepository.findById(1001L)).thenReturn(Optional.of(order));
+
+        // NVKD khác cố tình xác nhận
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("sales.other", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+        );
+
+        assertThatThrownBy(() -> orderService.approveOrder(1001L, "sales.other"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh");
+    }
+
+    @Test
+    @DisplayName("S4-10: Đại lý chỉ xem được đơn hàng của chính mình (RLS)")
+    void getOrderByIdForDealer_WrongDealer_ThrowsAccessDenied() {
+        Dealer dealerA = Dealer.builder().id(100L).code("DL-A").build();
+        Dealer dealerB = Dealer.builder().id(200L).code("DL-B").build();
+
+        com.quanlybanhang.model.User userA = com.quanlybanhang.model.User.builder()
+                .id(1L)
+                .username("dealerA")
+                .dealer(dealerA)
+                .build();
+
+        Order orderB = Order.builder()
+                .id(500L)
+                .orderCode("DH-B")
+                .dealer(dealerB)
+                .build();
+
+        orderService.setUserRepository(userRepository);
+        when(userRepository.findByUsername("dealerA")).thenReturn(Optional.of(userA));
+        when(orderRepository.findById(500L)).thenReturn(Optional.of(orderB));
+
+        assertThatThrownBy(() -> orderService.getOrderByIdForDealer(500L, "dealerA"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("chính đại lý mình");
+    }
+
     private void mockEffectivePrices(Dealer dealer) {
         var priceList = com.quanlybanhang.model.PriceList.builder()
                 .id(1L).customerGroup(dealer.getCustomerGroup())
@@ -698,5 +879,283 @@ class OrderServiceTest {
         assertThat(available).isEqualByComparingTo(new BigDecimal("2.0000"));
         assertThat(available).isGreaterThanOrEqualTo(BigDecimal.ZERO);
     }
-}
 
+    // ==================== S5-06: Giữ chỗ tồn kho khi duyệt đơn & tự động nhả tồn khi huỷ/hết hạn ====================
+
+    @Test
+    @DisplayName("[S5-06] Duyệt đơn hàng: Tồn tương ứng được giữ chỗ tự động và thời hạn giữ chỗ được thiết lập")
+    void approveOrder_SufficientStock_ReservesInventoryAndSetsExpiry() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").build();
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(101L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("100.0000"))
+                .reservedQuantity(new BigDecimal("10.0000"))
+                .build();
+
+        OrderItem item = OrderItem.builder()
+                .product(biaHeineken)
+                .unit("thùng")
+                .quantity(new BigDecimal("2"))
+                .conversionFactor(new BigDecimal("24.0000"))
+                .baseQuantity(new BigDecimal("48.0000"))
+                .baseUnit("lon")
+                .price(new BigDecimal("435000"))
+                .totalAmount(new BigDecimal("870000"))
+                .build();
+
+        Order order = Order.builder()
+                .id(99L)
+                .orderCode("DH-S506-01")
+                .status("PENDING_APPROVAL")
+                .warehouse(warehouse)
+                .requiresApproval(true)
+                .inventoryReserved(false)
+                .items(new java.util.ArrayList<>(List.of(item)))
+                .build();
+        item.setOrder(order);
+
+        when(orderRepository.findById(99L)).thenReturn(Optional.of(order));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Phê duyệt với reservationHours = 24h
+        OrderResponse response = orderService.approveOrder(99L, 24, "sales_mgr");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("RECORDED");
+        assertThat(response.getInventoryReserved()).isTrue();
+        assertThat(response.getReservedAt()).isNotNull();
+        assertThat(response.getReservationExpiresAt()).isNotNull();
+        // Thời hạn giữ chỗ ~ 24h sau
+        assertThat(response.getReservationExpiresAt()).isAfter(response.getReservedAt());
+
+        // Kiểm tra tồn giữ chỗ trong kho tăng từ 10 lên 58 (10 + 48)
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("58.0000"));
+        verify(inventoryRepository).save(inventory);
+        verify(auditLogService).logAction(eq("INVOICE"), eq("DH-S506-01"), eq("APPROVE"), eq("PENDING_APPROVAL"),
+                contains("Giữ chỗ tồn: Thành công"), eq("sales_mgr"));
+    }
+
+    @Test
+    @DisplayName("[S5-06] Duyệt đơn hàng: Tồn khả dụng không đủ -> Bị chặn, ném ngoại lệ và hoàn lại toàn bộ giao dịch")
+    void approveOrder_InsufficientStock_ThrowsExceptionAndRollsBack() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").build();
+        // Kho có 50 lon vật lý nhưng đã giữ chỗ 30 lon -> tồn khả dụng chỉ còn 20 lon
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(101L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("50.0000"))
+                .reservedQuantity(new BigDecimal("30.0000"))
+                .build();
+
+        OrderItem item = OrderItem.builder()
+                .product(biaHeineken)
+                .unit("thùng")
+                .quantity(new BigDecimal("2")) // 2 thùng = 48 lon > 20 lon khả dụng
+                .conversionFactor(new BigDecimal("24.0000"))
+                .baseQuantity(new BigDecimal("48.0000"))
+                .baseUnit("lon")
+                .price(new BigDecimal("435000"))
+                .totalAmount(new BigDecimal("870000"))
+                .build();
+
+        Order order = Order.builder()
+                .id(99L)
+                .orderCode("DH-S506-FAIL")
+                .status("PENDING_APPROVAL")
+                .warehouse(warehouse)
+                .requiresApproval(true)
+                .inventoryReserved(false)
+                .items(new java.util.ArrayList<>(List.of(item)))
+                .build();
+        item.setOrder(order);
+
+        when(orderRepository.findById(99L)).thenReturn(Optional.of(order));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+
+        // Phê duyệt phải ném IllegalArgumentException
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                orderService.approveOrder(99L, "sales_mgr")
+        );
+
+        assertThat(ex.getMessage()).contains("Vượt tồn khả dụng");
+        assertThat(ex.getMessage()).contains("Tồn khả dụng hiện tại: 20 lon");
+        assertThat(ex.getMessage()).contains("Số lượng tối đa có thể đặt là 0 thùng");
+
+        // Tồn kho không bị thay đổi
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("30.0000"));
+        verify(inventoryRepository, never()).save(any());
+        // Đơn hàng không bị lưu thành RECORDED
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("[S5-06] Huỷ đơn hàng: Tồn giữ chỗ được nhả tự động và hạn giữ chỗ được xoá")
+    void cancelOrder_ReleasesReservedInventoryAutomatically() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").build();
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(101L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("100.0000"))
+                .reservedQuantity(new BigDecimal("48.0000"))
+                .build();
+
+        OrderItem item = OrderItem.builder()
+                .product(biaHeineken)
+                .unit("thùng")
+                .quantity(new BigDecimal("2"))
+                .conversionFactor(new BigDecimal("24.0000"))
+                .baseQuantity(new BigDecimal("48.0000"))
+                .baseUnit("lon")
+                .build();
+
+        Order order = Order.builder()
+                .id(100L)
+                .orderCode("DH-S506-CANCEL")
+                .status("RECORDED")
+                .warehouse(warehouse)
+                .inventoryReserved(true)
+                .reservedAt(java.time.LocalDateTime.now().minusHours(2))
+                .reservationExpiresAt(java.time.LocalDateTime.now().plusHours(46))
+                .items(new java.util.ArrayList<>(List.of(item)))
+                .build();
+        item.setOrder(order);
+
+        when(orderRepository.findById(100L)).thenReturn(Optional.of(order));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponse response = orderService.cancelOrder(100L, "sales01");
+
+        assertThat(response.getStatus()).isEqualTo("CANCELLED");
+        assertThat(order.getInventoryReserved()).isFalse();
+        assertThat(order.getReservationExpiresAt()).isNull();
+        // Reserved quantity giảm từ 48 về 0
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+        verify(inventoryRepository).save(inventory);
+        verify(auditLogService).logAction(eq("INVOICE"), eq("DH-S506-CANCEL"), eq("CANCEL"), eq("RECORDED"),
+                contains("Huỷ bởi người dùng sales01"), eq("sales01"));
+    }
+
+    @Test
+    @DisplayName("[S5-06] Đơn quá hạn giữ chỗ: releaseExpiredReservations tự động nhả tồn và đánh dấu EXPIRED")
+    void releaseExpiredReservations_AutomaticallyReleasesStockAndMarksExpired() {
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").build();
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(101L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("100.0000"))
+                .reservedQuantity(new BigDecimal("48.0000"))
+                .build();
+
+        OrderItem item = OrderItem.builder()
+                .product(biaHeineken)
+                .unit("thùng")
+                .quantity(new BigDecimal("2"))
+                .conversionFactor(new BigDecimal("24.0000"))
+                .baseQuantity(new BigDecimal("48.0000"))
+                .baseUnit("lon")
+                .build();
+
+        Order expiredOrder = Order.builder()
+                .id(105L)
+                .orderCode("DH-S506-EXPIRED")
+                .status("RECORDED")
+                .warehouse(warehouse)
+                .inventoryReserved(true)
+                .reservedAt(java.time.LocalDateTime.now().minusHours(50))
+                .reservationExpiresAt(java.time.LocalDateTime.now().minusHours(2)) // Đã hết hạn 2 tiếng trước
+                .items(new java.util.ArrayList<>(List.of(item)))
+                .build();
+        item.setOrder(expiredOrder);
+
+        when(orderRepository.findExpiredReservations(any(java.time.LocalDateTime.class)))
+                .thenReturn(List.of(expiredOrder));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(inventory));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        int releasedCount = orderService.releaseExpiredReservations();
+
+        assertThat(releasedCount).isEqualTo(1);
+        assertThat(expiredOrder.getStatus()).isEqualTo("EXPIRED");
+        assertThat(expiredOrder.getInventoryReserved()).isFalse();
+        assertThat(expiredOrder.getNote()).contains("Đơn hàng quá hạn giữ chỗ");
+        // Tồn giữ chỗ nhả về 0
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+        verify(inventoryRepository).save(inventory);
+        verify(auditLogService).logAction(eq("INVOICE"), eq("DH-S506-EXPIRED"), eq("EXPIRE_RESERVATION"), eq("RECORDED"),
+                contains("tự động nhả tồn"), eq("system"));
+    }
+
+    @Test
+    @DisplayName("[S5-06] Tạo đơn cần duyệt (PENDING_APPROVAL): KHÔNG giữ chỗ tồn kho cho tới khi được duyệt")
+    void createOrder_RequiresApproval_DoesNotReserveUntilApproved() {
+        Dealer dealer = Dealer.builder()
+                .id(2L)
+                .code("DL-PENDING")
+                .name("Đại lý Chờ Duyệt")
+                .locked(false)
+                .customerGroup(com.quanlybanhang.model.CustomerGroup.KHACH_LE)
+                .build();
+
+        Warehouse warehouse = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").build();
+        WarehouseInventory inventory = WarehouseInventory.builder()
+                .id(101L)
+                .warehouse(warehouse)
+                .product(biaHeineken)
+                .baseQuantity(new BigDecimal("100.0000"))
+                .reservedQuantity(new BigDecimal("0.0000"))
+                .build();
+
+        when(dealerRepository.findById(2L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
+        when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
+
+        // Giá sàn: 20,000/lon * 24 = 480,000/thùng. Đặt 400,000/thùng -> Dưới giá sàn -> PENDING_APPROVAL
+        com.quanlybanhang.model.PriceList priceList = com.quanlybanhang.model.PriceList.builder()
+                .id(1L)
+                .code("BG-TEST")
+                .customerGroup(com.quanlybanhang.model.CustomerGroup.KHACH_LE)
+                .active(true)
+                .items(List.of(com.quanlybanhang.model.PriceListItem.builder()
+                        .product(biaHeineken)
+                        .sellingPrice(new BigDecimal("19000"))
+                        .floorPrice(new BigDecimal("20000"))
+                        .build()))
+                .build();
+        when(priceListRepository.findEffectivePriceLists(eq(com.quanlybanhang.model.CustomerGroup.KHACH_LE), any()))
+                .thenReturn(List.of(priceList));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderRequest request = OrderRequest.builder()
+                .orderCode("DH-S506-BELOW-FLOOR")
+                .dealerId(2L)
+                .warehouseId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("thùng")
+                        .quantity(new BigDecimal("2"))
+                        .price(new BigDecimal("400000")) // dưới giá sàn
+                        .build()))
+                .build();
+
+        OrderResponse response = orderService.createOrder(request, "sales01");
+
+        assertThat(response.getStatus()).isEqualTo("PENDING_APPROVAL");
+        assertThat(response.getRequiresApproval()).isTrue();
+        assertThat(response.getInventoryReserved()).isFalse();
+        // Không giữ chỗ khi đang chờ duyệt
+        assertThat(inventory.getReservedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+        verify(inventoryRepository, never()).save(any());
+    }
+}

@@ -33,6 +33,11 @@ public class WarehouseInventoryResponse {
     private BigDecimal baseQuantity;
 
     /**
+     * Số lượng hàng đang trên đường chuyển đến kho này theo đơn vị cơ sở.
+     */
+    private BigDecimal inTransitQuantity;
+
+    /**
      * Tên đơn vị cơ sở (vd: "lon").
      */
     private String baseUnit;
@@ -56,6 +61,15 @@ public class WarehouseInventoryResponse {
      * Quy đổi tương đương tồn khả dụng theo các đơn vị tính khác (vd: "thùng": 7.0, "lốc": 28.0) (S4-03).
      */
     private Map<String, BigDecimal> convertedAvailableViews;
+
+    // Vị trí lưu kho (S5-03: Kệ / Khu)
+    private Long locationId;
+    private String locationCode;
+    private String locationName;
+    private String locationType;
+    private String zoneName;
+    private String shelfName;
+    private String locationDisplay;
 
     private LocalDateTime updatedAt;
 }

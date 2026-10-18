@@ -1,8 +1,88 @@
-# SaleStock API — Sprint 1
+# SaleStock API — Sprint 1–5
 
 Base URL: `http://localhost:8080/api`
 
 Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
+
+## Hợp đồng đã đồng bộ ngày 18/10/2026
+
+Phần này cập nhật hợp đồng của bản ghép sprint 1–5. Các giới hạn nghiệm thu được ghi ở
+[`status.md`](../status.md) và [báo cáo rà soát](../docs/SPRINT_1_5_AUDIT_20261018.md).
+
+### Cổng đại lý và tài khoản liên kết
+
+Tài khoản `ROLE_DEALER` phải có `dealerId` gắn với hồ sơ đại lý. Quản trị viên chọn
+đại lý ở form tài khoản; `GET /admin/assignment-options` trả thêm `dealers` gồm
+`id`, `code`, `name`. `POST/PUT /admin/users` nhận `dealerId`; thiếu liên kết khi
+có vai trò đại lý trả 400. Thông tin tài khoản trả lại có `dealerId/dealerCode/dealerName`.
+
+| Method | Endpoint | Quyền |
+|---|---|---|
+| GET | `/portal/profile` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/catalog` | DEALER + PRODUCT_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/debt` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/delivery-points` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
+| GET | `/portal/orders` | DEALER + ORDER_VIEW; dữ liệu giới hạn theo đại lý liên kết |
+| GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW; truy cập đại lý khác trả 403 |
+| POST | `/portal/orders` | DEALER + ORDER_CREATE; server xác định đại lý và giá |
+
+API cổng cũng cho ADMIN hỗ trợ theo liên kết tài khoản; không có tham số chọn tùy ý
+đại lý trên các endpoint này. Tài khoản DEALER bị chặn API nội bộ như `/products`,
+`/orders`, `/dealers`, `/warehouse/**`; sử dụng hợp đồng cổng để đọc dữ liệu của mình.
+Xác thực, hồ sơ cá nhân và ảnh sản phẩm có xác thực vẫn sử dụng API tương ứng.
+
+`catalog` trả `id/sku/name/categoryId/categoryName/baseUnit/basePrice/units`;
+mỗi đơn vị có `unitName/factor/price`. Giá đơn vị = giá nhóm hiệu lực × hệ số,
+không lấy giá quy cách chung và không trả giá vốn. Đại lý chưa có nhóm trả 400;
+không tự coi là nhóm cấp 1.
+
+Body đặt hàng hoặc đặt lại các dòng đã chọn:
+
+```json
+{
+  "deliveryPointId": 1,
+  "expectedDeliveryDate": "2026-10-20",
+  "note": "Giao buổi sáng",
+  "items": [{ "productId": 10, "unit": "thùng", "quantity": 2 }]
+}
+```
+
+Không có endpoint `/portal/orders/reorder`. FE chọn dòng/đơn vị/số lượng rồi gọi
+một lần `POST /portal/orders`. Server bỏ giá do client gửi, tự tính giá/chiết khấu
+và lấy đại lý của tài khoản; đơn của DEALER luôn là `PENDING_APPROVAL`, chưa giữ tồn.
+Giá và tổng sau chiết khấu khi lưu là kết quả phía server. FE hiện còn thiếu preview
+chiết khấu cho giỏ/đặt lại; không xem tổng giỏ hiện tại là nguồn xác nhận kế toán.
+
+### Danh sách, duyệt đơn và lịch sử
+
+`GET /orders` nhận `status`, `dealerId`, `salesUserId` (alias `assignedUserId`,
+`employeeId`, `userId`), `territoryId`, `createdBy`, `keyword/search`,
+`approvalRequired`, `approvalReason`, `startDate/endDate` (alias `fromDate/toDate`,
+`dateFrom/dateTo`). `page` bắt đầu 0, `size` từ 1–100. Không gửi phân trang thì giữ
+list đầy đủ tương thích các trang hiện có.
+
+Response trả `data` và alias `content` là danh sách, `totalAmount/totalOrders/totalElements`
+của toàn tập lọc; có `totalPages` khi yêu cầu phân trang. Tổng tiền được tính trước
+khi cắt trang. API không được đổi sang một hợp đồng phân trang khác chỉ để phục vụ
+một trong hai màn hình.
+
+- `PUT /orders/{id}/status`: vòng đời kho; `PATCH /orders/{id}/status`: duyệt đơn
+  `APPROVED/REJECTED/RETURNED`. Request hỗ trợ `status`, `note`, `comment`, `reason`.
+- Từ chối/trả lại phải có ý kiến; hủy phải có lý do. `PUT /orders/{id}/approve`
+  nhận tùy chọn `reservationHours`. Hạn giữ chỗ mặc định hiện là 48 giờ khi không
+  có thời điểm yêu cầu/ngày giao tương lai.
+- `GET /dealers/{id}/purchase-history?months=3` trả mảng `productId/sku/code/name/unit/avgQty`,
+  `lastOrderQuantity/lastOrderUnit/inLastOrder/lastOrderCode`. Không tổng hợp các đơn
+  `DRAFT/PENDING_APPROVAL/REJECTED/RETURNED/CANCELLED/EXPIRED`.
+- `GET /orders/{id}/pdf` trả `application/pdf`, tùy chọn `download=true`;
+  `/orders/{id}/barcode` trả PNG. FE gọi PDF bằng JWT rồi hiển thị blob của đơn đã lưu.
+  Tải PDF lỗi không có nghĩa tạo đơn lỗi và không được gửi lại POST tạo đơn.
+
+### Dữ liệu nhạy cảm
+
+`GET /finance/cost-price` và `/finance/profit-margin` chỉ cho `ROLE_SALES_MANAGER`.
+Tài khoản chỉ có ADMIN bị 403 theo yêu cầu backlog. Các vấn đề ma trận/phạm vi còn
+lại của API nội bộ chưa được xem là nghiệm thu xong; xem bảng trạng thái.
 
 ## Xác thực
 
@@ -362,20 +442,111 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| POST | `/warehouse/import` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu nhập kho (hỗ trợ nhập theo thùng/lốc, tự động quy về đơn vị cơ sở khi ghi sổ) |
-| POST | `/warehouse/export` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu xuất kho (quy về đơn vị cơ sở và kiểm tra tồn kho theo đơn vị cơ sở) |
-| POST | `/warehouse/adjust` | `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho |
-| GET | `/warehouse/inventory` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem tồn kho sổ sách theo đơn vị cơ sở (số lon) kèm bảng quy đổi tương đương theo thùng, lốc |
-| GET | `/warehouse/vouchers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách phiếu kho đã ghi sổ kèm thông tin đóng băng hệ số |
-| GET | `/warehouse/vouchers/{id}` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Chi tiết phiếu kho |
+| POST | `/warehouse/import` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu nhập kho từ nhà cung cấp (S5-04: hỗ trợ nhập theo thùng/lốc tự động quy về đơn vị cơ sở; khai báo NCC, số chứng từ, ngày nhập, kho nhập; ghi nhận số lô & HSD cho hàng có quản lý lô; `status="DRAFT"` hoặc `draft=true` để lưu nháp) |
+| POST | `/warehouse/import/draft` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Tạo nhanh phiếu nhập kho ở trạng thái Nháp (DRAFT) — phiếu nháp không ảnh hưởng tồn kho |
+| POST | `/warehouse/vouchers/{id}/confirm` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xác nhận phiếu nhập kho nháp — lúc này hệ thống mới thực hiện cộng tồn kho và cập nhật sổ tồn kho theo lô |
+| PUT | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Sửa phiếu nhập kho nháp (Phiếu đã xác nhận BỊ CHẶN sửa, trả lỗi yêu cầu lập phiếu điều chỉnh) |
+| DELETE | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xóa phiếu nhập kho nháp (Phiếu đã xác nhận BỊ CHẶN xóa) |
+| POST | `/warehouse/vouchers/{id}/adjust` | `WAREHOUSE_ADJUST` hoặc `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu điều chỉnh cho phiếu kho đã xác nhận (chỉ Quản lý kho và Quản trị viên) |
+| POST | `/warehouse/export` | `WAREHOUSE_EXPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu xuất kho (quy về đơn vị cơ sở và kiểm tra tồn kho theo đơn vị cơ sở) |
+| POST | `/warehouse/adjust` | `WAREHOUSE_ADJUST` hoặc `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho trực tiếp |
+| GET | `/warehouse/inventory` | `WAREHOUSE_VIEW` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem tồn kho sổ sách theo đơn vị cơ sở kèm bảng quy đổi tương đương theo thùng, lốc |
+| GET | `/warehouse/inventory/lots` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Xem danh sách tồn kho chi tiết theo từng Số lô và Hạn sử dụng (S5-04) |
+| GET | `/warehouse/vouchers` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Danh sách phiếu kho (hỗ trợ lọc theo `warehouseId`, `type`, `status`: DRAFT/CONFIRMED/ADJUSTED, `supplierId`) |
+| GET | `/warehouse/vouchers/{id}` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Chi tiết phiếu kho kèm thông tin NCC, số chứng từ, số lô, HSD và đóng băng quy đổi |
 
-`GET /warehouse/inventory?warehouseId={id}` chỉ đọc tồn đã ghi nhận. Kho chưa có
-tồn trả danh sách rỗng; endpoint không tạo tồn mặc định hoặc ghi dữ liệu khi đọc.
-Frontend chọn kho từ `/warehouse/options` và hiển thị 0 cho SKU chưa có bản ghi tồn.
-Khi chưa cấu hình kho, trang vẫn tải sản phẩm và đơn vị quy đổi, báo thiếu kho
-trên màn lập phiếu và tồn kho, đồng thời khoá nút ghi phiếu. Chưa có dữ liệu định
-mức tồn kho thì hiển thị `Chưa thiết lập`; không gán ngưỡng 200 hoặc nhãn an toàn
-cho tất cả SKU.
+### Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (S5-04)
+
+Dành cho vai trò **Nhân viên kho (`ROLE_WAREHOUSE_STAFF`)** và Quản lý kho (`ROLE_WAREHOUSE_MANAGER`):
+1. **Khai báo thông tin chứng từ khi xe dỡ hàng**:
+   - `supplierId` hoặc `supplierCode`: Nhà cung cấp giao hàng (phải tồn tại và đang hoạt động `active = true`).
+   - `documentNumber`: Số chứng từ đi kèm (số hóa đơn đỏ, biên bản giao nhận hàng).
+   - `voucherDate`: Ngày nhập kho thực tế (mặc định là thời điểm lập phiếu nếu không cung cấp).
+   - `warehouseId`: Kho nhập hàng (phải tồn tại và đang hoạt động).
+   - `voucherCode`: Mã phiếu nhập kho (nếu không cung cấp, hệ thống tự động sinh dạng `PNK-yyyyMMddHHmmssSSS`).
+2. **Nhập theo đơn vị tính bất kỳ, quy về đơn vị cơ sở khi ghi sổ**:
+   - Dòng hàng có thể chọn bất kỳ đơn vị tính nào đã được cấu hình trong bảng quy đổi của SKU (vd: thùng, lốc, bao, chai, lon...).
+   - Hệ thống tự động nhân với hệ số quy đổi đóng băng `conversionFactor` để tính `baseQuantity = quantity * factor`.
+   - Toàn bộ thông tin đơn vị, hệ số và số lượng cơ sở được đóng băng vĩnh viễn trên dòng phiếu kho.
+3. **Quản lý Số lô và Hạn sử dụng**:
+   - Trên sản phẩm (`Product`), cờ `manageLot = true` xác định mặt hàng được quản lý theo lô (vd: bia, nước giải khát, thực phẩm...).
+   - Khi lập phiếu nhập kho:
+     - Nếu `manageLot == true`: Bắt buộc phải nhập `lotNumber` (số lô) và `expiryDate` (hạn sử dụng dạng `YYYY-MM-DD`). Thiếu một trong hai sẽ bị chặn và báo lỗi rõ ràng. Nếu có `manufacturingDate` (ngày sản xuất), hạn sử dụng phải sau ngày sản xuất.
+     - Nếu `manageLot == false`: Số lô và hạn sử dụng không bắt buộc.
+4. **Vòng đời phiếu: Nháp vs Xác nhận**:
+   - **Phiếu nháp (`status = "DRAFT"` hoặc `draft: true`)**:
+     - Lưu lại thông tin kiểm đếm tại cửa kho.
+     - **Hoàn toàn KHÔNG cộng tồn kho** (`WarehouseInventory` và `WarehouseLotInventory` không đổi).
+     - Cho phép chỉnh sửa thông tin, đổi hàng hóa, đổi số lượng qua `PUT /api/warehouse/vouchers/{id}`.
+     - Cho phép xóa bỏ phiếu nháp qua `DELETE /api/warehouse/vouchers/{id}`.
+   - **Xác nhận phiếu (`POST /api/warehouse/vouchers/{id}/confirm`)**:
+     - Sau khi xe dỡ hàng xong và kiểm đếm đủ, nhân viên kho bấm xác nhận.
+     - Hệ thống kiểm tra hợp lệ toàn bộ phiếu, sau đó **cộng tồn kho tổng** và **cập nhật số lượng vào sổ theo dõi tồn theo lô** (`WarehouseLotInventory`).
+     - Trạng thái phiếu chuyển thành `CONFIRMED`.
+5. **Phiếu đã xác nhận không sửa được, chỉ lập phiếu điều chỉnh**:
+   - Mọi hành vi cố tình gọi `PUT` hoặc `DELETE` trên phiếu đã ở trạng thái `CONFIRMED` / `RECORDED` đều bị hệ thống chặn với ngoại lệ `IllegalStateException` ("Phiếu đã xác nhận không sửa được, chỉ lập phiếu điều chỉnh").
+   - Khi có sai sót (hàng vỡ, hàng trả lại...): Quản lý kho (`ROLE_WAREHOUSE_MANAGER`) hoặc Admin (`ROLE_ADMIN`) sử dụng API `POST /api/warehouse/vouchers/{id}/adjust` để lập phiếu điều chỉnh:
+     - Phiếu điều chỉnh tự động liên kết đến `referenceVoucherId` và `referenceVoucherCode`.
+     - Ghi nhận `adjustmentReason` (lý do điều chỉnh).
+     - Điều chỉnh lại số lượng tồn kho theo chênh lệch và cập nhật trạng thái phiếu gốc sang `ADJUSTED`.
+
+### Danh sách API Chuyển kho nội bộ (S5-07)
+
+Hỗ trợ Nhân viên kho lập phiếu chuyển kho nội bộ để điều hàng từ kho thừa sang kho thiếu mà số liệu hai bên đều chính xác, minh bạch.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| POST | `/warehouse/transfers` (hoặc `/warehouse/transfer`) | `WAREHOUSE_TRANSFER`, `WAREHOUSE_EXPORT`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu chuyển kho nội bộ. Trừ tồn kho tại kho xuất, ghi nhận hàng đang trên đường (`inTransitQuantity`), CHƯA cộng vào kho nhập |
+| GET | `/warehouse/transfers` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_VIEW`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách phiếu chuyển kho (hỗ trợ lọc `fromWarehouseId`, `toWarehouseId`, `status`) |
+| GET | `/warehouse/transfers/{id}` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_VIEW`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Chi tiết phiếu chuyển kho |
+| POST | `/warehouse/transfers/{id}/receive` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_IMPORT`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Kho đến xác nhận nhận hàng. Nhận đủ hoặc thực nhận; tồn kho đến mới được cộng; chênh lệch bắt buộc nhập lý do |
+| POST | `/warehouse/transfers/{id}/cancel` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_APPROVE`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Hủy phiếu chuyển kho khi đang trên đường (`IN_TRANSIT`); hoàn tồn cho kho xuất và xóa hàng trên đường |
+
+#### Quy tắc nghiệp vụ chuyển kho (S5-07):
+1. **Lập phiếu chuyển**:
+   - Chọn kho xuất (`fromWarehouseId`), kho nhập (`toWarehouseId`), danh sách sản phẩm, số lượng và đơn vị tính (thùng, lốc, lon...).
+   - Kho xuất và kho nhập không được trùng nhau. Cả hai kho phải đang hoạt động (`active = true`).
+   - Kiểm tra tồn kho cơ sở tại kho xuất: nếu tồn kho không đủ để chuyển, hệ thống chặn với lỗi `400 Bad Request` ("Kho xuất không đủ tồn kho...").
+   - Khi tạo thành công: tồn kho tại kho xuất bị trừ ngay lập tức; hàng được ghi nhận là đang trên đường chuyển (`status = IN_TRANSIT`, `inTransitQuantity` tại kho nhập tăng lên tương ứng); tồn kho khả dụng (`baseQuantity`) tại kho nhập **CHƯA ĐƯỢC CỘNG**.
+2. **Xác nhận nhận hàng tại kho đến**:
+   - Chỉ được xác nhận khi phiếu ở trạng thái `IN_TRANSIT`.
+   - Nếu nhận đủ: `receivedQuantity` bằng số lượng xuất, tồn kho đến được cộng đủ, `inTransitQuantity` trừ về 0, trạng thái thành `COMPLETED`.
+   - Nếu có chênh lệch (`receivedQuantity != quantity`): **BẮT BUỘC** phải nhập lý do (`discrepancyReason`). Nếu không nhập lý do, hệ thống trả về lỗi `400 Bad Request` ("Chênh lệch khi nhận hàng bắt buộc phải nhập lý do").
+   - Tồn kho tại kho nhập chỉ được cộng đúng số lượng thực nhận (`receivedBaseQuantity`).
+3. **Hủy phiếu chuyển kho**:
+   - Chỉ áp dụng cho phiếu đang ở trạng thái `IN_TRANSIT`.
+   - Hoàn lại tồn kho cho kho xuất và xóa lượng đang trên đường tại kho nhập. Trạng thái phiếu thành `CANCELLED`.
+
+#### Ví dụ Request tạo phiếu chuyển kho (`POST /api/warehouse/transfers`):
+```json
+{
+  "fromWarehouseId": 1,
+  "toWarehouseId": 2,
+  "note": "Điều hàng giải phóng tồn kho Hà Nội chuyển về kho Hải Phòng",
+  "items": [
+    {
+      "productId": 10,
+      "unit": "thùng",
+      "quantity": 10,
+      "note": "Hàng chuyển đợt 1"
+    }
+  ]
+}
+```
+
+#### Ví dụ Request xác nhận nhận hàng có chênh lệch (`POST /api/warehouse/transfers/1/receive`):
+```json
+{
+  "note": "Đã nhận hàng đợt 1 tại kho Hải Phòng",
+  "items": [
+    {
+      "itemId": 1,
+      "receivedQuantity": 9,
+      "discrepancyReason": "Bể vỡ 1 thùng trong quá trình vận chuyển trên đường"
+    }
+  ]
+}
+```
 
 ### Danh sách API Danh mục nhà cung cấp (S2-09)
 
@@ -422,9 +593,14 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | POST | `/orders` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | POST | `/orders/line-item/pricing` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
 | POST | `/orders/calculate` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
-| PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng |
+| PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
+| GET | `/orders/{id}/tracking` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Theo dõi vòng đời đơn hàng (7 bước chuẩn, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS cho Nhân viên kinh doanh) |
+| PUT | `/orders/{id}/status` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Cập nhật trạng thái vòng đời đơn hàng; tự động trừ tồn kho và giải phóng lượng giữ chỗ khi chuyển sang `EXPORTED` |
 | PUT | `/orders/{id}/approve` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng bán dưới giá sàn (chuyển trạng thái sang `RECORDED`) |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng bán dưới giá sàn (chuyển trạng thái sang `REJECTED`) |
+| POST | `/orders/{id}/copy` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sao chép đơn cũ thành đơn mới ở trạng thái Nháp (áp lại giá và chiết khấu hiện hành) (S4-09) |
+| POST | `/orders/{id}/copy-to-draft` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sao chép các dòng hàng của đơn cũ vào bản nháp tạo đơn của người dùng (S4-09) |
+| POST | `/orders/dealer/{dealerId}/last-order-to-draft` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới (S4-04) |
 
 ### Xem danh sách đơn hàng kèm bộ lọc & Tổng tiền bán hàng toàn công ty (S4-07)
 
@@ -600,6 +776,161 @@ POST /api/orders/calculate
 - Khi tạo đơn thật bằng `POST /api/orders`, ngày giao dùng trường
   **`expectedDeliveryDate`** (`yyyy-MM-dd`), không dùng `deliveryDate`.
   Response đơn hàng trả lại `expectedDeliveryDate` cùng `deliveryPointId`.
+
+### Theo dõi Vòng đời & Huỷ đơn hàng (S4-06)
+
+Hỗ trợ Nhân viên kinh doanh theo dõi vòng đời đơn hàng trực quan và thực hiện huỷ đơn hàng khi phát sinh nhu cầu, tự động giải phóng lượng hàng giữ chỗ trong kho và ngăn chặn huỷ sai quy trình khi hàng đã rời kho.
+
+#### 1. Chuẩn hóa Vòng đời đơn hàng 7 bước
+Vòng đời đơn hàng được quản trị qua 7 bước chuẩn:
+1. **Nháp (`DRAFT`)**: Đơn mới tạo hoặc đang lưu nháp.
+2. **Chờ duyệt (`PENDING_APPROVAL`)**: Đơn có dòng hàng bán dưới giá sàn hoặc chính sách đặc biệt, chờ Quản lý kinh doanh duyệt.
+3. **Đã duyệt (`APPROVED` / `RECORDED`)**: Đơn đã được duyệt hoặc ghi nhận hợp lệ, hệ thống tự động giữ chỗ tồn kho tương ứng (`reservedQuantity`) trong kho chỉ định.
+4. **Đang soạn hàng (`PICKING`)**: Kho nhận lệnh và tiến hành lấy hàng, đóng gói.
+5. **Đã xuất (`EXPORTED`)**: Hàng hóa đã rời kho. Tại thời điểm này, hệ thống tự động trừ số lượng tồn thực tế (`quantity`) và giải phóng số lượng giữ chỗ (`reservedQuantity`).
+6. **Đã giao (`DELIVERED`)**: Đơn hàng đã giao thành công tới điểm giao hàng của đại lý.
+7. **Đóng (`CLOSED`)**: Đơn hàng hoàn tất chu trình bán và giao hàng.
+
+Nhánh rẽ kết thúc sớm:
+- **Huỷ (`CANCELLED`)**: Đơn bị huỷ bởi người có thẩm quyền trước khi xuất kho.
+- **Từ chối duyệt (`REJECTED`)**: Quản lý từ chối duyệt đơn bán dưới giá sàn.
+
+#### 2. Quy tắc huỷ đơn hàng & Giải phóng tồn kho giữ chỗ
+- **Lý do huỷ là bắt buộc**: Khi gọi `PUT /api/orders/{id}/cancel`, trường `reason` là bắt buộc (gửi qua JSON body `{ "reason": "Khách hàng đổi ý" }` hoặc query parameter `?reason=...`). Nếu để trống hoặc chỉ chứa khoảng trắng, hệ thống từ chối với mã lỗi `400 Bad Request`: `"Lý do huỷ đơn hàng không được để trống"`.
+- **Chặn huỷ đơn đã xuất kho**: Nếu đơn hàng đang ở trạng thái `EXPORTED`, `DELIVERED`, hoặc `CLOSED`, hệ thống nghiêm cấm huỷ và trả lỗi `400 Bad Request` kèm thông báo:
+  `"Đơn đã xuất kho thì không huỷ được, phải đi đường trả hàng"`
+  (Ngoại lệ `OrderCannotBeCancelledException`).
+- **Tự động hoàn lại hàng giữ chỗ**: Khi đơn hàng được duyệt, kho đã ghi nhận `reservedQuantity` cho từng sản phẩm. Khi huỷ đơn thành công, hệ thống tự động trừ `reservedQuantity` tương ứng, nâng lại số lượng tồn khả dụng (`availableQuantity`) và đặt `inventoryReserved = false`.
+- **Lưu vết đầy đủ vào Database**: Khi huỷ thành công, trạng thái đơn chuyển sang `CANCELLED`, lưu `cancelReason`, `cancelledBy`, `cancelledAt` vào bảng `orders`, ghi một bản ghi vào bảng `order_status_histories` và ghi một bản ghi vào bảng `audit_logs`.
+
+#### 3. Phân quyền dòng dữ liệu (Row-Level Security - RLS)
+- Nhân viên kinh doanh (`ROLE_SALES`) chỉ được phép xem danh sách, xem chi tiết, theo dõi tiến trình (`/orders/{id}/tracking`) và huỷ (`/orders/{id}/cancel`) những đơn hàng:
+  - Do chính tài khoản đó tạo ra (`order.createdBy == currentUser`), HOẶC
+  - Đơn hàng thuộc các đại lý được phân công phụ trách (`assignedDealers`).
+- Nếu Nhân viên kinh doanh cố tình truy cập hoặc huỷ đơn hàng của nhân sự khác / đại lý khác, hệ thống chặn lại với lỗi `403 Forbidden` (`"Bạn không có quyền truy cập hoặc huỷ đơn hàng này"`).
+- Quản lý (`ROLE_SALES_MANAGER`, `ROLE_ADMIN`) có quyền theo dõi và xử lý mọi đơn hàng trong toàn hệ thống.
+
+#### 4. API Theo dõi Vòng đời (`GET /api/orders/{id}/tracking`)
+**Response thành công (`200 OK`):**
+```json
+{
+  "success": true,
+  "message": "Lấy thông tin tiến trình đơn hàng thành công",
+  "data": {
+    "orderId": 12,
+    "orderCode": "DH-20261014-0012",
+    "dealerId": 1,
+    "dealerName": "Đại lý Cấp 1 Minh Phát",
+    "warehouseId": 1,
+    "warehouseName": "Kho Tổng Hà Nội",
+    "currentStatus": "PICKING",
+    "currentStatusDisplayName": "Đang soạn hàng",
+    "canCancel": true,
+    "isExported": false,
+    "inventoryReserved": true,
+    "cancelReason": null,
+    "cancelledBy": null,
+    "cancelledAt": null,
+    "steps": [
+      {
+        "stepIndex": 1,
+        "stepKey": "DRAFT",
+        "stepName": "Nháp",
+        "state": "COMPLETED",
+        "completedAt": "2026-10-14T08:00:00",
+        "completedBy": "sales1",
+        "note": "Khởi tạo đơn hàng"
+      },
+      {
+        "stepIndex": 2,
+        "stepKey": "PENDING_APPROVAL",
+        "stepName": "Chờ duyệt",
+        "state": "SKIPPED",
+        "completedAt": null,
+        "completedBy": null,
+        "note": null
+      },
+      {
+        "stepIndex": 3,
+        "stepKey": "APPROVED",
+        "stepName": "Đã duyệt",
+        "state": "COMPLETED",
+        "completedAt": "2026-10-14T08:05:00",
+        "completedBy": "sales1",
+        "note": "Ghi nhận đơn và đặt trước tồn kho"
+      },
+      {
+        "stepIndex": 4,
+        "stepKey": "PICKING",
+        "stepName": "Đang soạn hàng",
+        "state": "CURRENT",
+        "completedAt": "2026-10-14T08:30:00",
+        "completedBy": "kho_hn",
+        "note": "Đang gom hàng theo phiếu xuất"
+      },
+      {
+        "stepIndex": 5,
+        "stepKey": "EXPORTED",
+        "stepName": "Đã xuất kho",
+        "state": "UPCOMING",
+        "completedAt": null,
+        "completedBy": null,
+        "note": null
+      },
+      {
+        "stepIndex": 6,
+        "stepKey": "DELIVERED",
+        "stepName": "Đã giao hàng",
+        "state": "UPCOMING",
+        "completedAt": null,
+        "completedBy": null,
+        "note": null
+      },
+      {
+        "stepIndex": 7,
+        "stepKey": "CLOSED",
+        "stepName": "Đóng đơn",
+        "state": "UPCOMING",
+        "completedAt": null,
+        "completedBy": null,
+        "note": null
+      }
+    ],
+    "history": [
+      {
+        "id": 101,
+        "previousStatus": "DRAFT",
+        "newStatus": "APPROVED",
+        "statusDisplayName": "Đã duyệt",
+        "note": "Ghi nhận đơn và đặt trước tồn kho",
+        "changedBy": "sales1",
+        "changedAt": "2026-10-14T08:05:00"
+      },
+      {
+        "id": 102,
+        "previousStatus": "APPROVED",
+        "newStatus": "PICKING",
+        "statusDisplayName": "Đang soạn hàng",
+        "note": "Đang gom hàng theo phiếu xuất",
+        "changedBy": "kho_hn",
+        "changedAt": "2026-10-14T08:30:00"
+      }
+    ]
+  }
+}
+```
+
+#### 5. API Cập nhật trạng thái vòng đời (`PUT /api/orders/{id}/status`)
+**Request:**
+```json
+PUT /api/orders/12/status
+{
+  "status": "EXPORTED",
+  "note": "Đã hoàn thành xuất kho bàn giao bên vận chuyển"
+}
+```
+**Response (`200 OK`):**
+Trả thông tin đơn hàng `OrderResponse` với `status = "EXPORTED"`, `statusDisplayName = "Đã xuất"`, `isExported = true`, cập nhật tồn kho thực tế và lưu vết `order_status_histories`.
 
 ## Khai báo Bảng giá theo nhóm khách hàng & Thời gian hiệu lực (S2-10)
 
@@ -928,6 +1259,9 @@ Quy tắc nghiệp vụ:
 | GET | `/dealers/handover/pending` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Danh sách các đại lý đang cần bàn giao (có cờ `handoverRequired` do nhân viên bị khoá/nghỉ) |
 | GET | `/dealers/handover/history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Tra cứu lịch sử chuyển giao địa bàn và đại lý (phân trang, lọc theo người giao, người nhận, đại lý, khu vực, khoảng thời gian) |
 | GET | `/dealers/{id}/assignment-history` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_SALES`, `ROLE_VIEWER` | Lịch sử phân công của riêng một đại lý cụ thể |
+| GET | `/dealers/{id}/purchase-history?months={n}&lastOrderOnly={true/false}` | `ORDER_CREATE`, `ORDER_VIEW`, `CUSTOMER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Lấy lịch sử mua hàng trong N tháng gần nhất kèm số lượng bình quân (mặc định 3 tháng) và cờ `inLastOrder`. RLS: SALES chỉ xem đại lý mình phụ trách (S4-04) |
+| GET | `/dealers/{id}/last-order-items` | `ORDER_CREATE`, `ORDER_VIEW`, `CUSTOMER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Lấy danh sách nhóm hàng đã mua trong đơn hàng gần nhất của đại lý (S4-04) |
+| POST | `/dealers/{id}/last-order-to-draft` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Thêm nhanh cả nhóm hàng đã mua lần trước vào bản nháp tạo đơn của người dùng (S4-04) |
 
 #### Ví dụ Request Phân công một đại lý (`POST /api/dealers/1/assign`):
 ```json
@@ -1018,8 +1352,8 @@ Quy tắc nghiệp vụ:
 - `currentDebt` hiện được suy ra từ tổng đơn `RECORDED`. Chưa có sổ công nợ/phiếu thu/phân bổ thanh toán,
   nên chưa thể xác định số dư còn phải thu sau khi khách thanh toán. Không dùng kết quả này như số dư kế toán đã đối soát.
 - `debtLimit = 0` hiện không kích hoạt kiểm tra vượt hạn mức; `maxDebtDays = 0` không kích hoạt kiểm tra quá hạn.
-- Kiểm tra công nợ không thay thế kiểm tra tồn. Đơn được duyệt hiện chuyển sang `RECORDED`, chưa giữ chỗ tồn trong DB.
-- Chi tiết các API đã nối và các tiêu chí Sprint 4 chưa đạt: [Báo cáo Sprint 4](../docs/SPRINT_4_AUDIT_20261014.md).
+- Kiểm tra công nợ không thay thế kiểm tra tồn. Với tính năng S5-06, đơn hàng khi được Quản lý duyệt sẽ tự động kích hoạt giữ chỗ tồn kho trong DB (`reservedQuantity`), đảm bảo hàng không bị bán mất.
+- Chi tiết các API đã nối và các tiêu chí Sprint 4: [Báo cáo Sprint 4](../docs/SPRINT_4_AUDIT_20261014.md).
 
 #### Ví dụ Request kiểm tra công nợ (`POST /api/orders/check-debt`):
 ```json
@@ -1180,6 +1514,276 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) nhìn thấy tồn khả dụng
 }
 ```
 
+## Quản lý danh mục kho & Vị trí lưu kho (S5-03)
+
+Hệ thống cho phép Quản lý kho (`ROLE_WAREHOUSE_MANAGER`) và Quản trị viên (`ROLE_ADMIN`) khai báo nhiều kho, phân cấp vị trí lưu trữ (Khu vực `ZONE`, Kệ `SHELF`), gán sản phẩm vào vị trí, và gán kho phục vụ mặc định cho từng đại lý để phục vụ xuất danh sách soạn hàng (Picking List) chính xác.
+
+### Danh mục kho hàng
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/warehouses` | Xem danh mục kho | Lấy danh sách kho hàng kèm bộ lọc `keyword`, `active` |
+| GET | `/api/warehouses/{id}` | Xem chi tiết kho | Xem chi tiết thông tin kho hàng |
+| POST | `/api/warehouses` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Tạo mới kho hàng (mã, tên, địa chỉ, người phụ trách, trạng thái) |
+| PUT | `/api/warehouses/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Cập nhật thông tin kho hàng |
+| DELETE | `/api/warehouses/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Xóa kho hàng (tự động chuyển `active = false` nếu đã có phiếu kho hoặc vị trí lưu) |
+| GET | `/api/warehouses/{id}/locations` | Xem vị trí kho | Lấy danh sách vị trí lưu trữ của một kho |
+| GET | `/api/warehouses/{id}/tree` | Xem vị trí kho | Lấy cấu trúc cây phân cấp vị trí (Khu vực -> Kệ) |
+
+#### Tạo mới kho hàng:
+```http
+POST /api/warehouses
+Content-Type: application/json
+
+{
+  "code": "KHO-HN",
+  "name": "Kho Hà Nội",
+  "address": "123 Phố Huế, Q. Hai Bà Trưng, Hà Nội",
+  "managerUserId": 2,
+  "managerName": "Trần Quản Lý",
+  "active": true
+}
+```
+
+### Vị trí lưu kho (Khu vực / Kệ)
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/warehouse-locations` | Xem vị trí kho | Lấy danh sách vị trí kho kèm bộ lọc `warehouseId`, `locationType`, `parentId`, `active`, `keyword` |
+| GET | `/api/warehouse-locations/{id}` | Xem vị trí kho | Xem chi tiết vị trí, danh sách kệ con (nếu là Khu), và sản phẩm đang lưu |
+| POST | `/api/warehouse-locations` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Khai báo vị trí lưu mới (`ZONE` hoặc `SHELF` trực thuộc `ZONE`) |
+| PUT | `/api/warehouse-locations/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Cập nhật vị trí lưu kho |
+| DELETE | `/api/warehouse-locations/{id}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Xóa vị trí lưu kho (chặn xóa nếu có kệ con hoặc sản phẩm đang gán) |
+| POST | `/api/warehouse-locations/{locationId}/products` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Gán sản phẩm vào vị trí kệ/khu (hỗ trợ cờ `isDefault`) |
+| DELETE | `/api/warehouse-locations/{locationId}/products/{productId}` | `WAREHOUSE_MANAGE` hoặc `ADMIN` | Hủy gán sản phẩm khỏi vị trí kệ/khu |
+| GET | `/api/warehouse-locations/{locationId}/products` | Xem vị trí kho | Lấy danh sách sản phẩm được gán tại vị trí |
+
+#### Khai báo vị trí Kệ thuộc Khu:
+```http
+POST /api/warehouse-locations
+Content-Type: application/json
+
+{
+  "warehouseId": 1,
+  "code": "SHELF-A1",
+  "name": "Kệ A1 - Tầng 2",
+  "locationType": "SHELF",
+  "parentLocationId": 10,
+  "description": "Kệ đồ uống giải khát",
+  "active": true
+}
+```
+
+#### Gán sản phẩm vào Kệ lưu trữ:
+```http
+POST /api/warehouse-locations/15/products
+Content-Type: application/json
+
+{
+  "productId": 10,
+  "isDefault": true,
+  "note": "Kệ chính lấy hàng bia Sleek"
+}
+```
+
+### Danh sách soạn hàng (Picking List) & Gán kho mặc định đại lý
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/orders/{id}/picking-list` | `ORDER_VIEW` hoặc thủ kho | Xuất danh sách soạn hàng hiển thị chính xác tên Kệ, Khu vực, tồn khả dụng |
+| PUT | `/api/dealers/{id}/default-warehouse` | `DEALER_MANAGE`, `WAREHOUSE_MANAGE` hoặc `ADMIN` | Gán kho phục vụ mặc định cho đại lý |
+
+#### Ví dụ Response Picking List (`GET /api/orders/1001/picking-list`):
+```json
+{
+  "success": true,
+  "message": "Lấy danh sách soạn hàng thành công",
+  "data": {
+    "orderId": 1001,
+    "orderCode": "ORD-20261018-001",
+    "orderStatus": "PENDING",
+    "expectedDeliveryDate": "2026-10-20",
+    "dealerId": 5,
+    "dealerCode": "DL-HN",
+    "dealerName": "Đại lý Hà Nội",
+    "warehouseId": 1,
+    "warehouseCode": "KHO-HCM",
+    "warehouseName": "Kho Tổng TP.HCM",
+    "warehouseAddress": "Lô 5 KCN Tân Bình, TP.HCM",
+    "items": [
+      {
+        "orderItemId": 501,
+        "productId": 10,
+        "productCode": "SP-KEN330",
+        "productName": "Bia Heineken Sleek lon 330ml",
+        "unit": "thùng",
+        "quantity": 10,
+        "locationId": 202,
+        "locationCode": "SHELF-A1",
+        "shelfName": "Kệ A1 - Tầng 2",
+        "zoneName": "Khu Đồ Uống",
+        "locationDisplay": "Khu Đồ Uống > Kệ A1 - Tầng 2",
+        "availableQuantity": 500
+      }
+    ]
+  }
+}
+```
+
+### Giữ chỗ tồn kho khi đơn được duyệt & Tự động nhả tồn quá hạn / huỷ đơn (S5-06)
+
+Hỗ trợ Nhân viên kinh doanh có tồn được giữ chỗ ngay khi đơn được duyệt, để chắc chắn hàng đã chốt cho khách của mình không bị người khác bán mất.
+
+#### Quy tắc nghiệp vụ cốt lõi:
+1. **Giữ chỗ tồn kho ngay khi đơn được duyệt (`approveOrder`)**:
+   - Khi đơn hàng tạo ở trạng thái Chờ duyệt (`PENDING_APPROVAL`, ví dụ do bán dưới giá sàn hoặc vượt hạn mức công nợ), tồn kho chưa bị trừ và chưa bị giữ chỗ (`inventoryReserved = false`).
+   - Khi Quản lý kinh doanh (`ROLE_SALES_MANAGER`) hoặc Quản trị viên (`ROLE_ADMIN`) phê duyệt đơn (`PUT /api/orders/{id}/approve`):
+     - Hệ thống thực hiện kiểm tra tồn khả dụng tại kho phục vụ với cơ chế khóa bi quan (`LockModeType.PESSIMISTIC_WRITE` trên `warehouse_inventories`, khóa sắp xếp theo thứ tự `productId` tăng dần để tránh Deadlock).
+     - Nếu tồn khả dụng không đủ: ném ngoại lệ `IllegalArgumentException` kèm thông báo chi tiết, giao dịch `@Transactional` tự động hoàn lại (rollback) toàn bộ, không thay đổi trạng thái đơn và không giữ chỗ tồn kho.
+     - Nếu tồn khả dụng đủ: hệ thống tự động tăng `reservedQuantity` tại kho tương ứng với số lượng cơ sở của đơn hàng, chuyển trạng thái đơn sang `RECORDED` (Đã duyệt / Đã ghi sổ), đánh dấu `inventoryReserved = true`, gán thời điểm giữ chỗ `reservedAt` và thời điểm hết hạn giữ chỗ `reservationExpiresAt`.
+     - Cho phép truyền tùy chọn tham số `reservationHours` (số giờ giữ chỗ, ví dụ `?reservationHours=24` hoặc `?reservationHours=48`, mặc định cấu hình `app.order.default-reservation-hours: 24`).
+
+2. **Giao dịch `@Transactional` nguyên tử (Atomic Transaction & Rollback)**:
+   - Toàn bộ thao tác kiểm tra tồn kho, tăng tồn giữ chỗ (`reservedQuantity`), cập nhật trạng thái đơn hàng (`RECORDED`), và ghi nhật ký kiểm toán (`AuditLog`) diễn ra trong cùng một transaction `@Transactional`.
+   - Bất kỳ lỗi nào xảy ra giữa chừng đều làm toàn bộ giao dịch rollback, đảm bảo tính toàn vẹn dữ liệu tuyệt đối (không có tình trạng đơn đã duyệt nhưng chưa giữ chỗ, hoặc ngược lại).
+
+3. **Tự động giải phóng tồn kho khi huỷ hoặc từ chối đơn**:
+   - Khi huỷ đơn (`PUT /api/orders/{id}/cancel`) hoặc từ chối đơn (`PUT /api/orders/{id}/reject`): Nếu đơn đã được giữ chỗ (`inventoryReserved = true`), hệ thống khóa bi quan dòng tồn kho, hoàn trả chính xác số lượng tồn giữ chỗ (`reservedQuantity = max(0, reservedQuantity - reqBase)`), chuyển `inventoryReserved = false`, xóa `reservationExpiresAt` và ghi nhật ký kiểm toán.
+
+4. **Tự động quét và nhả tồn khi đơn quá hạn giữ chỗ (Background Scheduler)**:
+   - Background Task (`OrderReservationScheduler`) chạy định kỳ (mặc định mỗi phút một lần qua cấu hình `app.order.reservation-check-interval-ms:60000`).
+   - Scheduler tự động tìm tất cả các đơn hàng có `inventoryReserved = true` và `reservationExpiresAt <= now()`.
+   - Với mỗi đơn quá hạn: hệ thống tự động giải phóng tồn giữ chỗ (`reservedQuantity`), chuyển trạng thái đơn hàng sang `EXPIRED`, xóa cờ giữ chỗ, ghi chú tự động lý do hết hạn và lưu vết nhật ký kiểm toán (`AuditLog`).
+   - Cung cấp thêm API thủ công/chủ động: `POST /api/orders/release-expired-reservations` cho Quản lý kho, Quản lý kinh doanh và Admin kích hoạt kiểm tra và nhả tồn tức thì.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| PUT | `/orders/{id}/approve?reservationHours={hours}` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng chờ duyệt, giữ chỗ tồn kho tức thì và thiết lập thời hạn giữ chỗ |
+| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Huỷ đơn hàng; tự động hoàn trả tồn kho đang giữ chỗ nếu đơn đã giữ chỗ |
+| PUT | `/orders/{id}/reject` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng chờ duyệt; giải phóng tồn giữ chỗ nếu có |
+| POST | `/orders/release-expired-reservations` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Quét và tự động giải phóng tồn giữ chỗ cho các đơn hàng đã quá hạn giữ chỗ |
+
+#### Ví dụ Response phê duyệt đơn hàng kèm giữ chỗ tồn kho (`PUT /api/orders/1/approve?reservationHours=24`):
+```json
+{
+  "success": true,
+  "message": "Phê duyệt đơn hàng thành công",
+  "data": {
+    "id": 1,
+    "orderCode": "DH-20261018-0001",
+    "status": "RECORDED",
+    "inventoryReserved": true,
+    "reservedAt": "2026-10-18T07:00:00",
+    "reservationExpiresAt": "2026-10-19T07:00:00",
+    "approvedBy": "sales.manager",
+    "approvedAt": "2026-10-18T07:00:00",
+    "totalAmount": 15000000.0
+  }
+}
+```
+
+### Xem Lịch sử mua hàng & Thêm nhanh nhóm hàng mua lần trước vào đơn mới (S4-04)
+
+Hỗ trợ Nhân viên kinh doanh xem lịch sử mua hàng của đại lý ngay khi gõ đơn, giúp gợi ý đúng các mặt hàng khách hàng vẫn lấy đều đặn thay vì phải hỏi lại, đồng thời hỗ trợ thêm nhanh toàn bộ nhóm hàng đã mua trong đơn hàng gần nhất vào đơn mới.
+
+#### Quy tắc nghiệp vụ cốt lõi:
+1. **Lịch sử mua hàng 3 tháng gần nhất & Số lượng bình quân**:
+   - Khoảng thời gian mặc định: 3 tháng gần nhất tính từ thời điểm hiện tại (`months = 3`). Hỗ trợ tuỳ chỉnh số tháng qua tham số query `?months={n}`.
+   - Chỉ tổng hợp các đơn hàng hợp lệ đã ghi sổ (`RECORDED`). Đơn hàng bị huỷ (`CANCELLED`), bị từ chối (`REJECTED`) hoặc đang chờ duyệt (`PENDING_APPROVAL`) không được tính vào lịch sử mua hàng.
+   - Tính toán số lượng bình quân (`avgQty`): Số lượng bình quân mỗi đơn mà đại lý đã đặt cho từng sản phẩm trong kỳ (`totalQuantity / orderCount`), được quy về đơn vị đặt hàng phổ biến/gần nhất (ví dụ: thùng, lốc, lon, cái).
+2. **Thêm nhanh nhóm hàng mua lần trước**:
+   - Hệ thống tự động xác định đơn hàng hợp lệ gần nhất của đại lý và đánh dấu cờ `inLastOrder = true` cho các mặt hàng thuộc đơn này.
+   - Các mặt hàng thuộc đơn gần nhất được sắp xếp ưu tiên hiển thị lên đầu danh sách để nhân viên kinh doanh dễ nhận biết.
+   - Hỗ trợ lấy riêng nhóm hàng đơn gần nhất qua:
+     - `GET /api/dealers/{id}/purchase-history?lastOrderOnly=true`
+     - `GET /api/dealers/{id}/last-order-items`
+   - Hỗ trợ nạp thẳng nhóm hàng đơn gần nhất vào bản nháp tạo đơn qua:
+     - `POST /api/dealers/{id}/last-order-to-draft`
+     - `POST /api/orders/dealer/{dealerId}/last-order-to-draft`
+     Khi nạp vào bản nháp, hệ thống tự động áp lại bảng giá và chính sách chiết khấu sản lượng hiện hành theo S4-01/S4-09.
+3. **Phân quyền bảo mật theo đại lý phụ trách (Row-Level Security - RLS)**:
+   - Nhân viên kinh doanh (`ROLE_SALES`) **chỉ được phép xem lịch sử và thêm nhanh đơn của đại lý do chính mình phụ trách** (`dealer.assignedUser`).
+   - Nếu cố tình truy cập đại lý của nhân viên khác hoặc đại lý chưa phân công, hệ thống sẽ từ chối truy cập và trả về mã lỗi `403 Forbidden`.
+   - Quản lý kinh doanh (`ROLE_SALES_MANAGER`) và Quản trị viên (`ROLE_ADMIN`) có quyền xem lịch sử của mọi đại lý trên toàn hệ thống.
+
+#### Ví dụ Request lấy lịch sử mua hàng (`GET /api/dealers/1/purchase-history?months=3`):
+```http
+GET /api/dealers/1/purchase-history?months=3
+Authorization: Bearer <token_nhan_vien_sales>
+```
+Response:
+```json
+{
+  "success": true,
+  "message": "Lấy lịch sử mua hàng của đại lý thành công",
+  "data": [
+    {
+      "productId": 10,
+      "sku": "HEINEKEN-LON",
+      "code": "HEINEKEN-LON",
+      "name": "Bia Heineken Lon 330ml",
+      "unit": "thùng",
+      "avgQty": 15,
+      "orderCount": 2,
+      "totalQuantity": 30,
+      "lastOrderDate": "2026-10-10",
+      "lastOrderQuantity": 10,
+      "lastOrderUnit": "thùng",
+      "inLastOrder": true,
+      "lastOrderCode": "DH-20261010-001"
+    },
+    {
+      "productId": 20,
+      "sku": "TIGER-LON",
+      "code": "TIGER-LON",
+      "name": "Bia Tiger Lon 330ml",
+      "unit": "thùng",
+      "avgQty": 5,
+      "orderCount": 1,
+      "totalQuantity": 5,
+      "lastOrderDate": "2026-10-10",
+      "lastOrderQuantity": 5,
+      "lastOrderUnit": "thùng",
+      "inLastOrder": true,
+      "lastOrderCode": "DH-20261010-001"
+    }
+  ]
+}
+```
+
+#### Ví dụ Request thêm nhanh nhóm hàng mua lần trước vào bản nháp (`POST /api/dealers/1/last-order-to-draft`):
+```http
+POST /api/dealers/1/last-order-to-draft
+Authorization: Bearer <token_nhan_vien_sales>
+```
+Response:
+```json
+{
+  "success": true,
+  "message": "Đã thêm nhanh nhóm hàng mua lần trước vào bản nháp tạo đơn",
+  "data": {
+    "dealerId": 1,
+    "deliveryPointId": 2,
+    "deliveryDate": null,
+    "note": "",
+    "items": [
+      {
+        "_key": "copy-1001-0",
+        "productId": 10,
+        "selectedUnitId": "thùng",
+        "qty": 10,
+        "basePrice": 0,
+        "unitPrice": 0,
+        "floorPrice": 0,
+        "manualPrice": false,
+        "discountAmount": 0
+      }
+    ],
+    "_seq": 1
+  }
+}
+```
+
 ## Bảy vai trò
 
 - `ROLE_ADMIN`: quản trị tài khoản và hệ thống; không mặc nhiên xem giá vốn.
@@ -1241,3 +1845,455 @@ demo dùng cùng transaction và rollback khi lỗi. Chạy lại không nhân �
 xóa dữ liệu. Số dư công nợ/định mức tồn kho chưa có nguồn dữ liệu vẫn trả theo
 hợp đồng API hiện tại. Xem [README](../README.md#5-tài-khoản-đăng-nhập) để chạy
 và xem danh sách tài khoản đầy đủ.
+
+---
+
+## Các API Bổ sung Sprint 4 (Quản lý Đơn hàng Nâng cao & Phê duyệt)
+
+### 1. Phê duyệt đơn hàng vượt hạn mức / bán dưới giá sàn (S4-05)
+- **PATCH `/api/orders/{id}/status`**: Cập nhật trạng thái duyệt đơn (`APPROVED`, `REJECTED`, `RETURNED`).
+  - Quyền: `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+  - Body: `{ "status": "APPROVED|REJECTED|RETURNED", "comment": "Ý kiến phê duyệt" }`.
+  - Quy tắc: Khi `REJECTED` hoặc `RETURNED`, bắt buộc phải nhập `comment` (nếu thiếu hoặc rỗng sẽ trả về `400 Bad Request`).
+  - Đơn được duyệt mới chuyển sang trạng thái giữ chỗ tồn kho (`RECORDED`) và cho phép xuất kho.
+  - Lịch sử phê duyệt được ghi nhận vào nhật ký kiểm toán hệ thống (`audit_logs`) không cho phép chỉnh sửa/xoá.
+- **PUT `/api/orders/{id}/approve`**: Phê duyệt nhanh đơn hàng kèm ý kiến.
+- **PUT `/api/orders/{id}/reject`**: Từ chối đơn hàng kèm ý kiến bắt buộc.
+- **PUT `/api/orders/{id}/return`**: Trả lại đơn để nhân viên kinh doanh chỉnh sửa kèm ý kiến bắt buộc.
+
+### 2. Huỷ đơn hàng có lý do bắt buộc (S4-06)
+- **PUT `/api/orders/{id}/cancel`**: Huỷ đơn hàng.
+  - Quyền: `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+  - Query params hoặc Body: `reason` (hoặc JSON `{ "reason": "Lý do huỷ" }`). Bắt buộc phải có lý do (không được để trống).
+  - Quy tắc chặn: Không được phép huỷ đơn hàng đã xuất kho (`EXPORTED`) hoặc đã giao hàng (`DELIVERED`).
+  - Lưu trữ: Lưu `cancelReason`, `cancelledBy`, `cancelledAt` vào bảng `orders` và ghi nhật ký kiểm toán.
+
+### 3. Tra cứu lịch sử mua hàng của Đại lý (S4-04)
+- **GET `/api/dealers/{id}/purchase-history?months=3`**: Tra cứu các mặt hàng đại lý thường mua trong N tháng gần nhất.
+  - Quyền: `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER`.
+  - Hỗ trợ nhân viên kinh doanh gợi ý nhanh sản phẩm khi lên đơn mới.
+  - Response: Danh sách sản phẩm kèm tổng số lượng quy về đơn vị chuẩn, đơn vị cơ sở, số lượng trung bình tháng, số lần mua, giá mua gần nhất và top 5 đơn hàng gần nhất.
+
+### 4. Sao chép đơn hàng (S4-09)
+- **POST `/api/orders/{id}/copy`**: Tạo đơn hàng mới từ một đơn hàng đã có trong quá khứ.
+  - Quyền: `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+  - Quy tắc: Giữ nguyên đại lý, điểm giao hàng và số lượng dòng hàng; tự động áp bảng giá hiệu lực hiện hành và tính lại chiết khấu sản lượng. Kiểm tra chặn nếu đại lý đang bị khoá giao dịch.
+  - Response: Đơn hàng mới ở trạng thái `RECORDED` hoặc `PENDING_APPROVAL` (nếu vượt hạn mức / dưới sàn).
+
+### 5. In phiếu đặt hàng (S4-08)
+- **GET `/api/orders/{id}/print`**: Xuất bản in phiếu đặt hàng định dạng HTML chuyên nghiệp sẵn sàng in hoặc lưu PDF (`window.print()`).
+  - Content-Type: `text/html;charset=UTF-8`.
+  - Nội dung: Thông tin công ty, mã đơn hàng, ngày tạo, thông tin đại lý, địa chỉ giao hàng, bảng chi tiết sản phẩm, đơn vị, đơn giá, chiết khấu, thành tiền, tổng thanh toán và các ô ký nhận.
+
+### 6. Bộ lọc đơn hàng nâng cao (S4-07)
+- **GET `/api/orders`**: Hỗ trợ đầy đủ bộ lọc kết hợp:
+  - `status`: Trạng thái đơn (`DRAFT`, `PENDING_APPROVAL`, `RECORDED`, `CANCELLED`, `EXPORTED`, `DELIVERED`, ...).
+  - `approvalReason`: Lý do cần duyệt (`BELOW_FLOOR_PRICE`, `OVER_DEBT_LIMIT`, ...).
+  - `approvalRequired`: `true/false` (lọc các đơn cần duyệt).
+  - `search`: Tìm kiếm theo mã đơn hoặc tên/mã đại lý.
+  - `dealerId`: Lọc theo ID đại lý.
+  - `createdBy`: Lọc theo tên người tạo đơn.
+  - `territoryId`: Lọc theo khu vực/địa bàn của đại lý.
+  - `dateFrom` & `dateTo`: Khoảng ngày tạo đơn (`yyyy-MM-dd`).
+  - `page`, `size`, `sort`: Phân trang và sắp xếp.
+
+
+
+## Cổng Đại lý (Dealer Portal) — Sprint 5 (S5-01)
+
+Base URL: `http://localhost:8080/api`
+
+Cung cấp tính năng dành riêng cho Đại lý (`ROLE_DEALER`) theo dõi trạng thái đơn hàng và tiến trình giao nhận hàng hóa của chính mình mà không cần gọi điện hỏi nhân viên kinh doanh.
+
+### Nguyên tắc bảo mật & Cô lập dữ liệu (Row-Level Security)
+- Tài khoản đại lý được liên kết với một bản ghi `Dealer` thông qua trường `dealer_id` trên thực thể User.
+- API lấy danh sách đơn `/api/portal/orders` và API xem chi tiết `/api/portal/orders/{id}` tự động truy vấn đơn hàng thuộc `dealer_id` của tài khoản đăng nhập.
+- Nếu người dùng thuộc một đại lý cố tình truy cập vào ID đơn hàng của đại lý khác, server sẽ chặn và trả về lỗi `403 Forbidden` (`Bạn không có quyền thực hiện chức năng này`).
+- Nhân viên kinh doanh (`ROLE_SALES`) chỉ xem được đơn hàng của các đại lý mà mình được phân công phụ trách.
+- Quản trị viên (`ROLE_ADMIN`) và Quản lý kinh doanh (`ROLE_SALES_MANAGER`) có thể xem toàn bộ đơn hàng.
+- `ROLE_DEALER` được cấp quyền mặc định trong Ma trận phân quyền (`RolePermissionConfig`): `ORDER_VIEW`, `ORDER_CREATE`. Tuyệt đối không có quyền thao tác kho hay xem giá vốn.
+
+### Danh sách API
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/portal/orders` | `ROLE_DEALER`, `ROLE_ADMIN` | Danh sách đơn hàng của đại lý: trạng thái, ngày giao dự kiến, tổng tiền, cảnh báo giao thiếu |
+| GET | `/api/portal/orders/{id}` | `ROLE_DEALER`, `ROLE_ADMIN` | Chi tiết đơn hàng của đại lý: dòng hàng, số lượng đặt, đơn giá, số lượng thực giao, số lượng thiếu, ghi chú giao hàng |
+| PUT | `/api/orders/{id}/delivery` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Cập nhật tiến độ giao nhận: trạng thái đơn, ngày giao thực tế, số lượng thực giao cho từng dòng sản phẩm |
+
+---
+
+### 1. Danh sách đơn hàng của đại lý (S5-01 Tiêu chí 1)
+
+```text
+GET /api/portal/orders
+Authorization: Bearer <access-token>
+```
+
+#### Response thành công (HTTP 200 OK):
+```json
+{
+  "success": true,
+  "message": "Danh sách đơn hàng của đại lý",
+  "data": [
+    {
+      "id": 101,
+      "orderCode": "DH-MINHPHAT-001",
+      "customerName": "Đại lý Cấp 1 Minh Phát",
+      "dealerId": 1,
+      "status": "DELIVERED",
+      "expectedDeliveryDate": "2026-10-18",
+      "actualDeliveryDate": "2026-10-17",
+      "totalAmount": 15000000.00,
+      "hasShortage": true,
+      "totalLineItems": 2,
+      "deliveryNote": "Giao đợt 1, còn thiếu sản phẩm Heineken do kho hết hàng",
+      "createdAt": "2026-10-15T09:00:00"
+    }
+  ]
+}
+```
+
+---
+
+### 2. Chi tiết dòng hàng và số lượng thực giao nếu giao thiếu (S5-01 Tiêu chí 2)
+
+```text
+GET /api/portal/orders/101
+Authorization: Bearer <access-token>
+```
+
+#### Response thành công (HTTP 200 OK):
+```json
+{
+  "success": true,
+  "message": "Chi tiết đơn hàng",
+  "data": {
+    "id": 101,
+    "orderCode": "DH-MINHPHAT-001",
+    "customerName": "Đại lý Cấp 1 Minh Phát",
+    "dealerId": 1,
+    "status": "DELIVERED",
+    "expectedDeliveryDate": "2026-10-18",
+    "actualDeliveryDate": "2026-10-17",
+    "totalAmount": 15000000.00,
+    "hasShortage": true,
+    "deliveryNote": "Đã giao đợt 1 có thiếu 2 thùng bia Heineken",
+    "items": [
+      {
+        "id": 201,
+        "productId": 10,
+        "productCode": "SP-KEN330",
+        "productName": "Bia Heineken lon 330ml",
+        "unit": "thùng",
+        "quantity": 10.0000,
+        "price": 450000.00,
+        "totalAmount": 4500000.00,
+        "deliveredQuantity": 8.0000,
+        "shortageQuantity": 2.0000,
+        "isShortage": true,
+        "deliveryNote": "Kho tạm thời thiếu 2 thùng, sẽ giao bù đợt 2"
+      },
+      {
+        "id": 202,
+        "productId": 11,
+        "productCode": "SP-TIGER330",
+        "productName": "Bia Tiger lon 330ml",
+        "unit": "thùng",
+        "quantity": 5.0000,
+        "price": 380000.00,
+        "totalAmount": 1900000.00,
+        "deliveredQuantity": 5.0000,
+        "shortageQuantity": 0.0000,
+        "isShortage": false,
+        "deliveryNote": "Giao đủ"
+      }
+    ]
+  }
+}
+```
+
+#### Response lỗi khi truy cập đơn của đại lý khác (HTTP 403 Forbidden):
+```json
+{
+  "success": false,
+  "message": "Bạn không có quyền thực hiện chức năng này"
+}
+```
+
+---
+
+### 3. Cập nhật tiến độ giao hàng và số lượng thực giao (Dành cho Kho)
+
+```json
+PUT /api/orders/101/delivery
+Authorization: Bearer <access-token>
+{
+  "status": "DELIVERED",
+  "actualDeliveryDate": "2026-10-17",
+  "deliveryNote": "Giao hàng đợt 1",
+  "items": [
+    {
+      "orderItemId": 201,
+      "deliveredQuantity": 8.0000,
+      "deliveryNote": "Kho thiếu 2 thùng"
+    },
+    {
+      "orderItemId": 202,
+      "deliveredQuantity": 5.0000,
+      "deliveryNote": "Giao đủ"
+    }
+  ]
+}
+```
+
+
+## Cổng tự đặt hàng dành cho Đại lý (S4-10)
+
+Cổng tự đặt hàng trực tuyến dành riêng cho khách hàng đại lý (`ROLE_DEALER`), cho phép đại lý chủ động kiểm tra giá, xem công nợ còn lại và gửi đơn đặt hàng 24/7 trên cả máy tính và thiết bị di động.
+
+### Nguyên tắc bảo mật & Phân quyền dữ liệu (Row-Level Security)
+1. **Phân quyền vai trò:** Chỉ người dùng có vai trò `ROLE_DEALER` hoặc `ROLE_ADMIN` mới có quyền truy cập các endpoint `/api/portal/**`.
+2. **Cô lập dữ liệu danh mục & bảng giá:** Đại lý chỉ được xem các sản phẩm và đơn giá nằm trong **bảng giá có hiệu lực** thuộc nhóm khách hàng của chính đại lý đó (`DAI_LY_CAP_1`, `DAI_LY_CAP_2`, `KHACH_LE`). Tuyệt đối không nhìn thấy sản phẩm hoặc bảng giá của nhóm khách hàng khác.
+3. **Cô lập công nợ & đơn hàng:** Đại lý chỉ xem được hạn mức công nợ, công nợ hiện tại, công nợ còn lại và danh sách đơn hàng thuộc mã đại lý của chính mình.
+4. **Kiểm soát rủi ro khoá giao dịch:** Nếu đại lý đang bị khoá (`locked = true`) hoặc có nợ quá hạn, hệ thống chặn gửi đơn đặt hàng và trả lỗi HTTP 400 Bad Request.
+5. **Quy trình phê duyệt bắt buộc:** Mọi đơn hàng do đại lý tự đặt gửi lên hệ thống **bắt buộc luôn ở trạng thái Chờ duyệt** (`PENDING_APPROVAL`, `requiresApproval = true`, `approvalReason = "[Đại lý tự đặt qua cổng] Chờ nhân viên phụ trách xác nhận"`). Đơn hàng sẽ được nhân viên kinh doanh được phân công phụ trách đại lý đó (`assignedUser`) xác nhận hoặc từ chối trước khi chuyển sang trạng thái ghi sổ (`RECORDED`).
+
+### Danh sách API Cổng Đại lý
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/portal/profile` | `ROLE_DEALER`, `ROLE_ADMIN` | Lấy hồ sơ đại lý, thông tin NVKD phụ trách, công nợ và danh sách điểm giao hàng |
+| GET | `/portal/catalog` | `ROLE_DEALER`, `ROLE_ADMIN` | Lấy danh mục sản phẩm và giá theo bảng giá hiệu lực của nhóm khách hàng đại lý |
+| GET | `/portal/debt` | `ROLE_DEALER`, `ROLE_ADMIN` | Tra cứu hạn mức, công nợ hiện tại và công nợ còn lại thời gian thực |
+| POST | `/portal/orders` | `ROLE_DEALER`, `ROLE_ADMIN` | Tạo đơn đặt hàng mới (luôn ở trạng thái `PENDING_APPROVAL`) |
+| GET | `/portal/orders` | `ROLE_DEALER`, `ROLE_ADMIN` | Lấy danh sách lịch sử đơn hàng của chính đại lý |
+| GET | `/portal/orders/{id}` | `ROLE_DEALER`, `ROLE_ADMIN` | Xem chi tiết đơn hàng của đại lý |
+
+#### 1. Lấy thông tin hồ sơ đại lý
+```http
+GET /api/portal/profile
+Authorization: Bearer <dealer-jwt-token>
+```
+Response `200 OK`:
+```json
+{
+  "success": true,
+  "message": "Lấy thông tin hồ sơ đại lý thành công",
+  "data": {
+    "id": 100,
+    "code": "DL-MINHPHAT",
+    "name": "Đại lý Minh Phát",
+    "customerGroup": "DAI_LY_CAP_1",
+    "customerGroupName": "Đại lý cấp 1",
+    "phone": "0987654321",
+    "email": "dealer.minhphat@example.com",
+    "address": "123 Đường Giải Phóng, Hà Nội",
+    "taxCode": "0101234567",
+    "active": true,
+    "locked": false,
+    "lockReason": null,
+    "salesUserId": 2,
+    "salesUserName": "sales.demo",
+    "salesUserFullName": "Nguyễn Văn Kinh Doanh",
+    "salesUserPhone": "0901234567",
+    "salesUserEmail": "sales.demo@company.vn",
+    "debtLimit": 50000000,
+    "currentDebt": 15000000,
+    "remainingLimit": 35000000,
+    "hasOverdueDebt": false,
+    "isBlocked": false,
+    "blockReason": null,
+    "deliveryPoints": [
+      {
+        "id": 1,
+        "dealerId": 100,
+        "name": "Kho chính Minh Phát",
+        "contactName": "Anh Minh",
+        "phone": "0987654321",
+        "address": "123 Đường Giải Phóng, Hà Nội",
+        "isDefault": true
+      }
+    ]
+  }
+}
+```
+
+#### 2. Lấy danh mục sản phẩm & đơn giá theo bảng giá đại lý
+```http
+GET /api/portal/catalog
+Authorization: Bearer <dealer-jwt-token>
+```
+Response `200 OK`:
+```json
+{
+  "success": true,
+  "message": "Lấy danh mục sản phẩm thành công",
+  "data": [
+    {
+      "id": 10,
+      "sku": "SP-KEN330",
+      "name": "Bia Heineken Sleek lon 330ml",
+      "categoryId": 1,
+      "categoryName": "Bia",
+      "baseUnit": "lon",
+      "basePrice": 18000,
+      "floorPrice": 15000,
+      "imageUrl": "/images/heineken.png",
+      "units": [
+        {
+          "unitName": "lon",
+          "factor": 1,
+          "price": 18000
+        },
+        {
+          "unitName": "thùng",
+          "factor": 24,
+          "price": 430000
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### 3. Tra cứu công nợ thời gian thực
+```http
+GET /api/portal/debt
+Authorization: Bearer <dealer-jwt-token>
+```
+Response `200 OK`:
+```json
+{
+  "success": true,
+  "message": "Lấy thông tin công nợ thành công",
+  "data": {
+    "dealerId": 100,
+    "dealerCode": "DL-MINHPHAT",
+    "dealerName": "Đại lý Minh Phát",
+    "currentDebt": 15000000,
+    "debtLimit": 50000000,
+    "remainingLimit": 35000000,
+    "maxDebtDays": 30,
+    "hasOverdueDebt": false,
+    "overdueAmount": 0,
+    "isBlocked": false,
+    "blockReason": null
+  }
+}
+```
+
+#### 4. Đại lý gửi đơn đặt hàng
+```http
+POST /api/portal/orders
+Authorization: Bearer <dealer-jwt-token>
+Content-Type: application/json
+
+{
+  "deliveryPointId": 1,
+  "expectedDeliveryDate": "2026-10-20",
+  "note": "Giao vào buổi sáng",
+  "items": [
+    {
+      "productId": 10,
+      "unit": "thùng",
+      "quantity": 10
+    }
+  ]
+}
+```
+Response `201 Created`:
+```json
+{
+  "success": true,
+  "message": "Đặt hàng thành công. Đơn hàng đang ở trạng thái Chờ duyệt.",
+  "data": {
+    "id": 1001,
+    "orderCode": "DH20261015-0001",
+    "dealerId": 100,
+    "dealerName": "Đại lý Minh Phát",
+    "status": "PENDING_APPROVAL",
+    "requiresApproval": true,
+    "approvalReason": "[Đại lý tự đặt qua cổng] Chờ nhân viên phụ trách xác nhận",
+    "subtotalAmount": 4300000,
+    "discountAmount": 0,
+    "totalAmount": 4300000
+  }
+}
+```
+
+#### 5. Xác nhận / Từ chối đơn hàng của đại lý (Dành cho NVKD phụ trách)
+- **Xác nhận đơn:** `PUT /api/orders/{id}/approve` (Quyền: NVKD phụ trách đại lý đó, hoặc `SALES_MANAGER`/`ADMIN`). Chuyển đơn sang trạng thái `RECORDED`.
+- **Từ chối đơn:** `PUT /api/orders/{id}/reject` (Quyền: NVKD phụ trách đại lý đó, hoặc `SALES_MANAGER`/`ADMIN`). Chuyển đơn sang trạng thái `REJECTED`.
+*Lưu ý: Nếu NVKD không phải người phụ trách đại lý của đơn hàng cố tình duyệt hoặc từ chối, hệ thống sẽ trả về lỗi HTTP 403 Forbidden.*
+
+
+### In và Xuất PDF Đơn hàng kèm Mã vạch tra cứu (S4-08)
+
+Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) in hoặc xuất file PDF phiếu đơn hàng ngay tại chỗ để đại lý xem lại và ký xác nhận đơn trước khi nhân viên rời đi. Đồng thời mẫu in tích hợp mã vạch chuẩn Code 128 và mã đơn hàng rõ ràng giúp bộ phận kho tra cứu nhanh và đối chiếu xuất kho bằng máy quét mã vạch.
+
+Quy tắc nghiệp vụ:
+1. **Vai trò & Ma trận phân quyền**:
+   - Mã quyền: `ORDER_VIEW`.
+   - Các vai trò được cấp quyền: `ROLE_SALES` (Nhân viên kinh doanh), `ROLE_SALES_MANAGER` (Quản lý kinh doanh), `ROLE_ADMIN` (Quản trị viên), `ROLE_WAREHOUSE_MANAGER` (Quản lý kho), `ROLE_WAREHOUSE_STAFF` (Nhân viên kho), `ROLE_ACCOUNTANT` (Kế toán), `ROLE_VIEWER` (Người xem).
+2. **Bảo mật phân quyền cấp dòng (Row-Level Security - RLS)**:
+   - Nhân viên kinh doanh (`ROLE_SALES`) chỉ được phép xem, in hoặc xuất PDF các đơn hàng của đại lý do chính mình phụ trách (`assignedUser`) hoặc đơn do chính mình tạo (`createdBy`).
+   - Cố tình truy cập hoặc in đơn hàng của đại lý khác sẽ bị chặn với mã lỗi **HTTP 403 Forbidden** (`AccessDeniedException`).
+   - Quản lý kinh doanh, Quản trị viên, Kế toán và Kho có quyền xem và in PDF đơn hàng toàn công ty.
+3. **Nội dung đầy đủ trên Mẫu in PDF**:
+   - **Đầu trang (Header)**: Thông tin công ty phân phối (SaleStock), Hotline, Email và **Mã vạch Code 128 kèm mã đơn hàng** ở góc trên bên phải để kho tra cứu nhanh.
+   - **Thông tin đại lý**: Tên đại lý, mã đại lý, phân nhóm đại lý (Cấp 1 / Cấp 2 / Khách lẻ), mã số thuế, địa bàn/khu vực, nhân viên kinh doanh phụ trách, số điện thoại, địa chỉ.
+   - **Thông tin giao hàng**: Điểm giao hàng, tên người nhận, số điện thoại người nhận, địa chỉ giao hàng, chỉ dẫn giao nhận, ngày giao dự kiến, trạng thái đơn hàng.
+   - **Bảng chi tiết dòng hàng**: STT, Mã SKU, Tên sản phẩm, ĐVT đặt hàng, Số lượng, Quy đổi về đơn vị cơ sở (số lon đóng băng), Đơn giá, Thành tiền trước chiết khấu, Chiết khấu dòng hàng, Tổng cộng sau chiết khấu.
+   - **Tổng tiền & Chiết khấu**: Tạm tính trước chiết khấu (`subtotalAmount`), Chiết khấu sản lượng (`discountAmount`), Tổng tiền thanh toán (`totalAmount`), Số tiền viết bằng chữ tiếng Việt chuẩn ("Bằng chữ: ..."), Ghi chú đơn hàng.
+   - **Khung chữ ký xác nhận 3 bên**:
+     + Đại diện Đại lý (Ký, ghi rõ họ tên - xác nhận đơn hàng tại chỗ trước khi rời đi).
+     + Nhân viên kinh doanh (Ký & ghi rõ họ tên).
+     + Bộ phận Kho / Giao nhận (Ký & ghi rõ họ tên - quét mã vạch đối soát xuất kho).
+   - **Chân trang (Footer)**: Đánh số trang tự động ("Trang X") và lưu ý đối soát.
+4. **Hỗ trợ Font Unicode tiếng Việt**: Tích hợp sẵn bộ font Arial Unicode tiếng Việt, đảm bảo hiển thị chuẩn xác không lỗi dấu trên cả Windows, Linux và Docker.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/orders/{id}/pdf` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Xuất file PDF phiếu xác nhận đơn hàng kèm mã vạch. Mặc định trả `inline` để xem/in ngay trên trình duyệt; thêm `?download=true` để tải file về máy |
+| GET | `/orders/{id}/barcode` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Lấy ảnh mã vạch (Barcode Code 128) dạng PNG độc lập theo mã đơn hàng để in tem nhãn hoặc quét nhanh |
+
+#### Ví dụ Request xuất PDF xem trước (`GET /api/orders/1/pdf`):
+```http
+GET /api/orders/1/pdf HTTP/1.1
+Host: localhost:8080
+Authorization: Bearer <access-token>
+```
+Response Headers:
+```http
+HTTP/1.1 200 OK
+Content-Type: application/pdf
+Content-Disposition: inline; filename="don-hang-DH20261016-0001.pdf"
+```
+Response Body: Binary data PDF (`%PDF-...`)
+
+#### Ví dụ Request tải file PDF đính kèm (`GET /api/orders/1/pdf?download=true`):
+```http
+GET /api/orders/1/pdf?download=true HTTP/1.1
+Host: localhost:8080
+Authorization: Bearer <access-token>
+```
+Response Headers:
+```http
+HTTP/1.1 200 OK
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="don-hang-DH20261016-0001.pdf"
+```
+
+#### Ví dụ Request lấy mã vạch Code 128 (`GET /api/orders/1/barcode`):
+```http
+GET /api/orders/1/barcode HTTP/1.1
+Host: localhost:8080
+Authorization: Bearer <access-token>
+```
+Response Headers:
+```http
+HTTP/1.1 200 OK
+Content-Type: image/png
+```
+Response Body: Binary data PNG (ảnh mã vạch Code 128)

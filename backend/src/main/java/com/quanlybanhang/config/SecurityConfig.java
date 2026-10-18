@@ -4,6 +4,7 @@ import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
 import com.quanlybanhang.security.RestAccessDeniedHandler;
+import com.quanlybanhang.security.DealerApiScopeFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -90,7 +91,7 @@ public class SecurityConfig {
                         "ADMIN", "SALES_MANAGER", "WAREHOUSE_MANAGER")
 
                 // ── Điều chỉnh kho: CHỈ ADMIN + WAREHOUSE_MANAGER (đảm bảo SALES và WAREHOUSE_STAFF không sửa được tồn kho!) ──
-                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**").hasAnyRole(
+                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**", "/api/warehouse/vouchers/*/adjust").hasAnyRole(
                         "ADMIN", "WAREHOUSE_MANAGER")
 
                 // Dữ liệu tồn và danh sách kho được phép xem bởi NV kinh doanh, Quản lý kinh doanh, Thủ kho, Quản lý kho, Admin, Viewer (S4-03)
@@ -100,6 +101,14 @@ public class SecurityConfig {
                 // Chứng từ kho: Quản lý kho, Thủ kho, Quản lý kinh doanh, Admin, Viewer
                 .requestMatchers("/api/warehouse/vouchers", "/api/warehouse/vouchers/**")
                         .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "VIEWER")
+
+                // Danh mục kho & vị trí lưu (S5-03): hỗ trợ tra cứu cho các vai trò kinh doanh/kho; thao tác quản trị bảo vệ bằng @PreAuthorize
+                .requestMatchers("/api/warehouses", "/api/warehouses/**",
+                        "/api/warehouse-locations", "/api/warehouse-locations/**",
+                        "/api/warehouse/warehouses", "/api/warehouse/warehouses/**",
+                        "/api/warehouse/locations", "/api/warehouse/locations/**",
+                        "/api/warehouse/products/**", "/api/warehouse/orders/**")
+                        .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "SALES", "VIEWER")
 
                 // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
                 .requestMatchers("/api/warehouse/**").hasAnyRole(
@@ -121,6 +130,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/volume-discounts/**").authenticated()
                 // ── Quản lý hồ sơ đại lý (S3-03): mọi role hợp lệ đã đăng nhập; chi tiết phân quyền qua @PreAuthorize ──
                 .requestMatchers("/api/dealers/**").authenticated()
+
+                // ── Cổng đại lý (S4-10, S5-01): theo dõi trạng thái đơn hàng, tự đặt hàng ──
+                .requestMatchers("/api/portal/**").authenticated()
 
                 // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
                 .requestMatchers("/api/customers/**").hasAnyRole(
@@ -149,7 +161,8 @@ public class SecurityConfig {
             )
 
             .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(new DealerApiScopeFilter(accessDeniedHandler), JwtAuthenticationFilter.class);
 
         return http.build();
     }

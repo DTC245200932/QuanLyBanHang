@@ -74,9 +74,15 @@ public class AdminUserService {
     public UserResponse create(AdminUserRequest request) {
         validateDuplicates(request.getUsername(), request.getEmail(), null);
         Set<Role> roles = resolveRoles(request.getRoles());
+        validateDealerAssignment(roles, request.getDealerId());
         Set<Warehouse> warehouses = resolveWarehouses(request.getWarehouseIds());
         validateWarehouseAssignment(roles, warehouses);
         Set<Territory> territories = resolveTerritories(request.getTerritoryIds());
+        Dealer dealer = null;
+        if (request.getDealerId() != null) {
+            dealer = dealerRepository.findById(request.getDealerId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
+        }
 
         String temporaryPassword = generateTemporaryPassword();
         User user = User.builder()
@@ -88,6 +94,7 @@ public class AdminUserService {
                 .roles(roles)
                 .warehouses(warehouses)
                 .territories(territories)
+                .dealer(dealer)
                 .mustChangePassword(true)
                 .active(true)
                 .build();
@@ -152,6 +159,7 @@ public class AdminUserService {
         User user = findUser(id);
         validateDuplicates(request.getUsername(), request.getEmail(), id);
         Set<Role> roles = resolveRoles(request.getRoles());
+        validateDealerAssignment(roles, request.getDealerId());
         if (user.getUsername().equals(actingUsername)
                 && user.getRoles().stream().anyMatch(r -> r.getName() == ERole.ROLE_ADMIN)
                 && roles.stream().noneMatch(r -> r.getName() == ERole.ROLE_ADMIN)) {
@@ -167,6 +175,13 @@ public class AdminUserService {
         user.setRoles(roles);
         user.setWarehouses(warehouses);
         user.setTerritories(resolveTerritories(request.getTerritoryIds()));
+        if (request.getDealerId() != null) {
+            Dealer dealer = dealerRepository.findById(request.getDealerId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
+            user.setDealer(dealer);
+        } else {
+            user.setDealer(null);
+        }
         user.setTokenVersion(user.getTokenVersion() + 1);
         return toResponse(userRepository.save(user));
     }
@@ -210,8 +225,20 @@ public class AdminUserService {
                 .map(t -> new NamedResourceResponse(t.getId(), t.getCode(), t.getName())).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<NamedResourceResponse> dealers() {
+        return dealerRepository.findAll().stream()
+                .map(dealer -> new NamedResourceResponse(dealer.getId(), dealer.getCode(), dealer.getName())).toList();
+    }
+
+    private void validateDealerAssignment(Set<Role> roles, Long dealerId) {
+        if (roles.stream().anyMatch(role -> role.getName() == ERole.ROLE_DEALER) && dealerId == null) {
+            throw new IllegalArgumentException("Tài khoản đại lý phải được liên kết với một hồ sơ đại lý");
+        }
+    }
+
     public UserResponse toResponse(User user) {
-        return UserResponse.builder()
+        UserResponse.UserResponseBuilder builder = UserResponse.builder()
                 .id(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())
@@ -228,8 +255,15 @@ public class AdminUserService {
                 .territories(user.getTerritories().stream()
                         .map(t -> new NamedResourceResponse(t.getId(), t.getCode(), t.getName())).toList())
                 .assignedDealerCount(dealerRepository.countByAssignedUserId(user.getId()))
-                .createdAt(user.getCreatedAt())
-                .build();
+                .createdAt(user.getCreatedAt());
+
+        if (user.getDealer() != null) {
+            builder.dealerId(user.getDealer().getId())
+                    .dealerCode(user.getDealer().getCode())
+                    .dealerName(user.getDealer().getName());
+        }
+
+        return builder.build();
     }
 
     private User findUser(Long id) {

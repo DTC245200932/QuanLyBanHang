@@ -47,7 +47,7 @@ public class FinanceController {
      * API xem giá vốn — Quản lý kinh doanh hoặc Quản trị viên.
      */
     @GetMapping("/cost-price")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER')")
+    @PreAuthorize("hasRole('SALES_MANAGER')")
     public ApiResponse getCostPrice() {
         List<Map<String, Object>> costPrices = productRepository.findAll().stream()
                 .map(product -> {
@@ -66,7 +66,7 @@ public class FinanceController {
      * API xem biên lợi nhuận — Quản lý kinh doanh hoặc Quản trị viên.
      */
     @GetMapping("/profit-margin")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER')")
+    @PreAuthorize("hasRole('SALES_MANAGER')")
     public ApiResponse getProfitMargin() {
         List<Map<String, Object>> margins = productRepository.findAll().stream()
                 .map(product -> {

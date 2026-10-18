@@ -39,6 +39,14 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         Dealer dealer = dealerRepository.findById(dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + dealerId));
 
+        // S4-10: Đại lý chỉ nhìn thấy công nợ của chính mình
+        if (isDealerUser()) {
+            User currentUser = getCurrentUser();
+            if (currentUser != null && (currentUser.getDealer() == null || !currentUser.getDealer().getId().equals(dealerId))) {
+                throw new AccessDeniedException("Bạn chỉ có quyền xem công nợ của chính đại lý mình");
+            }
+        }
+
         // S3-06 / S4-02: Nhân viên kinh doanh chỉ nhìn thấy công nợ đại lý mình phụ trách
         if (isSalesOnlyUser()) {
             User currentUser = getCurrentUser();
@@ -245,6 +253,15 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         return hasSales && !hasManagerOrAdmin;
     }
 
+    private boolean isDealerUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_DEALER"));
+    }
+
     private User getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || auth.getName() == null) {
@@ -259,4 +276,3 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         return df.format(amount);
     }
 }
-

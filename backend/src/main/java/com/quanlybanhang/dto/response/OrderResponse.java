@@ -35,16 +35,36 @@ public class OrderResponse {
     private Long priceListId;
     private String priceListCode;
     private String status;
+    private String statusDisplayName;
+    private Boolean canCancel;
+    private Boolean isExported;
+    private Boolean inventoryReserved;
+    private String cancelReason;
+    private String cancelledBy;
+    private LocalDateTime cancelledAt;
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime reservedAt;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime reservationExpiresAt;
+
     private Boolean requiresApproval;
     private String approvalReason;
     private String approvedBy;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime approvedAt;
+
     private BigDecimal subtotalAmount;
     private BigDecimal discountAmount;
     private BigDecimal totalAmount;
     private String note;
     private String createdBy;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime createdAt;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime recordedAt;
     private List<OrderItemResponse> items;
 
@@ -58,4 +78,37 @@ public class OrderResponse {
     private BigDecimal currentDebt;
     private BigDecimal debtLimit;
     private BigDecimal remainingDebtLimit;
+
+
+    /** Alias tổng thanh toán phục vụ frontend order-approval (S4-05). */
+    private BigDecimal grandTotal;
+
+    /** Danh sách mã lý do cần duyệt: OVER_DEBT_LIMIT, BELOW_FLOOR_PRICE, v.v. (S4-05). */
+    private List<String> approvalReasons;
+
+    /** Chi tiết các mức vi phạm (S4-05). */
+    private List<OrderViolationResponse> violations;
+
+    /** Số tiền công nợ vượt hạn mức (S4-05). */
+    private BigDecimal debtExceeded;
+
+    /** Chênh lệch bán dưới giá sàn (S4-05). */
+    private BigDecimal priceGap;
+
+    /** Lịch sử các bước duyệt đơn hàng (S4-05) - bất biến, không thể sửa/xoá. */
+    private List<OrderApprovalHistoryResponse> approvalHistory;
+
+
+
+    /** Ngày thực tế giao hàng (S5-01). */
+    private LocalDate actualDeliveryDate;
+
+    /** Ghi chú giao hàng tổng thể (S5-01). */
+    private String deliveryNote;
+
+    /** Đánh dấu đơn hàng có dòng bị giao thiếu (S5-01). */
+    private Boolean hasShortage;
+
+    /** Tổng số dòng hàng trong đơn (S5-01). */
+    private Integer totalLineItems;
 }

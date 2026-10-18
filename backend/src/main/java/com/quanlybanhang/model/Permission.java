@@ -36,10 +36,12 @@ public enum Permission {
 
     // ── Kho & tồn kho ──
     WAREHOUSE_VIEW("Xem tồn kho"),
+    WAREHOUSE_MANAGE("Quản lý danh mục kho và vị trí"),
     WAREHOUSE_IMPORT("Nhập kho"),
     WAREHOUSE_EXPORT("Xuất kho"),
     WAREHOUSE_ADJUST("Điều chỉnh tồn kho"),
     WAREHOUSE_APPROVE("Duyệt phiếu kho"),
+    WAREHOUSE_TRANSFER("Chuyển kho nội bộ"),
 
     // ── Khách hàng / Đại lý ──
     CUSTOMER_VIEW("Xem khách hàng"),

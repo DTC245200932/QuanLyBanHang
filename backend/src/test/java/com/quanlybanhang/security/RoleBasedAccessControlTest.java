@@ -145,6 +145,16 @@ class RoleBasedAccessControlTest {
 
     @Test
     @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG được tạo phiếu chuyển kho (403 Forbidden)")
+    void salesCannotCreateTransfer() throws Exception {
+        mockMvc.perform(post("/api/warehouse/transfers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromWarehouseId\": 1, \"toWarehouseId\": 2, \"items\": [{\"productId\": 1, \"quantity\": 10}]}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = {"SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG xem được giá vốn (403 Forbidden)")
     void salesCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
@@ -212,6 +222,32 @@ class RoleBasedAccessControlTest {
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho ĐƯỢC PHÉP xem danh sách tồn kho (200 OK)")
     void warehouseStaffCanViewInventory() throws Exception {
         mockMvc.perform(get("/api/warehouse/inventory"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho KHÔNG ĐƯỢC PHÉP lập phiếu điều chỉnh cho phiếu kho đã xác nhận (403 Forbidden)")
+    void warehouseStaffCannotAdjustVoucher() throws Exception {
+        mockMvc.perform(post("/api/warehouse/vouchers/1/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\": 1, \"delta\": 5}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho ĐƯỢC PHÉP xác nhận phiếu nhập kho (200 OK)")
+    void warehouseStaffCanConfirmVoucher() throws Exception {
+        mockMvc.perform(post("/api/warehouse/vouchers/1/confirm"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho ĐƯỢC PHÉP xem tồn kho theo lô (200 OK)")
+    void warehouseStaffCanViewLotInventory() throws Exception {
+        mockMvc.perform(get("/api/warehouse/inventory/lots"))
                 .andExpect(status().isOk());
     }
 
@@ -317,10 +353,10 @@ class RoleBasedAccessControlTest {
 
     @Test
     @WithMockUser(username = "admin_user", roles = {"ADMIN"})
-    @DisplayName("[ROLE_ADMIN] Quản trị viên được xem giá vốn (200 OK)")
-    void adminCanViewCostPrice() throws Exception {
+    @DisplayName("[ROLE_ADMIN] Giá vốn chỉ dành cho Quản lý kinh doanh (403 Forbidden)")
+    void adminCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -334,6 +370,16 @@ class RoleBasedAccessControlTest {
         mockMvc.perform(post("/api/warehouse/adjust")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"productId\": 1, \"delta\": 20}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "warehouse_manager", roles = {"WAREHOUSE_MANAGER"})
+    @DisplayName("[ROLE_WAREHOUSE_MANAGER] Quản lý kho ĐƯỢC PHÉP lập phiếu điều chỉnh cho phiếu kho đã xác nhận (200 OK)")
+    void warehouseManagerCanAdjustVoucher() throws Exception {
+        mockMvc.perform(post("/api/warehouse/vouchers/1/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\": 1, \"delta\": 5}"))
                 .andExpect(status().isOk());
     }
 

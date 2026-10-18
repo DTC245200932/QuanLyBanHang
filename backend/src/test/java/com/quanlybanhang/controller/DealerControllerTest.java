@@ -46,6 +46,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(DealerController.class)
 @Import({SecurityConfig.class, RestAccessDeniedHandler.class, AuthEntryPointJwt.class, GlobalExceptionHandler.class})
 class DealerControllerTest {
+    @MockBean
+    private com.quanlybanhang.service.OrderService orderService;
+
 
     @Autowired
     private MockMvc mvc;
@@ -56,11 +59,13 @@ class DealerControllerTest {
     @MockBean
     private DealerDebtService dealerDebtService;
 
+
     @MockBean
     private UserDetailsServiceImpl userDetailsService;
 
     @MockBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
 
     @BeforeEach
     void passThroughJwtFilter() throws Exception {
@@ -507,5 +512,16 @@ class DealerControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Bạn không có quyền thực hiện chức năng này"));
+    }
+
+    @Test
+    @DisplayName("[S4-04] Nhân viên kinh doanh tra cứu lịch sử mua hàng đại lý thành công (200 OK)")
+    void getDealerPurchaseHistory_Success() throws Exception {
+        var history = com.quanlybanhang.dto.response.DealerPurchaseHistoryResponse.builder()
+                .productId(10L).name("Sản phẩm đã mua").avgQty(new java.math.BigDecimal("5")).build();
+        when(dealerService.getDealerPurchaseHistory(1L, 3, false)).thenReturn(List.of(history));
+        mvc.perform(get("/api/dealers/1/purchase-history?months=3").with(user("sales01").roles("SALES")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].productId").value(10))
+                .andExpect(jsonPath("$.data[0].avgQty").value(5));
     }
 }

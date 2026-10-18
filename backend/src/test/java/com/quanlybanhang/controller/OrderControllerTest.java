@@ -422,7 +422,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[S4-02] POST /api/orders/check-debt - Kiểm tra công nợ khi tạo đơn")
     void checkDebt_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
@@ -454,6 +454,16 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.dealerCode").value("DL01"))
                 .andExpect(jsonPath("$.data.isBlocked").value(false))
                 .andExpect(jsonPath("$.data.requiresApproval").value(false));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES"})
+    @DisplayName("[S4-02] Thu hồi ORDER_CREATE thì API kiểm tra công nợ trả về 403")
+    void checkDebt_WithoutCreatePermission_Returns403() throws Exception {
+        mockMvc.perform(post("/api/orders/check-debt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"dealerId\":1,\"orderAmount\":10000000}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -503,7 +513,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[S4-02] GET /api/orders/check-debt - Kiểm tra công nợ đại lý qua query params")
     void checkDebt_Get_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()

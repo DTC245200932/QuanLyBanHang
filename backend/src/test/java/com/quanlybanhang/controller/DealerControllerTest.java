@@ -29,6 +29,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -77,7 +78,7 @@ class DealerControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES", "VIEWER"})
+    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES"})
     @DisplayName("Các vai trò hợp lệ được phép xem danh sách đại lý (200 OK)")
     void allowedRolesCanReadDealers(String role) throws Exception {
         when(dealerService.getAllDealers(any(), any(), any(), any(), any(), any(), any())).thenReturn(
@@ -477,7 +478,7 @@ class DealerControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES", "VIEWER"})
+    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES"})
     @DisplayName("[S4-02] Các vai trò hợp lệ được phép xem thông tin công nợ đại lý (200 OK)")
     void allowedRolesCanGetDealerDebt(String role) throws Exception {
         DealerDebtResponse debtResponse = DealerDebtResponse.builder()
@@ -494,7 +495,9 @@ class DealerControllerTest {
 
         when(dealerDebtService.getDealerDebtInfo(1L)).thenReturn(debtResponse);
 
-        mvc.perform(get("/api/dealers/1/debt").with(user("reader").roles(role)))
+        String permission = "SALES".equals(role) ? "ORDER_CREATE" : "FINANCE_VIEW_DEBT";
+        mvc.perform(get("/api/dealers/1/debt").with(user("reader")
+                        .authorities(new SimpleGrantedAuthority("ROLE_" + role), new SimpleGrantedAuthority(permission))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.dealerCode").value("DL01"))
@@ -508,10 +511,19 @@ class DealerControllerTest {
         when(dealerDebtService.getDealerDebtInfo(999L))
                 .thenThrow(new AccessDeniedException("Bạn chỉ có quyền xem công nợ của đại lý do mình phụ trách"));
 
-        mvc.perform(get("/api/dealers/999/debt").with(user("sales01").roles("SALES")))
+        mvc.perform(get("/api/dealers/999/debt").with(user("sales01")
+                        .authorities(new SimpleGrantedAuthority("ROLE_SALES"), new SimpleGrantedAuthority("ORDER_CREATE"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Bạn không có quyền thực hiện chức năng này"));
+    }
+
+    @Test
+    @DisplayName("[S4-02] Vai trò không có ORDER_CREATE hoặc FINANCE_VIEW_DEBT bị chặn xem công nợ")
+    void roleWithoutDebtPermissionIsRejected() throws Exception {
+        mvc.perform(get("/api/dealers/1/debt").with(user("viewer")
+                        .authorities(new SimpleGrantedAuthority("ROLE_VIEWER"))))
+                .andExpect(status().isForbidden());
     }
 
     @Test

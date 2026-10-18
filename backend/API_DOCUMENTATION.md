@@ -220,7 +220,7 @@ Nếu chưa có kho, API báo thiếu cấu hình, không tự tạo kho mặc �
 |---|---|---|---|
 | GET | `/finance/cost-price` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER` | Xem giá vốn sản phẩm |
 | GET | `/finance/profit-margin` | `ROLE_SALES_MANAGER` | Xem biên lợi nhuận — chỉ Quản lý kinh doanh |
-| GET | `/finance/debt` | `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT` | Xem hạn mức tiền và số ngày nợ tối đa từ hồ sơ đại lý; số dư công nợ hiện chưa có nguồn dữ liệu |
+| GET | `/finance/debt` | `FINANCE_VIEW_DEBT` | Xem hạn mức tiền và số ngày nợ tối đa từ hồ sơ đại lý; số dư công nợ hiện chưa có nguồn dữ liệu |
 | PUT | `/finance/debt/{dealerId}/limit` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo / cập nhật hạn mức công nợ và số ngày nợ tối đa (S3-05); bắt buộc nhập lý do, tự động ghi nhật ký giá trị trước/sau kèm lý do |
 
 `cost-price` và `profit-margin` đọc danh mục sản phẩm trong database, trả `[]`
@@ -1098,7 +1098,7 @@ Quy tắc nghiệp vụ:
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý (tìm kiếm, lọc theo nhóm, khu vực, người phụ trách, trạng thái, phân trang) |
-| GET | `/dealers/active` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý đang hoạt động (phục vụ dropdown chọn đại lý khi tạo đơn) |
+| GET | `/dealers/active` | `ORDER_CREATE` | Danh sách đại lý đang hoạt động (phục vụ dropdown chọn đại lý khi tạo đơn) |
 | GET | `/dealers/options` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh mục tham chiếu tạo/sửa đại lý (nhóm khách hàng, khu vực, người phụ trách) |
 | GET | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Chi tiết hồ sơ đại lý |
 | POST | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo hồ sơ đại lý mới (kiểm tra tính duy nhất của mã đại lý) |
@@ -1341,13 +1341,13 @@ Quy tắc nghiệp vụ:
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/dealers/{id}/debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_VIEWER` | Lấy chi tiết công nợ, hạn mức, số ngày quá hạn và trạng thái cho phép đặt hàng của đại lý (áp dụng Row-Level Security cho `ROLE_SALES`). Alias: `GET /dealers/{id}/credit-info` |
-| POST | `/orders/check-debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Kiểm tra sơ bộ công nợ và dự phóng trước khi đặt đơn (pre-check trên giao diện tạo đơn) |
-| GET | `/orders/check-debt` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Tra cứu nhanh hạn mức công nợ theo query param `dealerId` và `orderAmount` |
+| GET | `/dealers/{id}/debt` | `ORDER_CREATE` hoặc `FINANCE_VIEW_DEBT` | Lấy chi tiết công nợ, hạn mức, số ngày quá hạn và trạng thái cho phép đặt hàng của đại lý (áp dụng Row-Level Security cho `ROLE_SALES`). Alias: `GET /dealers/{id}/credit-info` |
+| POST | `/orders/check-debt` | `ORDER_CREATE` hoặc `FINANCE_VIEW_DEBT` | Kiểm tra sơ bộ công nợ và dự phóng trước khi đặt đơn (pre-check trên giao diện tạo đơn) |
+| GET | `/orders/check-debt` | `ORDER_CREATE` hoặc `FINANCE_VIEW_DEBT` | Tra cứu nhanh hạn mức công nợ theo query param `dealerId` và `orderAmount` |
 
 #### Kết nối màn hình tạo đơn và giới hạn hiện tại (kiểm tra 14/10/2026)
 
-- Frontend S4-02 gọi `GET /api/dealers/{id}/debt`, đọc `hasOverdueDebt`, `isBlocked` và `blockReason`.
+- Frontend S4-02 gọi `GET /api/dealers/{id}/debt`, đọc `hasOverdueDebt`, `isBlocked` và `blockReason`, sau đó gọi `POST /api/orders/check-debt` mỗi khi tổng đơn thay đổi.
   Không có API `/api/finance/debt/{id}/check`, cũng không có trường `oldestOverdueDays` trong DTO này.
 - Nếu API công nợ lỗi, frontend hiển thị lý do và chặn chốt đơn cho tới khi tải lại được dữ liệu.
 - `currentDebt` hiện được suy ra từ tổng đơn `RECORDED`. Chưa có sổ công nợ/phiếu thu/phân bổ thanh toán,

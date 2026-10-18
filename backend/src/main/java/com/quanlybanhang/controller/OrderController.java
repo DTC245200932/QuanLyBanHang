@@ -415,7 +415,7 @@ public class OrderController {
      * Kiểm tra sơ bộ hạn mức và điều kiện nợ khi đặt đơn cho đại lý (S4-02).
      */
     @PostMapping("/check-debt")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'FINANCE_VIEW_DEBT')")
     public ApiResponse checkOrderDebt(@Valid @RequestBody OrderDebtCheckRequest request) {
         OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(request);
         return ApiResponse.success("Kiểm tra công nợ thành công", response);
@@ -425,7 +425,7 @@ public class OrderController {
      * Tra cứu nhanh hạn mức công nợ theo query param (S4-02).
      */
     @GetMapping("/check-debt")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'FINANCE_VIEW_DEBT')")
     public ApiResponse checkOrderDebtByParam(
             @RequestParam Long dealerId,
             @RequestParam(required = false, defaultValue = "0") BigDecimal orderAmount) {

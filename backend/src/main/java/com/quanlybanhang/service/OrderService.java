@@ -230,4 +230,13 @@ public interface OrderService {
      * Cập nhật thông tin giao hàng và số lượng thực giao (S5-01).
      */
     OrderResponse updateOrderDelivery(Long id, com.quanlybanhang.dto.request.OrderDeliveryUpdateRequest request, String username);
+    /**
+     * S4-08: In hoặc xuất PDF đơn hàng, kèm thông tin đại lý, điểm giao, chi tiết dòng hàng, chiết khấu, tổng tiền và mã vạch để kho tra cứu.
+     */
+    byte[] generateOrderPdf(Long id, String username);
+
+    /**
+     * S4-08: Tạo ảnh mã vạch Code 128 tra cứu cho đơn hàng.
+     */
+    byte[] generateOrderBarcode(Long id, String username);
 }

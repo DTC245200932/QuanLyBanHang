@@ -2147,3 +2147,76 @@ Response `201 Created`:
 - **Từ chối đơn:** `PUT /api/orders/{id}/reject` (Quyền: NVKD phụ trách đại lý đó, hoặc `SALES_MANAGER`/`ADMIN`). Chuyển đơn sang trạng thái `REJECTED`.
 *Lưu ý: Nếu NVKD không phải người phụ trách đại lý của đơn hàng cố tình duyệt hoặc từ chối, hệ thống sẽ trả về lỗi HTTP 403 Forbidden.*
 
+
+### In và Xuất PDF Đơn hàng kèm Mã vạch tra cứu (S4-08)
+
+Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) in hoặc xuất file PDF phiếu đơn hàng ngay tại chỗ để đại lý xem lại và ký xác nhận đơn trước khi nhân viên rời đi. Đồng thời mẫu in tích hợp mã vạch chuẩn Code 128 và mã đơn hàng rõ ràng giúp bộ phận kho tra cứu nhanh và đối chiếu xuất kho bằng máy quét mã vạch.
+
+Quy tắc nghiệp vụ:
+1. **Vai trò & Ma trận phân quyền**:
+   - Mã quyền: `ORDER_VIEW`.
+   - Các vai trò được cấp quyền: `ROLE_SALES` (Nhân viên kinh doanh), `ROLE_SALES_MANAGER` (Quản lý kinh doanh), `ROLE_ADMIN` (Quản trị viên), `ROLE_WAREHOUSE_MANAGER` (Quản lý kho), `ROLE_WAREHOUSE_STAFF` (Nhân viên kho), `ROLE_ACCOUNTANT` (Kế toán), `ROLE_VIEWER` (Người xem).
+2. **Bảo mật phân quyền cấp dòng (Row-Level Security - RLS)**:
+   - Nhân viên kinh doanh (`ROLE_SALES`) chỉ được phép xem, in hoặc xuất PDF các đơn hàng của đại lý do chính mình phụ trách (`assignedUser`) hoặc đơn do chính mình tạo (`createdBy`).
+   - Cố tình truy cập hoặc in đơn hàng của đại lý khác sẽ bị chặn với mã lỗi **HTTP 403 Forbidden** (`AccessDeniedException`).
+   - Quản lý kinh doanh, Quản trị viên, Kế toán và Kho có quyền xem và in PDF đơn hàng toàn công ty.
+3. **Nội dung đầy đủ trên Mẫu in PDF**:
+   - **Đầu trang (Header)**: Thông tin công ty phân phối (SaleStock), Hotline, Email và **Mã vạch Code 128 kèm mã đơn hàng** ở góc trên bên phải để kho tra cứu nhanh.
+   - **Thông tin đại lý**: Tên đại lý, mã đại lý, phân nhóm đại lý (Cấp 1 / Cấp 2 / Khách lẻ), mã số thuế, địa bàn/khu vực, nhân viên kinh doanh phụ trách, số điện thoại, địa chỉ.
+   - **Thông tin giao hàng**: Điểm giao hàng, tên người nhận, số điện thoại người nhận, địa chỉ giao hàng, chỉ dẫn giao nhận, ngày giao dự kiến, trạng thái đơn hàng.
+   - **Bảng chi tiết dòng hàng**: STT, Mã SKU, Tên sản phẩm, ĐVT đặt hàng, Số lượng, Quy đổi về đơn vị cơ sở (số lon đóng băng), Đơn giá, Thành tiền trước chiết khấu, Chiết khấu dòng hàng, Tổng cộng sau chiết khấu.
+   - **Tổng tiền & Chiết khấu**: Tạm tính trước chiết khấu (`subtotalAmount`), Chiết khấu sản lượng (`discountAmount`), Tổng tiền thanh toán (`totalAmount`), Số tiền viết bằng chữ tiếng Việt chuẩn ("Bằng chữ: ..."), Ghi chú đơn hàng.
+   - **Khung chữ ký xác nhận 3 bên**:
+     + Đại diện Đại lý (Ký, ghi rõ họ tên - xác nhận đơn hàng tại chỗ trước khi rời đi).
+     + Nhân viên kinh doanh (Ký & ghi rõ họ tên).
+     + Bộ phận Kho / Giao nhận (Ký & ghi rõ họ tên - quét mã vạch đối soát xuất kho).
+   - **Chân trang (Footer)**: Đánh số trang tự động ("Trang X") và lưu ý đối soát.
+4. **Hỗ trợ Font Unicode tiếng Việt**: Tích hợp sẵn bộ font Arial Unicode tiếng Việt, đảm bảo hiển thị chuẩn xác không lỗi dấu trên cả Windows, Linux và Docker.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/orders/{id}/pdf` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Xuất file PDF phiếu xác nhận đơn hàng kèm mã vạch. Mặc định trả `inline` để xem/in ngay trên trình duyệt; thêm `?download=true` để tải file về máy |
+| GET | `/orders/{id}/barcode` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Lấy ảnh mã vạch (Barcode Code 128) dạng PNG độc lập theo mã đơn hàng để in tem nhãn hoặc quét nhanh |
+
+#### Ví dụ Request xuất PDF xem trước (`GET /api/orders/1/pdf`):
+```http
+GET /api/orders/1/pdf HTTP/1.1
+Host: localhost:8080
+Authorization: Bearer <access-token>
+```
+Response Headers:
+```http
+HTTP/1.1 200 OK
+Content-Type: application/pdf
+Content-Disposition: inline; filename="don-hang-DH20261016-0001.pdf"
+```
+Response Body: Binary data PDF (`%PDF-...`)
+
+#### Ví dụ Request tải file PDF đính kèm (`GET /api/orders/1/pdf?download=true`):
+```http
+GET /api/orders/1/pdf?download=true HTTP/1.1
+Host: localhost:8080
+Authorization: Bearer <access-token>
+```
+Response Headers:
+```http
+HTTP/1.1 200 OK
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="don-hang-DH20261016-0001.pdf"
+```
+
+#### Ví dụ Request lấy mã vạch Code 128 (`GET /api/orders/1/barcode`):
+```http
+GET /api/orders/1/barcode HTTP/1.1
+Host: localhost:8080
+Authorization: Bearer <access-token>
+```
+Response Headers:
+```http
+HTTP/1.1 200 OK
+Content-Type: image/png
+```
+Response Body: Binary data PNG (ảnh mã vạch Code 128)
+
+
+

@@ -134,6 +134,7 @@ public interface OrderService {
             com.quanlybanhang.dto.request.OrderCalculateRequest request);
 
     /**
+    /**
      * S4-09: Sao chép một đơn cũ thành đơn mới ở trạng thái Nháp (DRAFT).
      * Toàn bộ dòng hàng của đơn đã chọn được sao chép.
      * Giá và chiết khấu được áp lại theo bảng giá và chính sách hiện hành, không kế thừa giá cũ.
@@ -200,4 +201,33 @@ public interface OrderService {
             java.time.LocalDateTime createdAt,
             List<String> productNames
     ) {}
+    /**
+     * Lấy danh sách đơn hàng theo ngữ cảnh người dùng hiện tại (S4-07, S5-01):
+     * - Đại lý (ROLE_DEALER): chỉ thấy đơn của chính đại lý mình.
+     * - Nhân viên kinh doanh (ROLE_SALES): chỉ thấy đơn của đại lý mình phụ trách.
+     * - Quản trị, Quản lý, Kế toán, Kho, Viewer: thấy toàn bộ đơn hàng.
+     */
+    List<OrderResponse> getOrdersForUser(String username);
+
+    /**
+     * Lấy chi tiết đơn hàng theo ngữ cảnh người dùng hiện tại (S4-07, S5-01).
+     * Ném lỗi AccessDeniedException (403) nếu cố truy cập đơn của đại lý khác.
+     */
+    OrderResponse getOrderByIdForUser(Long id, String username);
+
+    /**
+     * S5-01: Lấy danh sách đơn hàng của chính đại lý đăng nhập.
+     * Kèm trạng thái, ngày giao dự kiến, tổng tiền.
+     */
+    List<OrderResponse> getOrdersForDealer(String username);
+
+    /**
+     * S5-01: Xem chi tiết dòng hàng và số lượng thực giao nếu giao thiếu cho đại lý.
+     */
+    OrderResponse getOrderByIdForDealer(Long id, String username);
+
+    /**
+     * Cập nhật thông tin giao hàng và số lượng thực giao (S5-01).
+     */
+    OrderResponse updateOrderDelivery(Long id, com.quanlybanhang.dto.request.OrderDeliveryUpdateRequest request, String username);
 }

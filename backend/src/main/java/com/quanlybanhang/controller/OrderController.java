@@ -194,7 +194,7 @@ public class OrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
     public ResponseEntity<ApiResponse> createOrder(
             @Valid @RequestBody OrderRequest request,
             Principal principal) {
@@ -212,7 +212,7 @@ public class OrderController {
      * Không có bảng giá hiệu lực cho SKU đó thì chặn thêm dòng hàng kèm thông báo rõ lý do.
      */
     @PostMapping("/line-item/pricing")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
     public ApiResponse calculateLineItemPricing(@Valid @RequestBody OrderLineItemPricingRequest request) {
         OrderLineItemPricingResponse response = orderService.calculateLineItemPricing(request);
         return ApiResponse.success("Áp giá và chiết khấu dòng hàng thành công", response);
@@ -223,10 +223,24 @@ public class OrderController {
      * Chặn thêm dòng hàng nếu có SKU chưa có trong bảng giá hiệu lực.
      */
     @PostMapping("/calculate")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
     public ApiResponse calculateOrder(@Valid @RequestBody OrderCalculateRequest request) {
         OrderCalculateResponse response = orderService.calculateOrder(request);
         return ApiResponse.success("Tính toán giá và chiết khấu đơn hàng thành công", response);
+    }
+
+    /**
+     * Cập nhật thông tin giao hàng và số lượng thực giao cho từng dòng hàng (S5-01).
+     */
+    @PutMapping("/{id}/delivery")
+    @PreAuthorize("hasAnyRole('WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'SALES_MANAGER', 'ADMIN')")
+    public ApiResponse updateOrderDelivery(
+            @PathVariable Long id,
+            @Valid @RequestBody com.quanlybanhang.dto.request.OrderDeliveryUpdateRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        OrderResponse response = orderService.updateOrderDelivery(id, request, username);
+        return ApiResponse.success("Cập nhật giao hàng thành công", response);
     }
 
     /**

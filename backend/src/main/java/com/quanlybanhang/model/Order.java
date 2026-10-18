@@ -165,6 +165,18 @@ public class Order {
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    /**
+     * Ngày thực tế giao hàng (S5-01).
+     */
+    @Column(name = "actual_delivery_date")
+    private LocalDate actualDeliveryDate;
+
+    /**
+     * Ghi chú giao hàng tổng thể / tình trạng giao (S5-01).
+     */
+    @Column(name = "delivery_note", length = 500)
+    private String deliveryNote;
+
     @Column(name = "created_by", length = 100)
     private String createdBy;
 

@@ -625,6 +625,161 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getOrdersForDealer(String username) {
+        if (username == null || username.isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException("Yêu cầu thông tin đăng nhập");
+        }
+        User user = (userRepository != null) ? userRepository.findByUsername(username).orElse(null) : null;
+        if (user == null || user.getDealer() == null) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Tài khoản của bạn chưa được liên kết với hồ sơ đại lý trong hệ thống");
+        }
+        Long dealerId = user.getDealer().getId();
+        return orderRepository.findByDealerIdOrderByCreatedAtDesc(dealerId).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderByIdForDealer(Long id, String username) {
+        if (username == null || username.isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException("Yêu cầu thông tin đăng nhập");
+        }
+        User user = (userRepository != null) ? userRepository.findByUsername(username).orElse(null) : null;
+        if (user == null || user.getDealer() == null) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Tài khoản của bạn chưa được liên kết với hồ sơ đại lý trong hệ thống");
+        }
+        Long dealerId = user.getDealer().getId();
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
+
+        if (order.getDealer() == null || !dealerId.equals(order.getDealer().getId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Bạn không có quyền xem đơn hàng của đại lý khác");
+        }
+        return mapToResponse(order);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getOrdersForUser(String username) {
+        if (username == null || username.isBlank() || "system".equalsIgnoreCase(username) || userRepository == null) {
+            return getAllOrders();
+        }
+        User user = userRepository.findByUsername(username).orElse(null);
+        if (user == null) {
+            return getAllOrders();
+        }
+
+        boolean isDealer = user.getDealer() != null
+                || user.getRoles().stream().anyMatch(r -> r.getName() == ERole.ROLE_DEALER);
+        if (isDealer) {
+            return getOrdersForDealer(username);
+        }
+
+        boolean isOnlySales = user.getRoles().stream().anyMatch(r -> r.getName() == ERole.ROLE_SALES)
+                && user.getRoles().stream().noneMatch(r -> r.getName() == ERole.ROLE_ADMIN
+                || r.getName() == ERole.ROLE_SALES_MANAGER
+                || r.getName() == ERole.ROLE_ACCOUNTANT
+                || r.getName() == ERole.ROLE_VIEWER);
+        if (isOnlySales) {
+            return orderRepository.findByDealerAssignedUserIdOrderByCreatedAtDesc(user.getId()).stream()
+                    .map(this::mapToResponse)
+                    .collect(Collectors.toList());
+        }
+
+        return getAllOrders();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderByIdForUser(Long id, String username) {
+        if (username == null || username.isBlank() || "system".equalsIgnoreCase(username) || userRepository == null) {
+            return getOrderById(id);
+        }
+        User user = userRepository.findByUsername(username).orElse(null);
+        if (user == null) {
+            return getOrderById(id);
+        }
+
+        boolean isDealer = user.getDealer() != null
+                || user.getRoles().stream().anyMatch(r -> r.getName() == ERole.ROLE_DEALER);
+        if (isDealer) {
+            return getOrderByIdForDealer(id, username);
+        }
+
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
+
+        boolean isOnlySales = user.getRoles().stream().anyMatch(r -> r.getName() == ERole.ROLE_SALES)
+                && user.getRoles().stream().noneMatch(r -> r.getName() == ERole.ROLE_ADMIN
+                || r.getName() == ERole.ROLE_SALES_MANAGER
+                || r.getName() == ERole.ROLE_ACCOUNTANT
+                || r.getName() == ERole.ROLE_VIEWER);
+        if (isOnlySales) {
+            if (order.getDealer() != null && order.getDealer().getAssignedUser() != null
+                    && !order.getDealer().getAssignedUser().getId().equals(user.getId())) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Bạn không có quyền truy cập đơn hàng của đại lý chưa được phân công");
+            }
+        }
+
+        return mapToResponse(order);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updateOrderDelivery(Long id, com.quanlybanhang.dto.request.OrderDeliveryUpdateRequest request, String username) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
+
+        String oldStatus = order.getStatus();
+        if (request.getStatus() != null && !request.getStatus().isBlank()) {
+            order.setStatus(request.getStatus().trim());
+        } else if ("RECORDED".equalsIgnoreCase(order.getStatus())) {
+            order.setStatus("DELIVERED");
+        }
+
+        if (request.getActualDeliveryDate() != null) {
+            order.setActualDeliveryDate(request.getActualDeliveryDate());
+        } else if (order.getActualDeliveryDate() == null) {
+            order.setActualDeliveryDate(LocalDate.now());
+        }
+
+        if (request.getDeliveryNote() != null) {
+            order.setDeliveryNote(request.getDeliveryNote().trim());
+        }
+
+        if (request.getItems() != null && !request.getItems().isEmpty()) {
+            Map<Long, com.quanlybanhang.dto.request.OrderItemDeliveryRequest> itemReqMap = request.getItems().stream()
+                    .collect(Collectors.toMap(com.quanlybanhang.dto.request.OrderItemDeliveryRequest::getOrderItemId, i -> i));
+
+            for (OrderItem item : order.getItems()) {
+                com.quanlybanhang.dto.request.OrderItemDeliveryRequest itemReq = itemReqMap.get(item.getId());
+                if (itemReq != null) {
+                    item.setDeliveredQuantity(itemReq.getDeliveredQuantity());
+                    BigDecimal conversionFactor = item.getConversionFactor() != null ? item.getConversionFactor() : BigDecimal.ONE;
+                    item.setDeliveredBaseQuantity(itemReq.getDeliveredQuantity().multiply(conversionFactor));
+                    if (itemReq.getNote() != null) {
+                        item.setDeliveryNote(itemReq.getNote().trim());
+                    }
+                }
+            }
+        }
+
+        Order saved = orderRepository.save(order);
+        auditLogService.logAction("ORDER", saved.getOrderCode(), "DELIVERY_UPDATE",
+                oldStatus, saved.getStatus(),
+                "Cập nhật giao hàng: ngày " + saved.getActualDeliveryDate() + ", ghi chú: " + (saved.getDeliveryNote() != null ? saved.getDeliveryNote() : "Không"),
+                username != null ? username : "system");
+
+        return mapToResponse(saved);
+    }
+
+    @Override
     @Transactional
     public OrderResponse cancelOrder(Long id, String reason, String username) {
         if (reason == null || reason.trim().isBlank()) {
@@ -1232,6 +1387,7 @@ public class OrderServiceImpl implements OrderService {
                         .build());
             }
         }
+        boolean hasShortage = items.stream().anyMatch(i -> Boolean.TRUE.equals(i.getIsShortage()));
 
         return OrderResponse.builder()
                 .id(order.getId())
@@ -1252,6 +1408,10 @@ public class OrderServiceImpl implements OrderService {
                 .warehouseCode(order.getWarehouse() != null ? order.getWarehouse().getCode() : null)
                 .warehouseName(order.getWarehouse() != null ? order.getWarehouse().getName() : null)
                 .expectedDeliveryDate(order.getExpectedDeliveryDate())
+                .actualDeliveryDate(order.getActualDeliveryDate())
+                .deliveryNote(order.getDeliveryNote())
+                .hasShortage(hasShortage)
+                .totalLineItems(items.size())
                 .priceListId(order.getPriceList() != null ? order.getPriceList().getId() : null)
                 .priceListCode(order.getPriceList() != null ? order.getPriceList().getCode() : null)
                 .warehouseId(order.getWarehouse() != null ? order.getWarehouse().getId() : null)
@@ -1339,6 +1499,19 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        BigDecimal deliveredQty = item.getDeliveredQuantity();
+        BigDecimal shortageQty = null;
+        Boolean isShortage = false;
+        if (deliveredQty != null) {
+            if (item.getQuantity() != null && deliveredQty.compareTo(item.getQuantity()) < 0) {
+                shortageQty = item.getQuantity().subtract(deliveredQty);
+                isShortage = true;
+            } else {
+                shortageQty = BigDecimal.ZERO;
+                isShortage = false;
+            }
+        }
+
         return OrderItemResponse.builder()
                 .id(item.getId())
                 .productId(item.getProduct() != null ? item.getProduct().getId() : null)
@@ -1349,6 +1522,11 @@ public class OrderServiceImpl implements OrderService {
                 .conversionFactor(item.getConversionFactor())
                 .baseUnit(item.getBaseUnit())
                 .baseQuantity(item.getBaseQuantity())
+                .deliveredQuantity(deliveredQty)
+                .deliveredBaseQuantity(item.getDeliveredBaseQuantity())
+                .shortageQuantity(shortageQty)
+                .isShortage(isShortage)
+                .deliveryNote(item.getDeliveryNote())
                 .price(item.getPrice())
                 .unitPrice(item.getPrice())
                 .floorPrice(item.getFloorPrice())

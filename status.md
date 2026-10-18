@@ -15,6 +15,7 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 | **S5-07** | **Lập phiếu chuyển kho nội bộ (Internal Warehouse Transfer)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`WAREHOUSE_TRANSFER`, `WAREHOUSE_EXPORT`, `WAREHOUSE_IMPORT`) | - **Vai trò**: Nhân viên kho (`ROLE_WAREHOUSE_STAFF`), Quản lý kho (`ROLE_WAREHOUSE_MANAGER`), Admin (`ROLE_ADMIN`).<br>- **Lập phiếu chuyển**: Chọn kho đi, kho đến (khác nhau), danh sách hàng & số lượng. Trừ tồn kho tại kho đi ngay khi xuất; hàng ghi nhận đang trên đường (`inTransitQuantity`), **CHƯA cộng vào kho đến**.<br>- **Xác nhận nhận hàng**: Kho đến xác nhận nhận đủ/thực nhận thì tồn kho đến mới được cộng theo số lượng thực nhận, hàng trên đường được xóa về 0.<br>- **Chênh lệch**: Khi nhận có chênh lệch (`received != sent`), **bắt buộc phải nhập lý do**; nếu không nhập lý do sẽ bị từ chối với lỗi `400 Bad Request`.<br>- **Hủy phiếu**: Hỗ trợ hủy phiếu khi đang trên đường (`IN_TRANSIT`), hoàn lại tồn kho xuất và xóa hàng trên đường.<br>- **Phân quyền Backend**: `@PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or ...")`. Chặn Nhân viên kinh doanh (`ROLE_SALES`) thực hiện chuyển kho (`403 Forbidden`).<br>- **Phân quyền Frontend**: Ma trận quyền tại `GET /api/admin/permissions` đã tự động nạp `WAREHOUSE_TRANSFER`, sẵn sàng cho giao diện frontend kiểm tra qua `Auth.hasPermission('WAREHOUSE_TRANSFER')`. |
 
 >>>>>>> origin/feature/S5-07-nhap-phieu-chuyen-kho-noi-bo
+| **S5-02** | **Đại lý đặt lại đơn đã mua trước đây để lấy hàng định kỳ (Dealer Re-order from Previous Order)** | ⏳ Chờ đồng bộ nhánh backend (Đã có sẵn API core: `/portal/orders`, `/products`, `/price-lists/effective`, `POST /orders`) | ✅ Đã hoàn thành (Theo yêu cầu chỉ làm frontend) | ✅ Đã kết nối đầy đủ (`ROLE_DEALER`, `ORDER_CREATE`, `ORDER_VIEW`) | - **Vai trò**: Đại lý (`ROLE_DEALER`, `ORDER_CREATE`), Quản trị viên (`ROLE_ADMIN`).<br>- **Dòng hàng**: Cho phép chọn đặt lại toàn bộ hoặc một phần dòng hàng qua checkbox và stepper số lượng linh hoạt.<br>- **Hàng ngừng kinh doanh**: Tự động nhận diện qua catalog sản phẩm (`active = false` hoặc `status = INACTIVE`), loại bỏ khỏi danh sách đặt lại và hiển thị thông báo chi tiết danh sách mặt hàng bị loại.<br>- **Bảng giá hiện hành**: Áp lại theo bảng giá hiệu lực hiện hành (`/price-lists/effective`) hoặc giá catalog hiện hành, không giữ giá cũ.<br>- **Phân quyền**: Nút "Đặt lại" và modal đặt lại chỉ hiển thị/cho phép thao tác khi người dùng có quyền `ORDER_CREATE` theo ma trận phân quyền. |
 
 ---
 
@@ -319,5 +320,36 @@ Tài liệu theo dõi trạng thái triển khai và kết nối ma trận phân
   - Endpoint `GET /api/admin/permissions` tự động nạp `WAREHOUSE_TRANSFER` vào danh mục quyền của hệ thống và hiển thị trên màn hình quản trị ma trận phân quyền (`admin-users.js`).
   - Sẵn sàng tích hợp kiểm tra qua `Auth.hasPermission('WAREHOUSE_TRANSFER')` hoặc `Auth.hasAnyRole('ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_ADMIN')` khi xây dựng giao diện chuyển kho.
 >>>>>>> origin/feature/S5-07-nhap-phieu-chuyen-kho-noi-bo
+## Chi tiết kết nối phân quyền S5-02 (Permission Matrix Details)
+
+- **Mã quyền kết nối**: `ORDER_CREATE` (Tạo và đặt lại đơn hàng), `ORDER_VIEW` (Xem danh sách đơn hàng đã mua)
+- **Các vai trò được phép thao tác**:
+  - `ROLE_DEALER`: Đại lý chính thức (theo dõi đơn hàng và chủ động đặt lại định kỳ)
+  - `ROLE_ADMIN`: Quản trị viên hệ thống
+- **Phía Frontend**:
+  - **Trang giao diện**: `dealer-orders.html` và `dealer-orders.js`
+  - **Kiểm tra phân quyền động**:
+    - Khi tải trang, hàm `canReorder()` kiểm tra `Auth.hasPermission('ORDER_CREATE')` (hoặc vai trò `ROLE_DEALER`/`ROLE_ADMIN`).
+    - Nếu quyền `ORDER_CREATE` bị vô hiệu hóa trong bảng ma trận phân quyền người dùng (`/admin/users`), nút **Đặt lại** ở từng dòng đơn hàng và nút **Đặt lại đơn này** trong modal chi tiết đơn hàng sẽ tự động bị ẩn.
+    - Chặn mở modal đặt lại nếu không có quyền `ORDER_CREATE`, có thông báo cảnh báo toast rõ ràng.
+  - **Xử lý nghiệp vụ chọn dòng hàng (Toàn bộ hoặc một phần)**:
+    - Khi mở modal đặt lại, mặc định tất cả các dòng hàng đang còn hoạt động được chọn (chọn toàn bộ).
+    - Người dùng có thể bỏ chọn từng dòng hàng độc lập qua checkbox (chọn một phần dòng hàng), điều chỉnh số lượng đặt lại định kỳ qua bộ nút tăng/giảm stepper (`min="1"`).
+    - Thao tác chọn/bỏ chọn và thay đổi số lượng cập nhật ngay lập tức thành tiền dòng và tổng tiền đơn hàng theo thời gian thực.
+  - **Xử lý mặt hàng đã ngừng kinh doanh (Discontinued items)**:
+    - Tự động đối soát từng sản phẩm trong đơn cũ với catalog sản phẩm (`/products`).
+    - Bất kỳ sản phẩm nào có cờ `active = false` hoặc `status = 'INACTIVE'` sẽ được **tự động loại bỏ hoàn toàn** khỏi bảng danh sách đặt lại.
+    - Hiển thị khối thông báo cảnh báo rõ ràng (`#dealer-reorder-discontinued-alert`): nêu rõ danh sách tên sản phẩm, mã sản phẩm, đơn vị tính đã ngừng kinh doanh để đại lý nắm bắt.
+    - Nếu toàn bộ mặt hàng trong đơn cũ đều đã ngừng kinh doanh, hệ thống hiển thị thông báo lỗi và khóa nút gửi đơn đặt lại.
+  - **Áp lại giá theo bảng giá hiện hành (Repricing)**:
+    - Tra cứu bảng giá có hiệu lực hiện hành (`/price-lists/effective?customerGroup=...`) theo nhóm khách hàng của đại lý.
+    - Tự động áp đơn giá hiện hành cho từng dòng sản phẩm, nhân theo hệ số quy đổi đơn vị tính (nếu đặt theo quy cách khác đơn vị cơ sở). Không kế thừa giá cũ của đơn hàng trước.
+    - Hiển thị badge **Giá hiện hành** bên cạnh đơn giá mới.
+  - **Gửi đơn đặt lại**:
+    - Gửi request đến API backend cổng đại lý (thử `/portal/orders/reorder`, `/portal/orders`, hoặc fallback `/orders`).
+    - Reset dữ liệu, tự động làm mới danh sách đơn hàng và hiển thị toast thông báo thành công kèm mã đơn mới.
+- **Phía Backend**:
+  - Role `ROLE_DEALER` trong cấu hình phân quyền backend (`RolePermissionConfig`) sở hữu mặc định các quyền `ORDER_VIEW` và `ORDER_CREATE`.
+  - Dữ liệu đơn hàng được cô lập theo `dealer_id` của tài khoản đăng nhập (Row-Level Security).
 
 

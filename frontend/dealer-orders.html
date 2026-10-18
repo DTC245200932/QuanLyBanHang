@@ -7,6 +7,7 @@
     <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/dashboard.css" />
     <link rel="stylesheet" href="/css/app-navigation.css" />
+    <link rel="stylesheet" href="/css/toast.css" />
     <link rel="stylesheet" href="/css/dealer-orders.css" />
   </head>
   <body>
@@ -103,7 +104,7 @@
             <div id="dealer-orders-message" class="dealer-orders-message" role="alert" hidden></div>
             <div class="dealer-orders-table-wrap">
               <table class="dealer-orders-table">
-                <thead><tr><th>Mã đơn</th><th>Trạng thái</th><th>Ngày giao dự kiến</th><th>Tổng tiền</th><th>Cập nhật</th><th><span class="sr-only">Thao tác</span></th></tr></thead>
+                <thead><tr><th>Mã đơn</th><th>Trạng thái</th><th>Ngày giao dự kiến</th><th>Tổng tiền</th><th>Cập nhật</th><th>Thao tác</th></tr></thead>
                 <tbody id="dealer-orders-body"><tr><td colspan="6"><div class="dealer-orders-loading">Đang tải danh sách đơn hàng…</div></td></tr></tbody>
               </table>
             </div>
@@ -114,6 +115,7 @@
 
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
+    <!-- Modal Chi tiết đơn hàng -->
     <div class="modal-overlay" id="dealer-order-detail-modal" hidden>
       <div class="modal modal--wide dealer-order-detail" role="dialog" aria-modal="true" aria-labelledby="dealer-order-detail-title">
         <div class="modal__header">
@@ -123,12 +125,139 @@
         <div class="modal__body">
           <div id="dealer-order-detail-content"><div class="dealer-orders-loading">Đang tải chi tiết…</div></div>
         </div>
+        <div class="modal__footer dealer-order-detail__footer">
+          <button class="btn btn--secondary" type="button" id="btn-close-detail-modal">Đóng</button>
+          <button class="btn btn--primary" type="button" id="btn-reorder-from-detail" hidden>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+            <span>Đặt lại đơn này</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal S5-02: Đặt lại đơn hàng đã mua trước đây -->
+    <div class="modal-overlay" id="dealer-reorder-modal" hidden>
+      <div class="modal modal--wide dealer-reorder-modal" role="dialog" aria-modal="true" aria-labelledby="dealer-reorder-title">
+        <div class="modal__header">
+          <div>
+            <p class="dealer-reorder__eyebrow">Cổng đại lý</p>
+            <h2 id="dealer-reorder-title">Đặt lại đơn hàng — <span id="reorder-source-code">—</span></h2>
+          </div>
+          <button class="modal__close" type="button" id="close-dealer-reorder" aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div class="modal__body">
+          <!-- Loading placeholder -->
+          <div id="dealer-reorder-loading" class="dealer-orders-loading">Đang tải thông tin đơn hàng và bảng giá hiện hành…</div>
+
+          <!-- Main content once loaded -->
+          <div id="dealer-reorder-content" hidden>
+            <!-- Thông báo mặt hàng đã ngừng kinh doanh được loại khỏi đơn mới -->
+            <div id="dealer-reorder-discontinued-alert" class="dealer-reorder-alert dealer-reorder-alert--warning" hidden role="alert">
+              <div class="dealer-reorder-alert__header">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <strong>Mặt hàng đã ngừng kinh doanh được loại khỏi đơn mới</strong>
+              </div>
+              <p class="dealer-reorder-alert__desc">Các mặt hàng sau từ đơn cũ hiện đã ngừng kinh doanh và không thể tiếp tục đặt lại:</p>
+              <ul id="dealer-reorder-discontinued-list" class="dealer-reorder-discontinued-list"></ul>
+            </div>
+
+            <!-- Cảnh báo nếu toàn bộ đơn hàng đều là hàng đã ngừng kinh doanh -->
+            <div id="dealer-reorder-empty-alert" class="dealer-reorder-alert dealer-reorder-alert--danger" hidden role="alert">
+              <div class="dealer-reorder-alert__header">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                <strong>Không thể đặt lại đơn hàng</strong>
+              </div>
+              <p class="dealer-reorder-alert__desc">Tất cả mặt hàng trong đơn hàng cũ đã ngừng kinh doanh. Vui lòng liên hệ nhân viên kinh doanh hoặc tạo đơn mới từ danh mục sản phẩm hiện hành.</p>
+            </div>
+
+            <!-- Thông báo giá được áp lại theo bảng giá hiện hành -->
+            <div class="dealer-reorder-price-banner">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Giá được áp lại tự động theo bảng giá hiện hành tại thời điểm đặt hàng. Bạn có thể chọn đặt lại toàn bộ hoặc một phần dòng hàng.</span>
+            </div>
+
+            <!-- Vùng chọn dòng hàng & chỉnh số lượng -->
+            <div class="dealer-reorder-selection" id="dealer-reorder-selection">
+              <div class="dealer-reorder-toolbar">
+                <label class="dealer-reorder-select-all">
+                  <input type="checkbox" id="reorder-select-all" checked />
+                  <span>Chọn tất cả mặt hàng</span>
+                </label>
+                <div class="dealer-reorder-counter" id="reorder-counter">
+                  Đã chọn: <strong id="reorder-selected-count">0</strong> / <span id="reorder-total-count">0</span> dòng hàng
+                </div>
+              </div>
+
+              <div class="dealer-reorder-items-wrap">
+                <table class="dealer-reorder-table">
+                  <thead>
+                    <tr>
+                      <th class="col-select"><span class="sr-only">Chọn</span></th>
+                      <th>Sản phẩm</th>
+                      <th>Đơn vị</th>
+                      <th>Đơn giá hiện hành</th>
+                      <th style="min-width:130px;">Số lượng đặt</th>
+                      <th class="text-right">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dealer-reorder-tbody">
+                    <!-- Được render động từ JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Tuỳ chọn giao hàng & ghi chú -->
+              <div class="dealer-reorder-options">
+                <div class="dealer-reorder-field">
+                  <label for="reorder-delivery-date">Ngày giao dự kiến mong muốn <span class="req">*</span></label>
+                  <input type="date" id="reorder-delivery-date" class="form-input" required />
+                </div>
+                <div class="dealer-reorder-field">
+                  <label for="reorder-note">Ghi chú đơn hàng (tuỳ chọn)</label>
+                  <input type="text" id="reorder-note" class="form-input" placeholder="Ví dụ: Đặt lại hàng định kỳ tuần này..." maxlength="500" />
+                </div>
+              </div>
+
+              <!-- Tổng hợp thành tiền -->
+              <div class="dealer-reorder-summary">
+                <div class="dealer-reorder-summary__row">
+                  <span>Số dòng hàng đặt:</span>
+                  <strong id="reorder-summary-lines">0 dòng</strong>
+                </div>
+                <div class="dealer-reorder-summary__row">
+                  <span>Tổng số lượng đặt:</span>
+                  <strong id="reorder-summary-qty">0</strong>
+                </div>
+                <div class="dealer-reorder-summary__row dealer-reorder-summary__row--total">
+                  <span>Tổng tiền (áp theo giá hiện hành):</span>
+                  <strong id="reorder-summary-total">0 đ</strong>
+                </div>
+              </div>
+            </div>
+
+            <div id="reorder-error-message" class="dealer-orders-message" role="alert" hidden></div>
+          </div>
+        </div>
+
+        <div class="modal__footer dealer-reorder-footer">
+          <button type="button" class="btn btn--secondary" id="btn-close-reorder">Hủy</button>
+          <button type="button" class="btn btn--primary" id="btn-confirm-reorder">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Xác nhận đặt hàng</span>
+          </button>
+        </div>
       </div>
     </div>
 
     <script src="/js/auth.js"></script>
     <script src="/js/menu-config.js"></script>
+    <script src="/js/toast.js"></script>
     <script src="/js/app-navigation.js"></script>
     <script src="/js/dealer-orders.js"></script>
+  </body>
+</html>
   </body>
 </html>

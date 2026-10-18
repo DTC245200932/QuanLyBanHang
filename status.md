@@ -9,9 +9,14 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 | **S4-09** | **Sao chép đơn cũ thành đơn mới (Order Copy to Draft / New Order)** | ✅ Đã hoàn thành | ✅ Đã hoàn thành | ✅ Đã kết nối đầy đủ (`ORDER_CREATE`) | - **Vai trò**: Nhân viên kinh doanh (`ROLE_SALES`, `ORDER_CREATE`).<br>- **Dòng hàng**: Sao chép toàn bộ dòng hàng sang đơn mới / draft.<br>- **Giá & Chiết khấu**: Tự động áp lại bảng giá hiện hành (`findEffectivePriceLists`) và chính sách chiết khấu sản lượng hiện hành (`calculateOrderDiscount`), không kế thừa giá cũ.<br>- **Trạng thái**: Luôn bắt đầu ở trạng thái Nháp (`DRAFT`).<br>- **Phân quyền Backend**: `@PreAuthorize("hasAuthority('ORDER_CREATE') or ...")` và RLS kiểm tra quyền phụ trách đại lý.<br>- **Phân quyền Frontend**: Kiểm tra `Auth.hasPermission('ORDER_CREATE')` trước khi hiển thị nút sao chép và thực hiện sao chép. |
 | **S4-10** | **Cổng tự đặt hàng dành cho Đại lý (Dealer Self-Ordering Portal)** | ✅ Đã hoàn thành | ⏳ Đã có trên nhánh FE `feature/S4-10-chuc-nang-dat-hang-cho-dai-ly(frontend)`, chưa gộp vào `develop` | ✅ Đã kết nối đầy đủ (`ROLE_DEALER`, `ORDER_CREATE`, `ORDER_VIEW`, `PRODUCT_VIEW`) | - **Vai trò**: Khách hàng đại lý (`ROLE_DEALER`).<br>- **Xem giá & sản phẩm**: Chỉ thấy sản phẩm & giá thuộc bảng giá hiệu lực của nhóm khách hàng của mình (`DAI_LY_CAP_1`, `DAI_LY_CAP_2`, `KHACH_LE`), kèm quy cách đóng gói (thùng/lốc...).<br>- **Công nợ còn lại**: Xem hạn mức, công nợ hiện tại và công nợ còn lại thời gian thực trước khi đặt hàng.<br>- **Trạng thái đơn**: Bắt buộc luôn ở trạng thái Chờ duyệt (`PENDING_APPROVAL`, `requiresApproval = true`), chờ NVKD phụ trách xác nhận.<br>- **Phê duyệt đơn**: NVKD phụ trách đại lý (`assignedUser`) có quyền xác nhận (`PUT /orders/{id}/approve`) hoặc từ chối (`PUT /orders/{id}/reject`). NVKD khác bị chặn `403 Forbidden`.<br>- **Bảo mật RLS**: Đại lý bị khoá giao dịch bị chặn đặt hàng (`400 Bad Request`). Đại lý chỉ xem được đơn hàng của chính mình. |
 | **S5-01** | **Theo dõi trạng thái đơn hàng của đại lý** | ✅ Có ở nhánh backend S5-01, chưa gộp vào `develop` | ✅ Đã nối API trên nhánh frontend hiện tại | ✅ Frontend giới hạn menu/route theo `ROLE_DEALER` + `ORDER_VIEW`; backend API giới hạn dữ liệu theo đại lý | Frontend chỉ dùng hợp đồng `GET /api/portal/orders` và `GET /api/portal/orders/{id}`. Không kéo code backend và không merge nhánh backend. |
+<<<<<<< HEAD
 | **S5-03** | **Khai báo nhiều kho, vị trí lưu trữ (Khu/Kệ), gán kho phục vụ đại lý & Soạn hàng (Warehouse, Locations & Order Picking)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu người dùng: "chỉ làm backtend") | ✅ Đã kết nối đầy đủ (`WAREHOUSE_MANAGE`) | - **Khai báo kho**: Mỗi kho có mã, tên, địa chỉ, người phụ trách, trạng thái. Xóa kho an toàn (chuyển `active=false` nếu đã phát sinh phiếu kho/vị trí).<br>- **Vị trí lưu kho**: Khai báo Khu vực (`ZONE`) và Kệ (`SHELF`) thuộc Khu. Gán sản phẩm vào kệ kèm vị trí mặc định (`isDefault`).<br>- **Gán kho đại lý**: Đại lý được gán kho phục vụ mặc định (`PUT /api/dealers/{id}/default-warehouse`).<br>- **Soạn hàng**: `GET /api/orders/{id}/picking-list` hiển thị chính xác tên Kệ, Khu vực, mã vị trí và tồn khả dụng.<br>- **Phân quyền**: Gán quyền `WAREHOUSE_MANAGE` cho `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`; bảo vệ bằng `@PreAuthorize` và `SecurityConfig`. Ghi `AuditLog` toàn diện. |
 | **S5-06** | **Giữ chỗ tồn kho khi đơn được duyệt & Tự động nhả tồn quá hạn / huỷ đơn (Inventory Reservation on Order Approval & Auto-release)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`ORDER_APPROVE`, `ORDER_CANCEL`, `ORDER_VIEW`) | - **Vai trò**: Nhân viên kinh doanh (`ROLE_SALES`), Quản lý kinh doanh (`ROLE_SALES_MANAGER`), Admin (`ROLE_ADMIN`), Quản lý kho (`ROLE_WAREHOUSE_MANAGER`).<br>- **Giữ chỗ tồn khi duyệt đơn**: Khi đơn chuyển sang trạng thái Đã duyệt (`RECORDED`), tồn tương ứng được giữ chỗ (`reservedQuantity`), ngăn chặn bán vượt tồn hoặc mất hàng đã chốt.<br>- **Giao dịch `@Transactional` nguyên tử**: Kiểm tra tồn khả dụng, tăng `reservedQuantity` và đổi trạng thái đơn nằm trong cùng giao dịch; nếu không đủ tồn hoặc phát sinh lỗi thì rollback toàn bộ.<br>- **Tự động nhả tồn**: Huỷ đơn (`cancelOrder`) hoặc từ chối đơn (`rejectOrder`) tự động hoàn trả tồn giữ chỗ. Background Scheduler (`OrderReservationScheduler`) tự động quét định kỳ và nhả tồn đối với đơn quá hạn giữ chỗ (`reservationExpiresAt <= now()`), chuyển đơn sang trạng thái `EXPIRED`.<br>- **Phân quyền Backend**: Phê duyệt / huỷ / giải phóng tồn được bảo vệ bằng `@PreAuthorize("hasAuthority('ORDER_APPROVE') ...")` và `ORDER_CANCEL`. |
 | **S5-04** | **Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (Supplier Goods Receipt with Lot & Expiry Management)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`WAREHOUSE_IMPORT`, `WAREHOUSE_VIEW`, `WAREHOUSE_ADJUST`) | - **Vai trò**: Nhân viên kho (`ROLE_WAREHOUSE_STAFF`), Quản lý kho (`ROLE_WAREHOUSE_MANAGER`), Admin (`ROLE_ADMIN`).<br>- **Khai báo**: Nhà cung cấp, số chứng từ, ngày nhập, kho nhập.<br>- **Đơn vị tính & Quy đổi**: Nhập đơn vị bất kỳ, tự động quy về đơn vị cơ sở và đóng băng thông tin khi ghi sổ.<br>- **Quản lý Lô & HSD**: Mặt hàng có `manageLot = true` bắt buộc nhập số lô và hạn sử dụng.<br>- **Nháp & Xác nhận**: Phiếu nháp (`DRAFT`) không cộng tồn; xác nhận phiếu (`CONFIRMED`) mới cộng tồn tổng và cập nhật tồn theo lô (`warehouse_lot_inventories`).<br>- **Bảo mật**: Phiếu đã xác nhận không thể sửa/xóa; chỉ lập phiếu điều chỉnh (`POST /vouchers/{id}/adjust`, phân quyền cho Quản lý kho và Admin). |
+=======
+| **S5-07** | **Lập phiếu chuyển kho nội bộ (Internal Warehouse Transfer)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`WAREHOUSE_TRANSFER`, `WAREHOUSE_EXPORT`, `WAREHOUSE_IMPORT`) | - **Vai trò**: Nhân viên kho (`ROLE_WAREHOUSE_STAFF`), Quản lý kho (`ROLE_WAREHOUSE_MANAGER`), Admin (`ROLE_ADMIN`).<br>- **Lập phiếu chuyển**: Chọn kho đi, kho đến (khác nhau), danh sách hàng & số lượng. Trừ tồn kho tại kho đi ngay khi xuất; hàng ghi nhận đang trên đường (`inTransitQuantity`), **CHƯA cộng vào kho đến**.<br>- **Xác nhận nhận hàng**: Kho đến xác nhận nhận đủ/thực nhận thì tồn kho đến mới được cộng theo số lượng thực nhận, hàng trên đường được xóa về 0.<br>- **Chênh lệch**: Khi nhận có chênh lệch (`received != sent`), **bắt buộc phải nhập lý do**; nếu không nhập lý do sẽ bị từ chối với lỗi `400 Bad Request`.<br>- **Hủy phiếu**: Hỗ trợ hủy phiếu khi đang trên đường (`IN_TRANSIT`), hoàn lại tồn kho xuất và xóa hàng trên đường.<br>- **Phân quyền Backend**: `@PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or ...")`. Chặn Nhân viên kinh doanh (`ROLE_SALES`) thực hiện chuyển kho (`403 Forbidden`).<br>- **Phân quyền Frontend**: Ma trận quyền tại `GET /api/admin/permissions` đã tự động nạp `WAREHOUSE_TRANSFER`, sẵn sàng cho giao diện frontend kiểm tra qua `Auth.hasPermission('WAREHOUSE_TRANSFER')`. |
+
+>>>>>>> origin/feature/S5-07-nhap-phieu-chuyen-kho-noi-bo
 
 ---
 
@@ -85,6 +90,7 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 
 ---
 
+<<<<<<< HEAD
 ## Chi tiết kết nối phân quyền S5-03 (Permission Matrix Details)
 
 - **Mã quyền (Permission Code)**: `WAREHOUSE_MANAGE` ("Quản lý danh mục kho và vị trí")
@@ -278,5 +284,44 @@ Tài liệu theo dõi trạng thái triển khai và kết nối ma trận phân
 - **Frontend**:
   - `menu-config.js`: Route `/warehouse/units?tab=receipts` được cấu hình yêu cầu permission `WAREHOUSE_IMPORT` và các vai trò `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`.
   - Đã sẵn sàng kết nối API khi triển khai giao diện màn hình nhập kho cho Nhân viên kho.
+=======
+## Chi tiết kết nối phân quyền S5-07 (Permission Matrix Details)
+
+- **Mã quyền (Permission Code)**: `WAREHOUSE_TRANSFER` ("Chuyển kho nội bộ")
+- **Các vai trò được cấp quyền trong ma trận phân quyền**:
+  - `ROLE_ADMIN`: Toàn quyền quản trị hệ thống (luôn có tất cả quyền).
+  - `ROLE_WAREHOUSE_MANAGER`: Quản lý kho (toàn quyền lập, nhận, hủy phiếu chuyển kho nội bộ).
+  - `ROLE_WAREHOUSE_STAFF`: Nhân viên kho (được phép lập phiếu chuyển kho và xác nhận nhận hàng).
+  - `ROLE_SALES`: Nhân viên kinh doanh bị **cấm hoàn toàn** quyền chuyển kho (`WAREHOUSE_TRANSFER`), chặn cập nhật qua ma trận phân quyền và trả về `403 Forbidden` khi cố truy cập.
+- **Backend**:
+  - `WarehouseController.java`:
+    - `POST /api/warehouse/transfers` & `POST /api/warehouse/transfer`: `@PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or hasAuthority('WAREHOUSE_EXPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `GET /api/warehouse/transfers`: `@PreAuthorize("hasAnyAuthority('WAREHOUSE_TRANSFER', 'WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")`
+    - `GET /api/warehouse/transfers/{id}`: `@PreAuthorize("hasAnyAuthority('WAREHOUSE_TRANSFER', 'WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")`
+    - `POST /api/warehouse/transfers/{id}/receive`: `@PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `POST /api/warehouse/transfers/{id}/cancel`: `@PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or hasAuthority('WAREHOUSE_APPROVE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")`
+  - `WarehouseServiceImpl.java`:
+    - `createTransfer`:
+      - Kiểm tra tính hợp lệ của kho xuất và kho nhập (khác nhau, cùng active).
+      - Đóng băng đơn vị tính, hệ số quy đổi và số lượng cơ sở.
+      - Trừ tồn kho cơ sở tại kho xuất ngay khi xuất chuyển.
+      - Tăng `inTransitQuantity` tại kho nhập để ghi nhận hàng đang trên đường (tồn kho cơ sở `baseQuantity` của kho nhập **chưa được cộng**).
+      - Trạng thái phiếu: `IN_TRANSIT` ("Đang trên đường").
+    - `receiveTransfer`:
+      - Khi kho đến xác nhận nhận hàng, trừ lượng hàng trên đường (`inTransitQuantity`).
+      - Cộng tồn kho cơ sở tại kho đến theo số lượng thực nhận (`receivedBaseQuantity`).
+      - Nếu có chênh lệch giữa số lượng xuất và nhận (`discrepancyQuantity != 0`), **bắt buộc phải nhập lý do**; nếu để trống trả về lỗi `400 Bad Request`.
+      - Trạng thái phiếu: `COMPLETED` ("Đã nhận hàng").
+    - `cancelTransfer`:
+      - Áp dụng khi phiếu ở trạng thái `IN_TRANSIT`.
+      - Hoàn lại tồn kho cho kho xuất và xóa hàng đang trên đường tại kho nhập.
+      - Trạng thái phiếu: `CANCELLED` ("Đã hủy").
+  - `RolePermissionConfig.java`:
+    - Gán mặc định `WAREHOUSE_TRANSFER` cho `ROLE_WAREHOUSE_STAFF` và `ROLE_WAREHOUSE_MANAGER`.
+    - Bảo vệ ma trận: Từ chối nếu Admin cố tình gán `WAREHOUSE_TRANSFER` cho `ROLE_SALES`.
+- **Frontend**:
+  - Endpoint `GET /api/admin/permissions` tự động nạp `WAREHOUSE_TRANSFER` vào danh mục quyền của hệ thống và hiển thị trên màn hình quản trị ma trận phân quyền (`admin-users.js`).
+  - Sẵn sàng tích hợp kiểm tra qua `Auth.hasPermission('WAREHOUSE_TRANSFER')` hoặc `Auth.hasAnyRole('ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_ADMIN')` khi xây dựng giao diện chuyển kho.
+>>>>>>> origin/feature/S5-07-nhap-phieu-chuyen-kho-noi-bo
 
 

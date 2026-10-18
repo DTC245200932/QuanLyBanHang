@@ -145,6 +145,16 @@ class RoleBasedAccessControlTest {
 
     @Test
     @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG được tạo phiếu chuyển kho (403 Forbidden)")
+    void salesCannotCreateTransfer() throws Exception {
+        mockMvc.perform(post("/api/warehouse/transfers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromWarehouseId\": 1, \"toWarehouseId\": 2, \"items\": [{\"productId\": 1, \"quantity\": 10}]}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", roles = {"SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG xem được giá vốn (403 Forbidden)")
     void salesCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))

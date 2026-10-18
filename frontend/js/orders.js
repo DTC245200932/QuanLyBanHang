@@ -15,21 +15,16 @@
   if (!Auth.requireLogin()) return;
 
   const user = Auth.getUser();
-  const CAN_ACCESS = Auth.hasAnyRole(
-    'ROLE_ADMIN',
-    'ROLE_SALES_MANAGER',
-    'ROLE_SALES',
-    'ROLE_ACCOUNTANT',
-    'ROLE_VIEWER',
-    'ROLE_WAREHOUSE_MANAGER',
-  );
-  if (!CAN_ACCESS || !Auth.hasPermission('ORDER_VIEW')) {
+  if (!Auth.hasPermission('ORDER_VIEW')) {
     location.href = '/error?status=403';
     return;
   }
 
-  const CAN_APPROVE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER') && Auth.hasPermission('ORDER_APPROVE');
-  const CAN_CANCEL = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_SALES');
+  const CAN_APPROVE = Auth.hasPermission('ORDER_APPROVE');
+  const CAN_CANCEL = Auth.hasPermission('ORDER_CANCEL');
+  const CANCELLABLE_STATUSES = new Set([
+    'DRAFT', 'PENDING_APPROVAL', 'RECORDED', 'APPROVED', 'PICKING', 'PROCESSING',
+  ]);
   const IS_SALES_ONLY = Auth.hasRole('ROLE_SALES') && !Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
 
   /* ── 2. DOM Helpers ────────────────────────────────────────── */
@@ -568,7 +563,7 @@
       const ownerText = dealer ? (dealer.assignedUserFullName || dealer.assignedUsername || ord.createdBy || '—') : (ord.createdBy || '—');
 
       const isPending = (ord.status || '').toUpperCase() === 'PENDING_APPROVAL';
-      const isCancellable = CAN_CANCEL && !['CANCELLED', 'REJECTED', 'DELIVERED', 'COMPLETED'].includes((ord.status || '').toUpperCase());
+      const isCancellable = CAN_CANCEL && CANCELLABLE_STATUSES.has((ord.status || '').toUpperCase());
 
       const actions = `
         <div class="ord-table-actions">
@@ -715,6 +710,12 @@
     $('btn-detail-approve').hidden = true;
     $('btn-detail-reject').hidden = true;
     $('btn-detail-cancel').hidden = true;
+    $('btn-detail-tracking').disabled = true;
+    $('ord-lifecycle-box').hidden = false;
+    $('ord-lifecycle-summary').textContent = 'Đang tải trạng thái và lịch sử…';
+    $('ord-lifecycle-reservation').textContent = '';
+    $('ord-lifecycle-steps').innerHTML = '<li class="ord-lifecycle-empty">Đang tải vòng đời đơn hàng…</li>';
+    $('ord-lifecycle-history-list').innerHTML = '';
     $('ord-approval-box').hidden = true;
 
     try {
@@ -794,9 +795,12 @@
         $('ord-approval-box-content').innerHTML = approvalHtml;
       }
 
+      await loadLifecycleTracking(orderId);
+      $('btn-detail-tracking').disabled = false;
+
       // Actions in modal
       const isPending = (order.status || '').toUpperCase() === 'PENDING_APPROVAL';
-      const isCancellable = CAN_CANCEL && !['CANCELLED', 'REJECTED', 'DELIVERED', 'COMPLETED'].includes((order.status || '').toUpperCase());
+      const isCancellable = CAN_CANCEL && CANCELLABLE_STATUSES.has((order.status || '').toUpperCase());
 
       if (CAN_APPROVE && isPending) {
         $('btn-detail-approve').hidden = false;
@@ -809,6 +813,51 @@
       $('ord-detail-title').textContent = 'Lỗi xem chi tiết đơn';
       $('ord-items-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:16px;">${escHtml(e.message)}</td></tr>`;
     }
+  }
+
+  function lifecycleStatusLabel(status) {
+    const labels = {
+      DRAFT: 'Nháp', PENDING_APPROVAL: 'Chờ duyệt', APPROVED: 'Đã duyệt', RECORDED: 'Đã duyệt',
+      PICKING: 'Đang soạn hàng', PROCESSING: 'Đang soạn hàng', EXPORTED: 'Đã xuất kho',
+      SHIPPED: 'Đã xuất kho', DELIVERED: 'Đã giao hàng', CLOSED: 'Đóng', COMPLETED: 'Đóng',
+      CANCELLED: 'Đã huỷ', REJECTED: 'Từ chối duyệt',
+    };
+    return labels[String(status || '').toUpperCase()] || status || '—';
+  }
+
+  function renderLifecycleTracking(tracking) {
+    const status = String(tracking.currentStatus || '').toUpperCase();
+    $('ord-lifecycle-summary').textContent = `Hiện tại: ${lifecycleStatusLabel(status)}${tracking.expectedDeliveryDate ? ` · Giao dự kiến ${formatDateShort(tracking.expectedDeliveryDate)}` : ''}`;
+    $('ord-lifecycle-reservation').textContent = tracking.inventoryReserved ? 'Đang giữ chỗ tồn kho' : '';
+
+    const steps = Array.isArray(tracking.steps) ? tracking.steps : [];
+    $('ord-lifecycle-steps').innerHTML = steps.length ? steps.map((step) => `
+      <li class="ord-lifecycle-step ord-lifecycle-step--${escHtml(String(step.state || '').toLowerCase())}">
+        <span class="ord-lifecycle-step__marker" aria-hidden="true"></span>
+        <div class="ord-lifecycle-step__content">
+          <strong>${escHtml(step.displayName || lifecycleStatusLabel(step.status))}</strong>
+          <span>${escHtml(step.description || '')}</span>
+          ${step.timestamp ? `<small>${formatDate(step.timestamp)}${step.operator ? ` · ${escHtml(step.operator)}` : ''}</small>` : ''}
+          ${step.note ? `<small class="ord-lifecycle-step__note">${escHtml(step.note)}</small>` : ''}
+        </div>
+      </li>`).join('') : '<li class="ord-lifecycle-empty">Chưa có lịch sử vòng đời.</li>';
+
+    const history = Array.isArray(tracking.history) ? tracking.history : [];
+    $('ord-lifecycle-history-list').innerHTML = history.length ? history.map((entry) => `
+      <div class="ord-lifecycle-history__item">
+        <strong>${escHtml(lifecycleStatusLabel(entry.newStatus))}</strong>
+        <span>${escHtml(entry.note || 'Cập nhật trạng thái')}</span>
+        <small>${formatDate(entry.changedAt)}${entry.changedBy ? ` · ${escHtml(entry.changedBy)}` : ''}</small>
+      </div>`).join('') : '<p class="ord-lifecycle-empty">Chưa có cập nhật trạng thái.</p>';
+  }
+
+  async function loadLifecycleTracking(orderId) {
+    const res = await Auth.apiFetch(`/orders/${orderId}/tracking`);
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success || !json.data) {
+      throw new Error(json?.message || 'Không thể tải vòng đời đơn hàng');
+    }
+    renderLifecycleTracking(json.data);
   }
 
   function closeOrderDetailModal() {
@@ -1098,6 +1147,18 @@
     });
     $('btn-detail-cancel')?.addEventListener('click', () => {
       if (state.activeOrder) openCancelModal(state.activeOrder.id);
+    });
+    $('btn-detail-tracking')?.addEventListener('click', async () => {
+      if (!state.activeOrder) return;
+      const button = $('btn-detail-tracking');
+      button.disabled = true;
+      try {
+        await loadLifecycleTracking(state.activeOrder.id);
+      } catch (error) {
+        showToast(error.message || 'Không thể tải vòng đời đơn hàng', 'error');
+      } finally {
+        button.disabled = false;
+      }
     });
 
     // Escape key closes modals

@@ -937,6 +937,8 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
+        checkWarehouseAuthorizationForOrder(order, "cập nhật trạng thái");
+
         String oldStatus = order.getStatus();
         String targetStatus = status.trim().toUpperCase();
 
@@ -954,6 +956,8 @@ public class OrderServiceImpl implements OrderService {
                 throw new IllegalArgumentException("Trạng thái đơn hàng không hợp lệ: " + status);
             }
         }
+
+        validateLifecycleTransition(oldStatus, targetStatus);
 
         // Khi chuyển sang EXPORTED (Đã xuất): trừ tồn kho thực tế và nhả giữ chỗ (S4-06)
         if (("EXPORTED".equals(targetStatus) || "SHIPPED".equals(targetStatus))
@@ -2683,6 +2687,52 @@ public class OrderServiceImpl implements OrderService {
         if (!isCreator && !isAssignedDealer) {
             throw new AccessDeniedException(
                     "Bạn chỉ có quyền " + action + " đơn hàng do mình tạo hoặc thuộc đại lý do mình phụ trách");
+        }
+    }
+
+    /**
+     * RLS cho các thao tác vòng đời do kho thực hiện. Controller đã kiểm tra
+     * quyền trong ma trận; service tiếp tục giới hạn dữ liệu theo các kho được
+     * gán cho tài khoản, ngoại trừ quản trị viên.
+     */
+    private void checkWarehouseAuthorizationForOrder(Order order, String action) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return;
+        }
+        if (hasAuthority(auth, "ROLE_ADMIN")) {
+            return;
+        }
+
+        boolean hasWarehousePermission = hasAuthority(auth, "WAREHOUSE_IMPORT")
+                || hasAuthority(auth, "WAREHOUSE_EXPORT");
+        if (!hasWarehousePermission) {
+            throw new AccessDeniedException("Bạn không có quyền " + action + " theo ma trận phân quyền");
+        }
+
+        User currentUser = getCurrentUser();
+        Long orderWarehouseId = order.getWarehouse() != null ? order.getWarehouse().getId() : null;
+        boolean assigned = currentUser != null && currentUser.getWarehouses() != null
+                && orderWarehouseId != null
+                && currentUser.getWarehouses().stream()
+                .anyMatch(warehouse -> warehouse != null && orderWarehouseId.equals(warehouse.getId()));
+        if (!assigned) {
+            throw new AccessDeniedException("Bạn không có quyền " + action + " ngoài phạm vi kho được phân công");
+        }
+    }
+
+    /** Chỉ cho phép tiến về bước kế tiếp của vòng đời; không nhảy hoặc lùi bước. */
+    private void validateLifecycleTransition(String oldStatus, String targetStatus) {
+        int oldStep = resolveStepOrder(oldStatus);
+        int targetStep = resolveStepOrder(targetStatus);
+        if (oldStep <= 0 || targetStep <= 0) {
+            throw new IllegalArgumentException("Không thể chuyển từ trạng thái không hợp lệ");
+        }
+        if (oldStep >= 5 && targetStep < oldStep) {
+            throw new IllegalArgumentException("Không thể lùi trạng thái sau khi đơn đã xuất kho");
+        }
+        if (targetStep != oldStep + 1) {
+            throw new IllegalArgumentException("Chỉ được chuyển đơn sang bước kế tiếp của vòng đời");
         }
     }
 

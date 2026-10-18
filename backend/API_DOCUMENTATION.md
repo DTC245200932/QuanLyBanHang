@@ -597,9 +597,9 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | POST | `/orders` | `ORDER_CREATE` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | POST | `/orders/line-item/pricing` | `ORDER_CREATE` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
 | POST | `/orders/calculate` | `ORDER_CREATE` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
-| PUT | `/orders/{id}/cancel` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
-| GET | `/orders/{id}/tracking` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Theo dõi vòng đời đơn hàng (7 bước chuẩn, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS cho Nhân viên kinh doanh) |
-| PUT | `/orders/{id}/status` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Cập nhật trạng thái vòng đời đơn hàng; tự động trừ tồn kho và giải phóng lượng giữ chỗ khi chuyển sang `EXPORTED` |
+| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL` hoặc `ROLE_ADMIN` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
+| GET | `/orders/{id}/tracking` | `ORDER_VIEW` hoặc `ROLE_ADMIN` | Theo dõi vòng đời đơn hàng (7 bước chuẩn, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS theo người phụ trách/kho) |
+| PUT | `/orders/{id}/status` | `WAREHOUSE_IMPORT` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` | Cập nhật từng bước kế tiếp của vòng đời đơn hàng; giới hạn theo kho được gán và tự động trừ tồn kho/giải phóng giữ chỗ khi chuyển sang `EXPORTED` |
 | PUT | `/orders/{id}/approve` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xác nhận đơn cổng được phân công | Phê duyệt đơn hàng (chuyển trạng thái sang `RECORDED`) và giữ chỗ tồn kho sau khi kiểm quyền |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xử lý đơn cổng được phân công | Từ chối đơn hàng với lý do bắt buộc (chuyển trạng thái sang `REJECTED`) |
 | PUT | `/orders/{id}/return?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Trả lại đơn để sửa với lý do bắt buộc (chuyển trạng thái sang `RETURNED`) |
@@ -812,11 +812,11 @@ Nhánh rẽ kết thúc sớm:
 - **Lưu vết đầy đủ vào Database**: Khi huỷ thành công, trạng thái đơn chuyển sang `CANCELLED`, lưu `cancelReason`, `cancelledBy`, `cancelledAt` vào bảng `orders`, ghi một bản ghi vào bảng `order_status_histories` và ghi một bản ghi vào bảng `audit_logs`.
 
 #### 3. Phân quyền dòng dữ liệu (Row-Level Security - RLS)
-- Nhân viên kinh doanh (`ROLE_SALES`) chỉ được phép xem danh sách, xem chi tiết, theo dõi tiến trình (`/orders/{id}/tracking`) và huỷ (`/orders/{id}/cancel`) những đơn hàng:
+- Người dùng có `ORDER_VIEW`/`ORDER_CANCEL` trong ma trận quyền chỉ được xem hoặc huỷ theo đúng phạm vi dữ liệu của mình; Nhân viên kinh doanh (`ROLE_SALES`) chỉ được phép theo dõi và huỷ những đơn hàng:
   - Do chính tài khoản đó tạo ra (`order.createdBy == currentUser`), HOẶC
   - Đơn hàng thuộc các đại lý được phân công phụ trách (`assignedDealers`).
 - Nếu Nhân viên kinh doanh cố tình truy cập hoặc huỷ đơn hàng của nhân sự khác / đại lý khác, hệ thống chặn lại với lỗi `403 Forbidden` (`"Bạn không có quyền truy cập hoặc huỷ đơn hàng này"`).
-- Quản lý (`ROLE_SALES_MANAGER`, `ROLE_ADMIN`) có quyền theo dõi và xử lý mọi đơn hàng trong toàn hệ thống.
+- Tài khoản có quyền phù hợp được cấp trong ma trận; `ROLE_ADMIN` luôn được phép. Tài khoản kho chỉ được cập nhật vòng đời trong các kho đã được gán.
 
 #### 4. API Theo dõi Vòng đời (`GET /api/orders/{id}/tracking`)
 **Response thành công (`200 OK`):**
@@ -1871,7 +1871,7 @@ và xem danh sách tài khoản đầy đủ.
 
 ### 2. Huỷ đơn hàng có lý do bắt buộc (S4-06)
 - **PUT `/api/orders/{id}/cancel`**: Huỷ đơn hàng.
-  - Quyền: `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+  - Quyền: `ORDER_CANCEL` trong ma trận quyền hoặc `ROLE_ADMIN`.
   - Query params hoặc Body: `reason` (hoặc JSON `{ "reason": "Lý do huỷ" }`). Bắt buộc phải có lý do (không được để trống).
   - Quy tắc chặn: Không được phép huỷ đơn hàng đã xuất kho (`EXPORTED`) hoặc đã giao hàng (`DELIVERED`).
   - Lưu trữ: Lưu `cancelReason`, `cancelledBy`, `cancelledAt` vào bảng `orders` và ghi nhật ký kiểm toán.

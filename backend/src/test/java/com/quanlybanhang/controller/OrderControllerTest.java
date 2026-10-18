@@ -99,7 +99,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
     @DisplayName("GET /api/orders trả về danh sách đơn hàng")
     void getAllOrders_Authenticated_Returns200() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -203,7 +203,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
     @DisplayName("Huỷ đơn hàng có lý do thành công (kèm cảnh báo nếu đại lý bị khoá) (S3-07, S4-06)")
     void cancelOrder_LockedDealer_Returns200WithWarning() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -231,7 +231,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
     @DisplayName("Huỷ đơn hàng không truyền lý do bị chặn 400 Bad Request (S4-06)")
     void cancelOrder_WithoutReason_Returns400() throws Exception {
         mockMvc.perform(put("/api/orders/1/cancel"))
@@ -241,7 +241,17 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES"})
+    @DisplayName("Huỷ đơn hàng không có ORDER_CANCEL bị chặn 403 Forbidden (S4-06)")
+    void cancelOrder_WithoutPermission_Returns403() throws Exception {
+        mockMvc.perform(put("/api/orders/1/cancel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Khách đổi lịch\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_VIEW"})
     @DisplayName("Theo dõi vòng đời đơn hàng GET /api/orders/1/tracking -> 200 OK (S4-06)")
     void getOrderTracking_Returns200() throws Exception {
         OrderTrackingResponse trackingResp = OrderTrackingResponse.builder()
@@ -265,7 +275,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_user", roles = "WAREHOUSE_STAFF")
+    @WithMockUser(username = "warehouse_user", authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_EXPORT"})
     @DisplayName("Cập nhật trạng thái vòng đời PUT /api/orders/1/status -> 200 OK (S4-06)")
     void updateOrderStatus_Returns200() throws Exception {
         OrderStatusUpdateRequest updateReq = OrderStatusUpdateRequest.builder()

@@ -385,10 +385,26 @@
             <div class="ord-approval-box__title">Thông tin duyệt đơn</div>
             <p id="ord-approval-box-content"></p>
           </div>
+
+          <section id="ord-lifecycle-box" class="ord-lifecycle-box" aria-labelledby="ord-lifecycle-title" hidden>
+            <div class="ord-lifecycle-box__heading">
+              <div>
+                <h3 id="ord-lifecycle-title">Theo dõi vòng đời đơn hàng</h3>
+                <p id="ord-lifecycle-summary" class="ord-lifecycle-box__summary"></p>
+              </div>
+              <span id="ord-lifecycle-reservation" class="ord-lifecycle-reservation"></span>
+            </div>
+            <ol id="ord-lifecycle-steps" class="ord-lifecycle-steps"></ol>
+            <div class="ord-lifecycle-history">
+              <h4>Lịch sử cập nhật</h4>
+              <div id="ord-lifecycle-history-list"></div>
+            </div>
+          </section>
         </div>
 
         <div class="modal__actions ord-detail-actions">
           <button type="button" class="btn btn--secondary" data-close-detail>Đóng</button>
+          <button type="button" class="btn btn--secondary" id="btn-detail-tracking">Làm mới vòng đời</button>
           <button type="button" class="btn btn--danger" id="btn-detail-cancel" hidden>Huỷ đơn</button>
           <button type="button" class="btn btn--danger" id="btn-detail-reject" hidden>Từ chối duyệt</button>
           <button type="button" class="btn btn--primary" id="btn-detail-approve" hidden>Phê duyệt đơn</button>

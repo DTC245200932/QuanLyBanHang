@@ -263,7 +263,7 @@ public class OrderController {
      * Đơn đã xuất kho thì không huỷ được, phải đi đường trả hàng.
      */
     @PutMapping("/{id}/cancel")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_CANCEL') or hasRole('ADMIN')")
     public ApiResponse cancelOrder(
             @PathVariable Long id,
             @RequestBody(required = false) OrderCancelRequest request,
@@ -293,7 +293,7 @@ public class OrderController {
      * Nhân viên kinh doanh theo dõi trực tiếp khâu xử lý mà không cần gọi hỏi kho.
      */
     @GetMapping("/{id}/tracking")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ACCOUNTANT', 'VIEWER')")
+    @PreAuthorize("hasAuthority('ORDER_VIEW') or hasRole('ADMIN')")
     public ApiResponse getOrderTracking(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderTrackingResponse tracking = orderService.getOrderTracking(id, username);
@@ -304,7 +304,7 @@ public class OrderController {
      * S4-06: Cập nhật trạng thái vòng đời của đơn hàng (Soạn hàng, Xuất kho, Giao hàng, Đóng).
      */
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT') or hasRole('ADMIN')")
     public ApiResponse updateOrderStatus(
             @PathVariable Long id,
             @Valid @RequestBody OrderStatusUpdateRequest request,

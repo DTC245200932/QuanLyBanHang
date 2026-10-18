@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
@@ -51,6 +52,16 @@ public class OrderRequest {
      * ID kho xuất hàng và giữ chỗ tồn kho (S4-06). Nếu không chỉ định, lấy kho mặc định đang hoạt động.
      */
     private Long warehouseId;
+
+    /**
+     * Số giờ giữ chỗ tồn kho mong muốn (S5-06, mặc định 48h nếu không chỉ định).
+     */
+    private Integer reservationHours;
+
+    /**
+     * Thời điểm hết hạn giữ chỗ tuỳ chỉnh (S5-06).
+     */
+    private LocalDateTime reservationExpiresAt;
 
     private String note;
 

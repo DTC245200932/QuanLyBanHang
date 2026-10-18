@@ -42,7 +42,6 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/orders")
-@RequiredArgsConstructor
 public class OrderController {
 
     private final OrderService orderService;
@@ -287,10 +286,15 @@ public class OrderController {
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/approve")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
-    public ApiResponse approveOrder(@PathVariable Long id, Principal principal) {
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse approveOrder(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer reservationHours,
+            Principal principal) {
         String username = principal != null ? principal.getName() : "system";
-        OrderResponse response = orderService.approveOrder(id, username);
+        OrderResponse response = reservationHours != null
+                ? orderService.approveOrder(id, reservationHours, username)
+                : orderService.approveOrder(id, username);
         String message = Boolean.TRUE.equals(response.getDealerLocked())
                 ? "Phê duyệt đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
                 : "Phê duyệt đơn hàng thành công";
@@ -299,10 +303,11 @@ public class OrderController {
 
     /**
      * Quản lý kinh doanh từ chối đơn hàng bán dưới giá sàn (S2-10).
+     * Khi từ chối, tồn giữ chỗ nếu có sẽ được nhả tự động (S5-06).
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
     public ApiResponse rejectOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -313,6 +318,16 @@ public class OrderController {
                 ? "Từ chối đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
                 : "Từ chối đơn hàng thành công";
         return ApiResponse.success(message, response);
+    }
+
+    /**
+     * S5-06: Tự động hoặc kích hoạt thủ công nhả tồn giữ chỗ cho các đơn hàng đã quá hạn.
+     */
+    @PostMapping("/release-expired-reservations")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CANCEL') or hasAuthority('WAREHOUSE_APPROVE') or hasAnyRole('ADMIN', 'SALES_MANAGER', 'WAREHOUSE_MANAGER')")
+    public ApiResponse releaseExpiredReservations() {
+        int count = orderService.releaseExpiredReservations();
+        return ApiResponse.success("Đã nhả tồn giữ chỗ cho " + count + " đơn hàng quá hạn", count);
     }
 
     /**

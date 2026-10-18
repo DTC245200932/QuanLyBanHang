@@ -359,71 +359,8 @@ public class OrderServiceImpl implements OrderService {
             preDataList.add(new ItemPreData(product, inputUnit, qty, factor, baseQty, price, unitFloorPrice, isBelowFloor, subtotalAmount, itemReq.getNote()));
         }
 
-        // 3b. Kiểm tra tồn khả dụng và giữ chỗ tại kho phục vụ (S4-03)
-        // Sử dụng khóa PESSIMISTIC_WRITE theo thứ tự productId tăng dần để chặn race condition khi hai người cùng chốt đơn
-        if (warehouse != null && inventoryRepository != null) {
-            List<Long> sortedProductIds = preDataList.stream()
-                    .map(d -> d.product().getId())
-                    .distinct()
-                    .sorted()
-                    .toList();
-
-            Map<Long, WarehouseInventory> inventoryMap = inventoryRepository
-                    .findByWarehouseIdAndProductIdInForUpdate(warehouse.getId(), sortedProductIds)
-                    .stream()
-                    .collect(Collectors.toMap(inv -> inv.getProduct().getId(), inv -> inv));
-
-            Map<Long, BigDecimal> requestedBaseQtyByProduct = new HashMap<>();
-            for (ItemPreData d : preDataList) {
-                requestedBaseQtyByProduct.merge(d.product().getId(), d.baseQuantity(), BigDecimal::add);
-            }
-
-            for (ItemPreData d : preDataList) {
-                Product product = d.product();
-                Long pId = product.getId();
-                WarehouseInventory inv = inventoryMap.get(pId);
-
-                BigDecimal physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
-                BigDecimal reserved = (inv != null && inv.getReservedQuantity() != null) ? inv.getReservedQuantity() : BigDecimal.ZERO;
-                BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
-
-                BigDecimal totalRequestedBase = requestedBaseQtyByProduct.get(pId);
-                if (totalRequestedBase.compareTo(available) > 0) {
-                    BigDecimal factor = d.conversionFactor() != null && d.conversionFactor().compareTo(BigDecimal.ZERO) > 0
-                            ? d.conversionFactor()
-                            : BigDecimal.ONE;
-                    BigDecimal maxAllowedInUnit = available.divide(factor, 0, RoundingMode.FLOOR);
-
-                    if (available.compareTo(BigDecimal.ZERO) <= 0) {
-                        throw new IllegalArgumentException(String.format(
-                                "Mặt hàng '%s' (mã: %s) đã hết tồn khả dụng trong kho phục vụ '%s'. Tồn khả dụng hiện tại: 0 %s. Số lượng tối đa có thể đặt là 0 %s.",
-                                product.getName(), product.getCode(), warehouse.getName(), product.getUnit(), d.unit()
-                        ));
-                    } else {
-                        throw new IllegalArgumentException(String.format(
-                                "Vượt tồn khả dụng cho sản phẩm '%s' (mã: %s) tại kho '%s'. Tồn khả dụng hiện tại: %s %s. Yêu cầu đặt: %s %s (%s %s). Số lượng tối đa có thể đặt là %s %s.",
-                                product.getName(), product.getCode(), warehouse.getName(),
-                                available.stripTrailingZeros().toPlainString(), product.getUnit(),
-                                d.quantity().stripTrailingZeros().toPlainString(), d.unit(),
-                                totalRequestedBase.stripTrailingZeros().toPlainString(), product.getUnit(),
-                                maxAllowedInUnit.stripTrailingZeros().toPlainString(), d.unit()
-                        ));
-                    }
-                }
-            }
-
-            // Đủ tồn khả dụng -> Thực hiện giữ chỗ
-            for (Map.Entry<Long, BigDecimal> entry : requestedBaseQtyByProduct.entrySet()) {
-                Long pId = entry.getKey();
-                BigDecimal reqBase = entry.getValue();
-                WarehouseInventory inv = inventoryMap.get(pId);
-                if (inv != null) {
-                    inv.addReservedQuantity(reqBase);
-                    inventoryRepository.save(inv);
-                }
-            }
-            order.setInventoryReserved(true);
-        }
+        // 3b. Giữ chỗ tồn kho (S5-06): Thực hiện khi đơn chuyển sang Đã duyệt (RECORDED).
+        // Nếu đơn cần duyệt (PENDING_APPROVAL), việc giữ chỗ sẽ thực hiện khi Quản lý duyệt đơn.
 
         // 4. Áp dụng chính sách chiết khấu theo sản lượng (S3-01)
         VolumeDiscountPolicyService.OrderDiscountSummary discountSummary = null;
@@ -519,10 +456,8 @@ public class OrderServiceImpl implements OrderService {
         } else {
             order.setStatus("RECORDED");
             order.setRequiresApproval(false);
-            if (request.getWarehouseId() != null) {
-                order.setWarehouse(resolveDefaultWarehouse(request.getWarehouseId()));
-                reserveInventory(order);
-            }
+            // S5-06: Đơn không cần duyệt -> Đã duyệt ngay khi tạo -> thực hiện giữ chỗ tồn kho
+            reserveInventoryForOrder(order, request.getReservationHours(), request.getReservationExpiresAt());
         }
 
         Order saved = orderRepository.save(order);
@@ -875,12 +810,21 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse approveOrder(Long id, String username) {
+        return approveOrder(id, null, username);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse approveOrder(Long id, Integer reservationHours, String username) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
         if (!"PENDING_APPROVAL".equalsIgnoreCase(order.getStatus())) {
             throw new IllegalArgumentException("Chỉ có thể phê duyệt đơn hàng đang ở trạng thái Chờ duyệt (PENDING_APPROVAL)");
         }
+
+        // S5-06: Đơn chuyển sang Đã duyệt thì tồn tương ứng được giữ chỗ ngay trong cùng giao dịch (@Transactional)
+        reserveInventoryForOrder(order, reservationHours, null);
 
         order.setStatus("RECORDED");
         order.setApprovedBy(username != null ? username : "system");
@@ -894,11 +838,37 @@ public class OrderServiceImpl implements OrderService {
 
         Dealer dealer = order.getDealer();
         boolean dealerLocked = dealer != null && Boolean.TRUE.equals(dealer.getLocked());
-        String auditDetail = "Quản lý kinh doanh duyệt đơn bán dưới giá sàn" +
+        String auditDetail = "Quản lý kinh doanh duyệt đơn hàng (Giữ chỗ tồn: " +
+                (Boolean.TRUE.equals(saved.getInventoryReserved()) ? "Thành công" : "Không áp dụng") + ")" +
                 (dealerLocked ? " [Cảnh báo: Đại lý '" + dealer.getName() + "' đang bị khoá giao dịch. Lý do: " + dealer.getLockReason() + "]" : "");
         auditLogService.logAction("INVOICE", saved.getOrderCode(), "APPROVE", "PENDING_APPROVAL",
                 auditDetail, username != null ? username : "system");
         return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public int releaseExpiredReservations() {
+        LocalDateTime now = LocalDateTime.now();
+        List<Order> expiredOrders = orderRepository.findExpiredReservations(now);
+        int count = 0;
+        for (Order order : expiredOrders) {
+            String oldStatus = order.getStatus();
+            releaseReservedInventory(order);
+            order.setStatus("EXPIRED");
+            String expiryTimeStr = order.getReservationExpiresAt() != null
+                    ? order.getReservationExpiresAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"))
+                    : now.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+            String noteMsg = "[Hệ thống tự động nhả tồn]: Đơn hàng quá hạn giữ chỗ lúc " + expiryTimeStr;
+            order.setNote((order.getNote() != null && !order.getNote().isBlank())
+                    ? order.getNote() + " | " + noteMsg
+                    : noteMsg);
+            orderRepository.save(order);
+            auditLogService.logAction("INVOICE", order.getOrderCode(), "EXPIRE_RESERVATION", oldStatus,
+                    "Quá hạn giữ chỗ - tự động nhả tồn kho", "system");
+            count++;
+        }
+        return count;
     }
 
     @Override
@@ -926,6 +896,111 @@ public class OrderServiceImpl implements OrderService {
         return mapToResponse(saved);
     }
 
+    private void reserveInventoryForOrder(Order order, Integer reservationHours, LocalDateTime explicitExpiry) {
+        if (order == null || order.getWarehouse() == null || inventoryRepository == null
+                || order.getItems() == null || order.getItems().isEmpty()) {
+            return;
+        }
+
+        if (Boolean.TRUE.equals(order.getInventoryReserved())) {
+            return;
+        }
+
+        Warehouse warehouse = order.getWarehouse();
+        List<OrderItem> items = order.getItems();
+
+        Map<Long, BigDecimal> requestedBaseQtyByProduct = new HashMap<>();
+        for (OrderItem item : items) {
+            if (item.getProduct() != null && item.getBaseQuantity() != null) {
+                requestedBaseQtyByProduct.merge(item.getProduct().getId(), item.getBaseQuantity(), BigDecimal::add);
+            }
+        }
+
+        if (requestedBaseQtyByProduct.isEmpty()) {
+            return;
+        }
+
+        List<Long> sortedProductIds = requestedBaseQtyByProduct.keySet().stream().sorted().toList();
+        List<WarehouseInventory> inventories = inventoryRepository
+                .findByWarehouseIdAndProductIdInForUpdate(warehouse.getId(), sortedProductIds);
+        Map<Long, WarehouseInventory> inventoryMap = inventories.stream()
+                .collect(Collectors.toMap(inv -> inv.getProduct().getId(), inv -> inv));
+
+        for (Map.Entry<Long, BigDecimal> entry : requestedBaseQtyByProduct.entrySet()) {
+            Long pId = entry.getKey();
+            BigDecimal totalRequestedBase = entry.getValue();
+            WarehouseInventory inv = inventoryMap.get(pId);
+
+            BigDecimal physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
+            BigDecimal reserved = (inv != null && inv.getReservedQuantity() != null) ? inv.getReservedQuantity() : BigDecimal.ZERO;
+            BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
+
+            if (totalRequestedBase.compareTo(available) > 0) {
+                OrderItem repItem = items.stream()
+                        .filter(it -> it.getProduct() != null && pId.equals(it.getProduct().getId()))
+                        .findFirst()
+                        .orElse(null);
+                Product product = repItem != null ? repItem.getProduct() : (inv != null ? inv.getProduct() : null);
+                String prodName = product != null ? product.getName() : ("ID " + pId);
+                String prodCode = product != null ? product.getCode() : String.valueOf(pId);
+                String baseUnit = product != null ? product.getUnit() : "đơn vị";
+                String itemUnit = repItem != null && repItem.getUnit() != null ? repItem.getUnit() : baseUnit;
+                BigDecimal factor = repItem != null && repItem.getConversionFactor() != null && repItem.getConversionFactor().compareTo(BigDecimal.ZERO) > 0
+                        ? repItem.getConversionFactor()
+                        : BigDecimal.ONE;
+                BigDecimal maxAllowedInUnit = available.divide(factor, 0, RoundingMode.FLOOR);
+
+                if (available.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException(String.format(
+                            "Mặt hàng '%s' (mã: %s) đã hết tồn khả dụng trong kho phục vụ '%s'. Tồn khả dụng hiện tại: 0 %s. Số lượng tối đa có thể đặt là 0 %s.",
+                            prodName, prodCode, warehouse.getName(), baseUnit, itemUnit
+                    ));
+                } else {
+                    BigDecimal reqQtyInUnit = repItem != null && repItem.getQuantity() != null ? repItem.getQuantity() : totalRequestedBase;
+                    throw new IllegalArgumentException(String.format(
+                            "Vượt tồn khả dụng cho sản phẩm '%s' (mã: %s) tại kho '%s'. Tồn khả dụng hiện tại: %s %s. Yêu cầu đặt: %s %s (%s %s). Số lượng tối đa có thể đặt là %s %s.",
+                            prodName, prodCode, warehouse.getName(),
+                            available.stripTrailingZeros().toPlainString(), baseUnit,
+                            reqQtyInUnit.stripTrailingZeros().toPlainString(), itemUnit,
+                            totalRequestedBase.stripTrailingZeros().toPlainString(), baseUnit,
+                            maxAllowedInUnit.stripTrailingZeros().toPlainString(), itemUnit
+                    ));
+                }
+            }
+        }
+
+        // Đủ tồn khả dụng -> Thực hiện giữ chỗ
+        for (Map.Entry<Long, BigDecimal> entry : requestedBaseQtyByProduct.entrySet()) {
+            Long pId = entry.getKey();
+            BigDecimal reqBase = entry.getValue();
+            WarehouseInventory inv = inventoryMap.get(pId);
+            if (inv != null) {
+                inv.addReservedQuantity(reqBase);
+                inventoryRepository.save(inv);
+            }
+        }
+
+        order.setInventoryReserved(true);
+        order.setReservedAt(LocalDateTime.now());
+        order.setReservationExpiresAt(calculateReservationExpiry(order, reservationHours, explicitExpiry));
+    }
+
+    private LocalDateTime calculateReservationExpiry(Order order, Integer reservationHours, LocalDateTime explicitExpiry) {
+        if (explicitExpiry != null) {
+            return explicitExpiry;
+        }
+        if (reservationHours != null && reservationHours > 0) {
+            return LocalDateTime.now().plusHours(reservationHours);
+        }
+        if (order != null && order.getExpectedDeliveryDate() != null) {
+            LocalDateTime deliveryEnd = order.getExpectedDeliveryDate().atTime(23, 59, 59);
+            if (deliveryEnd.isAfter(LocalDateTime.now())) {
+                return deliveryEnd;
+            }
+        }
+        return LocalDateTime.now().plusHours(48);
+    }
+
     private void releaseReservedInventory(Order order) {
         if (Boolean.TRUE.equals(order.getInventoryReserved()) && order.getWarehouse() != null && inventoryRepository != null && order.getItems() != null && !order.getItems().isEmpty()) {
             Map<Long, BigDecimal> baseQtyByProduct = new HashMap<>();
@@ -950,6 +1025,7 @@ public class OrderServiceImpl implements OrderService {
                 }
             }
             order.setInventoryReserved(false);
+            order.setReservationExpiresAt(null);
         }
     }
 
@@ -1046,6 +1122,8 @@ public class OrderServiceImpl implements OrderService {
                 .cancelReason(order.getCancelReason())
                 .cancelledBy(order.getCancelledBy())
                 .cancelledAt(order.getCancelledAt())
+                .reservedAt(order.getReservedAt())
+                .reservationExpiresAt(order.getReservationExpiresAt())
                 .requiresApproval(order.getRequiresApproval())
                 .approvalReason(order.getApprovalReason())
                 .approvedBy(order.getApprovedBy())

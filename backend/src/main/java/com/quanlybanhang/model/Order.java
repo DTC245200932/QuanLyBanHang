@@ -102,6 +102,19 @@ public class Order {
     private LocalDateTime cancelledAt;
 
     /**
+     * Thời điểm bắt đầu giữ chỗ tồn kho (S5-06).
+     */
+    @Column(name = "reserved_at")
+    private LocalDateTime reservedAt;
+
+    /**
+     * Thời hạn giữ chỗ tồn kho (S5-06).
+     * Khi vượt quá thời điểm này mà đơn chưa xuất kho hoặc huỷ, hệ thống sẽ tự động nhả tồn giữ chỗ.
+     */
+    @Column(name = "reservation_expires_at")
+    private LocalDateTime reservationExpiresAt;
+
+    /**
      * Đánh dấu đơn hàng có dòng sản phẩm bán dưới giá sàn cần qua duyệt (S2-10).
      */
     @Column(name = "requires_approval", nullable = false)

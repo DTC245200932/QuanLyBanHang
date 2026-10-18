@@ -49,6 +49,17 @@ public interface OrderService {
     OrderResponse approveOrder(Long id, String username);
 
     /**
+     * Duyệt đơn hàng kèm tuỳ chỉnh số giờ giữ chỗ tồn kho (S5-06).
+     */
+    OrderResponse approveOrder(Long id, Integer reservationHours, String username);
+
+    /**
+     * S5-06: Tự động kiểm tra và nhả tồn kho giữ chỗ cho các đơn hàng đã quá hạn giữ chỗ.
+     * @return số lượng đơn hàng đã được nhả tồn giữ chỗ
+     */
+    int releaseExpiredReservations();
+
+    /**
      * Quản lý kinh doanh từ chối đơn hàng có dòng bán dưới giá sàn (S2-10).
      */
     OrderResponse rejectOrder(Long id, String reason, String username);

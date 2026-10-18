@@ -11,6 +11,7 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 | **S5-01** | **Theo dõi trạng thái đơn hàng của đại lý** | ✅ Có ở nhánh backend S5-01, chưa gộp vào `develop` | ✅ Đã nối API trên nhánh frontend hiện tại | ✅ Frontend giới hạn menu/route theo `ROLE_DEALER` + `ORDER_VIEW`; backend API giới hạn dữ liệu theo đại lý | Frontend chỉ dùng hợp đồng `GET /api/portal/orders` và `GET /api/portal/orders/{id}`. Không kéo code backend và không merge nhánh backend. |
 | **S5-03** | **Khai báo nhiều kho, vị trí lưu trữ (Khu/Kệ), gán kho phục vụ đại lý & Soạn hàng (Warehouse, Locations & Order Picking)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu người dùng: "chỉ làm backtend") | ✅ Đã kết nối đầy đủ (`WAREHOUSE_MANAGE`) | - **Khai báo kho**: Mỗi kho có mã, tên, địa chỉ, người phụ trách, trạng thái. Xóa kho an toàn (chuyển `active=false` nếu đã phát sinh phiếu kho/vị trí).<br>- **Vị trí lưu kho**: Khai báo Khu vực (`ZONE`) và Kệ (`SHELF`) thuộc Khu. Gán sản phẩm vào kệ kèm vị trí mặc định (`isDefault`).<br>- **Gán kho đại lý**: Đại lý được gán kho phục vụ mặc định (`PUT /api/dealers/{id}/default-warehouse`).<br>- **Soạn hàng**: `GET /api/orders/{id}/picking-list` hiển thị chính xác tên Kệ, Khu vực, mã vị trí và tồn khả dụng.<br>- **Phân quyền**: Gán quyền `WAREHOUSE_MANAGE` cho `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`; bảo vệ bằng `@PreAuthorize` và `SecurityConfig`. Ghi `AuditLog` toàn diện. |
 | **S5-06** | **Giữ chỗ tồn kho khi đơn được duyệt & Tự động nhả tồn quá hạn / huỷ đơn (Inventory Reservation on Order Approval & Auto-release)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`ORDER_APPROVE`, `ORDER_CANCEL`, `ORDER_VIEW`) | - **Vai trò**: Nhân viên kinh doanh (`ROLE_SALES`), Quản lý kinh doanh (`ROLE_SALES_MANAGER`), Admin (`ROLE_ADMIN`), Quản lý kho (`ROLE_WAREHOUSE_MANAGER`).<br>- **Giữ chỗ tồn khi duyệt đơn**: Khi đơn chuyển sang trạng thái Đã duyệt (`RECORDED`), tồn tương ứng được giữ chỗ (`reservedQuantity`), ngăn chặn bán vượt tồn hoặc mất hàng đã chốt.<br>- **Giao dịch `@Transactional` nguyên tử**: Kiểm tra tồn khả dụng, tăng `reservedQuantity` và đổi trạng thái đơn nằm trong cùng giao dịch; nếu không đủ tồn hoặc phát sinh lỗi thì rollback toàn bộ.<br>- **Tự động nhả tồn**: Huỷ đơn (`cancelOrder`) hoặc từ chối đơn (`rejectOrder`) tự động hoàn trả tồn giữ chỗ. Background Scheduler (`OrderReservationScheduler`) tự động quét định kỳ và nhả tồn đối với đơn quá hạn giữ chỗ (`reservationExpiresAt <= now()`), chuyển đơn sang trạng thái `EXPIRED`.<br>- **Phân quyền Backend**: Phê duyệt / huỷ / giải phóng tồn được bảo vệ bằng `@PreAuthorize("hasAuthority('ORDER_APPROVE') ...")` và `ORDER_CANCEL`. |
+| **S5-04** | **Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (Supplier Goods Receipt with Lot & Expiry Management)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`WAREHOUSE_IMPORT`, `WAREHOUSE_VIEW`, `WAREHOUSE_ADJUST`) | - **Vai trò**: Nhân viên kho (`ROLE_WAREHOUSE_STAFF`), Quản lý kho (`ROLE_WAREHOUSE_MANAGER`), Admin (`ROLE_ADMIN`).<br>- **Khai báo**: Nhà cung cấp, số chứng từ, ngày nhập, kho nhập.<br>- **Đơn vị tính & Quy đổi**: Nhập đơn vị bất kỳ, tự động quy về đơn vị cơ sở và đóng băng thông tin khi ghi sổ.<br>- **Quản lý Lô & HSD**: Mặt hàng có `manageLot = true` bắt buộc nhập số lô và hạn sử dụng.<br>- **Nháp & Xác nhận**: Phiếu nháp (`DRAFT`) không cộng tồn; xác nhận phiếu (`CONFIRMED`) mới cộng tồn tổng và cập nhật tồn theo lô (`warehouse_lot_inventories`).<br>- **Bảo mật**: Phiếu đã xác nhận không thể sửa/xóa; chỉ lập phiếu điều chỉnh (`POST /vouchers/{id}/adjust`, phân quyền cho Quản lý kho và Admin). |
 
 ---
 
@@ -241,5 +242,41 @@ Tài liệu theo dõi trạng thái triển khai và kết nối ma trận phân
 - **Frontend**:
   - Đã có nhánh frontend `feature/S4-10-chuc-nang-dat-hang-cho-dai-ly(frontend)`.
   - Phân quyền Frontend: Menu và route Cổng đại lý hiển thị khi người dùng có `ROLE_DEALER` và quyền `ORDER_CREATE`/`ORDER_VIEW`.
+## Chi tiết kết nối phân quyền S5-04 (Permission Matrix Details)
+
+- **Mã quyền (Permission Codes)**:
+  - `WAREHOUSE_IMPORT`: Lập phiếu nhập kho từ nhà cung cấp, lưu phiếu nháp, xác nhận phiếu nhập kho, sửa/xóa phiếu nháp.
+  - `WAREHOUSE_ADJUST`: Điều chỉnh tồn kho, lập phiếu điều chỉnh cho phiếu kho đã xác nhận.
+  - `WAREHOUSE_VIEW`: Xem danh sách phiếu kho, chi tiết phiếu kho, tồn kho tổng và tồn kho chi tiết theo lô.
+- **Các vai trò được cấp quyền trong ma trận phân quyền**:
+  - `ROLE_ADMIN`: Toàn quyền quản trị hệ thống, toàn bộ quyền kho.
+  - `ROLE_WAREHOUSE_MANAGER`: Quản lý kho, toàn quyền quản lý kho bao gồm `WAREHOUSE_IMPORT`, `WAREHOUSE_VIEW`, `WAREHOUSE_ADJUST`. Được phép lập phiếu điều chỉnh cho các phiếu đã xác nhận.
+  - `ROLE_WAREHOUSE_STAFF`: Nhân viên kho / Thủ kho. Được cấp `WAREHOUSE_IMPORT` và `WAREHOUSE_VIEW`. Được phép lập phiếu nhập kho, lưu nháp, xác nhận phiếu nhập khi xe dỡ hàng, sửa/xóa phiếu nháp. **Không có** quyền `WAREHOUSE_ADJUST` (bị chặn với `403 Forbidden` nếu cố tình điều chỉnh tồn kho hoặc điều chỉnh phiếu).
+  - `ROLE_SALES`: Nhân viên kinh doanh. Bị chặn mọi quyền nhập kho và điều chỉnh kho (`403 Forbidden`).
+  - `ROLE_SALES_MANAGER`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER`: Có quyền `WAREHOUSE_VIEW` để xem tồn kho và chứng từ, không có quyền nhập kho hay điều chỉnh kho.
+- **Backend**:
+  - `WarehouseController.java`:
+    - `POST /api/warehouse/import`: `@PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `POST /api/warehouse/import/draft`: `@PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `POST /api/warehouse/vouchers/{id}/confirm`: `@PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `PUT /api/warehouse/vouchers/{id}`: `@PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `DELETE /api/warehouse/vouchers/{id}`: `@PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `POST /api/warehouse/vouchers/{id}/adjust`: `@PreAuthorize("hasAuthority('WAREHOUSE_ADJUST') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `POST /api/warehouse/adjust`: `@PreAuthorize("hasAuthority('WAREHOUSE_ADJUST') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")`
+    - `GET /api/warehouse/inventory/lots`: `@PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")`
+    - `GET /api/warehouse/vouchers`: `@PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")`
+    - `GET /api/warehouse/vouchers/{id}`: `@PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")`
+  - `SecurityConfig.java`:
+    - Endpoint điều chỉnh kho được bảo vệ nghiêm ngặt: `.requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**", "/api/warehouse/vouchers/*/adjust").hasAnyRole("ADMIN", "WAREHOUSE_MANAGER")`
+  - `WarehouseServiceImpl.java`:
+    - Ràng buộc nhà cung cấp (`Supplier`): Kiểm tra tồn tại và cờ `active = true`.
+    - Ràng buộc quản lý lô (`manageLot`): Kiểm tra bắt buộc `lotNumber` và `expiryDate` đối với các sản phẩm có `manageLot = true`; kiểm tra `expiryDate` không được trước `manufacturingDate`.
+    - Phân tách vòng đời phiếu:
+      - Trạng thái `DRAFT`: Lưu phiếu nháp, hoàn toàn không tác động đến tồn kho.
+      - Trạng thái `CONFIRMED`: Khi xác nhận phiếu, hệ thống mới thực hiện cộng tồn kho tổng (`WarehouseInventory`) và cập nhật sổ tồn theo từng lô (`WarehouseLotInventory`).
+    - Tính bất biến của phiếu đã xác nhận: Chặn sửa/xóa phiếu đã `CONFIRMED` / `RECORDED`, yêu cầu lập phiếu điều chỉnh `ADJUSTMENT`.
+- **Frontend**:
+  - `menu-config.js`: Route `/warehouse/units?tab=receipts` được cấu hình yêu cầu permission `WAREHOUSE_IMPORT` và các vai trò `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`.
+  - Đã sẵn sàng kết nối API khi triển khai giao diện màn hình nhập kho cho Nhân viên kho.
 
 

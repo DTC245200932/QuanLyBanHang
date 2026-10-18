@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -34,6 +35,8 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final UserRepository userRepository;
     private final DealerRepository dealerRepository;
     private final OrderRepository orderRepository;
+    private final SupplierRepository supplierRepository;
+    private final WarehouseLotInventoryRepository lotInventoryRepository;
     private final AuditLogService auditLogService;
 
     // ═══════════════════════════════════════════════════════════════
@@ -772,14 +775,34 @@ public class WarehouseServiceImpl implements WarehouseService {
             voucherCode = prefix + "-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         }
 
+        // Kiểm tra nhà cung cấp nếu có cung cấp
+        Supplier supplier = null;
+        if (request.getSupplierId() != null || (request.getSupplierCode() != null && !request.getSupplierCode().isBlank())) {
+            supplier = resolveSupplier(request.getSupplierId(), request.getSupplierCode());
+            if (supplier != null && Boolean.FALSE.equals(supplier.getActive())) {
+                throw new IllegalArgumentException("Nhà cung cấp '" + supplier.getName() + "' đã ngừng hoạt động");
+            }
+        }
+
+        boolean isDraft = "DRAFT".equalsIgnoreCase(request.getStatus()) || Boolean.TRUE.equals(request.getDraft());
+        String initialStatus = isDraft ? "DRAFT" : "RECORDED";
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime voucherDate = request.getVoucherDate() != null ? request.getVoucherDate() : now;
+
         WarehouseVoucher voucher = WarehouseVoucher.builder()
                 .voucherCode(voucherCode)
+                .documentNumber(request.getDocumentNumber())
+                .voucherDate(voucherDate)
                 .type(type)
                 .warehouse(warehouse)
+                .supplier(supplier)
                 .note(request.getNote())
-                .status("RECORDED")
+                .status(initialStatus)
                 .createdBy(username != null ? username : "system")
-                .recordedAt(LocalDateTime.now())
+                .recordedAt(isDraft ? null : now)
+                .referenceVoucherId(request.getReferenceVoucherId())
+                .referenceVoucherCode(request.getReferenceVoucherCode())
+                .adjustmentReason(request.getAdjustmentReason())
                 .items(new ArrayList<>())
                 .build();
 
@@ -788,6 +811,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                 throw new IllegalArgumentException("Dòng sản phẩm trong phiếu kho không được để trống");
             }
             Product product = resolveProduct(itemReq);
+            if (!Boolean.TRUE.equals(product.getActive())) {
+                throw new IllegalArgumentException("Sản phẩm '" + product.getName() + "' đã ngừng kinh doanh");
+            }
 
             BigDecimal qty = itemReq.getQuantity();
             if (qty == null) {
@@ -814,17 +840,34 @@ public class WarehouseServiceImpl implements WarehouseService {
                 factor = BigDecimal.ONE;
             }
 
-            BigDecimal baseQty = null;
-            if (unitConversionService != null) {
-                try {
-                    baseQty = unitConversionService.convertToBaseQuantity(product, inputUnit, qty);
-                } catch (Exception ignored) {
+            // Lấy hệ số quy đổi tại thời điểm lập phiếu (S2-07)
+            BigDecimal factor = unitConversionService.getConversionFactor(product, inputUnit);
+
+            // Quy đổi về đơn vị cơ sở: baseQuantity = quantity * factor
+            BigDecimal baseQty = qty.multiply(factor);
+
+            // Quản lý số lô và hạn sử dụng (S5-04)
+            boolean isLotManaged = Boolean.TRUE.equals(product.getManageLot());
+            String lotNumber = itemReq.getLotNumber() != null ? itemReq.getLotNumber().trim() : null;
+            LocalDate expiryDate = itemReq.getExpiryDate();
+            LocalDate mfgDate = itemReq.getManufacturingDate();
+
+            if (isLotManaged) {
+                if (lotNumber == null || lotNumber.isBlank()) {
+                    throw new IllegalArgumentException("Sản phẩm '" + product.getCode() + " - " + product.getName() + "' có quản lý lô, bắt buộc phải nhập số lô");
+                }
+                if (expiryDate == null) {
+                    throw new IllegalArgumentException("Sản phẩm '" + product.getCode() + " - " + product.getName() + "' có quản lý lô, bắt buộc phải nhập hạn sử dụng");
+                }
+                if (mfgDate != null && expiryDate.isBefore(mfgDate)) {
+                    throw new IllegalArgumentException("Hạn sử dụng không được trước ngày sản xuất cho lô '" + lotNumber + "'");
                 }
             }
-            if (baseQty == null) {
-                baseQty = qty.multiply(factor);
-            }
 
+            BigDecimal price = itemReq.getPrice() != null ? itemReq.getPrice() : product.getPrice();
+            BigDecimal totalAmount = price != null ? price.multiply(qty) : BigDecimal.ZERO;
+
+            // ĐÓNG BĂNG thông tin đơn vị, hệ số và số lượng cơ sở vào dòng phiếu
             WarehouseVoucherItem item = WarehouseVoucherItem.builder()
                     .voucher(voucher)
                     .product(product)
@@ -833,48 +876,71 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .conversionFactor(factor)
                     .baseUnit(product.getUnit())
                     .baseQuantity(baseQty)
-                    .price(product.getPrice())
-                    .totalAmount(product.getPrice() != null ? product.getPrice().multiply(qty) : BigDecimal.ZERO)
+                    .price(price)
+                    .totalAmount(totalAmount)
+                    .lotNumber(lotNumber)
+                    .expiryDate(expiryDate)
+                    .manufacturingDate(mfgDate)
                     .note(itemReq.getNote())
                     .build();
             voucher.getItems().add(item);
 
-            // Cập nhật sổ sách tồn kho
-            WarehouseInventory inventory = inventoryRepository
-                    .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
-                    .orElseGet(() -> WarehouseInventory.builder()
-                            .warehouse(warehouse)
-                            .product(product)
-                            .baseUnit(product.getUnit())
-                            .baseQuantity(BigDecimal.ZERO)
-                            .reservedQuantity(BigDecimal.ZERO)
-                            .build());
+            voucher.addItem(item);
 
-            BigDecimal quantityBefore = inventory.getBaseQuantity() != null ? inventory.getBaseQuantity() : BigDecimal.ZERO;
+            // CHỈ CỘNG TỒN KHO KHI XÁC NHẬN / GHI SỔ, PHIẾU NHÁP KHÔNG ẢNH HƯỞNG TỒN (S5-04)
+            if (!isDraft) {
+                WarehouseInventory inventory = inventoryRepository
+                        .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
+                        .orElseGet(() -> WarehouseInventory.builder()
+                                .warehouse(warehouse)
+                                .product(product)
+                                .baseQuantity(BigDecimal.ZERO)
+                                .baseUnit(product.getUnit())
+                                .build());
+                BigDecimal quantityBefore = inventory.getBaseQuantity() == null
+                        ? BigDecimal.ZERO : inventory.getBaseQuantity();
 
-            if (type == WarehouseVoucherType.IMPORT) {
-                inventory.addBaseQuantity(baseQty);
-            } else if (type == WarehouseVoucherType.EXPORT) {
-                if (inventory.getBaseQuantity().compareTo(baseQty) < 0) {
-                    throw new IllegalArgumentException("Không đủ tồn kho để xuất cho sản phẩm '" + product.getName() +
-                            "'. Tồn hiện tại: " + inventory.getBaseQuantity() + " " + product.getUnit() +
-                            ", yêu cầu xuất: " + baseQty + " " + product.getUnit() + " (" + qty + " " + inputUnit + ")");
+                if (type == WarehouseVoucherType.IMPORT) {
+                    inventory.addBaseQuantity(baseQty);
+                } else if (type == WarehouseVoucherType.EXPORT) {
+                    if (inventory.getBaseQuantity().compareTo(baseQty) < 0) {
+                        throw new IllegalArgumentException("Không đủ tồn kho để xuất cho sản phẩm '" + product.getName() +
+                                "'. Tồn hiện tại: " + inventory.getBaseQuantity() + " " + product.getUnit() +
+                                ", yêu cầu xuất: " + baseQty + " " + product.getUnit() + " (" + qty + " " + inputUnit + ")");
+                    }
+                    inventory.subtractBaseQuantity(baseQty);
+                } else if (type == WarehouseVoucherType.ADJUSTMENT) {
+                    if (request.getDelta() != null) {
+                        BigDecimal deltaBase = request.getDelta().multiply(factor);
+                        inventory.addBaseQuantity(deltaBase);
+                    } else {
+                        inventory.setBaseQuantity(baseQty);
+                    }
                 }
-                inventory.subtractBaseQuantity(baseQty);
-                if (inventory.getReservedQuantity() != null && inventory.getReservedQuantity().compareTo(BigDecimal.ZERO) > 0) {
-                    inventory.subtractReservedQuantity(baseQty);
-                }
-            } else if (type == WarehouseVoucherType.ADJUSTMENT) {
-                if (request.getDelta() != null) {
-                    BigDecimal deltaBase = request.getDelta().multiply(factor);
-                    inventory.addBaseQuantity(deltaBase);
-                } else {
-                    inventory.setBaseQuantity(baseQty);
-                }
-            }
 
-            inventoryRepository.save(inventory);
-            if (auditLogService != null) {
+                inventoryRepository.save(inventory);
+
+                // Cập nhật tồn kho theo lô nếu có lotNumber
+                if (lotNumber != null && !lotNumber.isBlank()) {
+                    WarehouseLotInventory lotInv = lotInventoryRepository
+                            .findByWarehouseIdAndProductIdAndLotNumber(warehouse.getId(), product.getId(), lotNumber)
+                            .orElseGet(() -> WarehouseLotInventory.builder()
+                                    .warehouse(warehouse)
+                                    .product(product)
+                                    .lotNumber(lotNumber)
+                                    .expiryDate(expiryDate)
+                                    .manufacturingDate(mfgDate)
+                                    .baseQuantity(BigDecimal.ZERO)
+                                    .baseUnit(product.getUnit())
+                                    .build());
+                    if (type == WarehouseVoucherType.IMPORT) {
+                        lotInv.addBaseQuantity(baseQty);
+                    } else if (type == WarehouseVoucherType.EXPORT) {
+                        lotInv.subtractBaseQuantity(baseQty);
+                    }
+                    lotInventoryRepository.save(lotInv);
+                }
+
                 auditLogService.logAction(
                         "INVENTORY",
                         warehouse.getCode() + ":" + product.getCode(),
@@ -887,6 +953,408 @@ public class WarehouseServiceImpl implements WarehouseService {
 
         WarehouseVoucher savedVoucher = voucherRepository.save(voucher);
         return mapToVoucherResponse(savedVoucher);
+    }
+
+    @Override
+    @Transactional
+    public WarehouseVoucherResponse confirmVoucher(Long id, String username) {
+        WarehouseVoucher voucher = voucherRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho với ID: " + id));
+
+        if (!"DRAFT".equalsIgnoreCase(voucher.getStatus())) {
+            throw new IllegalStateException("Chỉ có thể xác nhận phiếu ở trạng thái Nháp (DRAFT). Trạng thái hiện tại: " + voucher.getStatus());
+        }
+
+        Warehouse warehouse = voucher.getWarehouse();
+        if (warehouse == null || !Boolean.TRUE.equals(warehouse.getActive())) {
+            throw new IllegalArgumentException("Kho của phiếu nhập đã ngừng hoạt động hoặc không tồn tại");
+        }
+
+        if (voucher.getItems() == null || voucher.getItems().isEmpty()) {
+            throw new IllegalArgumentException("Phiếu kho không có sản phẩm để xác nhận");
+        }
+
+        for (WarehouseVoucherItem item : voucher.getItems()) {
+            Product product = item.getProduct();
+            if (product == null || !Boolean.TRUE.equals(product.getActive())) {
+                throw new IllegalArgumentException("Sản phẩm '" + (product != null ? product.getName() : "") + "' đã ngừng kinh doanh");
+            }
+
+            // Kiểm tra ràng buộc lô
+            if (Boolean.TRUE.equals(product.getManageLot())) {
+                if (item.getLotNumber() == null || item.getLotNumber().isBlank()) {
+                    throw new IllegalArgumentException("Sản phẩm '" + product.getCode() + " - " + product.getName() + "' có quản lý lô, bắt buộc phải nhập số lô");
+                }
+                if (item.getExpiryDate() == null) {
+                    throw new IllegalArgumentException("Sản phẩm '" + product.getCode() + " - " + product.getName() + "' có quản lý lô, bắt buộc phải nhập hạn sử dụng");
+                }
+            }
+
+            BigDecimal baseQty = item.getBaseQuantity();
+
+            // Cập nhật sổ sách tồn kho tổng
+            WarehouseInventory inventory = inventoryRepository
+                    .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
+                    .orElseGet(() -> WarehouseInventory.builder()
+                            .warehouse(warehouse)
+                            .product(product)
+                            .baseQuantity(BigDecimal.ZERO)
+                            .baseUnit(product.getUnit())
+                            .build());
+
+            BigDecimal quantityBefore = inventory.getBaseQuantity() == null ? BigDecimal.ZERO : inventory.getBaseQuantity();
+
+            if (voucher.getType() == WarehouseVoucherType.IMPORT) {
+                inventory.addBaseQuantity(baseQty);
+            } else if (voucher.getType() == WarehouseVoucherType.EXPORT) {
+                if (inventory.getBaseQuantity().compareTo(baseQty) < 0) {
+                    throw new IllegalArgumentException("Không đủ tồn kho để xuất cho sản phẩm '" + product.getName() +
+                            "'. Tồn hiện tại: " + inventory.getBaseQuantity() + " " + product.getUnit() +
+                            ", yêu cầu: " + baseQty + " " + product.getUnit());
+                }
+                inventory.subtractBaseQuantity(baseQty);
+            }
+
+            inventoryRepository.save(inventory);
+
+            // Cập nhật tồn kho theo lô
+            if (item.getLotNumber() != null && !item.getLotNumber().isBlank()) {
+                WarehouseLotInventory lotInv = lotInventoryRepository
+                        .findByWarehouseIdAndProductIdAndLotNumber(warehouse.getId(), product.getId(), item.getLotNumber())
+                        .orElseGet(() -> WarehouseLotInventory.builder()
+                                .warehouse(warehouse)
+                                .product(product)
+                                .lotNumber(item.getLotNumber())
+                                .expiryDate(item.getExpiryDate())
+                                .manufacturingDate(item.getManufacturingDate())
+                                .baseQuantity(BigDecimal.ZERO)
+                                .baseUnit(product.getUnit())
+                                .build());
+                if (voucher.getType() == WarehouseVoucherType.IMPORT) {
+                    lotInv.addBaseQuantity(baseQty);
+                } else if (voucher.getType() == WarehouseVoucherType.EXPORT) {
+                    lotInv.subtractBaseQuantity(baseQty);
+                }
+                lotInventoryRepository.save(lotInv);
+            }
+
+            auditLogService.logAction(
+                    "INVENTORY",
+                    warehouse.getCode() + ":" + product.getCode(),
+                    voucher.getType().name() + "_CONFIRM",
+                    quantityBefore.toPlainString() + " " + product.getUnit(),
+                    inventory.getBaseQuantity().toPlainString() + " " + product.getUnit(),
+                    username != null ? username : "system");
+        }
+
+        voucher.setStatus("CONFIRMED");
+        voucher.setRecordedAt(LocalDateTime.now());
+        WarehouseVoucher saved = voucherRepository.save(voucher);
+        return mapToVoucherResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public WarehouseVoucherResponse updateVoucher(Long id, WarehouseVoucherRequest request, String username) {
+        WarehouseVoucher voucher = voucherRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho với ID: " + id));
+
+        // Phiếu đã xác nhận không sửa được, chỉ lập phiếu điều chỉnh (S5-04)
+        if ("CONFIRMED".equalsIgnoreCase(voucher.getStatus()) || "RECORDED".equalsIgnoreCase(voucher.getStatus()) || "ADJUSTED".equalsIgnoreCase(voucher.getStatus())) {
+            throw new IllegalStateException("Phiếu đã xác nhận không sửa được, chỉ lập phiếu điều chỉnh");
+        }
+        if (!"DRAFT".equalsIgnoreCase(voucher.getStatus())) {
+            throw new IllegalStateException("Chỉ được sửa phiếu ở trạng thái Nháp (DRAFT). Trạng thái hiện tại: " + voucher.getStatus());
+        }
+
+        if (request.getWarehouseId() != null) {
+            voucher.setWarehouse(resolveWarehouse(request.getWarehouseId()));
+        }
+
+        if (request.getSupplierId() != null || (request.getSupplierCode() != null && !request.getSupplierCode().isBlank())) {
+            Supplier supplier = resolveSupplier(request.getSupplierId(), request.getSupplierCode());
+            if (supplier != null && Boolean.FALSE.equals(supplier.getActive())) {
+                throw new IllegalArgumentException("Nhà cung cấp '" + supplier.getName() + "' đã ngừng hoạt động");
+            }
+            voucher.setSupplier(supplier);
+        }
+
+        if (request.getDocumentNumber() != null) {
+            voucher.setDocumentNumber(request.getDocumentNumber());
+        }
+        if (request.getVoucherDate() != null) {
+            voucher.setVoucherDate(request.getVoucherDate());
+        }
+        if (request.getNote() != null) {
+            voucher.setNote(request.getNote());
+        }
+
+        // Cập nhật danh sách items nếu có truyền
+        List<WarehouseVoucherItemRequest> itemRequests = normalizeItemRequests(request, voucher.getType());
+        if (!itemRequests.isEmpty()) {
+            voucher.getItems().clear();
+            for (WarehouseVoucherItemRequest itemReq : itemRequests) {
+                Product product = resolveProduct(itemReq);
+                if (!Boolean.TRUE.equals(product.getActive())) {
+                    throw new IllegalArgumentException("Sản phẩm '" + product.getName() + "' đã ngừng kinh doanh");
+                }
+
+                String inputUnit = itemReq.getUnit();
+                if (inputUnit == null || inputUnit.isBlank()) {
+                    inputUnit = product.getUnit();
+                } else {
+                    inputUnit = inputUnit.trim();
+                }
+
+                BigDecimal qty = itemReq.getQuantity();
+                if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("Số lượng cho sản phẩm '" + product.getCode() + "' phải lớn hơn 0");
+                }
+
+                BigDecimal factor = unitConversionService.getConversionFactor(product, inputUnit);
+                BigDecimal baseQty = qty.multiply(factor);
+
+                boolean isLotManaged = Boolean.TRUE.equals(product.getManageLot());
+                String lotNumber = itemReq.getLotNumber() != null ? itemReq.getLotNumber().trim() : null;
+                LocalDate expiryDate = itemReq.getExpiryDate();
+                LocalDate mfgDate = itemReq.getManufacturingDate();
+
+                if (isLotManaged) {
+                    if (lotNumber == null || lotNumber.isBlank()) {
+                        throw new IllegalArgumentException("Sản phẩm '" + product.getCode() + " - " + product.getName() + "' có quản lý lô, bắt buộc phải nhập số lô");
+                    }
+                    if (expiryDate == null) {
+                        throw new IllegalArgumentException("Sản phẩm '" + product.getCode() + " - " + product.getName() + "' có quản lý lô, bắt buộc phải nhập hạn sử dụng");
+                    }
+                    if (mfgDate != null && expiryDate.isBefore(mfgDate)) {
+                        throw new IllegalArgumentException("Hạn sử dụng không được trước ngày sản xuất cho lô '" + lotNumber + "'");
+                    }
+                }
+
+                BigDecimal price = itemReq.getPrice() != null ? itemReq.getPrice() : product.getPrice();
+                BigDecimal totalAmount = price != null ? price.multiply(qty) : BigDecimal.ZERO;
+
+                WarehouseVoucherItem item = WarehouseVoucherItem.builder()
+                        .voucher(voucher)
+                        .product(product)
+                        .unit(inputUnit)
+                        .quantity(qty)
+                        .conversionFactor(factor)
+                        .baseUnit(product.getUnit())
+                        .baseQuantity(baseQty)
+                        .price(price)
+                        .totalAmount(totalAmount)
+                        .lotNumber(lotNumber)
+                        .expiryDate(expiryDate)
+                        .manufacturingDate(mfgDate)
+                        .note(itemReq.getNote())
+                        .build();
+
+                voucher.addItem(item);
+            }
+        }
+
+        WarehouseVoucher saved = voucherRepository.save(voucher);
+        return mapToVoucherResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void deleteVoucher(Long id, String username) {
+        WarehouseVoucher voucher = voucherRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho với ID: " + id));
+
+        // Phiếu đã xác nhận không thể xóa, chỉ lập phiếu điều chỉnh (S5-04)
+        if ("CONFIRMED".equalsIgnoreCase(voucher.getStatus()) || "RECORDED".equalsIgnoreCase(voucher.getStatus()) || "ADJUSTED".equalsIgnoreCase(voucher.getStatus())) {
+            throw new IllegalStateException("Phiếu đã xác nhận không thể xóa, chỉ lập phiếu điều chỉnh");
+        }
+
+        voucherRepository.delete(voucher);
+        auditLogService.logAction(
+                "WAREHOUSE_VOUCHER",
+                voucher.getVoucherCode(),
+                "DELETE_DRAFT",
+                voucher.getStatus(),
+                "DELETED",
+                username != null ? username : "system");
+    }
+
+    @Override
+    @Transactional
+    public WarehouseVoucherResponse adjustVoucher(Long id, WarehouseVoucherRequest request, String username) {
+        WarehouseVoucher originalVoucher = voucherRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho gốc với ID: " + id));
+
+        if (!"CONFIRMED".equalsIgnoreCase(originalVoucher.getStatus()) && !"RECORDED".equalsIgnoreCase(originalVoucher.getStatus()) && !"ADJUSTED".equalsIgnoreCase(originalVoucher.getStatus())) {
+            throw new IllegalStateException("Chỉ có thể lập phiếu điều chỉnh cho phiếu kho đã xác nhận. Trạng thái hiện tại: " + originalVoucher.getStatus());
+        }
+
+        if (request == null) {
+            throw new IllegalArgumentException("Không được để trống nội dung phiếu điều chỉnh");
+        }
+
+        Warehouse warehouse = request.getWarehouseId() != null
+                ? resolveWarehouse(request.getWarehouseId())
+                : originalVoucher.getWarehouse();
+
+        String voucherCode = request.getVoucherCode();
+        if (voucherCode == null || voucherCode.isBlank()) {
+            voucherCode = "PDC-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+        }
+
+        String reason = request.getAdjustmentReason() != null && !request.getAdjustmentReason().isBlank()
+                ? request.getAdjustmentReason()
+                : (request.getNote() != null ? request.getNote() : "Điều chỉnh cho phiếu " + originalVoucher.getVoucherCode());
+
+        WarehouseVoucher adjustmentVoucher = WarehouseVoucher.builder()
+                .voucherCode(voucherCode)
+                .documentNumber(request.getDocumentNumber())
+                .type(WarehouseVoucherType.ADJUSTMENT)
+                .warehouse(warehouse)
+                .supplier(originalVoucher.getSupplier())
+                .referenceVoucherId(originalVoucher.getId())
+                .referenceVoucherCode(originalVoucher.getVoucherCode())
+                .adjustmentReason(reason)
+                .note(request.getNote())
+                .status("CONFIRMED")
+                .createdBy(username != null ? username : "system")
+                .voucherDate(request.getVoucherDate() != null ? request.getVoucherDate() : LocalDateTime.now())
+                .recordedAt(LocalDateTime.now())
+                .items(new ArrayList<>())
+                .build();
+
+        List<WarehouseVoucherItemRequest> itemRequests = normalizeItemRequests(request, WarehouseVoucherType.ADJUSTMENT);
+        if (itemRequests.isEmpty()) {
+            throw new IllegalArgumentException("Phiếu điều chỉnh phải có ít nhất 1 sản phẩm");
+        }
+
+        for (WarehouseVoucherItemRequest itemReq : itemRequests) {
+            Product product = resolveProduct(itemReq);
+
+            String inputUnit = itemReq.getUnit();
+            if (inputUnit == null || inputUnit.isBlank()) {
+                inputUnit = product.getUnit();
+            } else {
+                inputUnit = inputUnit.trim();
+            }
+
+            BigDecimal qty = itemReq.getQuantity() != null ? itemReq.getQuantity() : BigDecimal.ZERO;
+            BigDecimal factor = unitConversionService.getConversionFactor(product, inputUnit);
+            BigDecimal baseQty = qty.multiply(factor);
+
+            String lotNumber = itemReq.getLotNumber() != null ? itemReq.getLotNumber().trim() : null;
+            LocalDate expiryDate = itemReq.getExpiryDate();
+            LocalDate mfgDate = itemReq.getManufacturingDate();
+
+            BigDecimal price = itemReq.getPrice() != null ? itemReq.getPrice() : product.getPrice();
+            BigDecimal totalAmount = price != null ? price.multiply(qty) : BigDecimal.ZERO;
+
+            WarehouseVoucherItem item = WarehouseVoucherItem.builder()
+                    .voucher(adjustmentVoucher)
+                    .product(product)
+                    .unit(inputUnit)
+                    .quantity(qty)
+                    .conversionFactor(factor)
+                    .baseUnit(product.getUnit())
+                    .baseQuantity(baseQty)
+                    .price(price)
+                    .totalAmount(totalAmount)
+                    .lotNumber(lotNumber)
+                    .expiryDate(expiryDate)
+                    .manufacturingDate(mfgDate)
+                    .note(itemReq.getNote())
+                    .build();
+
+            adjustmentVoucher.addItem(item);
+
+            // Cập nhật tồn kho theo delta hoặc số lượng điều chỉnh
+            WarehouseInventory inventory = inventoryRepository
+                    .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
+                    .orElseGet(() -> WarehouseInventory.builder()
+                            .warehouse(warehouse)
+                            .product(product)
+                            .baseQuantity(BigDecimal.ZERO)
+                            .baseUnit(product.getUnit())
+                            .build());
+
+            BigDecimal quantityBefore = inventory.getBaseQuantity() == null ? BigDecimal.ZERO : inventory.getBaseQuantity();
+
+            if (request.getDelta() != null) {
+                BigDecimal deltaBase = request.getDelta().multiply(factor);
+                inventory.addBaseQuantity(deltaBase);
+            } else {
+                inventory.setBaseQuantity(baseQty);
+            }
+
+            inventoryRepository.save(inventory);
+
+            // Cập nhật tồn kho lô nếu có
+            if (lotNumber != null && !lotNumber.isBlank()) {
+                WarehouseLotInventory lotInv = lotInventoryRepository
+                        .findByWarehouseIdAndProductIdAndLotNumber(warehouse.getId(), product.getId(), lotNumber)
+                        .orElseGet(() -> WarehouseLotInventory.builder()
+                                .warehouse(warehouse)
+                                .product(product)
+                                .lotNumber(lotNumber)
+                                .expiryDate(expiryDate)
+                                .manufacturingDate(mfgDate)
+                                .baseQuantity(BigDecimal.ZERO)
+                                .baseUnit(product.getUnit())
+                                .build());
+                if (request.getDelta() != null) {
+                    BigDecimal deltaBase = request.getDelta().multiply(factor);
+                    lotInv.addBaseQuantity(deltaBase);
+                } else {
+                    lotInv.setBaseQuantity(baseQty);
+                }
+                lotInventoryRepository.save(lotInv);
+            }
+
+            auditLogService.logAction(
+                    "INVENTORY",
+                    warehouse.getCode() + ":" + product.getCode(),
+                    "ADJUSTMENT",
+                    quantityBefore.toPlainString() + " " + product.getUnit(),
+                    inventory.getBaseQuantity().toPlainString() + " " + product.getUnit(),
+                    username != null ? username : "system");
+        }
+
+        originalVoucher.setStatus("ADJUSTED");
+        voucherRepository.save(originalVoucher);
+
+        WarehouseVoucher saved = voucherRepository.save(adjustmentVoucher);
+        return mapToVoucherResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WarehouseLotInventoryResponse> getLotInventory(Long warehouseId, Long productId) {
+        List<WarehouseLotInventory> list;
+        if (warehouseId != null && productId != null) {
+            list = lotInventoryRepository.findByWarehouseIdAndProductId(warehouseId, productId);
+        } else if (warehouseId != null) {
+            list = lotInventoryRepository.findByWarehouseId(warehouseId);
+        } else if (productId != null) {
+            list = lotInventoryRepository.findByProductId(productId);
+        } else {
+            list = lotInventoryRepository.findAllByOrderByUpdatedAtDesc();
+        }
+
+        return list.stream().map(lot -> WarehouseLotInventoryResponse.builder()
+                .id(lot.getId())
+                .warehouseId(lot.getWarehouse() != null ? lot.getWarehouse().getId() : null)
+                .warehouseCode(lot.getWarehouse() != null ? lot.getWarehouse().getCode() : null)
+                .warehouseName(lot.getWarehouse() != null ? lot.getWarehouse().getName() : null)
+                .productId(lot.getProduct() != null ? lot.getProduct().getId() : null)
+                .productCode(lot.getProduct() != null ? lot.getProduct().getCode() : null)
+                .productName(lot.getProduct() != null ? lot.getProduct().getName() : null)
+                .lotNumber(lot.getLotNumber())
+                .expiryDate(lot.getExpiryDate())
+                .manufacturingDate(lot.getManufacturingDate())
+                .baseQuantity(lot.getBaseQuantity())
+                .baseUnit(lot.getBaseUnit())
+                .updatedAt(lot.getUpdatedAt())
+                .build()).collect(Collectors.toList());
     }
 
     @Override
@@ -905,14 +1373,13 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional(readOnly = true)
     public List<WarehouseVoucherResponse> getVouchers(Long warehouseId, WarehouseVoucherType type) {
-        List<WarehouseVoucher> vouchers;
-        if (type != null) {
-            vouchers = voucherRepository.findByTypeOrderByRecordedAtDesc(type);
-        } else if (warehouseId != null) {
-            vouchers = voucherRepository.findByWarehouseIdOrderByRecordedAtDesc(warehouseId);
-        } else {
-            vouchers = voucherRepository.findAllByOrderByRecordedAtDesc();
-        }
+        return getVouchers(warehouseId, type, null, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WarehouseVoucherResponse> getVouchers(Long warehouseId, WarehouseVoucherType type, String status, Long supplierId) {
+        List<WarehouseVoucher> vouchers = voucherRepository.searchVouchers(warehouseId, type, status, supplierId);
         return vouchers.stream().map(this::mapToVoucherResponse).collect(Collectors.toList());
     }
 
@@ -945,6 +1412,18 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new IllegalArgumentException("Vui lòng chọn kho (warehouseId) để ghi phiếu");
         }
         return warehouses.get(0);
+    }
+
+    private Supplier resolveSupplier(Long supplierId, String supplierCode) {
+        if (supplierId != null) {
+            return supplierRepository.findById(supplierId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhà cung cấp với ID: " + supplierId));
+        }
+        if (supplierCode != null && !supplierCode.isBlank()) {
+            return supplierRepository.findByCode(supplierCode.trim())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhà cung cấp với mã: " + supplierCode));
+        }
+        return null;
     }
 
     private Product resolveProduct(WarehouseVoucherItemRequest itemReq) {
@@ -1087,11 +1566,19 @@ public class WarehouseServiceImpl implements WarehouseService {
         return WarehouseVoucherResponse.builder()
                 .id(voucher.getId())
                 .voucherCode(voucher.getVoucherCode())
+                .documentNumber(voucher.getDocumentNumber())
+                .voucherDate(voucher.getVoucherDate())
                 .type(voucher.getType())
                 .warehouseId(voucher.getWarehouse() != null ? voucher.getWarehouse().getId() : null)
                 .warehouseCode(voucher.getWarehouse() != null ? voucher.getWarehouse().getCode() : null)
                 .warehouseName(voucher.getWarehouse() != null ? voucher.getWarehouse().getName() : null)
+                .supplierId(voucher.getSupplier() != null ? voucher.getSupplier().getId() : null)
+                .supplierCode(voucher.getSupplier() != null ? voucher.getSupplier().getCode() : null)
+                .supplierName(voucher.getSupplier() != null ? voucher.getSupplier().getName() : null)
                 .status(voucher.getStatus())
+                .referenceVoucherId(voucher.getReferenceVoucherId())
+                .referenceVoucherCode(voucher.getReferenceVoucherCode())
+                .adjustmentReason(voucher.getAdjustmentReason())
                 .note(voucher.getNote())
                 .createdBy(voucher.getCreatedBy())
                 .recordedAt(voucher.getRecordedAt())
@@ -1105,6 +1592,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .productId(item.getProduct() != null ? item.getProduct().getId() : null)
                 .productCode(item.getProduct() != null ? item.getProduct().getCode() : null)
                 .productName(item.getProduct() != null ? item.getProduct().getName() : null)
+                .manageLot(item.getProduct() != null ? Boolean.TRUE.equals(item.getProduct().getManageLot()) : false)
                 .unit(item.getUnit())
                 .quantity(item.getQuantity())
                 .conversionFactor(item.getConversionFactor())
@@ -1112,6 +1600,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .baseQuantity(item.getBaseQuantity())
                 .price(item.getPrice())
                 .totalAmount(item.getTotalAmount())
+                .lotNumber(item.getLotNumber())
+                .expiryDate(item.getExpiryDate())
+                .manufacturingDate(item.getManufacturingDate())
                 .note(item.getNote())
                 .build();
     }

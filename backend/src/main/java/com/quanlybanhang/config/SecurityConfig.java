@@ -90,7 +90,7 @@ public class SecurityConfig {
                         "ADMIN", "SALES_MANAGER", "WAREHOUSE_MANAGER")
 
                 // ── Điều chỉnh kho: CHỈ ADMIN + WAREHOUSE_MANAGER (đảm bảo SALES và WAREHOUSE_STAFF không sửa được tồn kho!) ──
-                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**").hasAnyRole(
+                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**", "/api/warehouse/vouchers/*/adjust").hasAnyRole(
                         "ADMIN", "WAREHOUSE_MANAGER")
 
                 // Dữ liệu tồn và danh sách kho được phép xem bởi NV kinh doanh, Quản lý kinh doanh, Thủ kho, Quản lý kho, Admin, Viewer (S4-03)

@@ -94,9 +94,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**", "/api/warehouse/vouchers/*/adjust").hasAnyRole(
                         "ADMIN", "WAREHOUSE_MANAGER")
 
-                // Dữ liệu tồn và danh sách kho được phép xem bởi NV kinh doanh, Quản lý kinh doanh, Thủ kho, Quản lý kho, Admin, Viewer (S4-03)
+                // S4-03: filter chỉ yêu cầu đăng nhập; @PreAuthorize kiểm tra permission trong ma trận.
                 .requestMatchers("/api/warehouse/options", "/api/warehouse/inventory")
-                        .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "SALES", "VIEWER")
+                        .authenticated()
 
                 // Chứng từ kho: Quản lý kho, Thủ kho, Quản lý kinh doanh, Admin, Viewer
                 .requestMatchers("/api/warehouse/vouchers", "/api/warehouse/vouchers/**")

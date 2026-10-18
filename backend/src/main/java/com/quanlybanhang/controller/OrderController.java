@@ -197,7 +197,7 @@ public class OrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ResponseEntity<ApiResponse> createOrder(
             @Valid @RequestBody OrderRequest request,
             Principal principal) {
@@ -215,7 +215,7 @@ public class OrderController {
      * Không có bảng giá hiệu lực cho SKU đó thì chặn thêm dòng hàng kèm thông báo rõ lý do.
      */
     @PostMapping("/line-item/pricing")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ApiResponse calculateLineItemPricing(@Valid @RequestBody OrderLineItemPricingRequest request) {
         OrderLineItemPricingResponse response = orderService.calculateLineItemPricing(request);
         return ApiResponse.success("Áp giá và chiết khấu dòng hàng thành công", response);
@@ -226,7 +226,7 @@ public class OrderController {
      * Chặn thêm dòng hàng nếu có SKU chưa có trong bảng giá hiệu lực.
      */
     @PostMapping("/calculate")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ApiResponse calculateOrder(@Valid @RequestBody OrderCalculateRequest request) {
         OrderCalculateResponse response = orderService.calculateOrder(request);
         return ApiResponse.success("Tính toán giá và chiết khấu đơn hàng thành công", response);
@@ -251,7 +251,7 @@ public class OrderController {
      * Chặn đặt vượt tồn khả dụng, gợi ý số lượng tối đa còn đặt được theo đơn vị tính đã chọn.
      */
     @PostMapping("/check-inventory")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'WAREHOUSE_VIEW')")
     public ApiResponse checkInventory(@Valid @RequestBody OrderInventoryCheckRequest request) {
         OrderInventoryCheckResponse response = orderService.checkInventory(request);
         return ApiResponse.success("Kiểm tra tồn khả dụng thành công", response);
@@ -263,7 +263,7 @@ public class OrderController {
      * Đơn đã xuất kho thì không huỷ được, phải đi đường trả hàng.
      */
     @PutMapping("/{id}/cancel")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_CANCEL') or hasRole('ADMIN')")
     public ApiResponse cancelOrder(
             @PathVariable Long id,
             @RequestBody(required = false) OrderCancelRequest request,
@@ -293,7 +293,7 @@ public class OrderController {
      * Nhân viên kinh doanh theo dõi trực tiếp khâu xử lý mà không cần gọi hỏi kho.
      */
     @GetMapping("/{id}/tracking")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ACCOUNTANT', 'VIEWER')")
+    @PreAuthorize("hasAuthority('ORDER_VIEW') or hasRole('ADMIN')")
     public ApiResponse getOrderTracking(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderTrackingResponse tracking = orderService.getOrderTracking(id, username);
@@ -304,7 +304,7 @@ public class OrderController {
      * S4-06: Cập nhật trạng thái vòng đời của đơn hàng (Soạn hàng, Xuất kho, Giao hàng, Đóng).
      */
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT') or hasRole('ADMIN')")
     public ApiResponse updateOrderStatus(
             @PathVariable Long id,
             @Valid @RequestBody OrderStatusUpdateRequest request,
@@ -320,7 +320,7 @@ public class OrderController {
      * Đơn được duyệt mới chuyển sang giữ chỗ tồn kho và chờ xuất kho.
      */
     @PutMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
     public ApiResponse approveOrder(
             @PathVariable Long id,
             @RequestParam(required = false) Integer reservationHours,
@@ -340,7 +340,7 @@ public class OrderController {
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
     public ApiResponse rejectOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -373,7 +373,7 @@ public class OrderController {
      * Bắt buộc có ý kiến/lý do trả lại (400 Bad Request nếu thiếu hoặc để trống).
      */
     @PutMapping("/{id}/return")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse returnOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -392,7 +392,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/return")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse returnOrderPost(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -405,7 +405,7 @@ public class OrderController {
      * S4-05: Lấy lịch sử duyệt đơn hàng (bất biến, không thể sửa/xoá).
      */
     @GetMapping("/{id}/approval-history")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse getOrderApprovalHistory(@PathVariable Long id) {
         List<OrderApprovalHistoryResponse> history = orderService.getOrderApprovalHistory(id);
         return ApiResponse.success("Lịch sử duyệt đơn hàng", history);
@@ -415,7 +415,7 @@ public class OrderController {
      * Kiểm tra sơ bộ hạn mức và điều kiện nợ khi đặt đơn cho đại lý (S4-02).
      */
     @PostMapping("/check-debt")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'FINANCE_VIEW_DEBT')")
     public ApiResponse checkOrderDebt(@Valid @RequestBody OrderDebtCheckRequest request) {
         OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(request);
         return ApiResponse.success("Kiểm tra công nợ thành công", response);
@@ -425,7 +425,7 @@ public class OrderController {
      * Tra cứu nhanh hạn mức công nợ theo query param (S4-02).
      */
     @GetMapping("/check-debt")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'FINANCE_VIEW_DEBT')")
     public ApiResponse checkOrderDebtByParam(
             @RequestParam Long dealerId,
             @RequestParam(required = false, defaultValue = "0") BigDecimal orderAmount) {
@@ -484,7 +484,7 @@ public class OrderController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
     public ApiResponse reviewOrderStatus(
             @PathVariable Long id,
             @Valid @RequestBody OrderStatusUpdateRequest request,

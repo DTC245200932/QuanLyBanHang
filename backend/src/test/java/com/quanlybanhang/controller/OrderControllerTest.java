@@ -99,7 +99,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
     @DisplayName("GET /api/orders trả về danh sách đơn hàng")
     void getAllOrders_Authenticated_Returns200() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -118,7 +118,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders tạo đơn hàng thành công -> 201 Created")
     void createOrder_Sales_Returns201() throws Exception {
         OrderRequest req = OrderRequest.builder()
@@ -158,7 +158,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("Tạo đơn hàng cho đại lý bị khoá giao dịch bị từ chối 400 Bad Request (S3-07)")
     void createOrder_LockedDealer_Returns400() throws Exception {
         OrderRequest req = OrderRequest.builder()
@@ -182,7 +182,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "manager_user", roles = "SALES_MANAGER")
+    @WithMockUser(username = "manager_user", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
     @DisplayName("Phê duyệt đơn hàng của đại lý bị khoá vẫn xử lý tiếp được kèm cảnh báo (S3-07)")
     void approveOrder_LockedDealer_Returns200WithWarning() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -203,7 +203,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
     @DisplayName("Huỷ đơn hàng có lý do thành công (kèm cảnh báo nếu đại lý bị khoá) (S3-07, S4-06)")
     void cancelOrder_LockedDealer_Returns200WithWarning() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -231,7 +231,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
     @DisplayName("Huỷ đơn hàng không truyền lý do bị chặn 400 Bad Request (S4-06)")
     void cancelOrder_WithoutReason_Returns400() throws Exception {
         mockMvc.perform(put("/api/orders/1/cancel"))
@@ -241,7 +241,17 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES"})
+    @DisplayName("Huỷ đơn hàng không có ORDER_CANCEL bị chặn 403 Forbidden (S4-06)")
+    void cancelOrder_WithoutPermission_Returns403() throws Exception {
+        mockMvc.perform(put("/api/orders/1/cancel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Khách đổi lịch\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_VIEW"})
     @DisplayName("Theo dõi vòng đời đơn hàng GET /api/orders/1/tracking -> 200 OK (S4-06)")
     void getOrderTracking_Returns200() throws Exception {
         OrderTrackingResponse trackingResp = OrderTrackingResponse.builder()
@@ -265,7 +275,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_user", roles = "WAREHOUSE_STAFF")
+    @WithMockUser(username = "warehouse_user", authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_EXPORT"})
     @DisplayName("Cập nhật trạng thái vòng đời PUT /api/orders/1/status -> 200 OK (S4-06)")
     void updateOrderStatus_Returns200() throws Exception {
         OrderStatusUpdateRequest updateReq = OrderStatusUpdateRequest.builder()
@@ -291,7 +301,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/line-item/pricing thành công -> 200 OK")
     void calculateLineItemPricing_Success_Returns200() throws Exception {
         OrderLineItemPricingRequest req = OrderLineItemPricingRequest.builder()
@@ -335,7 +345,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/line-item/pricing chặn khi SKU chưa có trong bảng giá hiệu lực -> 400 Bad Request")
     void calculateLineItemPricing_SkuNotInPriceList_Returns400() throws Exception {
         OrderLineItemPricingRequest req = OrderLineItemPricingRequest.builder()
@@ -357,7 +367,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/calculate tính lại đơn hàng thành công -> 200 OK")
     void calculateOrder_Success_Returns200() throws Exception {
         OrderCalculateRequest req = OrderCalculateRequest.builder()
@@ -401,8 +411,28 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.totalAmount").value(2970000))
                 .andExpect(jsonPath("$.data.items[0].productCode").value("SP-KEN330"));
     }
+
     @Test
-    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES"})
+    @DisplayName("S4-01: Thu hồi ORDER_CREATE thì API tính giá trả về 403")
+    void calculateOrder_WithoutCreatePermission_Returns403() throws Exception {
+        OrderCalculateRequest req = OrderCalculateRequest.builder()
+                .dealerId(1L)
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(new BigDecimal("1"))
+                        .build()))
+                .build();
+
+        mockMvc.perform(post("/api/orders/calculate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[S4-02] POST /api/orders/check-debt - Kiểm tra công nợ khi tạo đơn")
     void checkDebt_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
@@ -437,7 +467,17 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES"})
+    @DisplayName("[S4-02] Thu hồi ORDER_CREATE thì API kiểm tra công nợ trả về 403")
+    void checkDebt_WithoutCreatePermission_Returns403() throws Exception {
+        mockMvc.perform(post("/api/orders/check-debt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"dealerId\":1,\"orderAmount\":10000000}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[S4-03] POST /api/orders/check-inventory - Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa")
     void checkInventory_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderInventoryCheckResponse checkResp = com.quanlybanhang.dto.response.OrderInventoryCheckResponse.builder()
@@ -483,7 +523,17 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES"})
+    @DisplayName("[S4-03] Thu hồi ORDER_CREATE và WAREHOUSE_VIEW thì API kiểm tra tồn trả về 403")
+    void checkInventory_WithoutPermission_Returns403() throws Exception {
+        mockMvc.perform(post("/api/orders/check-inventory")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":10,\"unit\":\"cái\",\"quantity\":1}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[S4-02] GET /api/orders/check-debt - Kiểm tra công nợ đại lý qua query params")
     void checkDebt_Get_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
@@ -680,6 +730,16 @@ class OrderControllerTest {
     @DisplayName("[S5-06] PUT /api/orders/{id}/approve không có quyền ORDER_APPROVE -> 403 Forbidden")
     void approveOrder_WithoutPermission_Returns403() throws Exception {
         mockMvc.perform(put("/api/orders/1/approve"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER"})
+    @DisplayName("[S4-05] PATCH /api/orders/{id}/status bị từ chối khi thiếu ORDER_APPROVE")
+    void reviewOrderStatus_WithoutPermission_Returns403() throws Exception {
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"APPROVED\"}"))
                 .andExpect(status().isForbidden());
     }
 

@@ -54,7 +54,7 @@ public class RolePermissionConfig {
                 REPORT_INVENTORY
         ));
         defaults.put(ERole.ROLE_SALES, EnumSet.of(
-                PRODUCT_VIEW, ORDER_VIEW, ORDER_CREATE, ORDER_EDIT,
+                PRODUCT_VIEW, ORDER_VIEW, ORDER_CREATE, ORDER_EDIT, ORDER_CANCEL,
                 CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT, REPORT_SALES
         ));
         defaults.put(ERole.ROLE_WAREHOUSE_STAFF, EnumSet.of(

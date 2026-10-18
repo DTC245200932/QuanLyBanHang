@@ -2,6 +2,7 @@ package com.quanlybanhang.repository;
 
 import com.quanlybanhang.model.WarehouseInventory;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -24,6 +25,22 @@ public interface WarehouseInventoryRepository extends JpaRepository<WarehouseInv
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT wi FROM WarehouseInventory wi WHERE wi.warehouse.id = :warehouseId AND wi.product.id IN :productIds")
     List<WarehouseInventory> findByWarehouseIdAndProductIdInForUpdate(@Param("warehouseId") Long warehouseId, @Param("productIds") Collection<Long> productIds);
+
+    /**
+     * Giữ chỗ tồn theo điều kiện ngay tại database để chống hai giao dịch
+     * cùng nhìn thấy một lượng tồn khả dụng rồi cùng đặt vượt tồn.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE WarehouseInventory wi
+               SET wi.reservedQuantity = wi.reservedQuantity + :quantity
+             WHERE wi.warehouse.id = :warehouseId
+               AND wi.product.id = :productId
+               AND wi.baseQuantity - wi.reservedQuantity >= :quantity
+            """)
+    int reserveIfAvailable(@Param("warehouseId") Long warehouseId,
+                           @Param("productId") Long productId,
+                           @Param("quantity") java.math.BigDecimal quantity);
 
     List<WarehouseInventory> findByWarehouseIdAndProductIdIn(Long warehouseId, Collection<Long> productIds);
 

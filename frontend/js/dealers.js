@@ -1221,8 +1221,8 @@
   }
 
   function renderDealerOrders(orders) {
-    const canApprove = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
-    const canCancelRole = Auth.hasAnyRole('ROLE_SALES', 'ROLE_SALES_MANAGER', 'ROLE_ADMIN');
+    const canApprove = Auth.hasPermission('ORDER_APPROVE');
+    const canCancel = Auth.hasPermission('ORDER_CANCEL');
 
     $('dealer-orders-body').innerHTML = orders.length ? orders.map(order => {
       const normStatus = String(order.status || '').toUpperCase();
@@ -1234,7 +1234,11 @@
         actionButtons.push(`<button class="btn btn--secondary" data-order-action="reject" data-order-id="${order.id}">Từ chối</button>`);
       }
 
-      if (canCancelRole) {
+      if (Auth.hasPermission('ORDER_VIEW')) {
+        actionButtons.push(`<button class="btn btn--secondary" data-order-tracking="${order.id}" data-order-code="${escHtml(order.orderCode)}">Theo dõi</button>`);
+      }
+
+      if (canCancel) {
         if (config.canCancel) {
           actionButtons.push(`<button class="btn btn--danger" data-order-cancel="${order.id}" data-order-code="${escHtml(order.orderCode)}">Huỷ đơn</button>`);
         } else if (config.exported) {
@@ -1308,6 +1312,12 @@
   }
 
   $('dealer-orders-body').addEventListener('click', async event => {
+    const trackingBtn = event.target.closest('[data-order-tracking]');
+    if (trackingBtn) {
+      await openDealerOrderTracking(Number(trackingBtn.dataset.orderTracking), trackingBtn.dataset.orderCode);
+      return;
+    }
+
     const copyBtn = event.target.closest('[data-order-copy]');
     if (copyBtn) {
       if (!CAN_COPY_ORDER) return;
@@ -1331,7 +1341,7 @@
     }
 
     const button = event.target.closest('[data-order-action]');
-    if (!button || !Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER')) return;
+    if (!button || !Auth.hasPermission('ORDER_APPROVE')) return;
     const dealerId = orderDealerId;
     button.disabled = true;
     try {
@@ -1342,6 +1352,36 @@
     } catch (error) { showFormError('dealer-orders-message', error.message); }
     finally { button.disabled = false; }
   });
+
+  async function openDealerOrderTracking(orderId, orderCode) {
+    const modal = $('dealer-order-tracking-modal');
+    if (!modal || !Auth.hasPermission('ORDER_VIEW')) return;
+    const formatTrackingDate = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—';
+    $('dealer-order-tracking-title').textContent = `Vòng đời đơn hàng · ${orderCode || `#${orderId}`}`;
+    $('dealer-order-tracking-body').innerHTML = '<p class="dealer-tracking-state">Đang tải trạng thái và lịch sử…</p>';
+    modal.hidden = false;
+    try {
+      const response = await Auth.apiFetch(`/orders/${orderId}/tracking`);
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success || !result.data) {
+        throw new Error(result?.message || 'Không thể tải vòng đời đơn hàng');
+      }
+      const data = result.data;
+      const steps = Array.isArray(data.steps) ? data.steps : [];
+      const history = Array.isArray(data.history) ? data.history : [];
+      $('dealer-order-tracking-body').innerHTML = `
+        <p class="dealer-tracking-summary"><strong>Hiện tại:</strong> ${escHtml(data.currentStatusDisplayName || data.currentStatus || '—')}</p>
+        <ol class="dealer-tracking-steps">${steps.map(step => `
+          <li class="dealer-tracking-step dealer-tracking-step--${escHtml(String(step.state || '').toLowerCase())}">
+            <span class="dealer-tracking-step__marker"></span>
+            <div><strong>${escHtml(step.displayName || step.status || '—')}</strong><span>${escHtml(step.description || '')}</span>${step.timestamp ? `<small>${formatTrackingDate(step.timestamp)}${step.operator ? ` · ${escHtml(step.operator)}` : ''}</small>` : ''}</div>
+          </li>`).join('')}</ol>
+        <h3>Lịch sử cập nhật</h3>
+        <div class="dealer-tracking-history">${history.length ? history.map(entry => `<div><strong>${escHtml(entry.statusDisplayName || entry.newStatus || '—')}</strong><span>${escHtml(entry.note || 'Cập nhật trạng thái')}</span><small>${formatTrackingDate(entry.changedAt)}${entry.changedBy ? ` · ${escHtml(entry.changedBy)}` : ''}</small></div>`).join('') : '<p class="dealer-tracking-state">Chưa có cập nhật trạng thái.</p>'}</div>`;
+    } catch (error) {
+      $('dealer-order-tracking-body').innerHTML = `<p class="dealer-tracking-error">${escHtml(error.message)}</p>`;
+    }
+  }
 
   $('cancel-order-form')?.addEventListener('submit', async event => {
     event.preventDefault();
@@ -1373,6 +1413,9 @@
   document.querySelectorAll('[data-close-cancel-order]').forEach(btn =>
     btn.addEventListener('click', closeCancelOrderModal)
   );
+  document.querySelectorAll('[data-close-dealer-tracking]').forEach(btn =>
+    btn.addEventListener('click', () => { $('dealer-order-tracking-modal').hidden = true; })
+  );
 
   document.querySelectorAll('[data-close-transaction]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.closeTransaction === 'dealer-orders-modal') orderDealerId = null;
@@ -1380,19 +1423,21 @@
     closeTransactionModal(button.dataset.closeTransaction);
   }));
 
-  ['lock-modal', 'dealer-orders-modal', 'delivery-points-modal', 'cancel-order-modal'].forEach(id => $(id)?.addEventListener('click', event => {
+  ['lock-modal', 'dealer-orders-modal', 'dealer-order-tracking-modal', 'delivery-points-modal', 'cancel-order-modal'].forEach(id => $(id)?.addEventListener('click', event => {
     if (event.target !== $(id)) return;
     if (id === 'dealer-orders-modal') orderDealerId = null;
     if (id === 'delivery-points-modal') state.deliveryDealerId = null;
     if (id === 'cancel-order-modal') { closeCancelOrderModal(); return; }
+    if (id === 'dealer-order-tracking-modal') { $(id).hidden = true; return; }
     closeTransactionModal(id);
   }));
 
   document.addEventListener('keydown', event => {
-    const id = ['cancel-order-modal', 'lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].find(name => $(name) && !$(name).hidden);
+    const id = ['cancel-order-modal', 'dealer-order-tracking-modal', 'lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].find(name => $(name) && !$(name).hidden);
     if (!id) return;
     if (event.key === 'Escape') {
       if (id === 'cancel-order-modal') { closeCancelOrderModal(); return; }
+      if (id === 'dealer-order-tracking-modal') { $(id).hidden = true; return; }
       if (id === 'dealer-orders-modal') orderDealerId = null;
       if (id === 'delivery-points-modal') state.deliveryDealerId = null;
       closeTransactionModal(id);

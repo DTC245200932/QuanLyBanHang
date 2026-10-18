@@ -25,13 +25,6 @@
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
 
-  if (!Auth.hasAnyRole(
-    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_SALES',
-    'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF',
-  )) {
-    location.href = '/error?status=403';
-    return;
-  }
   if (!Auth.hasPermission('ORDER_CREATE')) {
     location.href = '/error?status=403';
     return;
@@ -72,6 +65,8 @@
   };
 
   let pricingRequestId = 0;
+  let debtCheckRequestId = 0;
+  let debtCheckTimer = null;
 
   /* ── Layout: Sidebar ─────────────────────────────────────── */
   (function initLayout() {
@@ -184,6 +179,8 @@
     state.debtInfo = null;
     state.debtBlocked = false;
     state.debtNeedsApproval = false;
+    debtCheckRequestId += 1;
+    clearTimeout(debtCheckTimer);
     $('co-debt-panel').hidden = true;
     state.debtError = '';
     state.priceListError = '';
@@ -297,7 +294,7 @@
     }
   }
 
-  function updateDebtPanel() {
+  function updateDebtPanel({ recalculateApproval = true } = {}) {
     const panel = $('co-debt-panel');
     const alertEl = $('co-debt-alert');
     const info = state.debtInfo;
@@ -338,8 +335,8 @@
     // Quá hạn quá số ngày cho phép → chặn hoàn toàn
     state.debtBlocked = Boolean(info.isBlocked || info.hasOverdueDebt);
 
-    // Kiểm tra cần duyệt
-    checkDebtApproval();
+    // Khi chưa có kết quả server mới nhất, dùng phép tính tạm thời để phản hồi ngay.
+    if (recalculateApproval) checkDebtApproval();
 
     // Cập nhật thông báo
     if (state.debtBlocked) {
@@ -380,10 +377,64 @@
   }
 
   function syncBlockedState() {
-    const blocked = state.debtBlocked;
-    $('co-product-search').disabled = blocked;
-    $('btn-save-draft').disabled = blocked;
-    $('btn-submit-order').disabled = blocked;
+    const inventoryBlocked = state.items.some((item) =>
+      item.inventoryLoading || item.inventoryError || item.inventory?.valid === false);
+    $('co-product-search').disabled = state.debtBlocked;
+    $('btn-save-draft').disabled = state.debtBlocked;
+    $('btn-submit-order').disabled = state.debtBlocked || inventoryBlocked;
+  }
+
+  function getCurrentOrderTotal() {
+    return state.items.reduce((total, item) => total
+      + Math.max(0, item.qty * item.unitPrice - (item.discountAmount || 0)), 0);
+  }
+
+  function scheduleDebtCheck() {
+    clearTimeout(debtCheckTimer);
+    if (!state.selectedDealer || !state.debtInfo || state.debtError || state.debtBlocked) return;
+    debtCheckTimer = setTimeout(() => refreshDebtCheck(), 250);
+  }
+
+  async function refreshDebtCheck() {
+    const dealerId = state.selectedDealer?.id;
+    if (!dealerId || !state.debtInfo || state.debtError || state.debtBlocked) return;
+
+    const requestId = ++debtCheckRequestId;
+    try {
+      const res = await Auth.apiFetch('/orders/check-debt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dealerId: Number(dealerId),
+          orderAmount: getCurrentOrderTotal(),
+        }),
+      });
+      const result = await res.json().catch(() => null);
+      if (requestId !== debtCheckRequestId || state.selectedDealer?.id !== dealerId) return;
+      if (!res.ok || !result?.success || !result.data) {
+        throw new Error(result?.message || 'Không kiểm tra được hạn mức công nợ. Vui lòng thử lại.');
+      }
+
+      const check = result.data;
+      state.debtInfo = {
+        ...state.debtInfo,
+        currentDebt: check.currentDebt,
+        debtLimit: check.debtLimit,
+        remainingLimit: check.remainingLimit,
+        hasOverdueDebt: check.hasOverdueDebt,
+        isBlocked: check.isBlocked,
+        blockReason: check.blockReason,
+      };
+      state.debtNeedsApproval = Boolean(check.requiresApproval || check.exceedsLimit);
+      state.debtError = '';
+      updateDebtPanel({ recalculateApproval: false });
+    } catch (error) {
+      if (requestId !== debtCheckRequestId || state.selectedDealer?.id !== dealerId) return;
+      // Không cho chốt đơn khi chưa xác nhận được trạng thái công nợ từ server.
+      state.debtError = error.message || 'Không kiểm tra được hạn mức công nợ. Vui lòng thử lại.';
+      state.debtBlocked = true;
+      updateDebtPanel({ recalculateApproval: false });
+    }
   }
 
   /* ── Group badge ─────────────────────────────────────────── */
@@ -862,6 +913,7 @@
 
     stockCell.innerHTML = stockMarkup;
     row.classList.toggle('co-item-row--overstock', isOverstock);
+    syncBlockedState();
     qtyInput.classList.toggle('co-qty-input--error', isOverstock);
     alert.hidden = !isOverstock;
     alert.innerHTML = '';
@@ -1036,6 +1088,7 @@
     // S4-02: kiểm tra lại trạng thái công nợ khi tổng đơn thay đổi
     checkDebtApproval();
     updateDebtPanel();
+    scheduleDebtCheck();
   }
 
   async function refreshPricingPreview() {

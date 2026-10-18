@@ -93,7 +93,7 @@ public class FinanceController {
      * API xem công nợ — ADMIN, SALES_MANAGER, ACCOUNTANT.
      */
     @GetMapping("/debt")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER', 'ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('FINANCE_VIEW_DEBT')")
     public ApiResponse getDebt() {
         List<Map<String, Object>> debts = dealerRepository.findAll().stream()
                 .map(dealer -> {

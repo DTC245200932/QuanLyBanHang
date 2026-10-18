@@ -1,7 +1,7 @@
 /**
  * order-approval.js — S4-05 Duyệt đơn vượt hạn mức / dưới giá sàn.
  *
- * Vai trò: ROLE_SALES_MANAGER, ROLE_ADMIN
+ * Quyền: ORDER_APPROVE trong ma trận phân quyền (ROLE_ADMIN luôn được phép)
  * - Danh sách đơn chờ duyệt hiển thị rõ lý do cần duyệt và mức vi phạm
  * - Ba hành động: Duyệt, Từ chối, Trả lại sửa
  *   — Từ chối và Trả lại sửa bắt buộc nhập ý kiến
@@ -13,8 +13,8 @@
 
   const user = Auth.getUser();
 
-  // ── Role guard ──
-  if (!Auth.hasAnyRole("ROLE_ADMIN", "ROLE_SALES_MANAGER") || !Auth.hasPermission("ORDER_APPROVE")) {
+  // ── Permission guard ──
+  if (!Auth.hasPermission("ORDER_APPROVE")) {
     sessionStorage.setItem("errorMessage", "Bạn không có quyền truy cập chức năng duyệt đơn hàng.");
     window.location.href = "/error?status=403";
     return;

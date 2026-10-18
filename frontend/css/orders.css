@@ -604,6 +604,31 @@
   margin-bottom: 4px;
 }
 
+.ord-lifecycle-box {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.ord-lifecycle-box__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.ord-lifecycle-box h3, .ord-lifecycle-history h4 { margin: 0; color: var(--ink-900); font-size: .9rem; }
+.ord-lifecycle-box__summary, .ord-lifecycle-reservation, .ord-lifecycle-step__content span, .ord-lifecycle-history__item span, .ord-lifecycle-step__content small, .ord-lifecycle-history__item small { display: block; color: var(--ink-500); font-size: .78rem; line-height: 1.45; }
+.ord-lifecycle-box__summary { margin: 4px 0 0; }
+.ord-lifecycle-reservation { color: var(--teal-deep); font-weight: 650; text-align: right; }
+.ord-lifecycle-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0 0 18px; list-style: none; }
+.ord-lifecycle-step { min-width: 0; }
+.ord-lifecycle-step__marker { display: block; width: 12px; height: 12px; margin-bottom: 8px; border: 2px solid var(--line); border-radius: 50%; background: var(--surface); }
+.ord-lifecycle-step--completed .ord-lifecycle-step__marker { border-color: var(--teal); background: var(--teal); }
+.ord-lifecycle-step--current .ord-lifecycle-step__marker { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-soft); }
+.ord-lifecycle-step--cancelled .ord-lifecycle-step__marker { border-color: var(--danger); background: var(--danger); }
+.ord-lifecycle-step__content strong { display: block; color: var(--ink-900); font-size: .78rem; }
+.ord-lifecycle-step__note { margin-top: 3px; }
+.ord-lifecycle-history { border-top: 1px solid var(--line-light); padding-top: 12px; }
+.ord-lifecycle-history__item { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line-light); }
+.ord-lifecycle-history__item:last-child { border-bottom: 0; }
+.ord-lifecycle-empty { color: var(--ink-500); font-size: .8rem; }
+
 .ord-detail-actions {
   display: flex;
   align-items: center;
@@ -617,6 +642,7 @@
   .ord-info-grid {
     grid-template-columns: 1fr;
   }
+  .ord-lifecycle-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 768px) {
@@ -624,6 +650,10 @@
     flex-direction: column;
     align-items: stretch;
   }
+  .ord-lifecycle-box__heading { flex-direction: column; }
+  .ord-lifecycle-reservation { text-align: left; }
+  .ord-lifecycle-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ord-lifecycle-history__item { grid-template-columns: 1fr; gap: 2px; }
 
   .ord-summary-grid {
     grid-template-columns: 1fr 1fr;

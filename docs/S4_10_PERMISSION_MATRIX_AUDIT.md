@@ -76,4 +76,3 @@ Theo quy tắc trong `AGENTS.md`:
     4. *Đơn gửi lên luôn ở trạng thái Chờ duyệt (RECORDED), gửi đúng payload và reset giỏ hàng*
 - **Python Server Test**: `5 pass, 0 fail` (`tests/test_frontend_server.py`)
 - **Kiểm tra lưu trữ**: Không sử dụng `localStorage`/`sessionStorage` cho dữ liệu nghiệp vụ (tuân thủ nghiêm ngặt rule bảo mật trong `SKILL_backend.md`).
-

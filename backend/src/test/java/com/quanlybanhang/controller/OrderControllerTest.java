@@ -467,7 +467,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", roles = {"SALES"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[S4-03] POST /api/orders/check-inventory - Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa")
     void checkInventory_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderInventoryCheckResponse checkResp = com.quanlybanhang.dto.response.OrderInventoryCheckResponse.builder()
@@ -510,6 +510,16 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.maxAllowedInUnit").value(2))
                 .andExpect(jsonPath("$.data.availableQuantity").value(48))
                 .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.containsString("Số lượng tối đa có thể đặt là 2 thùng")));
+    }
+
+    @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES"})
+    @DisplayName("[S4-03] Thu hồi ORDER_CREATE và WAREHOUSE_VIEW thì API kiểm tra tồn trả về 403")
+    void checkInventory_WithoutPermission_Returns403() throws Exception {
+        mockMvc.perform(post("/api/orders/check-inventory")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":10,\"unit\":\"cái\",\"quantity\":1}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

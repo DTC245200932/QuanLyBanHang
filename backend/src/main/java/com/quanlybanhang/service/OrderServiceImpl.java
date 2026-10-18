@@ -1274,9 +1274,8 @@ public class OrderServiceImpl implements OrderService {
         Map<Long, WarehouseInventory> inventoryMap = inventories.stream()
                 .collect(Collectors.toMap(inv -> inv.getProduct().getId(), inv -> inv));
 
-        for (Map.Entry<Long, BigDecimal> entry : requestedBaseQtyByProduct.entrySet()) {
-            Long pId = entry.getKey();
-            BigDecimal totalRequestedBase = entry.getValue();
+        for (Long pId : sortedProductIds) {
+            BigDecimal totalRequestedBase = requestedBaseQtyByProduct.get(pId);
             WarehouseInventory inv = inventoryMap.get(pId);
 
             BigDecimal physical = (inv != null && inv.getBaseQuantity() != null) ? inv.getBaseQuantity() : BigDecimal.ZERO;
@@ -1318,14 +1317,37 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Đủ tồn khả dụng -> Thực hiện giữ chỗ
-        for (Map.Entry<Long, BigDecimal> entry : requestedBaseQtyByProduct.entrySet()) {
-            Long pId = entry.getKey();
-            BigDecimal reqBase = entry.getValue();
-            WarehouseInventory inv = inventoryMap.get(pId);
-            if (inv != null) {
-                inv.addReservedQuantity(reqBase);
-                inventoryRepository.save(inv);
+        for (Long pId : sortedProductIds) {
+            BigDecimal reqBase = requestedBaseQtyByProduct.get(pId);
+            // Cập nhật có điều kiện tại database là hàng rào cuối cùng chống
+            // race condition nếu hai giao dịch cùng chốt một mã hàng.
+            int updated = inventoryRepository.reserveIfAvailable(warehouse.getId(), pId, reqBase);
+            if (updated == 1) {
+                continue;
             }
+
+            // Fallback cho dữ liệu cũ/driver không hỗ trợ câu UPDATE điều kiện;
+            // đọc lại bằng khóa pessimistic trước khi quyết định giữ chỗ.
+            List<WarehouseInventory> refreshed = inventoryRepository
+                    .findByWarehouseIdAndProductIdInForUpdate(warehouse.getId(), List.of(pId));
+            WarehouseInventory current = refreshed.stream()
+                    .filter(stock -> stock.getProduct() != null && pId.equals(stock.getProduct().getId()))
+                    .findFirst()
+                    .orElse(null);
+            BigDecimal physical = current != null && current.getBaseQuantity() != null
+                    ? current.getBaseQuantity() : BigDecimal.ZERO;
+            BigDecimal reserved = current != null && current.getReservedQuantity() != null
+                    ? current.getReservedQuantity() : BigDecimal.ZERO;
+            BigDecimal available = physical.subtract(reserved).max(BigDecimal.ZERO);
+            if (current == null || reqBase.compareTo(available) > 0) {
+                Product product = current != null ? current.getProduct() : null;
+                String productName = product != null ? product.getName() : "ID " + pId;
+                throw new IllegalArgumentException(String.format(
+                        "Vượt tồn khả dụng cho sản phẩm '%s' tại kho '%s'. Tồn khả dụng hiện tại: %s.",
+                        productName, warehouse.getName(), available.stripTrailingZeros().toPlainString()));
+            }
+            current.addReservedQuantity(reqBase);
+            inventoryRepository.save(current);
         }
 
         order.setInventoryReserved(true);

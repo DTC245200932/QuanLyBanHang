@@ -60,7 +60,7 @@ public class WarehouseController {
     // ═══════════════════════════════════════════════════════════════
 
     @GetMapping("/options")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'WAREHOUSE_VIEW')")
     public ApiResponse warehouseOptions() {
         return ApiResponse.success("Danh sách kho đang hoạt động", warehouseService.getWarehouseOptions());
     }
@@ -382,7 +382,7 @@ public class WarehouseController {
      * và thông tin vị trí kệ/khu lưu trữ (S5-03).
      */
     @GetMapping("/inventory")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'WAREHOUSE_VIEW')")
     public ApiResponse getInventory(@RequestParam(required = false) Long warehouseId) {
         List<WarehouseInventoryResponse> stock = warehouseService.getInventory(warehouseId);
         return ApiResponse.success("Danh sách tồn kho", stock);

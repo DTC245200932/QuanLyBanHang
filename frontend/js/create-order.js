@@ -377,10 +377,11 @@
   }
 
   function syncBlockedState() {
-    const blocked = state.debtBlocked;
-    $('co-product-search').disabled = blocked;
-    $('btn-save-draft').disabled = blocked;
-    $('btn-submit-order').disabled = blocked;
+    const inventoryBlocked = state.items.some((item) =>
+      item.inventoryLoading || item.inventoryError || item.inventory?.valid === false);
+    $('co-product-search').disabled = state.debtBlocked;
+    $('btn-save-draft').disabled = state.debtBlocked;
+    $('btn-submit-order').disabled = state.debtBlocked || inventoryBlocked;
   }
 
   function getCurrentOrderTotal() {
@@ -912,6 +913,7 @@
 
     stockCell.innerHTML = stockMarkup;
     row.classList.toggle('co-item-row--overstock', isOverstock);
+    syncBlockedState();
     qtyInput.classList.toggle('co-qty-input--error', isOverstock);
     alert.hidden = !isOverstock;
     alert.innerHTML = '';

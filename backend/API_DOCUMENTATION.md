@@ -201,8 +201,8 @@ Lý do là bắt buộc. Response trả `assignedDealerCount`; các đại lý l
 | POST | `/warehouse/adjust` | `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho; Nhân viên kinh doanh và Thủ kho bị cấm |
 | POST | `/warehouse/import` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Nhập kho |
 | POST | `/warehouse/export` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xuất kho |
-| GET | `/warehouse/options` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_SALES`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách kho đang hoạt động dùng cho bộ chọn frontend (S4-03) |
-| GET | `/warehouse/inventory` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_SALES`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem danh sách tồn kho (gồm tồn thực tế `baseQuantity`, tồn giữ chỗ `reservedQuantity` và tồn khả dụng `availableQuantity`) (S4-03) |
+| GET | `/warehouse/options` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Danh sách kho đang hoạt động dùng cho bộ chọn frontend (S4-03) |
+| GET | `/warehouse/inventory` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Xem danh sách tồn kho (gồm tồn thực tế `baseQuantity`, tồn giữ chỗ `reservedQuantity` và tồn khả dụng `availableQuantity`) (S4-03) |
 | GET | `/warehouse/vouchers` | `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem các phiếu kho và snapshot quy đổi |
 
 Mỗi thay đổi tồn kho được ghi tự động vào `/admin/audit-logs` với người thực hiện và giá trị trước/sau.
@@ -450,7 +450,7 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | POST | `/warehouse/vouchers/{id}/adjust` | `WAREHOUSE_ADJUST` hoặc `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu điều chỉnh cho phiếu kho đã xác nhận (chỉ Quản lý kho và Quản trị viên) |
 | POST | `/warehouse/export` | `WAREHOUSE_EXPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu xuất kho (quy về đơn vị cơ sở và kiểm tra tồn kho theo đơn vị cơ sở) |
 | POST | `/warehouse/adjust` | `WAREHOUSE_ADJUST` hoặc `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho trực tiếp |
-| GET | `/warehouse/inventory` | `WAREHOUSE_VIEW` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem tồn kho sổ sách theo đơn vị cơ sở kèm bảng quy đổi tương đương theo thùng, lốc |
+| GET | `/warehouse/inventory` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Xem tồn kho sổ sách theo đơn vị cơ sở kèm bảng quy đổi tương đương theo thùng, lốc |
 | GET | `/warehouse/inventory/lots` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Xem danh sách tồn kho chi tiết theo từng Số lô và Hạn sử dụng (S5-04) |
 | GET | `/warehouse/vouchers` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Danh sách phiếu kho (hỗ trợ lọc theo `warehouseId`, `type`, `status`: DRAFT/CONFIRMED/ADJUSTED, `supplierId`) |
 | GET | `/warehouse/vouchers/{id}` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Chi tiết phiếu kho kèm thông tin NCC, số chứng từ, số lô, HSD và đóng băng quy đổi |
@@ -1437,16 +1437,16 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) nhìn thấy tồn khả dụng
    - Các dòng sản phẩm được khóa theo thứ tự `productId` tăng dần (`sorted productIds`) để triệt tiêu nguy cơ xảy ra Deadlock giữa nhiều giao dịch đồng thời.
    - Khi 2 người dùng (hoặc 2 tiến trình) cùng chốt đơn mặt hàng sắp hết: Người chốt trước giữ chỗ thành công (HTTP 201 Created), người chốt sau ngay lập tức bị chặn với HTTP 400 Bad Request, tồn kho thực tế và tồn khả dụng tuyệt đối không bao giờ bị âm (`acceptedOrders <= 1`).
 
-6. **Phân quyền vai trò (Role-Based Access Control)**:
-   - Nhân viên kinh doanh (`ROLE_SALES`) được phép tra cứu danh sách kho hoạt động (`GET /api/warehouse/options`) và danh sách tồn kho (`GET /api/warehouse/inventory`).
+6. **Phân quyền theo ma trận quyền**:
+   - Người dùng có `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` trong ma trận được phép tra cứu danh sách kho hoạt động (`GET /api/warehouse/options`) và danh sách tồn kho (`GET /api/warehouse/inventory`). `ROLE_ADMIN` luôn được phép.
    - Thao tác điều chỉnh tồn kho (`POST /api/warehouse/adjust`) vẫn nghiêm ngặt chỉ dành cho Quản lý kho (`ROLE_WAREHOUSE_MANAGER`) và Quản trị viên (`ROLE_ADMIN`).
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| POST | `/orders/check-inventory` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` | Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa trước khi đặt hàng |
+| POST | `/orders/check-inventory` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa trước khi đặt hàng |
 | POST | `/orders/calculate` | `ORDER_CREATE` | Tính toán giá, chiết khấu và tồn khả dụng (`availableQuantity`, `availableInUnit`, `maxAllowedInUnit`, `exceedsStock`) cho từng dòng đơn |
-| GET | `/warehouse/inventory` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Xem tồn thực tế, tồn giữ chỗ và tồn khả dụng kèm quy đổi tương đương |
-| GET | `/warehouse/options` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách kho đang hoạt động |
+| GET | `/warehouse/inventory` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Xem tồn thực tế, tồn giữ chỗ và tồn khả dụng kèm quy đổi tương đương |
+| GET | `/warehouse/options` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Danh sách kho đang hoạt động |
 
 #### Ví dụ Request kiểm tra tồn khả dụng (`POST /api/orders/check-inventory`):
 ```json

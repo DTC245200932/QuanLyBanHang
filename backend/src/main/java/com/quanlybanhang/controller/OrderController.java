@@ -251,7 +251,7 @@ public class OrderController {
      * Chặn đặt vượt tồn khả dụng, gợi ý số lượng tối đa còn đặt được theo đơn vị tính đã chọn.
      */
     @PostMapping("/check-inventory")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'WAREHOUSE_VIEW')")
     public ApiResponse checkInventory(@Valid @RequestBody OrderInventoryCheckRequest request) {
         OrderInventoryCheckResponse response = orderService.checkInventory(request);
         return ApiResponse.success("Kiểm tra tồn khả dụng thành công", response);

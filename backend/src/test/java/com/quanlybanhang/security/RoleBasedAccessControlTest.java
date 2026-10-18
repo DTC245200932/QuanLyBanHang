@@ -118,7 +118,7 @@ class RoleBasedAccessControlTest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh ĐƯỢC xem tồn kho phục vụ (200 OK)")
     void salesCanViewWarehouseInventory() throws Exception {
         mockMvc.perform(get("/api/warehouse/inventory"))
@@ -126,7 +126,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh ĐƯỢC xem danh sách kho hoạt động (200 OK)")
     void salesCanViewWarehouseOptions() throws Exception {
         mockMvc.perform(get("/api/warehouse/options"))
@@ -218,7 +218,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_VIEW"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho ĐƯỢC PHÉP xem danh sách tồn kho (200 OK)")
     void warehouseStaffCanViewInventory() throws Exception {
         mockMvc.perform(get("/api/warehouse/inventory"))

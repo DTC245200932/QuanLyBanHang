@@ -17,6 +17,7 @@ ROUTES = {
     "/price-lists": "price-lists.html",
     "/discount-policies": "discount-policies.html",
     "/dealers": "dealers.html",
+    "/orders": "orders.html",
     "/create-order": "create-order.html",
     "/order-approval": "order-approval.html",
     "/dealer-orders": "dealer-orders.html",

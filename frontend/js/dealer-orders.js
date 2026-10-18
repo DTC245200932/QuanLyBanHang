@@ -96,14 +96,7 @@
    * Đại lý hoặc Quản trị viên có quyền ORDER_CREATE mới được thực hiện đặt lại.
    */
   function canReorder() {
-    if (typeof Auth === "undefined") return true;
-    const u = Auth.getUser();
-    if (!u) return false;
-    if (Auth.hasRole("ROLE_ADMIN")) return true;
-    if (Array.isArray(u.permissions)) {
-      return u.permissions.includes("ORDER_CREATE");
-    }
-    return Auth.hasRole("ROLE_DEALER");
+    return typeof Auth !== "undefined" && Auth.hasPermission("ORDER_CREATE");
   }
 
   function setupShell() {

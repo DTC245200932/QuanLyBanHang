@@ -91,7 +91,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE", "ORDER_VIEW"})
     @DisplayName("GET /api/orders có phân trang và bộ lọc trả về dữ liệu chuẩn S4-05")
     void getOrders_PaginationAndFilter_ReturnsPage() throws Exception {
         OrderResponse resp = OrderResponse.builder()

@@ -99,7 +99,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL", "ORDER_VIEW"})
     @DisplayName("GET /api/orders trả về danh sách đơn hàng")
     void getAllOrders_Authenticated_Returns200() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -602,6 +602,14 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES"})
+    @DisplayName("[S4-09] POST /api/orders/{id}/copy thiếu ORDER_CREATE -> 403 Forbidden")
+    void copyOrder_WithoutCreatePermission_Returns403() throws Exception {
+        mockMvc.perform(post("/api/orders/1/copy"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_VIEW"})
     @DisplayName("[S4-07] GET /api/orders kèm bộ lọc - Quản lý kinh doanh xem danh sách và tổng tiền đang lọc")
     void getOrders_WithFilters_ReturnsFilteredListAndTotalAmount() throws Exception {
@@ -685,6 +693,14 @@ class OrderControllerTest {
     @WithMockUser(username = "unauthorized_user", authorities = {"ROLE_GUEST"})
     @DisplayName("[S4-07] GET /api/orders không có quyền ORDER_VIEW -> 403 Forbidden")
     void getOrders_UnauthorizedRole_Returns403() throws Exception {
+        mockMvc.perform(get("/api/orders"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER"})
+    @DisplayName("[S4-07] GET /api/orders thiếu ORDER_VIEW -> 403 Forbidden")
+    void getOrders_WithoutViewPermission_Returns403() throws Exception {
         mockMvc.perform(get("/api/orders"))
                 .andExpect(status().isForbidden());
     }

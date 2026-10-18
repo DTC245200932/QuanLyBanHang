@@ -590,12 +590,12 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/orders` | `ORDER_VIEW` hoặc `ROLE_ADMIN`, `ROLE_SALES_MANAGER`, `ROLE_SALES`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Xem danh sách đơn hàng kèm bộ lọc (trạng thái, đại lý, nhân viên, khu vực, khoảng thời gian) và tổng tiền tập kết quả đang lọc (S4-07). Quản lý kinh doanh xem toàn công ty; Sales chỉ thấy đơn của đại lý mình phụ trách. |
-| GET | `/orders/summary` | `ORDER_VIEW` hoặc các vai trò có quyền xem đơn | Thống kê nhanh tổng tiền và số lượng đơn hàng theo bộ lọc đang chọn (S4-07). |
-| GET | `/orders/{id}` | `ORDER_VIEW` hoặc các vai trò có quyền xem đơn | Xem chi tiết đơn hàng (kèm thông tin bảng giá, giá sàn, trạng thái phê duyệt và kiểm soát quyền đại lý cho Sales). |
-| GET | `/orders/draft` | Vai trò tạo đơn | Lấy bản nháp tạo đơn của người dùng hiện tại |
-| PUT | `/orders/draft` | Vai trò tạo đơn | Lưu đè bản nháp tạo đơn của người dùng hiện tại |
-| DELETE | `/orders/draft` | Vai trò tạo đơn | Xoá bản nháp tạo đơn của người dùng hiện tại |
+| GET | `/orders` | `ORDER_VIEW` hoặc `ROLE_ADMIN` | Xem danh sách đơn hàng kèm bộ lọc và tổng tiền tập kết quả đang lọc (S4-07); Sales vẫn bị giới hạn theo đại lý phụ trách. |
+| GET | `/orders/summary` | `ORDER_VIEW` hoặc `ROLE_ADMIN` | Thống kê nhanh tổng tiền và số lượng đơn hàng theo bộ lọc đang chọn (S4-07). |
+| GET | `/orders/{id}` | `ORDER_VIEW` hoặc `ROLE_ADMIN` | Xem chi tiết đơn hàng và áp dụng giới hạn dữ liệu theo phạm vi người dùng. |
+| GET | `/orders/draft` | `ORDER_CREATE` hoặc `ROLE_ADMIN` | Lấy bản nháp tạo đơn của người dùng hiện tại |
+| PUT | `/orders/draft` | `ORDER_CREATE` hoặc `ROLE_ADMIN` | Lưu đè bản nháp tạo đơn của người dùng hiện tại |
+| DELETE | `/orders/draft` | `ORDER_CREATE` hoặc `ROLE_ADMIN` | Xoá bản nháp tạo đơn của người dùng hiện tại |
 | POST | `/orders` | `ORDER_CREATE` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | POST | `/orders/line-item/pricing` | `ORDER_CREATE` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
 | POST | `/orders/calculate` | `ORDER_CREATE` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
@@ -607,9 +607,9 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | PUT | `/orders/{id}/return?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Trả lại đơn để sửa với lý do bắt buộc (chuyển trạng thái sang `RETURNED`) |
 | PATCH | `/orders/{id}/status` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Duyệt, từ chối hoặc trả lại đơn trên màn hình S4-05 |
 | GET | `/orders/{id}/approval-history` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Xem lịch sử duyệt bất biến của đơn hàng |
-| POST | `/orders/{id}/copy` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sao chép đơn cũ thành đơn mới ở trạng thái Nháp (áp lại giá và chiết khấu hiện hành) (S4-09) |
-| POST | `/orders/{id}/copy-to-draft` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sao chép các dòng hàng của đơn cũ vào bản nháp tạo đơn của người dùng (S4-09) |
-| POST | `/orders/dealer/{dealerId}/last-order-to-draft` | `ORDER_CREATE`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới (S4-04) |
+| POST | `/orders/{id}/copy` | `ORDER_CREATE` hoặc `ROLE_ADMIN` | Sao chép đơn cũ thành đơn mới ở trạng thái Nháp (áp lại giá và chiết khấu hiện hành) (S4-09) |
+| POST | `/orders/{id}/copy-to-draft` | `ORDER_CREATE` hoặc `ROLE_ADMIN` | Sao chép các dòng hàng của đơn cũ vào bản nháp tạo đơn của người dùng (S4-09) |
+| POST | `/orders/dealer/{dealerId}/last-order-to-draft` | `ORDER_CREATE` hoặc `ROLE_ADMIN` | Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới (S4-04) |
 
 ### Xem danh sách đơn hàng kèm bộ lọc & Tổng tiền bán hàng toàn công ty (S4-07)
 
@@ -766,9 +766,8 @@ POST /api/orders/calculate
 
 ### Bản nháp tạo đơn và ngày giao mong muốn (S3-09)
 
-- `GET`, `PUT`, `DELETE /api/orders/draft` dành cho `ROLE_SALES`,
-  `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`,
-  `ROLE_WAREHOUSE_STAFF`. Chủ bản nháp lấy từ tài khoản đã xác thực; request
+- `GET`, `PUT`, `DELETE /api/orders/draft` yêu cầu `ORDER_CREATE` trong ma trận,
+  hoặc `ROLE_ADMIN`. Chủ bản nháp lấy từ tài khoản đã xác thực; request
   không được chọn chủ bản nháp của người khác.
 - `PUT` nhận một **đối tượng JSON** và lưu trong bảng `order_drafts`, mỗi tài
   khoản có một bản nháp. Frontend sử dụng `dealerId`, `deliveryPointId`,

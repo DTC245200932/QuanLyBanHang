@@ -74,9 +74,9 @@ public class OrderController {
         this.objectMapper = objectMapper;
     }
 
-    private static final String DRAFT_ROLES = "hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')";
+    private static final String DRAFT_PERMISSION = "hasAuthority('ORDER_CREATE') or hasRole('ADMIN')";
 
-    private static final String VIEW_ROLES = "hasAuthority('ORDER_VIEW') or hasAnyRole('ADMIN', 'SALES_MANAGER', 'SALES', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ACCOUNTANT', 'VIEWER')";
+    private static final String VIEW_PERMISSION = "hasAuthority('ORDER_VIEW') or hasRole('ADMIN')";
 
     /**
      * S4-07: Xem danh sách đơn hàng kèm bộ lọc và tổng tiền tập kết quả đang lọc.
@@ -84,7 +84,7 @@ public class OrderController {
      * Nhân viên kinh doanh chỉ thấy đơn của đại lý mình phụ trách.
      */
     @GetMapping
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize(VIEW_PERMISSION)
     public ApiResponse getAllOrders(@Valid OrderFilterRequest filter) {
         if (filter == null) {
             filter = new OrderFilterRequest();
@@ -122,7 +122,7 @@ public class OrderController {
      * S4-07: Tra cứu thống kê tổng tiền và số lượng đơn hàng theo bộ lọc.
      */
     @GetMapping("/summary")
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize(VIEW_PERMISSION)
     public ApiResponse getOrdersSummary(@Valid OrderFilterRequest filter) {
         if (filter == null) {
             filter = new OrderFilterRequest();
@@ -138,7 +138,7 @@ public class OrderController {
 
     /** Lấy bản nháp tạo đơn của chính người dùng hiện tại (S3-09). */
     @GetMapping("/draft")
-    @PreAuthorize(DRAFT_ROLES)
+    @PreAuthorize(DRAFT_PERMISSION)
     public ApiResponse getDraft(Principal principal) throws Exception {
         return orderDraftRepository.findByUsername(principal.getName())
                 .map(draft -> {
@@ -153,7 +153,7 @@ public class OrderController {
 
     /** Lưu đè bản nháp của chính người dùng hiện tại (S3-09). */
     @PutMapping("/draft")
-    @PreAuthorize(DRAFT_ROLES)
+    @PreAuthorize(DRAFT_PERMISSION)
     public ApiResponse saveDraft(@RequestBody JsonNode draftData, Principal principal) throws Exception {
         if (draftData == null || draftData.isNull() || !draftData.isObject()) {
             throw new IllegalArgumentException("Dữ liệu bản nháp không hợp lệ");
@@ -168,14 +168,14 @@ public class OrderController {
 
     /** Xoá bản nháp sau khi ghi nhận đơn hoặc người dùng bỏ qua (S3-09). */
     @DeleteMapping("/draft")
-    @PreAuthorize(DRAFT_ROLES)
+    @PreAuthorize(DRAFT_PERMISSION)
     public ApiResponse deleteDraft(Principal principal) {
         orderDraftRepository.findByUsername(principal.getName()).ifPresent(orderDraftRepository::delete);
         return ApiResponse.success("Đã xoá bản nháp tạo đơn", null);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize(VIEW_PERMISSION)
     public ApiResponse getOrderById(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : null;
         OrderResponse order = orderService.getOrderById(id, username);
@@ -187,7 +187,7 @@ public class OrderController {
      * Cho phép Thủ kho, Quản lý kho, Quản lý kinh doanh, Admin, Viewer tra cứu vị trí hàng khi soạn đơn.
      */
     @GetMapping("/{id}/picking-list")
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize(VIEW_PERMISSION)
     public ApiResponse getOrderPickingList(@PathVariable Long id) {
         if (warehouseService == null) {
             throw new IllegalStateException("WarehouseService chưa sẵn sàng");
@@ -440,7 +440,7 @@ public class OrderController {
      * Bản sao luôn bắt đầu ở trạng thái Nháp.
      */
     @PostMapping("/{id}/copy")
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> copyOrder(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderResponse response = orderService.copyOrder(id, username);
@@ -452,7 +452,7 @@ public class OrderController {
      * S4-09: Sao chép các dòng hàng của đơn cũ trực tiếp vào bản nháp tạo đơn của người dùng.
      */
     @PostMapping("/{id}/copy-to-draft")
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
     public ApiResponse copyOrderToDraft(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyOrderToDraft(id, username);
@@ -463,7 +463,7 @@ public class OrderController {
      * S4-04: Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới.
      */
     @PostMapping("/dealer/{dealerId}/last-order-to-draft")
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
     public ApiResponse copyLastOrderToDraft(@PathVariable Long dealerId, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyLastOrderToDraft(dealerId, username);
@@ -520,7 +520,7 @@ public class OrderController {
      * Mẫu in gồm thông tin đại lý, điểm giao, chi tiết dòng hàng, chiết khấu, tổng tiền và mã vạch để kho tra cứu.
      */
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize(VIEW_PERMISSION)
     public ResponseEntity<byte[]> getOrderPdf(
             @PathVariable Long id,
             @RequestParam(required = false, defaultValue = "false") boolean download,
@@ -542,7 +542,7 @@ public class OrderController {
      * S4-08: Lấy ảnh mã vạch (Barcode Code 128) theo mã đơn hàng để kho tra cứu nhanh hoặc in tem nhãn.
      */
     @GetMapping(value = "/{id}/barcode", produces = MediaType.IMAGE_PNG_VALUE)
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize(VIEW_PERMISSION)
     public ResponseEntity<byte[]> getOrderBarcode(
             @PathVariable Long id,
             Principal principal) {

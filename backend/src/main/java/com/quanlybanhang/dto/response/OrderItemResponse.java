@@ -69,4 +69,13 @@ public class OrderItemResponse {
 
     private BigDecimal totalAmount;
     private String note;
+
+    // Vị trí lưu kho để soạn đơn (S5-03)
+    private Long locationId;
+    private String locationCode;
+    private String locationName;
+    private String locationType;
+    private String zoneName;
+    private String shelfName;
+    private String locationDisplay;
 }

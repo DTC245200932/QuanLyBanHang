@@ -16,14 +16,17 @@ import com.quanlybanhang.dto.response.ApiResponse;
 import com.quanlybanhang.dto.response.OrderCalculateResponse;
 import com.quanlybanhang.dto.response.OrderFilterResult;
 import com.quanlybanhang.dto.response.OrderLineItemPricingResponse;
+import com.quanlybanhang.dto.response.OrderPickingListResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.dto.response.OrderTrackingResponse;
 import com.quanlybanhang.model.OrderDraft;
 import com.quanlybanhang.repository.OrderDraftRepository;
 import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.OrderService;
+import com.quanlybanhang.service.WarehouseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,6 +49,14 @@ public class OrderController {
     private final DealerDebtService dealerDebtService;
     private final OrderDraftRepository orderDraftRepository;
     private final ObjectMapper objectMapper;
+
+    @Autowired(required = false)
+    private WarehouseService warehouseService;
+
+    @Autowired(required = false)
+    public void setWarehouseService(WarehouseService warehouseService) {
+        this.warehouseService = warehouseService;
+    }
 
     private static final String DRAFT_ROLES = "hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')";
 
@@ -151,6 +162,20 @@ public class OrderController {
         String username = principal != null ? principal.getName() : null;
         OrderResponse order = orderService.getOrderById(id, username);
         return ApiResponse.success("Chi tiết đơn hàng", order);
+    }
+
+    /**
+     * S5-03: Lấy danh sách vị trí kệ soạn hàng theo đơn.
+     * Cho phép Thủ kho, Quản lý kho, Quản lý kinh doanh, Admin, Viewer tra cứu vị trí hàng khi soạn đơn.
+     */
+    @GetMapping("/{id}/picking-list")
+    @PreAuthorize(VIEW_ROLES)
+    public ApiResponse getOrderPickingList(@PathVariable Long id) {
+        if (warehouseService == null) {
+            throw new IllegalStateException("WarehouseService chưa sẵn sàng");
+        }
+        OrderPickingListResponse pickingList = warehouseService.getOrderPickingList(id);
+        return ApiResponse.success("Danh sách vị trí kệ soạn hàng theo đơn", pickingList);
     }
 
     @PostMapping

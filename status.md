@@ -7,6 +7,7 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 | **S4-07** | **Xem danh sách đơn hàng kèm bộ lọc & Tổng tiền toàn công ty (Order Listing with Multi-filters & Total Amount)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`ORDER_VIEW`) | - **Vai trò**: Quản lý kinh doanh (`ROLE_SALES_MANAGER`, `ORDER_VIEW`).<br>- **Bộ lọc**: Lọc đa tiêu chí phía server theo trạng thái, đại lý, nhân viên kinh doanh, khu vực và khoảng thời gian tạo đơn.<br>- **Tổng tiền**: Tự động tính và trả về tổng tiền (`totalAmount`) của tập kết quả đang lọc kèm endpoint `/api/orders/summary`.<br>- **Phân quyền RLS**: Nhân viên kinh doanh (`ROLE_SALES`) chỉ thấy đơn của đại lý mình phụ trách; Quản lý kinh doanh & Admin xem toàn công ty.<br>- **Bảo mật**: Chặn truy cập chi tiết đơn của đại lý khác với `403 Forbidden` (`AccessDeniedException`). |
 | **S4-09** | **Sao chép đơn cũ thành đơn mới (Order Copy to Draft / New Order)** | ✅ Đã hoàn thành | ✅ Đã hoàn thành | ✅ Đã kết nối đầy đủ (`ORDER_CREATE`) | - **Vai trò**: Nhân viên kinh doanh (`ROLE_SALES`, `ORDER_CREATE`).<br>- **Dòng hàng**: Sao chép toàn bộ dòng hàng sang đơn mới / draft.<br>- **Giá & Chiết khấu**: Tự động áp lại bảng giá hiện hành (`findEffectivePriceLists`) và chính sách chiết khấu sản lượng hiện hành (`calculateOrderDiscount`), không kế thừa giá cũ.<br>- **Trạng thái**: Luôn bắt đầu ở trạng thái Nháp (`DRAFT`).<br>- **Phân quyền Backend**: `@PreAuthorize("hasAuthority('ORDER_CREATE') or ...")` và RLS kiểm tra quyền phụ trách đại lý.<br>- **Phân quyền Frontend**: Kiểm tra `Auth.hasPermission('ORDER_CREATE')` trước khi hiển thị nút sao chép và thực hiện sao chép. |
 | **S5-01** | **Theo dõi trạng thái đơn hàng của đại lý** | ✅ Có ở nhánh backend S5-01, chưa gộp vào `develop` | ✅ Đã nối API trên nhánh frontend hiện tại | ✅ Frontend giới hạn menu/route theo `ROLE_DEALER` + `ORDER_VIEW`; backend API giới hạn dữ liệu theo đại lý | Frontend chỉ dùng hợp đồng `GET /api/portal/orders` và `GET /api/portal/orders/{id}`. Không kéo code backend và không merge nhánh backend. |
+| **S5-03** | **Khai báo nhiều kho, vị trí lưu trữ (Khu/Kệ), gán kho phục vụ đại lý & Soạn hàng (Warehouse, Locations & Order Picking)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu người dùng: "chỉ làm backtend") | ✅ Đã kết nối đầy đủ (`WAREHOUSE_MANAGE`) | - **Khai báo kho**: Mỗi kho có mã, tên, địa chỉ, người phụ trách, trạng thái. Xóa kho an toàn (chuyển `active=false` nếu đã phát sinh phiếu kho/vị trí).<br>- **Vị trí lưu kho**: Khai báo Khu vực (`ZONE`) và Kệ (`SHELF`) thuộc Khu. Gán sản phẩm vào kệ kèm vị trí mặc định (`isDefault`).<br>- **Gán kho đại lý**: Đại lý được gán kho phục vụ mặc định (`PUT /api/dealers/{id}/default-warehouse`).<br>- **Soạn hàng**: `GET /api/orders/{id}/picking-list` hiển thị chính xác tên Kệ, Khu vực, mã vị trí và tồn khả dụng.<br>- **Phân quyền**: Gán quyền `WAREHOUSE_MANAGE` cho `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN`; bảo vệ bằng `@PreAuthorize` và `SecurityConfig`. Ghi `AuditLog` toàn diện. |
 
 ---
 
@@ -54,4 +55,36 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 - **Frontend**:
   - `dealer-transactions.js`: Kiểm tra `Auth.hasPermission('ORDER_CREATE')` để hiển thị nút hành động "Sao chép đơn".
   - `create-order.js`: Tự động nạp dữ liệu từ bản nháp đã sao chép, gọi bảng giá và chiết khấu hiện hành.
+
+---
+
+## Chi tiết kết nối phân quyền S5-03 (Permission Matrix Details)
+
+- **Mã quyền (Permission Code)**: `WAREHOUSE_MANAGE` ("Quản lý danh mục kho và vị trí")
+- **Các vai trò được cấp quyền trong ma trận phân quyền**:
+  - `ROLE_ADMIN`: Toàn quyền quản trị hệ thống (tự động kế thừa toàn bộ quyền).
+  - `ROLE_WAREHOUSE_MANAGER`: Quản lý kho (khai báo kho, quản lý danh mục kho, phân cấp vị trí lưu trữ Khu/Kệ, gán sản phẩm vào kệ/vị trí, gán kho phục vụ cho đại lý).
+- **Backend**:
+  - `Permission.java`: Bổ sung `WAREHOUSE_MANAGE("Quản lý danh mục kho và vị trí")`.
+  - `RolePermissionConfig.java`: Cấu hình quyền mặc định cho `ROLE_WAREHOUSE_MANAGER` có `Permission.WAREHOUSE_MANAGE`; endpoint `/api/admin/permissions` tự động phản ánh quyền này trong ma trận phân quyền động lưu trong database.
+  - `SecurityConfig.java`:
+    - Phân quyền URL cho `/api/warehouses/**`, `/api/warehouse-locations/**`, `/api/warehouse/**` cho các vai trò liên quan.
+  - `WarehouseResourceController.java`:
+    - `POST /api/warehouses`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+    - `PUT /api/warehouses/{id}`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+    - `DELETE /api/warehouses/{id}`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+    - `POST /api/warehouse-locations`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+    - `PUT /api/warehouse-locations/{id}`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+    - `DELETE /api/warehouse-locations/{id}`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+    - `POST /api/warehouse-locations/{locationId}/products`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+    - `DELETE /api/warehouse-locations/{locationId}/products/{productId}`: `@PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasRole('ADMIN')")`
+  - `DealerController.java`:
+    - `PUT /api/dealers/{id}/default-warehouse`: `@PreAuthorize("hasAuthority('DEALER_MANAGE') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('ADMIN', 'SALES_MANAGER', 'WAREHOUSE_MANAGER')")`
+  - `OrderController.java`:
+    - `GET /api/orders/{id}/picking-list`: `@PreAuthorize("hasAuthority('ORDER_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'SALES_MANAGER')")`
+  - **Nhật ký kiểm toán (`AuditLog`)**: Ghi log chi tiết cho các hành động `CREATE_WAREHOUSE`, `UPDATE_WAREHOUSE`, `DELETE_WAREHOUSE`, `DEACTIVATE_WAREHOUSE`, `CREATE_LOCATION`, `UPDATE_LOCATION`, `DELETE_LOCATION`, `ASSIGN_PRODUCT_LOCATION`, `REMOVE_PRODUCT_LOCATION`, `ASSIGN_DEFAULT_WAREHOUSE`.
+- **Frontend**:
+  - ⏳ Chưa triển khai giao diện theo yêu cầu cụ thể của người dùng: *"chỉ làm backtend"*.
+  - Đã chuẩn bị sẵn API và mã quyền `WAREHOUSE_MANAGE` tương thích hoàn toàn với cơ chế phân quyền frontend hiện tại (`Auth.hasPermission('WAREHOUSE_MANAGE')` và `Auth.hasRole('ROLE_WAREHOUSE_MANAGER')`).
+
 

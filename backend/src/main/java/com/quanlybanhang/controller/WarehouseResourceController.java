@@ -1,0 +1,168 @@
+package com.quanlybanhang.controller;
+
+import com.quanlybanhang.dto.request.ProductLocationRequest;
+import com.quanlybanhang.dto.request.WarehouseLocationRequest;
+import com.quanlybanhang.dto.request.WarehouseRequest;
+import com.quanlybanhang.dto.response.*;
+import com.quanlybanhang.model.LocationType;
+import com.quanlybanhang.service.WarehouseService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.security.Principal;
+import java.util.List;
+
+/**
+ * RESTful Controller cho tài nguyên Kho (/api/warehouses) & Vị trí lưu (/api/warehouse-locations) (S5-03).
+ */
+@RestController
+@RequiredArgsConstructor
+public class WarehouseResourceController {
+
+    private final WarehouseService warehouseService;
+
+    // ── /api/warehouses ──
+
+    @GetMapping("/api/warehouses")
+    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    public ApiResponse getAllWarehouses(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Boolean active) {
+        List<WarehouseResponse> warehouses = warehouseService.getAllWarehouses(keyword, active);
+        return ApiResponse.success("Lấy danh sách kho thành công", warehouses);
+    }
+
+    @GetMapping("/api/warehouses/{id}")
+    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    public ApiResponse getWarehouseById(@PathVariable Long id) {
+        WarehouseResponse warehouse = warehouseService.getWarehouseById(id);
+        return ApiResponse.success("Lấy chi tiết kho thành công", warehouse);
+    }
+
+    @PostMapping("/api/warehouses")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse createWarehouse(
+            @Valid @RequestBody WarehouseRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        WarehouseResponse warehouse = warehouseService.createWarehouse(request, username);
+        return ApiResponse.success("Khai báo kho mới thành công", warehouse);
+    }
+
+    @PutMapping("/api/warehouses/{id}")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse updateWarehouse(
+            @PathVariable Long id,
+            @Valid @RequestBody WarehouseRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        WarehouseResponse warehouse = warehouseService.updateWarehouse(id, request, username);
+        return ApiResponse.success("Cập nhật thông tin kho thành công", warehouse);
+    }
+
+    @DeleteMapping("/api/warehouses/{id}")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse deleteWarehouse(@PathVariable Long id, Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        warehouseService.deleteWarehouse(id, username);
+        return ApiResponse.success("Xóa/ngừng hoạt động kho thành công", null);
+    }
+
+    @GetMapping("/api/warehouses/{warehouseId}/locations")
+    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    public ApiResponse getLocationsByWarehouse(
+            @PathVariable Long warehouseId,
+            @RequestParam(required = false) LocationType type,
+            @RequestParam(required = false) Long parentId,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) String keyword) {
+        List<WarehouseLocationResponse> locations = warehouseService.getLocations(warehouseId, type, parentId, active, keyword);
+        return ApiResponse.success("Lấy danh sách vị trí kho thành công", locations);
+    }
+
+    @PostMapping("/api/warehouses/{warehouseId}/locations")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse createLocationForWarehouse(
+            @PathVariable Long warehouseId,
+            @Valid @RequestBody WarehouseLocationRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        WarehouseLocationResponse location = warehouseService.createLocation(warehouseId, request, username);
+        return ApiResponse.success("Khai báo vị trí lưu kho thành công", location);
+    }
+
+    // ── /api/warehouse-locations ──
+
+    @GetMapping("/api/warehouse-locations")
+    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    public ApiResponse getLocations(
+            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) LocationType type,
+            @RequestParam(required = false) Long parentId,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) String keyword) {
+        List<WarehouseLocationResponse> locations = warehouseService.getLocations(warehouseId, type, parentId, active, keyword);
+        return ApiResponse.success("Lấy danh sách vị trí lưu kho thành công", locations);
+    }
+
+    @GetMapping("/api/warehouse-locations/{id}")
+    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    public ApiResponse getLocationById(@PathVariable Long id) {
+        WarehouseLocationResponse location = warehouseService.getLocationById(id);
+        return ApiResponse.success("Lấy chi tiết vị trí lưu kho thành công", location);
+    }
+
+    @PostMapping("/api/warehouse-locations")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse createLocation(
+            @Valid @RequestBody WarehouseLocationRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        WarehouseLocationResponse location = warehouseService.createLocation(request.getWarehouseId(), request, username);
+        return ApiResponse.success("Khai báo vị trí lưu kho thành công", location);
+    }
+
+    @PutMapping("/api/warehouse-locations/{id}")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse updateLocation(
+            @PathVariable Long id,
+            @Valid @RequestBody WarehouseLocationRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        WarehouseLocationResponse location = warehouseService.updateLocation(id, request, username);
+        return ApiResponse.success("Cập nhật vị trí lưu kho thành công", location);
+    }
+
+    @DeleteMapping("/api/warehouse-locations/{id}")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse deleteLocation(@PathVariable Long id, Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        warehouseService.deleteLocation(id, username);
+        return ApiResponse.success("Xóa vị trí lưu kho thành công", null);
+    }
+
+    @PostMapping("/api/warehouse-locations/{locationId}/products")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse assignProductToLocation(
+            @PathVariable Long locationId,
+            @Valid @RequestBody ProductLocationRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        ProductLocationResponse response = warehouseService.assignProductToLocation(locationId, request, username);
+        return ApiResponse.success("Gán sản phẩm vào vị trí kệ thành công", response);
+    }
+
+    @DeleteMapping("/api/warehouse-locations/{locationId}/products/{productId}")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    public ApiResponse removeProductFromLocation(
+            @PathVariable Long locationId,
+            @PathVariable Long productId,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        warehouseService.removeProductFromLocation(locationId, productId, username);
+        return ApiResponse.success("Bỏ gán sản phẩm khỏi vị trí kệ thành công", null);
+    }
+}
+

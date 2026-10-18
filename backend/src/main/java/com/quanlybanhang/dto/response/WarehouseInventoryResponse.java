@@ -57,5 +57,14 @@ public class WarehouseInventoryResponse {
      */
     private Map<String, BigDecimal> convertedAvailableViews;
 
+    // Vị trí lưu kho (S5-03: Kệ / Khu)
+    private Long locationId;
+    private String locationCode;
+    private String locationName;
+    private String locationType;
+    private String zoneName;
+    private String shelfName;
+    private String locationDisplay;
+
     private LocalDateTime updatedAt;
 }

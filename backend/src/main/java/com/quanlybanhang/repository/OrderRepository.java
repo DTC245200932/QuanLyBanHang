@@ -35,4 +35,10 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     java.math.BigDecimal sumTotalAmountByDealerIdAndStatus(
             @org.springframework.data.repository.query.Param("dealerId") Long dealerId,
             @org.springframework.data.repository.query.Param("status") String status);
+
+    /**
+     * S5-06: Tìm các đơn hàng đang giữ chỗ tồn kho mà đã vượt quá thời hạn giữ chỗ.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT o FROM Order o WHERE o.inventoryReserved = true AND o.reservationExpiresAt IS NOT NULL AND o.reservationExpiresAt <= :now")
+    List<Order> findExpiredReservations(@org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
 }

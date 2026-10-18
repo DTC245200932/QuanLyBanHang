@@ -7,6 +7,7 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 | **S4-07** | **Xem danh sách đơn hàng kèm bộ lọc & Tổng tiền toàn công ty (Order Listing with Multi-filters & Total Amount)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`ORDER_VIEW`) | - **Vai trò**: Quản lý kinh doanh (`ROLE_SALES_MANAGER`, `ORDER_VIEW`).<br>- **Bộ lọc**: Lọc đa tiêu chí phía server theo trạng thái, đại lý, nhân viên kinh doanh, khu vực và khoảng thời gian tạo đơn.<br>- **Tổng tiền**: Tự động tính và trả về tổng tiền (`totalAmount`) của tập kết quả đang lọc kèm endpoint `/api/orders/summary`.<br>- **Phân quyền RLS**: Nhân viên kinh doanh (`ROLE_SALES`) chỉ thấy đơn của đại lý mình phụ trách; Quản lý kinh doanh & Admin xem toàn công ty.<br>- **Bảo mật**: Chặn truy cập chi tiết đơn của đại lý khác với `403 Forbidden` (`AccessDeniedException`). |
 | **S4-09** | **Sao chép đơn cũ thành đơn mới (Order Copy to Draft / New Order)** | ✅ Đã hoàn thành | ✅ Đã hoàn thành | ✅ Đã kết nối đầy đủ (`ORDER_CREATE`) | - **Vai trò**: Nhân viên kinh doanh (`ROLE_SALES`, `ORDER_CREATE`).<br>- **Dòng hàng**: Sao chép toàn bộ dòng hàng sang đơn mới / draft.<br>- **Giá & Chiết khấu**: Tự động áp lại bảng giá hiện hành (`findEffectivePriceLists`) và chính sách chiết khấu sản lượng hiện hành (`calculateOrderDiscount`), không kế thừa giá cũ.<br>- **Trạng thái**: Luôn bắt đầu ở trạng thái Nháp (`DRAFT`).<br>- **Phân quyền Backend**: `@PreAuthorize("hasAuthority('ORDER_CREATE') or ...")` và RLS kiểm tra quyền phụ trách đại lý.<br>- **Phân quyền Frontend**: Kiểm tra `Auth.hasPermission('ORDER_CREATE')` trước khi hiển thị nút sao chép và thực hiện sao chép. |
 | **S5-01** | **Theo dõi trạng thái đơn hàng của đại lý** | ✅ Có ở nhánh backend S5-01, chưa gộp vào `develop` | ✅ Đã nối API trên nhánh frontend hiện tại | ✅ Frontend giới hạn menu/route theo `ROLE_DEALER` + `ORDER_VIEW`; backend API giới hạn dữ liệu theo đại lý | Frontend chỉ dùng hợp đồng `GET /api/portal/orders` và `GET /api/portal/orders/{id}`. Không kéo code backend và không merge nhánh backend. |
+| **S5-06** | **Giữ chỗ tồn kho khi đơn được duyệt & Tự động nhả tồn quá hạn / huỷ đơn (Inventory Reservation on Order Approval & Auto-release)** | ✅ Đã hoàn thành | ⏳ Chưa thực hiện (Yêu cầu chỉ làm BE) | ✅ Đã kết nối đầy đủ (`ORDER_APPROVE`, `ORDER_CANCEL`, `ORDER_VIEW`) | - **Vai trò**: Nhân viên kinh doanh (`ROLE_SALES`), Quản lý kinh doanh (`ROLE_SALES_MANAGER`), Admin (`ROLE_ADMIN`), Quản lý kho (`ROLE_WAREHOUSE_MANAGER`).<br>- **Giữ chỗ tồn khi duyệt đơn**: Khi đơn chuyển sang trạng thái Đã duyệt (`RECORDED`), tồn tương ứng được giữ chỗ (`reservedQuantity`), ngăn chặn bán vượt tồn hoặc mất hàng đã chốt.<br>- **Giao dịch `@Transactional` nguyên tử**: Kiểm tra tồn khả dụng, tăng `reservedQuantity` và đổi trạng thái đơn nằm trong cùng giao dịch; nếu không đủ tồn hoặc phát sinh lỗi thì rollback toàn bộ.<br>- **Tự động nhả tồn**: Huỷ đơn (`cancelOrder`) hoặc từ chối đơn (`rejectOrder`) tự động hoàn trả tồn giữ chỗ. Background Scheduler (`OrderReservationScheduler`) tự động quét định kỳ và nhả tồn đối với đơn quá hạn giữ chỗ (`reservationExpiresAt <= now()`), chuyển đơn sang trạng thái `EXPIRED`.<br>- **Phân quyền Backend**: Phê duyệt / huỷ / giải phóng tồn được bảo vệ bằng `@PreAuthorize("hasAuthority('ORDER_APPROVE') ...")` và `ORDER_CANCEL`. |
 
 ---
 
@@ -54,4 +55,34 @@ Theo quy định tại `AGENTS.md`, bảng dưới đây theo dõi tiến độ 
 - **Frontend**:
   - `dealer-transactions.js`: Kiểm tra `Auth.hasPermission('ORDER_CREATE')` để hiển thị nút hành động "Sao chép đơn".
   - `create-order.js`: Tự động nạp dữ liệu từ bản nháp đã sao chép, gọi bảng giá và chiết khấu hiện hành.
+
+---
+
+## Chi tiết kết nối phân quyền S5-06 (Permission Matrix Details)
+
+- **Mã quyền (Permission Code)**: `ORDER_APPROVE`, `ORDER_CANCEL`, `ORDER_VIEW`
+- **Các vai trò được cấp quyền trong ma trận phân quyền**:
+  - `ROLE_ADMIN`: Toàn quyền quản trị hệ thống (phê duyệt đơn hàng, huỷ đơn, kích hoạt giải phóng tồn giữ chỗ quá hạn).
+  - `ROLE_SALES_MANAGER`: Quản lý kinh doanh (phê duyệt đơn hàng chờ duyệt kèm thiết lập thời gian giữ chỗ tồn kho, huỷ đơn, kích hoạt giải phóng tồn).
+  - `ROLE_SALES`: Nhân viên kinh doanh (xem trạng thái đơn và hạn giữ chỗ `ORDER_VIEW`, huỷ đơn hàng `ORDER_CANCEL` để tự động hoàn trả tồn giữ chỗ cho các đơn hàng của đại lý phụ trách).
+  - `ROLE_WAREHOUSE_MANAGER`: Quản lý kho (theo dõi tồn thực tế/tồn giữ chỗ/tồn khả dụng, kích hoạt quét giải phóng tồn quá hạn).
+- **Backend**:
+  - `OrderController.java`:
+    - `PUT /api/orders/{id}/approve`: `@PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")` — Phê duyệt đơn hàng chờ duyệt (`PENDING_APPROVAL`), giữ chỗ tồn kho và gán hạn giữ chỗ.
+    - `PUT /api/orders/{id}/reject`: `@PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")` — Từ chối đơn hàng chờ duyệt, giải phóng tồn giữ chỗ nếu có.
+    - `PUT /api/orders/{id}/cancel`: `@PreAuthorize("hasAuthority('ORDER_CANCEL') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN')")` — Huỷ đơn hàng; tự động hoàn trả tồn giữ chỗ (`reservedQuantity`) nếu đơn đang giữ chỗ.
+    - `POST /api/orders/release-expired-reservations`: `@PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'WAREHOUSE_MANAGER', 'ADMIN')")` — Kích hoạt quét và nhả tồn tức thì cho các đơn hàng quá hạn giữ chỗ.
+    - `GET /api/orders`, `GET /api/orders/{id}`: Trả về đầy đủ thông tin `inventoryReserved`, `reservedAt`, `reservationExpiresAt`.
+  - `OrderServiceImpl.java`:
+    - Toàn bộ thao tác kiểm tra tồn khả dụng, tăng `reservedQuantity` và chuyển trạng thái đơn hàng sang `RECORDED` đều nằm trong một giao dịch `@Transactional` nguyên tử (lỗi giữa chừng thì rollback toàn bộ).
+    - Khóa bi quan (`LockModeType.PESSIMISTIC_WRITE`) trên các bản ghi `WarehouseInventory` được sắp xếp theo `productId` tăng dần để loại bỏ nguy cơ Deadlock khi nhiều đơn được duyệt đồng thời.
+    - `releaseExpiredReservations`: Tìm các đơn có `inventoryReserved = true` và `reservationExpiresAt <= now()`, giảm `reservedQuantity`, gán trạng thái `EXPIRED` và ghi nhật ký kiểm toán.
+  - `OrderReservationScheduler.java`:
+    - Chạy tác vụ nền định kỳ (mặc định 60 giây qua `app.order.reservation-check-interval-ms`) tự động quét và giải phóng tồn cho các đơn quá hạn.
+- **Frontend**:
+  - Đã sẵn sàng kết nối qua Ma trận phân quyền:
+    - Quyền duyệt đơn: Nút "Duyệt đơn" kiểm tra `Auth.hasPermission('ORDER_APPROVE')` hoặc vai trò `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+    - Quyền huỷ đơn: Nút "Huỷ đơn" kiểm tra `Auth.hasPermission('ORDER_CANCEL')` hoặc vai trò `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`.
+    - Hiển thị nhãn trạng thái giữ chỗ kho: Kiểm tra `inventoryReserved` và thời hạn `reservationExpiresAt` trên màn hình chi tiết đơn hàng.
+
 

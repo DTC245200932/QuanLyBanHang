@@ -1018,8 +1018,8 @@ Quy tắc nghiệp vụ:
 - `currentDebt` hiện được suy ra từ tổng đơn `RECORDED`. Chưa có sổ công nợ/phiếu thu/phân bổ thanh toán,
   nên chưa thể xác định số dư còn phải thu sau khi khách thanh toán. Không dùng kết quả này như số dư kế toán đã đối soát.
 - `debtLimit = 0` hiện không kích hoạt kiểm tra vượt hạn mức; `maxDebtDays = 0` không kích hoạt kiểm tra quá hạn.
-- Kiểm tra công nợ không thay thế kiểm tra tồn. Đơn được duyệt hiện chuyển sang `RECORDED`, chưa giữ chỗ tồn trong DB.
-- Chi tiết các API đã nối và các tiêu chí Sprint 4 chưa đạt: [Báo cáo Sprint 4](../docs/SPRINT_4_AUDIT_20261014.md).
+- Kiểm tra công nợ không thay thế kiểm tra tồn. Với tính năng S5-06, đơn hàng khi được Quản lý duyệt sẽ tự động kích hoạt giữ chỗ tồn kho trong DB (`reservedQuantity`), đảm bảo hàng không bị bán mất.
+- Chi tiết các API đã nối và các tiêu chí Sprint 4: [Báo cáo Sprint 4](../docs/SPRINT_4_AUDIT_20261014.md).
 
 #### Ví dụ Request kiểm tra công nợ (`POST /api/orders/check-debt`):
 ```json
@@ -1176,6 +1176,58 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) nhìn thấy tồn khả dụng
     "maxAllowedInUnit": 2,
     "valid": false,
     "message": "Vượt tồn khả dụng cho sản phẩm 'Bia Heineken Sleek lon 330ml' (mã: SP-KEN330) tại kho 'Kho Tổng Hà Nội'. Tồn khả dụng hiện tại: 48 lon. Số lượng tối đa có thể đặt là 2 thùng."
+  }
+}
+```
+
+### Giữ chỗ tồn kho khi đơn được duyệt & Tự động nhả tồn quá hạn / huỷ đơn (S5-06)
+
+Hỗ trợ Nhân viên kinh doanh có tồn được giữ chỗ ngay khi đơn được duyệt, để chắc chắn hàng đã chốt cho khách của mình không bị người khác bán mất.
+
+#### Quy tắc nghiệp vụ cốt lõi:
+1. **Giữ chỗ tồn kho ngay khi đơn được duyệt (`approveOrder`)**:
+   - Khi đơn hàng tạo ở trạng thái Chờ duyệt (`PENDING_APPROVAL`, ví dụ do bán dưới giá sàn hoặc vượt hạn mức công nợ), tồn kho chưa bị trừ và chưa bị giữ chỗ (`inventoryReserved = false`).
+   - Khi Quản lý kinh doanh (`ROLE_SALES_MANAGER`) hoặc Quản trị viên (`ROLE_ADMIN`) phê duyệt đơn (`PUT /api/orders/{id}/approve`):
+     - Hệ thống thực hiện kiểm tra tồn khả dụng tại kho phục vụ với cơ chế khóa bi quan (`LockModeType.PESSIMISTIC_WRITE` trên `warehouse_inventories`, khóa sắp xếp theo thứ tự `productId` tăng dần để tránh Deadlock).
+     - Nếu tồn khả dụng không đủ: ném ngoại lệ `IllegalArgumentException` kèm thông báo chi tiết, giao dịch `@Transactional` tự động hoàn lại (rollback) toàn bộ, không thay đổi trạng thái đơn và không giữ chỗ tồn kho.
+     - Nếu tồn khả dụng đủ: hệ thống tự động tăng `reservedQuantity` tại kho tương ứng với số lượng cơ sở của đơn hàng, chuyển trạng thái đơn sang `RECORDED` (Đã duyệt / Đã ghi sổ), đánh dấu `inventoryReserved = true`, gán thời điểm giữ chỗ `reservedAt` và thời điểm hết hạn giữ chỗ `reservationExpiresAt`.
+     - Cho phép truyền tùy chọn tham số `reservationHours` (số giờ giữ chỗ, ví dụ `?reservationHours=24` hoặc `?reservationHours=48`, mặc định cấu hình `app.order.default-reservation-hours: 24`).
+
+2. **Giao dịch `@Transactional` nguyên tử (Atomic Transaction & Rollback)**:
+   - Toàn bộ thao tác kiểm tra tồn kho, tăng tồn giữ chỗ (`reservedQuantity`), cập nhật trạng thái đơn hàng (`RECORDED`), và ghi nhật ký kiểm toán (`AuditLog`) diễn ra trong cùng một transaction `@Transactional`.
+   - Bất kỳ lỗi nào xảy ra giữa chừng đều làm toàn bộ giao dịch rollback, đảm bảo tính toàn vẹn dữ liệu tuyệt đối (không có tình trạng đơn đã duyệt nhưng chưa giữ chỗ, hoặc ngược lại).
+
+3. **Tự động giải phóng tồn kho khi huỷ hoặc từ chối đơn**:
+   - Khi huỷ đơn (`PUT /api/orders/{id}/cancel`) hoặc từ chối đơn (`PUT /api/orders/{id}/reject`): Nếu đơn đã được giữ chỗ (`inventoryReserved = true`), hệ thống khóa bi quan dòng tồn kho, hoàn trả chính xác số lượng tồn giữ chỗ (`reservedQuantity = max(0, reservedQuantity - reqBase)`), chuyển `inventoryReserved = false`, xóa `reservationExpiresAt` và ghi nhật ký kiểm toán.
+
+4. **Tự động quét và nhả tồn khi đơn quá hạn giữ chỗ (Background Scheduler)**:
+   - Background Task (`OrderReservationScheduler`) chạy định kỳ (mặc định mỗi phút một lần qua cấu hình `app.order.reservation-check-interval-ms:60000`).
+   - Scheduler tự động tìm tất cả các đơn hàng có `inventoryReserved = true` và `reservationExpiresAt <= now()`.
+   - Với mỗi đơn quá hạn: hệ thống tự động giải phóng tồn giữ chỗ (`reservedQuantity`), chuyển trạng thái đơn hàng sang `EXPIRED`, xóa cờ giữ chỗ, ghi chú tự động lý do hết hạn và lưu vết nhật ký kiểm toán (`AuditLog`).
+   - Cung cấp thêm API thủ công/chủ động: `POST /api/orders/release-expired-reservations` cho Quản lý kho, Quản lý kinh doanh và Admin kích hoạt kiểm tra và nhả tồn tức thì.
+
+| Method | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| PUT | `/orders/{id}/approve?reservationHours={hours}` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng chờ duyệt, giữ chỗ tồn kho tức thì và thiết lập thời hạn giữ chỗ |
+| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Huỷ đơn hàng; tự động hoàn trả tồn kho đang giữ chỗ nếu đơn đã giữ chỗ |
+| PUT | `/orders/{id}/reject` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng chờ duyệt; giải phóng tồn giữ chỗ nếu có |
+| POST | `/orders/release-expired-reservations` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Quét và tự động giải phóng tồn giữ chỗ cho các đơn hàng đã quá hạn giữ chỗ |
+
+#### Ví dụ Response phê duyệt đơn hàng kèm giữ chỗ tồn kho (`PUT /api/orders/1/approve?reservationHours=24`):
+```json
+{
+  "success": true,
+  "message": "Phê duyệt đơn hàng thành công",
+  "data": {
+    "id": 1,
+    "orderCode": "DH-20261018-0001",
+    "status": "RECORDED",
+    "inventoryReserved": true,
+    "reservedAt": "2026-10-18T07:00:00",
+    "reservationExpiresAt": "2026-10-19T07:00:00",
+    "approvedBy": "sales.manager",
+    "approvedAt": "2026-10-18T07:00:00",
+    "totalAmount": 15000000.0
   }
 }
 ```

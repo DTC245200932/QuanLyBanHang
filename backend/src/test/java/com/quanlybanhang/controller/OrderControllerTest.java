@@ -85,6 +85,8 @@ class OrderControllerTest {
             return null;
         }).when(jwtAuthenticationFilter).doFilter(any(), any(), any());
 
+        objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+
         this.mockMvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
                 .webAppContextSetup(context)
                 .apply(springSecurity())
@@ -562,6 +564,50 @@ class OrderControllerTest {
     @DisplayName("[S4-07] GET /api/orders không có quyền ORDER_VIEW -> 403 Forbidden")
     void getOrders_UnauthorizedRole_Returns403() throws Exception {
         mockMvc.perform(get("/api/orders"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
+    @DisplayName("[S5-06] PUT /api/orders/{id}/approve - Quản lý kinh doanh duyệt đơn với reservationHours")
+    void approveOrder_WithReservationHours_Returns200() throws Exception {
+        OrderResponse resp = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .status("RECORDED")
+                .inventoryReserved(true)
+                .reservedAt(java.time.LocalDateTime.now())
+                .reservationExpiresAt(java.time.LocalDateTime.now().plusHours(24))
+                .build();
+
+        when(orderService.approveOrder(eq(1L), any(), any())).thenReturn(resp);
+
+        mockMvc.perform(put("/api/orders/1/approve").param("reservationHours", "24"))
+                .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("RECORDED"))
+                .andExpect(jsonPath("$.data.inventoryReserved").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", authorities = {"ROLE_ADMIN", "ORDER_APPROVE"})
+    @DisplayName("[S5-06] POST /api/orders/release-expired-reservations - Tự động nhả tồn quá hạn thành công")
+    void releaseExpiredReservations_Returns200() throws Exception {
+        when(orderService.releaseExpiredReservations()).thenReturn(3);
+
+        mockMvc.perform(post("/api/orders/release-expired-reservations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").value(3))
+                .andExpect(jsonPath("$.message").value("Đã nhả tồn giữ chỗ cho 3 đơn hàng quá hạn"));
+    }
+
+    @Test
+    @WithMockUser(username = "viewer", authorities = {"ROLE_VIEWER"})
+    @DisplayName("[S5-06] PUT /api/orders/{id}/approve không có quyền ORDER_APPROVE -> 403 Forbidden")
+    void approveOrder_WithoutPermission_Returns403() throws Exception {
+        mockMvc.perform(put("/api/orders/1/approve"))
                 .andExpect(status().isForbidden());
     }
 }

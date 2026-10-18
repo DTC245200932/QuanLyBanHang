@@ -24,9 +24,21 @@ public interface OrderService {
     OrderResponse cancelOrder(Long id, String username);
 
     /**
-     * Quản lý kinh doanh duyệt đơn hàng có dòng bán dưới giá sàn (S2-10).
+     * Quản lý kinh doanh duyệt đơn hàng có dòng bán dưới giá sàn hoặc vượt hạn mức công nợ (S2-10, S5-06).
+     * Khi đơn chuyển sang Đã duyệt (RECORDED), tồn tương ứng được giữ chỗ tự động.
      */
     OrderResponse approveOrder(Long id, String username);
+
+    /**
+     * Duyệt đơn hàng kèm tuỳ chỉnh số giờ giữ chỗ tồn kho (S5-06).
+     */
+    OrderResponse approveOrder(Long id, Integer reservationHours, String username);
+
+    /**
+     * S5-06: Tự động kiểm tra và nhả tồn kho giữ chỗ cho các đơn hàng đã quá hạn giữ chỗ.
+     * @return số lượng đơn hàng đã được nhả tồn giữ chỗ
+     */
+    int releaseExpiredReservations();
 
     /**
      * Quản lý kinh doanh từ chối đơn hàng có dòng bán dưới giá sàn (S2-10).

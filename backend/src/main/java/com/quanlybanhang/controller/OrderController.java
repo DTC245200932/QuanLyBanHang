@@ -12,7 +12,9 @@ import com.quanlybanhang.dto.request.OrderCalculateRequest;
 import com.quanlybanhang.dto.request.OrderFilterRequest;
 import com.quanlybanhang.dto.request.OrderLineItemPricingRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
+import com.quanlybanhang.dto.request.OrderStatusUpdateRequest;
 import com.quanlybanhang.dto.response.ApiResponse;
+import com.quanlybanhang.dto.response.OrderApprovalHistoryResponse;
 import com.quanlybanhang.dto.response.OrderCalculateResponse;
 import com.quanlybanhang.dto.response.OrderFilterResult;
 import com.quanlybanhang.dto.response.OrderLineItemPricingResponse;
@@ -27,6 +29,10 @@ import com.quanlybanhang.service.WarehouseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,7 +40,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.security.Principal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Controller Quản lý Đơn hàng (S2-07).
@@ -55,6 +63,14 @@ public class OrderController {
     @Autowired(required = false)
     public void setWarehouseService(WarehouseService warehouseService) {
         this.warehouseService = warehouseService;
+    }
+
+    public OrderController(OrderService orderService, DealerDebtService dealerDebtService,
+            OrderDraftRepository orderDraftRepository, ObjectMapper objectMapper) {
+        this.orderService = orderService;
+        this.dealerDebtService = dealerDebtService;
+        this.orderDraftRepository = orderDraftRepository;
+        this.objectMapper = objectMapper;
     }
 
     private static final String DRAFT_ROLES = "hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')";
@@ -284,6 +300,7 @@ public class OrderController {
     /**
      * Quản lý kinh doanh phê duyệt đơn hàng bán dưới giá sàn (S2-10).
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
+     * Đơn được duyệt mới chuyển sang giữ chỗ tồn kho và chờ xuất kho.
      */
     @PutMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
@@ -311,9 +328,14 @@ public class OrderController {
     public ApiResponse rejectOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
+            @RequestBody(required = false) Map<String, String> body,
             Principal principal) {
         String username = principal != null ? principal.getName() : "system";
-        OrderResponse response = orderService.rejectOrder(id, reason, username);
+        String rejectReason = reason;
+        if ((rejectReason == null || rejectReason.isBlank()) && body != null) {
+            rejectReason = body.getOrDefault("reason", body.get("comment"));
+        }
+        OrderResponse response = orderService.rejectOrder(id, rejectReason, username);
         String message = Boolean.TRUE.equals(response.getDealerLocked())
                 ? "Từ chối đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
                 : "Từ chối đơn hàng thành công";
@@ -328,6 +350,49 @@ public class OrderController {
     public ApiResponse releaseExpiredReservations() {
         int count = orderService.releaseExpiredReservations();
         return ApiResponse.success("Đã nhả tồn giữ chỗ cho " + count + " đơn hàng quá hạn", count);
+    }
+
+    /**
+     * Quản lý kinh doanh trả lại đơn hàng để nhân viên sửa lại (S4-05).
+     * Bắt buộc có ý kiến/lý do trả lại (400 Bad Request nếu thiếu hoặc để trống).
+     */
+    @PutMapping("/{id}/return")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse returnOrder(
+            @PathVariable Long id,
+            @RequestParam(required = false) String reason,
+            @RequestBody(required = false) Map<String, String> body,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        String returnReason = reason;
+        if ((returnReason == null || returnReason.isBlank()) && body != null) {
+            returnReason = body.getOrDefault("reason", body.get("comment"));
+        }
+        OrderResponse response = orderService.returnOrder(id, returnReason, username);
+        String message = Boolean.TRUE.equals(response.getDealerLocked())
+                ? "Trả lại đơn hàng để chỉnh sửa thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
+                : "Trả lại đơn hàng để chỉnh sửa thành công";
+        return ApiResponse.success(message, response);
+    }
+
+    @PostMapping("/{id}/return")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse returnOrderPost(
+            @PathVariable Long id,
+            @RequestParam(required = false) String reason,
+            @RequestBody(required = false) Map<String, String> body,
+            Principal principal) {
+        return returnOrder(id, reason, body, principal);
+    }
+
+    /**
+     * S4-05: Lấy lịch sử duyệt đơn hàng (bất biến, không thể sửa/xoá).
+     */
+    @GetMapping("/{id}/approval-history")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public ApiResponse getOrderApprovalHistory(@PathVariable Long id) {
+        List<OrderApprovalHistoryResponse> history = orderService.getOrderApprovalHistory(id);
+        return ApiResponse.success("Lịch sử duyệt đơn hàng", history);
     }
 
     /**
@@ -387,5 +452,50 @@ public class OrderController {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyLastOrderToDraft(dealerId, username);
         return ApiResponse.success("Đã thêm nhanh nhóm hàng mua lần trước vào bản nháp tạo đơn", draftNode);
+    }
+
+    /**
+     * S4-08: Tạo HTML để in / xuất PDF đơn hàng.
+     * Trả về text/html để client mở tab in hoặc chuyển thành PDF.
+     */
+    @GetMapping(value = "/{id}/print", produces = "text/html;charset=UTF-8")
+    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    public org.springframework.http.ResponseEntity<String> printOrder(@PathVariable Long id) {
+        String html = orderService.generateOrderPrintHtml(id);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Type", "text/html;charset=UTF-8")
+                .body(html);
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    public ApiResponse reviewOrderStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody OrderStatusUpdateRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        OrderResponse response = orderService.updateOrderStatus(id, request, username);
+        String action = request.getStatus() != null ? request.getStatus().trim().toUpperCase() : "";
+        String message;
+        switch (action) {
+            case "APPROVED":
+                message = Boolean.TRUE.equals(response.getDealerLocked())
+                        ? "Phê duyệt đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch). Đơn chuyển sang giữ chỗ tồn kho."
+                        : "Phê duyệt đơn hàng thành công. Đơn chuyển sang giữ chỗ tồn kho.";
+                break;
+            case "REJECTED":
+                message = Boolean.TRUE.equals(response.getDealerLocked())
+                        ? "Từ chối đơn hàng thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
+                        : "Từ chối đơn hàng thành công";
+                break;
+            case "RETURNED":
+                message = Boolean.TRUE.equals(response.getDealerLocked())
+                        ? "Trả lại đơn hàng để chỉnh sửa thành công (Cảnh báo: Đại lý đang bị khoá giao dịch)"
+                        : "Trả lại đơn hàng để chỉnh sửa thành công";
+                break;
+            default:
+                message = "Cập nhật trạng thái đơn hàng thành công";
+        }
+        return ApiResponse.success(message, response);
     }
 }

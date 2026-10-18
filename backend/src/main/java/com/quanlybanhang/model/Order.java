@@ -151,6 +151,20 @@ public class Order {
     @Column(length = 500)
     private String note;
 
+    /**
+     * Lý do huỷ đơn hàng (S4-06) - bắt buộc khi huỷ.
+     */
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
+    /** Người thực hiện huỷ đơn (S4-06). */
+    @Column(name = "cancelled_by", length = 100)
+    private String cancelledBy;
+
+    /** Thời điểm huỷ đơn (S4-06). */
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
     @Column(name = "created_by", length = 100)
     private String createdBy;
 

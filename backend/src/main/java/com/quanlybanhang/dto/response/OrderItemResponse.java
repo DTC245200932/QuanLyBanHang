@@ -78,4 +78,10 @@ public class OrderItemResponse {
     private String zoneName;
     private String shelfName;
     private String locationDisplay;
+    /** Alias đơn giá cho frontend order-approval (S4-05). */
+    private BigDecimal unitPrice;
+
+    /** Alias thành tiền cho frontend order-approval (S4-05). */
+    private BigDecimal lineTotal;
 }
+

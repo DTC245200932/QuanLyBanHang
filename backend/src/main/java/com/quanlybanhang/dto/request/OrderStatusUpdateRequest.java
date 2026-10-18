@@ -1,5 +1,7 @@
 package com.quanlybanhang.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
@@ -11,11 +13,24 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class OrderStatusUpdateRequest {
 
-    @NotBlank(message = "Trạng thái mới không được để trống")
+    @NotBlank(message = "Trạng thái không được để trống")
     private String status;
 
     private String note;
-}
+    private String comment;
+    private String reason;
 
+    @JsonIgnore
+    public String getEffectiveComment() {
+        if (comment != null && !comment.isBlank()) {
+            return comment.trim();
+        }
+        if (reason != null && !reason.isBlank()) {
+            return reason.trim();
+        }
+        return null;
+    }
+}

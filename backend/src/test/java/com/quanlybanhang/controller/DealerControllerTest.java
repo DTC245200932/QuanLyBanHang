@@ -57,6 +57,9 @@ class DealerControllerTest {
     private DealerDebtService dealerDebtService;
 
     @MockBean
+    private com.quanlybanhang.service.OrderService orderService;
+
+    @MockBean
     private UserDetailsServiceImpl userDetailsService;
 
     @MockBean
@@ -510,5 +513,26 @@ class DealerControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Bạn không có quyền thực hiện chức năng này"));
+    }
+
+    @Test
+    @DisplayName("[S4-04] Nhân viên kinh doanh tra cứu lịch sử mua hàng đại lý thành công (200 OK)")
+    void getDealerPurchaseHistory_Success() throws Exception {
+        com.quanlybanhang.service.OrderService.DealerPurchaseHistoryResult historyResult =
+                new com.quanlybanhang.service.OrderService.DealerPurchaseHistoryResult(
+                        1L, "Đại lý Minh Phát", "DL01", 3,
+                        java.time.LocalDate.now().minusMonths(3), java.time.LocalDate.now(),
+                        List.of(), List.of()
+                );
+
+        when(orderService.getDealerPurchaseHistory(eq(1L), eq(3), eq("sales01")))
+                .thenReturn(historyResult);
+
+        mvc.perform(get("/api/dealers/1/purchase-history?months=3").with(user("sales01").roles("SALES")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.dealerName").value("Đại lý Minh Phát"))
+                .andExpect(jsonPath("$.data.dealerCode").value("DL01"))
+                .andExpect(jsonPath("$.data.months").value(3));
     }
 }

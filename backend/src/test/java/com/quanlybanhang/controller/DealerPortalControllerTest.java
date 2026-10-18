@@ -2,14 +2,21 @@ package com.quanlybanhang.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.quanlybanhang.config.SecurityConfig;
-import com.quanlybanhang.dto.response.OrderItemResponse;
+import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
+import com.quanlybanhang.dto.request.OrderItemRequest;
+import com.quanlybanhang.dto.response.DealerDebtResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
+import com.quanlybanhang.exception.DealerLockedException;
 import com.quanlybanhang.exception.GlobalExceptionHandler;
+import com.quanlybanhang.model.*;
+import com.quanlybanhang.repository.*;
 import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
-import com.quanlybanhang.security.JwtUtils;
 import com.quanlybanhang.security.RestAccessDeniedHandler;
+import com.quanlybanhang.security.UserDetailsImpl;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
+import com.quanlybanhang.service.DealerDebtService;
+import com.quanlybanhang.service.DealerDeliveryPointService;
 import com.quanlybanhang.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,34 +25,57 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = DealerPortalController.class)
-@Import({SecurityConfig.class, RestAccessDeniedHandler.class, AuthEntryPointJwt.class, GlobalExceptionHandler.class, ObjectMapper.class})
-@DisplayName("DealerPortalController - API Cổng Đại lý theo dõi đơn hàng (S5-01)")
+@WebMvcTest(DealerPortalController.class)
+@Import({SecurityConfig.class, RestAccessDeniedHandler.class, AuthEntryPointJwt.class, GlobalExceptionHandler.class})
+@DisplayName("DealerPortalController - Cổng tự đặt hàng dành cho Đại lý (S4-10)")
 class DealerPortalControllerTest {
 
     @Autowired
-    private WebApplicationContext context;
+    private MockMvc mvc;
 
     @Autowired
     private ObjectMapper objectMapper;
 
-    private MockMvc mockMvc;
+    @MockBean
+    private UserRepository userRepository;
+
+    @MockBean
+    private DealerRepository dealerRepository;
+
+    @MockBean
+    private DealerDebtService dealerDebtService;
+
+    @MockBean
+    private DealerDeliveryPointService deliveryPointService;
+
+    @MockBean
+    private ProductRepository productRepository;
+
+    @MockBean
+    private PriceListRepository priceListRepository;
+
+    @MockBean
+    private UnitConversionRepository unitConversionRepository;
 
     @MockBean
     private OrderService orderService;
@@ -56,165 +86,249 @@ class DealerPortalControllerTest {
     @MockBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @MockBean
-    private JwtUtils jwtUtils;
+    private Dealer dealer;
+    private User dealerUser;
+    private UsernamePasswordAuthenticationToken dealerAuth;
 
     @BeforeEach
     void setUp() throws Exception {
-        objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-
-        org.mockito.Mockito.doAnswer(invocation -> {
-            jakarta.servlet.ServletRequest request = invocation.getArgument(0);
-            jakarta.servlet.ServletResponse response = invocation.getArgument(1);
+        doAnswer(invocation -> {
             jakarta.servlet.FilterChain chain = invocation.getArgument(2);
-            chain.doFilter(request, response);
+            chain.doFilter(invocation.getArgument(0), invocation.getArgument(1));
             return null;
         }).when(jwtAuthenticationFilter).doFilter(any(), any(), any());
 
-        this.mockMvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
-                .webAppContextSetup(context)
-                .apply(springSecurity())
-                .build();
-    }
-
-    @Test
-    @WithMockUser(username = "dealer_user", roles = "DEALER")
-    @DisplayName("GET /api/portal/orders - Đại lý xem danh sách đơn hàng kèm trạng thái, ngày giao dự kiến, tổng tiền")
-    void getMyOrders_Dealer_Returns200WithOrderList() throws Exception {
-        OrderResponse order1 = OrderResponse.builder()
-                .id(101L)
-                .orderCode("DH-MINHPHAT-001")
-                .dealerId(1L)
-                .customerName("Đại lý Minh Phát")
-                .status("DELIVERED")
-                .expectedDeliveryDate(LocalDate.now().plusDays(1))
-                .actualDeliveryDate(LocalDate.now())
-                .totalAmount(new BigDecimal("15000000.00"))
-                .hasShortage(true)
-                .totalLineItems(2)
+        dealer = Dealer.builder()
+                .id(100L)
+                .code("DL-TEST")
+                .name("Đại lý Minh Phát")
+                .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .debtLimit(new BigDecimal("50000000"))
+                .locked(false)
                 .build();
 
-        OrderResponse order2 = OrderResponse.builder()
-                .id(102L)
-                .orderCode("DH-MINHPHAT-002")
-                .dealerId(1L)
-                .customerName("Đại lý Minh Phát")
-                .status("PROCESSING")
-                .expectedDeliveryDate(LocalDate.now().plusDays(3))
-                .totalAmount(new BigDecimal("22500000.00"))
-                .hasShortage(false)
-                .totalLineItems(3)
-                .build();
-
-        when(orderService.getOrdersForDealer("dealer_user")).thenReturn(List.of(order1, order2));
-
-        mockMvc.perform(get("/api/portal/orders"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].orderCode").value("DH-MINHPHAT-001"))
-                .andExpect(jsonPath("$.data[0].status").value("DELIVERED"))
-                .andExpect(jsonPath("$.data[0].totalAmount").value(15000000.00))
-                .andExpect(jsonPath("$.data[0].hasShortage").value(true))
-                .andExpect(jsonPath("$.data[1].orderCode").value("DH-MINHPHAT-002"))
-                .andExpect(jsonPath("$.data[1].status").value("PROCESSING"));
-    }
-
-    @Test
-    @WithMockUser(username = "dealer_user", roles = "DEALER")
-    @DisplayName("GET /api/portal/orders/{id} - Xem chi tiết dòng hàng và số lượng thực giao nếu giao thiếu")
-    void getMyOrderDetail_Dealer_Returns200WithDeliveredAndShortageInfo() throws Exception {
-        OrderItemResponse item1 = OrderItemResponse.builder()
+        Role roleDealer = Role.builder().name(ERole.ROLE_DEALER).build();
+        dealerUser = User.builder()
                 .id(1L)
-                .productId(10L)
-                .productCode("SP-KEN330")
-                .productName("Bia Heineken lon 330ml")
-                .unit("thùng")
-                .quantity(new BigDecimal("10.0000"))
-                .price(new BigDecimal("450000.00"))
-                .totalAmount(new BigDecimal("4500000.00"))
-                .deliveredQuantity(new BigDecimal("8.0000"))
-                .shortageQuantity(new BigDecimal("2.0000"))
-                .isShortage(true)
-                .deliveryNote("Tạm thiếu 2 thùng do kho chưa kịp về hàng")
+                .username("dealer.demo")
+                .fullName("Đại diện Đại lý")
+                .dealer(dealer)
+                .roles(Collections.singleton(roleDealer))
+                .active(true)
                 .build();
 
-        OrderItemResponse item2 = OrderItemResponse.builder()
-                .id(2L)
-                .productId(11L)
-                .productCode("SP-TIGER330")
-                .productName("Bia Tiger lon 330ml")
-                .unit("thùng")
-                .quantity(new BigDecimal("5.0000"))
-                .price(new BigDecimal("380000.00"))
-                .totalAmount(new BigDecimal("1900000.00"))
-                .deliveredQuantity(new BigDecimal("5.0000"))
-                .shortageQuantity(BigDecimal.ZERO)
-                .isShortage(false)
-                .deliveryNote("Giao đủ")
-                .build();
+        UserDetailsImpl userDetails = UserDetailsImpl.build(dealerUser);
+        dealerAuth = new UsernamePasswordAuthenticationToken(
+                userDetails, null, List.of(new SimpleGrantedAuthority("ROLE_DEALER")));
+    }
 
-        OrderResponse order = OrderResponse.builder()
-                .id(101L)
-                .orderCode("DH-MINHPHAT-001")
-                .dealerId(1L)
-                .customerName("Đại lý Minh Phát")
-                .status("DELIVERED")
-                .expectedDeliveryDate(LocalDate.now().plusDays(1))
-                .actualDeliveryDate(LocalDate.now())
-                .totalAmount(new BigDecimal("6400000.00"))
-                .deliveryNote("Đã giao đợt 1 có thiếu 2 thùng Heineken")
-                .hasShortage(true)
-                .totalLineItems(2)
-                .items(List.of(item1, item2))
-                .build();
+    @Test
+    @DisplayName("GET /api/portal/profile: Đại lý xem thông tin hồ sơ và công nợ -> 200 OK")
+    void getProfile_Dealer_Returns200() throws Exception {
+        when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
+        when(dealerDebtService.getDealerDebtInfo(any(Dealer.class))).thenReturn(
+                DealerDebtResponse.builder()
+                        .dealerId(100L)
+                        .debtLimit(new BigDecimal("50000000"))
+                        .currentDebt(new BigDecimal("15000000"))
+                        .remainingLimit(new BigDecimal("35000000"))
+                        .isBlocked(false)
+                        .build()
+        );
 
-        when(orderService.getOrderByIdForDealer(101L, "dealer_user")).thenReturn(order);
-
-        mockMvc.perform(get("/api/portal/orders/101"))
+        mvc.perform(get("/api/portal/profile").with(authentication(dealerAuth)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.orderCode").value("DH-MINHPHAT-001"))
-                .andExpect(jsonPath("$.data.hasShortage").value(true))
-                .andExpect(jsonPath("$.data.items.length()").value(2))
-                .andExpect(jsonPath("$.data.items[0].productCode").value("SP-KEN330"))
-                .andExpect(jsonPath("$.data.items[0].quantity").value(10.0))
-                .andExpect(jsonPath("$.data.items[0].deliveredQuantity").value(8.0))
-                .andExpect(jsonPath("$.data.items[0].shortageQuantity").value(2.0))
-                .andExpect(jsonPath("$.data.items[0].isShortage").value(true))
-                .andExpect(jsonPath("$.data.items[0].deliveryNote").value("Tạm thiếu 2 thùng do kho chưa kịp về hàng"))
-                .andExpect(jsonPath("$.data.items[1].productCode").value("SP-TIGER330"))
-                .andExpect(jsonPath("$.data.items[1].quantity").value(5.0))
-                .andExpect(jsonPath("$.data.items[1].deliveredQuantity").value(5.0))
-                .andExpect(jsonPath("$.data.items[1].shortageQuantity").value(0))
-                .andExpect(jsonPath("$.data.items[1].isShortage").value(false));
+                .andExpect(jsonPath("$.data.id").value(100))
+                .andExpect(jsonPath("$.data.code").value("DL-TEST"))
+                .andExpect(jsonPath("$.data.name").value("Đại lý Minh Phát"))
+                .andExpect(jsonPath("$.data.customerGroup").value("DAI_LY_CAP_1"))
+                .andExpect(jsonPath("$.data.debtLimit").value(50000000))
+                .andExpect(jsonPath("$.data.currentDebt").value(15000000))
+                .andExpect(jsonPath("$.data.remainingLimit").value(35000000));
     }
 
     @Test
-    @WithMockUser(username = "dealer_user", roles = "DEALER")
-    @DisplayName("GET /api/portal/orders/{id} - Đại lý cố truy cập đơn của đại lý khác bị trả về 403 Forbidden")
-    void getMyOrderDetail_OtherDealerOrder_Returns403Forbidden() throws Exception {
-        when(orderService.getOrderByIdForDealer(999L, "dealer_user"))
-                .thenThrow(new AccessDeniedException("Bạn không có quyền xem đơn hàng của đại lý khác"));
-
-        mockMvc.perform(get("/api/portal/orders/999"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Bạn không có quyền thực hiện chức năng này"));
-    }
-
-    @Test
-    @DisplayName("GET /api/portal/orders - Chưa đăng nhập trả về 401 Unauthorized")
-    void getMyOrders_Unauthenticated_Returns401() throws Exception {
-        mockMvc.perform(get("/api/portal/orders"))
+    @DisplayName("GET /api/portal/profile: Chưa đăng nhập -> 401 Unauthorized")
+    void getProfile_Unauthenticated_Returns401() throws Exception {
+        mvc.perform(get("/api/portal/profile"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
-    @DisplayName("GET /api/portal/orders - Nhân viên SALES không có vai trò DEALER bị chặn 403")
-    void getMyOrders_SalesRole_Returns403() throws Exception {
-        mockMvc.perform(get("/api/portal/orders"))
+    @DisplayName("GET /api/portal/profile: Role không phải DEALER -> 403 Forbidden")
+    void getProfile_WrongRole_Returns403() throws Exception {
+        UsernamePasswordAuthenticationToken salesAuth = new UsernamePasswordAuthenticationToken(
+                "sales_user", null, List.of(new SimpleGrantedAuthority("ROLE_SALES")));
+
+        mvc.perform(get("/api/portal/profile").with(authentication(salesAuth)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("GET /api/portal/debt: Đại lý tra cứu công nợ còn lại -> 200 OK")
+    void getDebtInfo_Dealer_Returns200() throws Exception {
+        when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
+        when(dealerDebtService.getDealerDebtInfo(any(Dealer.class))).thenReturn(
+                DealerDebtResponse.builder()
+                        .dealerId(100L)
+                        .debtLimit(new BigDecimal("50000000"))
+                        .currentDebt(new BigDecimal("20000000"))
+                        .remainingLimit(new BigDecimal("30000000"))
+                        .isBlocked(false)
+                        .build()
+        );
+
+        mvc.perform(get("/api/portal/debt").with(authentication(dealerAuth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.debtLimit").value(50000000))
+                .andExpect(jsonPath("$.data.currentDebt").value(20000000))
+                .andExpect(jsonPath("$.data.remainingLimit").value(30000000));
+    }
+
+    @Test
+    @DisplayName("GET /api/portal/catalog: Chỉ hiển thị sản phẩm và giá theo bảng giá của nhóm đại lý")
+    void getCatalog_OnlyShowsProductsInEffectivePriceList() throws Exception {
+        when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
+
+        Product p1 = Product.builder().id(10L).code("BIA-01").name("Bia Heineken lon 330ml").unit("lon").active(true).build();
+        Product p2 = Product.builder().id(20L).code("NUOC-01").name("Nước ngọt Coca").unit("lon").active(true).build();
+        when(productRepository.findByActiveTrueOrderByNameAsc()).thenReturn(List.of(p1, p2));
+
+        PriceListItem pli1 = PriceListItem.builder()
+                .product(p1)
+                .sellingPrice(new BigDecimal("18000"))
+                .floorPrice(new BigDecimal("15000"))
+                .build();
+
+        PriceList priceList = PriceList.builder()
+                .id(1L)
+                .code("BG-DL-CAP1")
+                .name("Bảng giá Đại lý Cấp 1")
+                .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .startDate(LocalDate.now().minusDays(10))
+                .items(List.of(pli1))
+                .build();
+
+        when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
+                .thenReturn(List.of(priceList));
+
+        UnitConversion ucThung = UnitConversion.builder()
+                .product(p1)
+                .unitName("thùng")
+                .conversionFactor(new BigDecimal("24"))
+                .isBaseUnit(false)
+                .price(new BigDecimal("430000"))
+                .build();
+        when(unitConversionRepository.findByProductIdOrderByConversionFactorAsc(10L)).thenReturn(List.of(ucThung));
+
+        mvc.perform(get("/api/portal/catalog").with(authentication(dealerAuth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sku").value("BIA-01"))
+                .andExpect(jsonPath("$.data[0].basePrice").value(18000))
+                .andExpect(jsonPath("$.data[0].units.length()").value(2))
+                .andExpect(jsonPath("$.data[0].units[0].unitName").value("lon"))
+                .andExpect(jsonPath("$.data[0].units[1].unitName").value("thùng"))
+                .andExpect(jsonPath("$.data[0].units[1].price").value(430000));
+    }
+
+    @Test
+    @DisplayName("POST /api/portal/orders: Đơn hàng tự đặt luôn ở trạng thái Chờ duyệt (PENDING_APPROVAL)")
+    void placeOrder_AlwaysPendingApproval() throws Exception {
+        when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
+
+        OrderResponse mockOrderResponse = OrderResponse.builder()
+                .id(999L)
+                .orderCode("DH-DEALER-001")
+                .dealerId(100L)
+                .dealerName("Đại lý Minh Phát")
+                .status("PENDING_APPROVAL")
+                .requiresApproval(true)
+                .approvalReason("Đơn hàng tự đặt từ Cổng Đại lý, chờ NVKD phụ trách xác nhận")
+                .totalAmount(new BigDecimal("4300000"))
+                .build();
+
+        when(orderService.createOrder(any(), any())).thenReturn(mockOrderResponse);
+
+        DealerPortalOrderRequest request = DealerPortalOrderRequest.builder()
+                .note("Giao giờ hành chính")
+                .items(List.of(
+                        OrderItemRequest.builder()
+                                .productId(10L)
+                                .unit("thùng")
+                                .quantity(new BigDecimal("10"))
+                                .build()
+                ))
+                .build();
+
+        mvc.perform(post("/api/portal/orders")
+                        .with(authentication(dealerAuth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.id").value(999))
+                .andExpect(jsonPath("$.data.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.data.requiresApproval").value(true))
+                .andExpect(jsonPath("$.data.approvalReason").value("Đơn hàng tự đặt từ Cổng Đại lý, chờ NVKD phụ trách xác nhận"));
+    }
+
+    @Test
+    @DisplayName("POST /api/portal/orders: Đại lý bị khoá giao dịch không thể đặt hàng -> 400 Bad Request")
+    void placeOrder_DealerLocked_Returns400() throws Exception {
+        dealer.setLocked(true);
+        dealer.setLockReason("Quá hạn công nợ");
+        when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
+        when(orderService.createOrder(any(), any())).thenThrow(new DealerLockedException("Đại lý đang bị khoá giao dịch"));
+
+        DealerPortalOrderRequest request = DealerPortalOrderRequest.builder()
+                .items(List.of(
+                        OrderItemRequest.builder()
+                                .productId(10L)
+                                .unit("thùng")
+                                .quantity(BigDecimal.ONE)
+                                .build()
+                ))
+                .build();
+
+        mvc.perform(post("/api/portal/orders")
+                        .with(authentication(dealerAuth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("GET /api/portal/orders: Đại lý xem lịch sử đơn hàng của chính mình -> 200 OK")
+    void getOrders_Dealer_Returns200() throws Exception {
+        OrderResponse o1 = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .dealerId(100L)
+                .status("PENDING_APPROVAL")
+                .build();
+
+        when(orderService.getOrdersForDealer("dealer.demo")).thenReturn(List.of(o1));
+
+        mvc.perform(get("/api/portal/orders").with(authentication(dealerAuth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].orderCode").value("DH-001"));
+    }
+
+    @Test
+    @DisplayName("GET /api/portal/orders/{id}: Đại lý xem chi tiết đơn hàng của mình -> 200 OK")
+    void getOrderById_Dealer_Returns200() throws Exception {
+        OrderResponse o1 = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .dealerId(100L)
+                .status("PENDING_APPROVAL")
+                .build();
+
+        when(orderService.getOrderByIdForDealer(1L, "dealer.demo")).thenReturn(o1);
+
+        mvc.perform(get("/api/portal/orders/1").with(authentication(dealerAuth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderCode").value("DH-001"));
     }
 }

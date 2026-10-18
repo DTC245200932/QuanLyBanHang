@@ -80,7 +80,7 @@ public class AdminUserService {
         Dealer dealer = null;
         if (request.getDealerId() != null) {
             dealer = dealerRepository.findById(request.getDealerId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý"));
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
         }
 
         String temporaryPassword = generateTemporaryPassword();
@@ -175,7 +175,7 @@ public class AdminUserService {
         user.setTerritories(resolveTerritories(request.getTerritoryIds()));
         if (request.getDealerId() != null) {
             Dealer dealer = dealerRepository.findById(request.getDealerId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý"));
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
             user.setDealer(dealer);
         } else {
             user.setDealer(null);

@@ -194,7 +194,7 @@ public class OrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'DEALER')")
     public ResponseEntity<ApiResponse> createOrder(
             @Valid @RequestBody OrderRequest request,
             Principal principal) {
@@ -317,7 +317,7 @@ public class OrderController {
      * Đơn được duyệt mới chuyển sang giữ chỗ tồn kho và chờ xuất kho.
      */
     @PutMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES')")
     public ApiResponse approveOrder(
             @PathVariable Long id,
             @RequestParam(required = false) Integer reservationHours,
@@ -333,12 +333,11 @@ public class OrderController {
     }
 
     /**
-     * Quản lý kinh doanh từ chối đơn hàng bán dưới giá sàn (S2-10).
-     * Khi từ chối, tồn giữ chỗ nếu có sẽ được nhả tự động (S5-06).
+     * Quản lý kinh doanh hoặc nhân viên kinh doanh phụ trách từ chối đơn hàng (S2-10, S4-10).
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES')")
     public ApiResponse rejectOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,

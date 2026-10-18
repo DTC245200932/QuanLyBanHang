@@ -69,7 +69,7 @@ public class RolePermissionConfig {
                 REPORT_SALES, REPORT_INVENTORY
         ));
         defaults.put(ERole.ROLE_DEALER, EnumSet.of(
-                ORDER_VIEW, ORDER_CREATE
+                ORDER_VIEW, ORDER_CREATE, PRODUCT_VIEW
         ));
         return defaults;
     }

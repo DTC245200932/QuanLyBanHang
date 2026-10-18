@@ -25,7 +25,6 @@ public class DealerPortalCatalogItemResponse {
     private String categoryName;
     private String baseUnit;
     private BigDecimal basePrice;
-    private BigDecimal floorPrice;
     private String imageUrl;
 
     @Builder.Default

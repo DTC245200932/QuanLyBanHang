@@ -3,6 +3,8 @@ package com.quanlybanhang.controller;
 import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
+import com.quanlybanhang.dto.request.VolumeDiscountCalculateItemRequest;
+import com.quanlybanhang.dto.request.VolumeDiscountCalculateRequest;
 import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.PriceListRepository;
@@ -12,6 +14,7 @@ import com.quanlybanhang.repository.UserRepository;
 import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.DealerDeliveryPointService;
 import com.quanlybanhang.service.OrderService;
+import com.quanlybanhang.service.VolumeDiscountPolicyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -39,12 +42,12 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/portal")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('DEALER', 'ADMIN')")
 public class DealerPortalController {
 
     private final OrderService orderService;
     private final DealerDebtService dealerDebtService;
     private final DealerDeliveryPointService deliveryPointService;
+    private final VolumeDiscountPolicyService volumeDiscountPolicyService;
     private final UserRepository userRepository;
     private final PriceListRepository priceListRepository;
     private final ProductRepository productRepository;
@@ -160,7 +163,6 @@ public class DealerPortalController {
             }
 
             BigDecimal baseSellingPrice = pli.getSellingPrice();
-            BigDecimal baseFloorPrice = pli.getFloorPrice();
 
             // Lấy danh sách quy cách đóng gói (thùng, lốc...)
             List<DealerPortalCatalogItemResponse.PackagingUnitInfo> units = new ArrayList<>();
@@ -194,7 +196,6 @@ public class DealerPortalController {
                     .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
                     .baseUnit(product.getUnit())
                     .basePrice(baseSellingPrice)
-                    .floorPrice(baseFloorPrice)
                     .imageUrl(product.getImageUrl())
                     .units(units)
                     .build());
@@ -241,6 +242,60 @@ public class DealerPortalController {
         OrderResponse response = orderService.createOrder(orderRequest, principal.getName());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Đặt hàng thành công. Đơn hàng đang ở trạng thái Chờ duyệt.", response));
+    }
+
+    /**
+     * S4-10: Xem trước giá và chiết khấu theo đúng đại lý đăng nhập.
+     * Giá được tính lại ở server, không tin giá do trình duyệt gửi lên.
+     */
+    @PostMapping("/orders/preview")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_CREATE'))")
+    public ApiResponse previewOrder(
+            @Valid @RequestBody DealerPortalOrderRequest request,
+            Principal principal) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, null);
+
+        VolumeDiscountCalculateRequest calculateRequest = VolumeDiscountCalculateRequest.builder()
+                .dealerId(dealer.getId())
+                .orderDate(LocalDate.now())
+                .items(request.getItems().stream()
+                        .map(item -> VolumeDiscountCalculateItemRequest.builder()
+                                .productId(item.getProductId())
+                                .productCode(item.getProductCode())
+                                .unit(item.getUnit())
+                                .quantity(item.getQuantity())
+                                .build())
+                        .toList())
+                .build();
+
+        VolumeDiscountCalculationResponse calculation = volumeDiscountPolicyService.calculateDiscounts(calculateRequest);
+        if (calculation == null || calculation.getItems() == null
+                || calculation.getItems().stream().anyMatch(item -> item.getPriceListSellingPrice() == null)) {
+            throw new IllegalArgumentException("Một hoặc nhiều sản phẩm chưa có bảng giá hiệu lực của đại lý");
+        }
+
+        DealerPortalOrderPreviewResponse response = DealerPortalOrderPreviewResponse.builder()
+                .subtotalAmount(calculation.getSubtotalAmount())
+                .discountAmount(calculation.getDiscountAmount())
+                .totalAmount(calculation.getTotalAmount())
+                .items(calculation.getItems().stream()
+                        .map(item -> DealerPortalOrderPreviewItemResponse.builder()
+                                .productId(item.getProductId())
+                                .productCode(item.getProductCode())
+                                .productName(item.getProductName())
+                                .categoryName(item.getCategoryName())
+                                .unit(item.getUnit())
+                                .quantity(item.getQuantity())
+                                .unitPrice(item.getPrice())
+                                .subtotalAmount(item.getSubtotalAmount())
+                                .discountAmount(item.getDiscountAmount())
+                                .discountPercent(item.getDiscountPercent())
+                                .totalAmount(item.getTotalAmount())
+                                .build())
+                        .toList())
+                .build();
+
+        return ApiResponse.success("Đã tính giá và chiết khấu xem trước", response);
     }
 
     /**

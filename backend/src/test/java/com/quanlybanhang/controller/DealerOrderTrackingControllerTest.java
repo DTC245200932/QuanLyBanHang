@@ -11,6 +11,7 @@ import com.quanlybanhang.security.JwtUtils;
 import com.quanlybanhang.security.RestAccessDeniedHandler;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
 import com.quanlybanhang.service.OrderService;
+import com.quanlybanhang.service.VolumeDiscountPolicyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,7 @@ class DealerOrderTrackingControllerTest {
     @MockBean private com.quanlybanhang.repository.UnitConversionRepository unitConversionRepository;
     @MockBean private com.quanlybanhang.service.DealerDebtService dealerDebtService;
     @MockBean private com.quanlybanhang.service.DealerDeliveryPointService deliveryPointService;
+    @MockBean private VolumeDiscountPolicyService volumeDiscountPolicyService;
 
 
     @Autowired

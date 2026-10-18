@@ -62,7 +62,11 @@
     searchQuery: '',
     debtInfo: null,
     cart: [], // [{ productId, sku, name, unit, conversionFactor, basePrice, unitPrice, quantity, total }]
+    preview: { signature: '', loading: false, ready: false, data: null, error: null },
   };
+
+  let previewRequestSequence = 0;
+  let previewPromise = null;
 
   /* ── Utility: Today's date YYYY-MM-DD ───────────────────── */
   function todayDate() {
@@ -401,6 +405,86 @@
     updateCartUI();
   }
 
+  function getPreviewSignature() {
+    return JSON.stringify(state.cart.map((item) => ({
+      productId: item.productId,
+      unit: item.unit,
+      quantity: item.quantity,
+    })));
+  }
+
+  function renderPreviewTotals(localSubtotal) {
+    const preview = state.preview;
+    const subtotalEl = $('dp-subtotal-val');
+    const discountEl = $('dp-discount-val');
+    const totalEl = $('dp-total-val');
+
+    const subtotal = preview.ready ? Number(preview.data?.subtotalAmount || 0) : localSubtotal;
+    const discount = preview.ready ? Number(preview.data?.discountAmount || 0) : 0;
+    const total = preview.ready ? Number(preview.data?.totalAmount || 0) : localSubtotal;
+
+    if (subtotalEl) subtotalEl.textContent = formatVND(subtotal);
+    if (discountEl) discountEl.textContent = preview.loading ? 'Đang tính…' : formatVND(discount);
+    if (totalEl) totalEl.textContent = formatVND(total);
+  }
+
+  async function requestOrderPreview(force = false) {
+    const signature = getPreviewSignature();
+    if (!state.cart.length || !state.currentDealer) {
+      previewRequestSequence += 1;
+      state.preview = { signature, loading: false, ready: false, data: null, error: null };
+      return null;
+    }
+
+    if (!force && state.preview.ready && state.preview.signature === signature) {
+      return state.preview.data;
+    }
+    if (previewPromise && state.preview.signature === signature) {
+      return previewPromise;
+    }
+
+    const requestId = ++previewRequestSequence;
+    state.preview = { signature, loading: true, ready: false, data: null, error: null };
+    renderPreviewTotals(state.cart.reduce((sum, item) => sum + item.total, 0));
+
+    const payload = {
+      items: state.cart.map((item) => ({
+        productId: item.productId,
+        unit: item.unit,
+        quantity: item.quantity,
+      })),
+    };
+
+    const promise = (async () => {
+      try {
+        const response = await Auth.apiFetch('/portal/orders/preview', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.success || !result.data) {
+          throw new Error(result?.message || 'Không thể tính giá và chiết khấu xem trước');
+        }
+        if (requestId !== previewRequestSequence) return null;
+        state.preview = { signature, loading: false, ready: true, data: result.data, error: null };
+        renderPreviewTotals(state.cart.reduce((sum, item) => sum + item.total, 0));
+        return result.data;
+      } catch (error) {
+        if (requestId !== previewRequestSequence) return null;
+        state.preview = { signature, loading: false, ready: false, data: null, error: error.message };
+        renderPreviewTotals(state.cart.reduce((sum, item) => sum + item.total, 0));
+        return null;
+      }
+    })();
+
+    previewPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (previewPromise === promise) previewPromise = null;
+    }
+  }
+
   /* ── Update Cart UI ─────────────────────────────────────── */
   function updateCartUI() {
     const totalItems = state.cart.reduce((sum, it) => sum + it.quantity, 0);
@@ -495,15 +579,9 @@
       }
     }
 
-    // Financial breakdown in cart
-    const subtotalEl = $('dp-subtotal-val');
-    if (subtotalEl) subtotalEl.textContent = formatVND(subtotal);
-
-    const discEl = $('dp-discount-val');
-    if (discEl) discEl.textContent = formatVND(0);
-
-    const totalEl = $('dp-total-val');
-    if (totalEl) totalEl.textContent = formatVND(subtotal);
+    // Financial breakdown is recalculated by the server using the current price list.
+    renderPreviewTotals(subtotal);
+    requestOrderPreview();
 
     // Debt assessment
     const debt = state.debtInfo || {};
@@ -548,9 +626,15 @@
   }
 
   /* ── Order Submission Flow ──────────────────────────────── */
-  function openConfirmModal() {
+  async function openConfirmModal() {
     if (state.cart.length === 0) {
       showToast('Giỏ hàng chưa có sản phẩm nào!', 'warning');
+      return;
+    }
+
+    const preview = await requestOrderPreview(true);
+    if (!preview) {
+      showToast(state.preview.error || 'Không thể tính giá và chiết khấu. Vui lòng thử lại.', 'error');
       return;
     }
 
@@ -563,13 +647,15 @@
       return;
     }
 
-    const total = state.cart.reduce((s, it) => s + it.total, 0);
+    const total = Number(preview.totalAmount || 0);
+    const discount = Number(preview.discountAmount || 0);
     const content = $('dp-confirm-content');
     if (content) {
       content.innerHTML = `
         <div><strong>Đại lý:</strong> ${escHtml(state.currentDealer?.name)} (${escHtml(state.currentDealer?.code)})</div>
         <div><strong>Số lượng dòng hàng:</strong> ${state.cart.length} sản phẩm (${state.cart.reduce((s, it) => s + it.quantity, 0)} kiện/đơn vị)</div>
         <div><strong>Ngày giao dự kiến:</strong> ${escHtml(deliveryDate)}</div>
+        <div><strong>Chiết khấu theo sản lượng:</strong> ${formatVND(discount)}</div>
         <div style="font-size: 1rem; font-weight: 700; color: var(--teal-deep); margin-top: 6px;">Tổng thanh toán: ${formatVND(total)}</div>
       `;
     }

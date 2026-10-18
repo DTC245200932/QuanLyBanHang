@@ -5,6 +5,8 @@ import com.quanlybanhang.config.SecurityConfig;
 import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.response.DealerDebtResponse;
+import com.quanlybanhang.dto.response.VolumeDiscountCalculationResponse;
+import com.quanlybanhang.dto.response.VolumeDiscountItemCalculationResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 import com.quanlybanhang.exception.DealerLockedException;
 import com.quanlybanhang.exception.GlobalExceptionHandler;
@@ -18,6 +20,7 @@ import com.quanlybanhang.security.UserDetailsServiceImpl;
 import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.DealerDeliveryPointService;
 import com.quanlybanhang.service.OrderService;
+import com.quanlybanhang.service.VolumeDiscountPolicyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -79,6 +82,9 @@ class DealerPortalControllerTest {
 
     @MockBean
     private OrderService orderService;
+
+    @MockBean
+    private VolumeDiscountPolicyService volumeDiscountPolicyService;
 
     @MockBean
     private UserDetailsServiceImpl userDetailsService;
@@ -230,6 +236,52 @@ class DealerPortalControllerTest {
                 .andExpect(jsonPath("$.data[0].units[0].unitName").value("lon"))
                 .andExpect(jsonPath("$.data[0].units[1].unitName").value("thùng"))
                 .andExpect(jsonPath("$.data[0].units[1].price").value(432000));
+    }
+
+    @Test
+    @DisplayName("POST /api/portal/orders/preview: Server tính lại giá và chiết khấu, không trả giá sàn nội bộ")
+    void previewOrder_UsesServerPricingAndHidesFloorPrice() throws Exception {
+        when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
+        when(volumeDiscountPolicyService.calculateDiscounts(any())).thenReturn(
+                VolumeDiscountCalculationResponse.builder()
+                        .subtotalAmount(new BigDecimal("180000"))
+                        .discountAmount(new BigDecimal("18000"))
+                        .totalAmount(new BigDecimal("162000"))
+                        .items(List.of(VolumeDiscountItemCalculationResponse.builder()
+                                .productId(10L)
+                                .productCode("BIA-01")
+                                .productName("Bia Heineken lon 330ml")
+                                .unit("lon")
+                                .quantity(new BigDecimal("10"))
+                                .price(new BigDecimal("18000"))
+                                .subtotalAmount(new BigDecimal("180000"))
+                                .discountAmount(new BigDecimal("18000"))
+                                .discountPercent(new BigDecimal("10"))
+                                .totalAmount(new BigDecimal("162000"))
+                                .priceListSellingPrice(new BigDecimal("18000"))
+                                .floorPrice(new BigDecimal("15000"))
+                                .build()))
+                        .build());
+
+        DealerPortalOrderRequest request = DealerPortalOrderRequest.builder()
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(new BigDecimal("10"))
+                        .build()))
+                .build();
+
+        mvc.perform(post("/api/portal/orders/preview")
+                        .with(authentication(dealerAuth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.subtotalAmount").value(180000))
+                .andExpect(jsonPath("$.data.discountAmount").value(18000))
+                .andExpect(jsonPath("$.data.totalAmount").value(162000))
+                .andExpect(jsonPath("$.data.items[0].unitPrice").value(18000))
+                .andExpect(jsonPath("$.data.items[0].discountPercent").value(10))
+                .andExpect(jsonPath("$.data.items[0].floorPrice").doesNotExist());
     }
 
     @Test

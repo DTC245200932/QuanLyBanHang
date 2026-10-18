@@ -170,6 +170,7 @@ class SprintMergeIntegrationTest {
         try {
             matrix.updateRolePermissions(ERole.ROLE_DEALER, EnumSet.of(Permission.ORDER_VIEW));
             call(get("/api/portal/catalog"), dealerToken, null, 403);
+            call(post("/api/portal/orders/preview"), dealerToken, orderBody(1, false), 403);
             call(post("/api/portal/orders"), dealerToken, orderBody(1, false), 403);
         } finally {
             matrix.updateRolePermissions(ERole.ROLE_DEALER, before);

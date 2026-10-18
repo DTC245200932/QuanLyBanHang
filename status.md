@@ -70,7 +70,7 @@ Cập nhật **18/10/2026**, theo backlog nhóm gửi và bản tích hợp vào
 | S4-07 | Danh sách, lọc, tổng tiền | Có | Có | **Đã nối, thống nhất phân trang/DTO** | RLS sales danh sách; quyền một phần | GET `/orders` trả tổng toàn tập lọc, số phần tử, phân trang tùy chọn; trang `/orders` cũng lọc phía FE. |
 | S4-08 | In/PDF và barcode | Có | Có | **Đã nối PDF backend sau tạo đơn** | ORDER_VIEW/vai trò và RLS PDF | Test tạo PDF thật qua. Đã bỏ gọi hàm in chưa có; lỗi PDF không báo lại lỗi tạo đơn. Cần thử in trình duyệt. |
 | S4-09 | Sao chép đơn, áp lại giá | Có | Có | Đã nối nháp DB/nạp giá mới | FE ORDER_CREATE; BE còn fallback role | Không giữ giá cũ; đã sửa URL chuyển trang. Còn xử lý RLS/thu hồi quyền chung. |
-| S4-10 | Cổng đại lý tự đặt | Một phần | Có | **Đã sửa dùng `/portal/**`** | **Role + quyền + đại lý của tài khoản** | Đã nối gán đại lý cho tài khoản; chặn API nội bộ/giả giá, luôn PENDING_APPROVAL. Thiếu preview chiết khấu server và UI sales xác nhận đơn cổng. |
+| S4-10 | Cổng đại lý tự đặt | Có | Có | Đã nối `/portal/**`, xem trước giá/chiết khấu bằng API server và gửi đơn thật | `ROLE_DEALER` + `ORDER_VIEW`/`PRODUCT_VIEW`/`ORDER_CREATE` theo ma trận; `ROLE_ADMIN` luôn được phép; dữ liệu giới hạn theo đại lý liên kết | Catalog không trả giá sàn nội bộ; giá và chiết khấu được tính lại ở server; đơn luôn `PENDING_APPROVAL` và xuất hiện trong luồng duyệt đơn. |
 
 ## Sprint 5 — Theo dõi đơn và tồn kho
 

@@ -22,9 +22,10 @@ có vai trò đại lý trả 400. Thông tin tài khoản trả lại có `deal
 | GET | `/portal/catalog` | DEALER + PRODUCT_VIEW, hoặc ADMIN có liên kết đại lý |
 | GET | `/portal/debt` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
 | GET | `/portal/delivery-points` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
-| GET | `/portal/orders` | DEALER + ORDER_VIEW; dữ liệu giới hạn theo đại lý liên kết |
-| GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW; truy cập đại lý khác trả 403 |
-| POST | `/portal/orders` | DEALER + ORDER_CREATE; server xác định đại lý và giá |
+| POST | `/portal/orders/preview` | DEALER + ORDER_CREATE, hoặc ADMIN có liên kết đại lý | Tính giá và chiết khấu xem trước bằng dữ liệu server |
+| GET | `/portal/orders` | DEALER + ORDER_VIEW hoặc ADMIN có liên kết đại lý; dữ liệu giới hạn theo đại lý liên kết |
+| GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW hoặc ADMIN có liên kết đại lý; truy cập đại lý khác trả 403 |
+| POST | `/portal/orders` | DEALER + ORDER_CREATE hoặc ADMIN có liên kết đại lý; server xác định đại lý và giá |
 
 API cổng cũng cho ADMIN hỗ trợ theo liên kết tài khoản; không có tham số chọn tùy ý
 đại lý trên các endpoint này. Tài khoản DEALER bị chặn API nội bộ như `/products`,
@@ -50,8 +51,9 @@ Body đặt hàng hoặc đặt lại các dòng đã chọn:
 Không có endpoint `/portal/orders/reorder`. FE chọn dòng/đơn vị/số lượng rồi gọi
 một lần `POST /portal/orders`. Server bỏ giá do client gửi, tự tính giá/chiết khấu
 và lấy đại lý của tài khoản; đơn của DEALER luôn là `PENDING_APPROVAL`, chưa giữ tồn.
-Giá và tổng sau chiết khấu khi lưu là kết quả phía server. FE hiện còn thiếu preview
-chiết khấu cho giỏ/đặt lại; không xem tổng giỏ hiện tại là nguồn xác nhận kế toán.
+Giá và tổng sau chiết khấu khi lưu là kết quả phía server. FE gọi
+`POST /portal/orders/preview` khi giỏ hàng thay đổi và gọi lại trước khi xác nhận;
+không xem tổng tự tính trong trình duyệt là nguồn xác nhận kế toán.
 
 ### Danh sách, duyệt đơn và lịch sử
 
@@ -2072,8 +2074,9 @@ Cổng tự đặt hàng trực tuyến dành riêng cho khách hàng đại lý
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/portal/profile` | `ROLE_DEALER`, `ROLE_ADMIN` | Lấy hồ sơ đại lý, thông tin NVKD phụ trách, công nợ và danh sách điểm giao hàng |
-| GET | `/portal/catalog` | `ROLE_DEALER`, `ROLE_ADMIN` | Lấy danh mục sản phẩm và giá theo bảng giá hiệu lực của nhóm khách hàng đại lý |
+| GET | `/portal/catalog` | `ROLE_DEALER` + `PRODUCT_VIEW`, hoặc `ROLE_ADMIN` | Lấy danh mục sản phẩm và giá theo bảng giá hiệu lực của nhóm khách hàng đại lý; không trả giá sàn nội bộ |
 | GET | `/portal/debt` | `ROLE_DEALER`, `ROLE_ADMIN` | Tra cứu hạn mức, công nợ hiện tại và công nợ còn lại thời gian thực |
+| POST | `/portal/orders/preview` | `ROLE_DEALER` + `ORDER_CREATE`, hoặc `ROLE_ADMIN` | Tính giá, chiết khấu sản lượng và tổng tiền từ dữ liệu server trước khi gửi đơn |
 | POST | `/portal/orders` | `ROLE_DEALER`, `ROLE_ADMIN` | Tạo đơn đặt hàng mới (luôn ở trạng thái `PENDING_APPROVAL`) |
 | GET | `/portal/orders` | `ROLE_DEALER`, `ROLE_ADMIN` | Lấy danh sách lịch sử đơn hàng của chính đại lý |
 | GET | `/portal/orders/{id}` | `ROLE_DEALER`, `ROLE_ADMIN` | Xem chi tiết đơn hàng của đại lý |

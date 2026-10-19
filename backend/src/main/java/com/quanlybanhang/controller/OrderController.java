@@ -440,7 +440,7 @@ public class OrderController {
      * Bản sao luôn bắt đầu ở trạng thái Nháp.
      */
     @PostMapping("/{id}/copy")
-    @PreAuthorize("hasAuthority('ORDER_CREATE')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') and hasAuthority('ORDER_VIEW')")
     public ResponseEntity<ApiResponse> copyOrder(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderResponse response = orderService.copyOrder(id, username);
@@ -452,7 +452,7 @@ public class OrderController {
      * S4-09: Sao chép các dòng hàng của đơn cũ trực tiếp vào bản nháp tạo đơn của người dùng.
      */
     @PostMapping("/{id}/copy-to-draft")
-    @PreAuthorize("hasAuthority('ORDER_CREATE')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') and hasAuthority('ORDER_VIEW')")
     public ApiResponse copyOrderToDraft(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyOrderToDraft(id, username);
@@ -476,7 +476,11 @@ public class OrderController {
      */
     @GetMapping(value = "/{id}/print", produces = "text/html;charset=UTF-8")
     @PreAuthorize("hasAuthority('ORDER_VIEW')")
-    public org.springframework.http.ResponseEntity<String> printOrder(@PathVariable Long id) {
+    public org.springframework.http.ResponseEntity<String> printOrder(@PathVariable Long id, Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        // Kiểm tra RLS trước khi dựng HTML; không để ORDER_VIEW trở thành quyền
+        // đọc mọi đơn hàng đối với nhân viên kinh doanh/đại lý.
+        orderService.getOrderById(id, username);
         String html = orderService.generateOrderPrintHtml(id);
         return org.springframework.http.ResponseEntity.ok()
                 .header("Content-Type", "text/html;charset=UTF-8")
@@ -520,7 +524,7 @@ public class OrderController {
      * Mẫu in gồm thông tin đại lý, điểm giao, chi tiết dòng hàng, chiết khấu, tổng tiền và mã vạch để kho tra cứu.
      */
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    @PreAuthorize("hasAnyAuthority('ORDER_VIEW', 'ORDER_CREATE')")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ResponseEntity<byte[]> getOrderPdf(
             @PathVariable Long id,
             @RequestParam(required = false, defaultValue = "false") boolean download,
@@ -542,7 +546,7 @@ public class OrderController {
      * S4-08: Lấy ảnh mã vạch (Barcode Code 128) theo mã đơn hàng để kho tra cứu nhanh hoặc in tem nhãn.
      */
     @GetMapping(value = "/{id}/barcode", produces = MediaType.IMAGE_PNG_VALUE)
-    @PreAuthorize("hasAnyAuthority('ORDER_VIEW', 'ORDER_CREATE')")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ResponseEntity<byte[]> getOrderBarcode(
             @PathVariable Long id,
             Principal principal) {

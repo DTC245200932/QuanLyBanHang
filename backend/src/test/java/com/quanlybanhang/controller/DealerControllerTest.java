@@ -356,7 +356,9 @@ class DealerControllerTest {
                         .build()
         ));
 
-        mvc.perform(get("/api/dealers/1/in-progress-orders").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(get("/api/dealers/1/in-progress-orders")
+                        .with(user("accountant").roles("ACCOUNTANT")
+                                .authorities(new SimpleGrantedAuthority("ORDER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].orderCode").value("DH-100"))

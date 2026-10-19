@@ -66,14 +66,11 @@ test('every visible page has an absolute, extensionless link even from a nested 
   }
 });
 
-test('debt limit menu follows finance roles and view permission', () => {
+test('debt limit menu follows the finance permission matrix', () => {
   assert.ok(ids({roles:['ROLE_ADMIN'], permissions:[]}).includes('debt-limits'));
-  for (const role of ['ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER']) {
+  for (const role of ['ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER', 'ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER']) {
     assert.ok(ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
     assert.ok(!ids({roles:[role], permissions:[]}).includes('debt-limits'));
-  }
-  for (const role of ['ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER']) {
-    assert.ok(!ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
   }
 });
 

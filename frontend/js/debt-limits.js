@@ -1,8 +1,12 @@
 /** S3-05: tra cứu và khai báo hạn mức công nợ theo đại lý. */
-(() => {
+ (async () => {
   "use strict";
   if (new URLSearchParams(location.search).get("view") !== "debt-limits") return;
   if (!Auth.requireLogin()) return;
+  // Quyền có thể vừa được cập nhật trong ma trận khi tab này vẫn đang mở.
+  // Đồng bộ phiên trước khi kiểm tra menu và quyền khai báo để tránh hiện giao diện
+  // nhưng gọi API bằng permissions cũ.
+  await Auth.refreshPermissions();
   if (!MenuConfig.getMenuForUser(Auth.getUser()).some(item => item.id === "debt-limits")) {
     location.href = "/error?status=403";
     return;

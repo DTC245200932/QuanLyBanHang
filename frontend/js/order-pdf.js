@@ -13,7 +13,7 @@ const OrderPdf = (() => {
   }
 
   async function open(order) {
-    if (!Auth.hasAnyPermission('ORDER_VIEW', 'ORDER_CREATE')) return;
+    if (!Auth.hasPermission('ORDER_VIEW')) return;
     const response = await Auth.apiFetch(`/orders/${encodeURIComponent(order.id)}/pdf`);
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));

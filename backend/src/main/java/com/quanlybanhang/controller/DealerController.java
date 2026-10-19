@@ -86,7 +86,7 @@ public class DealerController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER', 'WAREHOUSE_MANAGER', 'DEALER')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW')")
     public ApiResponse getDealerById(@PathVariable Long id) {
         DealerResponse dealer = dealerService.getDealerById(id);
         return ApiResponse.success("Lấy chi tiết đại lý thành công", dealer);
@@ -187,7 +187,7 @@ public class DealerController {
      * Xem danh sách các đơn hàng đang dở dang của một đại lý (S3-07).
      */
     @GetMapping("/{id}/in-progress-orders")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER')")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ApiResponse getInProgressOrders(@PathVariable Long id) {
         List<com.quanlybanhang.dto.response.OrderResponse> orders = dealerService.getInProgressOrders(id);
         return ApiResponse.success("Lấy danh sách đơn hàng đang dở dang của đại lý thành công", orders);

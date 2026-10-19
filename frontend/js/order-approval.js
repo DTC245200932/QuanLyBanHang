@@ -8,8 +8,9 @@
  * - Đơn được duyệt mới chuyển sang giữ chỗ tồn và chờ xuất kho
  * - Lịch sử duyệt không sửa và không xoá được
  */
-(() => {
+ (async () => {
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
   const user = Auth.getUser();
 

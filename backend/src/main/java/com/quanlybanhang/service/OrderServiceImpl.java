@@ -2203,7 +2203,7 @@ public class OrderServiceImpl implements OrderService {
         Order sourceOrder = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
-        validateSalesAccess(sourceOrder, username);
+        validateOrderViewAccess(sourceOrder, username);
 
         if (sourceOrder.getItems() == null || sourceOrder.getItems().isEmpty()) {
             throw new IllegalArgumentException("Đơn hàng không có dòng hàng nào để sao chép");
@@ -2411,7 +2411,7 @@ public class OrderServiceImpl implements OrderService {
         Order sourceOrder = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
-        validateSalesAccess(sourceOrder, username);
+        validateOrderViewAccess(sourceOrder, username);
 
         if (sourceOrder.getItems() == null || sourceOrder.getItems().isEmpty()) {
             throw new IllegalArgumentException("Đơn hàng không có dòng hàng để sao chép.");

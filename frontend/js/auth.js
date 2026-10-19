@@ -83,6 +83,13 @@ const Auth = (() => {
     }
   }
 
+  // Đồng bộ quyền hiện tại từ DB khi mở trang. Access token có thể vẫn còn hạn
+  // nhưng ma trận quyền đã được quản trị viên thay đổi.
+  async function refreshPermissions() {
+    if (!getRefreshToken()) return false;
+    return refreshAccessToken();
+  }
+
   async function performTokenRefresh() {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
@@ -338,6 +345,7 @@ const Auth = (() => {
     apiFetch,
     setProtectedImage,
     requireLogin,
+    refreshPermissions,
     hasRole,
     hasAnyRole,
     hasPermission,

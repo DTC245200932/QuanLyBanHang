@@ -62,10 +62,16 @@ const AppNavigation = (() => {
     renderBreadcrumb(page);
   }
 
-  if (Auth.isLoggedIn()) {
+  async function initialize() {
+    if (!Auth.isLoggedIn()) return;
+    // Nạp lại permissions từ refresh endpoint trước khi dựng menu để thay đổi
+    // ma trận không tạo ra tình trạng menu hiện nhưng API trả 403 (hoặc ngược lại).
+    await Auth.refreshPermissions();
     renderSidebar(Auth.getUser());
     refresh();
   }
+
+  initialize();
   window.addEventListener('pageshow', refresh);
   window.addEventListener('popstate', refresh);
   return { refresh };

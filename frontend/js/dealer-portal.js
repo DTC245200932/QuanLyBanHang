@@ -15,9 +15,10 @@
  * - Không hardcode dữ liệu trong JavaScript.
  * - Sử dụng Auth.apiFetch cho tất cả kết nối API.
  */
-(() => {
+ (async () => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (typeof Auth !== 'undefined' && !Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
   if (!Auth.hasAnyRole('ROLE_DEALER', 'ROLE_ADMIN')
       || !['ORDER_CREATE', 'ORDER_VIEW', 'PRODUCT_VIEW'].every(permission => Auth.hasPermission(permission))) {

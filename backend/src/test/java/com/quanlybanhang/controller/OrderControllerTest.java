@@ -432,7 +432,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-02] POST /api/orders/check-debt - Kiểm tra công nợ khi tạo đơn")
     void checkDebt_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
@@ -477,7 +477,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-03] POST /api/orders/check-inventory - Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa")
     void checkInventory_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderInventoryCheckResponse checkResp = com.quanlybanhang.dto.response.OrderInventoryCheckResponse.builder()
@@ -564,7 +564,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-09] POST /api/orders/{id}/copy - Sao chép đơn hàng thành đơn mới ở trạng thái DRAFT")
     void copyOrder_Returns201Created() throws Exception {
         OrderResponse copyResp = OrderResponse.builder()
@@ -586,7 +586,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-09] POST /api/orders/{id}/copy-to-draft - Sao chép các dòng hàng sang draft của người dùng")
     void copyOrderToDraft_Returns200Ok() throws Exception {
         com.fasterxml.jackson.databind.node.ObjectNode draftNode = objectMapper.createObjectNode();

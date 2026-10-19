@@ -21,9 +21,10 @@
  *   POST /orders/check-inventory               → kiểm tra tồn khả dụng theo dòng hàng (S4-03)
  *   POST /orders                               → tạo đơn hàng
  */
-(() => {
+ (async () => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
   if (!Auth.hasPermission('ORDER_CREATE')) {
     location.href = '/error?status=403';

@@ -10,9 +10,10 @@
  * - Phê duyệt / Từ chối đơn hàng bán dưới giá sàn hoặc vượt hạn mức (Quản lý kinh doanh).
  * - Huỷ đơn hàng giải phóng tồn kho (có cảnh báo).
  */
-(() => {
+ (async () => {
   /* ── 1. Auth Guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
   const user = Auth.getUser();
   if (!Auth.hasPermission('ORDER_VIEW')) {

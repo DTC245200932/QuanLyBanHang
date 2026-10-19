@@ -120,6 +120,7 @@ class DealerPortalControllerTest {
         UserDetailsImpl userDetails = UserDetailsImpl.build(dealerUser, new com.quanlybanhang.config.RolePermissionConfig());
         dealerAuth = new UsernamePasswordAuthenticationToken(
                 userDetails, null, userDetails.getAuthorities());
+        when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
     }
 
     @Test
@@ -248,7 +249,7 @@ class DealerPortalControllerTest {
                 .totalAmount(new BigDecimal("4300000"))
                 .build();
 
-        when(orderService.createOrder(any(), any())).thenReturn(mockOrderResponse);
+        when(orderService.createPortalOrder(any(), any())).thenReturn(mockOrderResponse);
 
         DealerPortalOrderRequest request = DealerPortalOrderRequest.builder()
                 .note("Giao giờ hành chính")
@@ -278,7 +279,7 @@ class DealerPortalControllerTest {
         dealer.setLocked(true);
         dealer.setLockReason("Quá hạn công nợ");
         when(userRepository.findByUsername("dealer.demo")).thenReturn(Optional.of(dealerUser));
-        when(orderService.createOrder(any(), any())).thenThrow(new DealerLockedException("Đại lý đang bị khoá giao dịch"));
+        when(orderService.createPortalOrder(any(), any())).thenThrow(new DealerLockedException("Đại lý đang bị khoá giao dịch"));
 
         DealerPortalOrderRequest request = DealerPortalOrderRequest.builder()
                 .items(List.of(
@@ -307,7 +308,8 @@ class DealerPortalControllerTest {
                 .status("PENDING_APPROVAL")
                 .build();
 
-        when(orderService.getOrdersForDealer("dealer.demo")).thenReturn(List.of(o1));
+        when(orderService.getOrders(any(com.quanlybanhang.dto.request.OrderFilterRequest.class)))
+                .thenReturn(com.quanlybanhang.dto.response.OrderFilterResult.builder().orders(List.of(o1)).build());
 
         mvc.perform(get("/api/portal/orders").with(authentication(dealerAuth)))
                 .andExpect(status().isOk())
@@ -325,7 +327,7 @@ class DealerPortalControllerTest {
                 .status("PENDING_APPROVAL")
                 .build();
 
-        when(orderService.getOrderByIdForDealer(1L, "dealer.demo")).thenReturn(o1);
+        when(orderService.getOrderById(1L, "dealer.demo")).thenReturn(o1);
 
         mvc.perform(get("/api/portal/orders/1").with(authentication(dealerAuth)))
                 .andExpect(status().isOk())

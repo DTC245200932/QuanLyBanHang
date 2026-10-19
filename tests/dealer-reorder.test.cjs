@@ -14,13 +14,15 @@ async function createDealerOrdersEnvironment(options = {}) {
       username: "dealer01",
       fullName: "Đại lý Toàn Cầu",
       roles: ["ROLE_DEALER"],
-      permissions: ["ORDER_VIEW", "ORDER_CREATE"],
+      permissions: ["ORDER_VIEW", "ORDER_CREATE", "PRODUCT_VIEW"],
       customerGroup: "DAI_LY_CAP_1",
     },
     orders = [],
     orderDetail = null,
     catalogProducts = [],
     effectivePriceList = null,
+    dealers = [{ id: 10, code: 'DL-10', name: 'Đại lý 10' }],
+    search = '',
   } = options;
 
   const elements = new Map();
@@ -35,6 +37,9 @@ async function createDealerOrdersEnvironment(options = {}) {
         indeterminate: false,
         textContent: "",
         innerHTML: "",
+        children: [],
+        replaceChildren(...children) { this.children = children; },
+        append(child) { this.children.push(child); },
         dataset: {},
         listeners: {},
         classList: {
@@ -88,7 +93,7 @@ async function createDealerOrdersEnvironment(options = {}) {
       addEventListener: () => {},
     },
     window: {
-      location: { href: "/dealer-orders", pathname: "/dealer-orders", search: "" },
+      location: { href: "/dealer-orders", pathname: "/dealer-orders", search },
     },
     location: { href: "/dealer-orders", pathname: "/dealer-orders", search: "" },
     sessionStorage: {
@@ -114,6 +119,7 @@ async function createDealerOrdersEnvironment(options = {}) {
     Map,
     JSON,
     RegExp,
+    URLSearchParams,
     Boolean,
     CSS: { escape: (s) => s },
     setTimeout,
@@ -130,6 +136,8 @@ async function createDealerOrdersEnvironment(options = {}) {
       logout: () => {},
       apiFetch: async (url, fetchOptions = {}) => {
         apiCalls.push({ url, options: fetchOptions });
+        url = url.split('?')[0];
+        if (url === '/portal/dealers') return { ok: true, json: async () => ({ success: true, data: dealers }) };
         if (fetchOptions.method === "POST") {
           try {
             submittedPayloads.push(JSON.parse(fetchOptions.body));
@@ -194,6 +202,7 @@ async function createDealerOrdersEnvironment(options = {}) {
 
   const scriptPath = path.join(__dirname, "../frontend/js/dealer-orders.js");
   const code = fs.readFileSync(scriptPath, "utf8");
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../frontend/js/dealer-portal-context.js'), 'utf8'), context);
   vm.runInContext(code, context);
 
   // Chờ loadOrders hoàn tất
@@ -207,6 +216,44 @@ async function createDealerOrdersEnvironment(options = {}) {
   };
 }
 
+test('Admin mở Đơn hàng của tôi khi chưa liên kết đại lý và chọn hồ sơ từ DB', async () => {
+  const env = await createDealerOrdersEnvironment({ currentUser: { roles: ['ROLE_ADMIN'], permissions: [] } });
+  assert.deepEqual(env.apiCalls.map(call => call.url), ['/portal/dealers']);
+  assert.equal(env.context.window.location.href, '/dealer-orders');
+  assert.equal(env.element('dealer-orders-switcher').hidden, false);
+  assert.match(env.element('dealer-orders-body').innerHTML, /Chọn đại lý/);
+  const select = env.element('dealer-orders-select');
+  select.value = '10';
+  select.dispatchEvent('change');
+  assert.equal(env.context.window.location.href, '/dealer-orders?dealerId=10');
+});
+
+test('Admin theo dõi và đặt lại đơn với ngữ cảnh đại lý xuyên suốt', async () => {
+  const order = { id: 55, orderCode: 'DH-55', dealerId: 10, status: 'COMPLETED',
+    items: [{ id: 1, productId: 101, productCode: 'SP-101', quantity: 2, unit: 'lon' }] };
+  const env = await createDealerOrdersEnvironment({ currentUser: { roles: ['ROLE_ADMIN'], permissions: [] },
+    search: '?dealerId=10', orders: [order], orderDetail: order,
+    catalogProducts: [{ id: 101, code: 'SP-101', name: 'Sản phẩm', active: true, unit: 'lon' }],
+    effectivePriceList: { items: [{ productId: 101, sellingPrice: 15000 }] },
+  });
+  assert.ok(env.apiCalls.some(call => call.url === '/portal/orders?dealerId=10'));
+  env.element('dealer-orders-body').dispatchEvent({ type: 'click', target: {
+    closest: selector => selector === '[data-reorder-id]' ? { dataset: { reorderId: '55' } } : null,
+  } });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.ok(env.apiCalls.some(call => call.url === '/portal/orders/55?dealerId=10'));
+  assert.ok(env.apiCalls.some(call => call.url === '/portal/catalog?dealerId=10'));
+  env.element('reorder-delivery-date').value = '2026-10-25';
+  for (const listener of env.element('btn-confirm-reorder').listeners.click) await listener();
+  assert.ok(env.apiCalls.some(call => call.options.method === 'POST' && call.url === '/portal/orders?dealerId=10'));
+});
+
+test('Thu hồi PRODUCT_VIEW ẩn nút đặt lại vì không còn quyền tra giá hiện hành', async () => {
+  const env = await createDealerOrdersEnvironment({ currentUser: { roles: ['ROLE_DEALER'],
+    permissions: ['ORDER_VIEW', 'ORDER_CREATE'] }, orders: [{ id: 1, status: 'COMPLETED' }] });
+  assert.ok(!env.element('dealer-orders-body').innerHTML.includes('dealer-order-reorder-btn'));
+});
+
 test("S5-02: Quyền ORDER_CREATE được liên kết với nút Đặt lại đơn hàng", async () => {
   // 1. Đại lý có quyền ORDER_CREATE
   const envWithPerm = await createDealerOrdersEnvironment({
@@ -214,7 +261,7 @@ test("S5-02: Quyền ORDER_CREATE được liên kết với nút Đặt lại �
       id: 1,
       username: "dealer1",
       roles: ["ROLE_DEALER"],
-      permissions: ["ORDER_VIEW", "ORDER_CREATE"],
+      permissions: ["ORDER_VIEW", "ORDER_CREATE", "PRODUCT_VIEW"],
     },
     orders: [{ id: 101, orderCode: "DH-101", totalAmount: 500000, status: "COMPLETED" }],
   });

@@ -4,7 +4,7 @@ Base URL: `http://localhost:8080/api`
 
 Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
 
-## Hợp đồng đã đồng bộ ngày 18/10/2026
+## Hợp đồng đã đồng bộ ngày 19/10/2026
 
 Phần này cập nhật hợp đồng của bản ghép sprint 1–5. Các giới hạn nghiệm thu được ghi ở
 [`status.md`](../status.md) và [báo cáo rà soát](../docs/SPRINT_1_5_AUDIT_20261018.md).
@@ -18,16 +18,24 @@ có vai trò đại lý trả 400. Thông tin tài khoản trả lại có `deal
 
 | Method | Endpoint | Quyền |
 |---|---|---|
-| GET | `/portal/profile` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
-| GET | `/portal/catalog` | DEALER + PRODUCT_VIEW, hoặc ADMIN có liên kết đại lý |
-| GET | `/portal/debt` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
-| GET | `/portal/delivery-points` | DEALER + ORDER_VIEW, hoặc ADMIN có liên kết đại lý |
-| GET | `/portal/orders` | DEALER + ORDER_VIEW; dữ liệu giới hạn theo đại lý liên kết |
-| GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW; truy cập đại lý khác trả 403 |
-| POST | `/portal/orders` | DEALER + ORDER_CREATE; server xác định đại lý và giá |
+| GET | `/portal/dealers` | Chỉ ADMIN; danh sách lựa chọn `{id, code, name}` từ DB, gồm cả đại lý ngừng hoạt động để tra đơn cũ |
+| GET | `/portal/profile` | DEALER + ORDER_VIEW, hoặc ADMIN chọn đại lý |
+| GET | `/portal/catalog` (alias `/portal/products`) | DEALER + PRODUCT_VIEW, hoặc ADMIN chọn đại lý |
+| GET | `/portal/debt` | DEALER + ORDER_VIEW, hoặc ADMIN chọn đại lý |
+| GET | `/portal/delivery-points` | DEALER + ORDER_VIEW, hoặc ADMIN chọn đại lý |
+| GET | `/portal/orders` | DEALER + ORDER_VIEW, hoặc ADMIN; danh sách giới hạn theo đại lý trong ngữ cảnh |
+| GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW, hoặc ADMIN; đơn ngoài đại lý trong ngữ cảnh trả 403 |
+| POST | `/portal/orders` | DEALER + ORDER_CREATE, hoặc ADMIN; server xác định đại lý và giá |
 
-API cổng cũng cho ADMIN hỗ trợ theo liên kết tài khoản; không có tham số chọn tùy ý
-đại lý trên các endpoint này. Tài khoản DEALER bị chặn API nội bộ như `/products`,
+ADMIN không cần liên kết với hồ sơ đại lý. Frontend gọi `GET /portal/dealers`, yêu cầu
+chọn đại lý rồi gửi query `dealerId` cho mọi API dữ liệu cổng (kể cả POST/chi tiết/đặt lại).
+Ví dụ: `GET /portal/profile?dealerId=10`, `GET /portal/orders?dealerId=10`,
+`POST /portal/orders?dealerId=10`. ADMIN không chọn và không có liên kết trả 400 với
+thông báo chọn đại lý; ID không tồn tại trả 400. Liên kết sẵn của ADMIN vẫn được hỗ trợ
+khi không có query. DEALER luôn dùng liên kết của tài khoản; query chỉ được trùng ID đó,
+chỉ định đại lý khác trả 403 cho cả đọc và tạo đơn. `dealerId` trong body không chọn
+được đại lý. Bộ chọn FE giữ ngữ cảnh trong URL, không lưu vào bộ nhớ trình duyệt hay
+thay đổi liên kết tài khoản. Tài khoản DEALER bị chặn API nội bộ như `/products`,
 `/orders`, `/dealers`, `/warehouse/**`; sử dụng hợp đồng cổng để đọc dữ liệu của mình.
 Xác thực, hồ sơ cá nhân và ảnh sản phẩm có xác thực vẫn sử dụng API tương ứng.
 
@@ -49,7 +57,11 @@ Body đặt hàng hoặc đặt lại các dòng đã chọn:
 
 Không có endpoint `/portal/orders/reorder`. FE chọn dòng/đơn vị/số lượng rồi gọi
 một lần `POST /portal/orders`. Server bỏ giá do client gửi, tự tính giá/chiết khấu
-và lấy đại lý của tài khoản; đơn của DEALER luôn là `PENDING_APPROVAL`, chưa giữ tồn.
+và lấy đại lý đã xác thực; mọi đơn qua cổng, kể cả ADMIN hỗ trợ, luôn là
+`PENDING_APPROVAL`, chưa giữ tồn; `createdBy` vẫn là người thực hiện thật.
+Menu và guard của trang đặt hàng cần cả `ORDER_CREATE`, `ORDER_VIEW`, `PRODUCT_VIEW`
+để dùng đầy đủ API hồ sơ/công nợ/danh mục; theo dõi đơn cần `ORDER_VIEW`, nút đặt lại
+cần thêm `ORDER_CREATE` và `PRODUCT_VIEW`. ADMIN luôn có toàn bộ quyền theo ma trận.
 Giá và tổng sau chiết khấu khi lưu là kết quả phía server. FE hiện còn thiếu preview
 chiết khấu cho giỏ/đặt lại; không xem tổng giỏ hiện tại là nguồn xác nhận kế toán.
 
@@ -1907,7 +1919,7 @@ Cung cấp tính năng dành riêng cho Đại lý (`ROLE_DEALER`) theo dõi tr�
 
 ### Nguyên tắc bảo mật & Cô lập dữ liệu (Row-Level Security)
 - Tài khoản đại lý được liên kết với một bản ghi `Dealer` thông qua trường `dealer_id` trên thực thể User.
-- API lấy danh sách đơn `/api/portal/orders` và API xem chi tiết `/api/portal/orders/{id}` tự động truy vấn đơn hàng thuộc `dealer_id` của tài khoản đăng nhập.
+- API lấy danh sách đơn `/api/portal/orders` và API xem chi tiết `/api/portal/orders/{id}` giới hạn theo `dealer_id` liên kết của DEALER; ADMIN chọn ngữ cảnh bằng query `dealerId` (xem hợp đồng ngày 19/10/2026 ở đầu tài liệu).
 - Nếu người dùng thuộc một đại lý cố tình truy cập vào ID đơn hàng của đại lý khác, server sẽ chặn và trả về lỗi `403 Forbidden` (`Bạn không có quyền thực hiện chức năng này`).
 - Nhân viên kinh doanh (`ROLE_SALES`) chỉ xem được đơn hàng của các đại lý mà mình được phân công phụ trách.
 - Quản trị viên (`ROLE_ADMIN`) và Quản lý kinh doanh (`ROLE_SALES_MANAGER`) có thể xem toàn bộ đơn hàng.

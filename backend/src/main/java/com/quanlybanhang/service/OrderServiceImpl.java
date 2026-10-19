@@ -176,6 +176,16 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse createOrder(OrderRequest request, String username) {
+        return createOrder(request, username, false);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse createPortalOrder(OrderRequest request, String username) {
+        return createOrder(request, username, true);
+    }
+
+    private OrderResponse createOrder(OrderRequest request, String username, boolean portalOrder) {
         if (request.getItems() == null || request.getItems().isEmpty()) {
             throw new IllegalArgumentException("Đơn hàng phải có ít nhất 1 sản phẩm");
         }
@@ -491,7 +501,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // S4-10: Đơn hàng do đại lý tự đặt qua cổng luôn ở trạng thái CHỜ DUYỆT (PENDING_APPROVAL), do nhân viên phụ trách xác nhận
-        if (isDealer) {
+        if (portalOrder || isDealer) {
             order.setStatus("PENDING_APPROVAL");
             order.setRequiresApproval(true);
             String dealerReason = "[Đại lý tự đặt qua cổng] Chờ nhân viên phụ trách xác nhận";
@@ -512,12 +522,12 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
-        if (orderRequiresApproval || isDealer) {
+        if (orderRequiresApproval || portalOrder || isDealer) {
             recordStatusHistory(saved, null, "PENDING_APPROVAL", "Đơn hàng chờ Quản lý kinh doanh duyệt: " + saved.getApprovalReason(), username);
         } else {
             recordStatusHistory(saved, null, "RECORDED", "Đơn hàng đã được duyệt/ghi nhận, đã giữ chỗ tồn kho", username);
         }
-        if ((orderRequiresApproval || isDealer) && orderApprovalHistoryRepository != null) {
+        if ((orderRequiresApproval || portalOrder || isDealer) && orderApprovalHistoryRepository != null) {
             try {
                 OrderApprovalHistory history = OrderApprovalHistory.builder()
                         .order(saved)
@@ -2597,8 +2607,8 @@ public class OrderServiceImpl implements OrderService {
     private boolean isDealerUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) return false;
-        return auth.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_DEALER".equals(a.getAuthority()));
+        return auth.getAuthorities().stream().anyMatch(a -> "ROLE_DEALER".equals(a.getAuthority()))
+                && auth.getAuthorities().stream().noneMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
     }
 
     private boolean isDealerOnlyUser() {

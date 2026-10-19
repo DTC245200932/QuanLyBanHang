@@ -23,6 +23,8 @@ Backend vẫn chạy ở cổng 8080 theo cấu hình trong README.
 | Chiết khấu sản lượng | `/discount-policies` |
 | Hồ sơ, tìm kiếm và khoá đại lý | `/dealers` |
 | Tạo đơn hàng | `/create-order` |
+| Đơn hàng của tôi / theo dõi đơn đại lý | `/dealer-orders` |
+| Cổng đại lý tự đặt hàng | `/dealer-portal` |
 | Hạn mức công nợ | `/dashboard?view=debt-limits` |
 | Nhà cung cấp | `/suppliers` |
 | Đơn vị tính | `/warehouse/units?tab=units` |
@@ -42,6 +44,13 @@ sang đường dẫn mới; tham số truy vấn được giữ lại.
 Server dùng thư viện chuẩn Python, không cần cài thêm package. Khi thêm trang,
 cập nhật `ROUTES` trong `serve_frontend.py` và menu trong `frontend/js/menu-config.js`.
 Không dùng `python -m http.server` cho các đường dẫn ngắn này.
+
+ADMIN mở `/dealer-orders` hoặc `/dealer-portal` sẽ chọn đại lý từ danh sách DB,
+không cần gắn hồ sơ đại lý vào tài khoản admin. Sau khi chọn, URL có `?dealerId=<id>`;
+mọi API cổng dùng cùng ngữ cảnh đó. Trang chưa chọn đại lý không gọi API dữ liệu
+thiếu ngữ cảnh. DEALER không có bộ chọn, chỉ sử dụng hồ sơ đã liên kết và quyền
+trong ma trận: theo dõi cần `ORDER_VIEW`, đặt hàng cần cả `ORDER_CREATE`, `ORDER_VIEW`,
+`PRODUCT_VIEW`; nút đặt lại cần thêm `ORDER_CREATE` và `PRODUCT_VIEW`.
 
 ## Breadcrumb và mục sidebar hiện tại
 

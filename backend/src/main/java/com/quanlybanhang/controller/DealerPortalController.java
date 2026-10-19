@@ -3,12 +3,14 @@ package com.quanlybanhang.controller;
 import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
+import com.quanlybanhang.dto.request.OrderFilterRequest;
 import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.PriceListRepository;
 import com.quanlybanhang.repository.ProductRepository;
 import com.quanlybanhang.repository.UnitConversionRepository;
 import com.quanlybanhang.repository.UserRepository;
+import com.quanlybanhang.repository.DealerRepository;
 import com.quanlybanhang.service.DealerDebtService;
 import com.quanlybanhang.service.DealerDeliveryPointService;
 import com.quanlybanhang.service.OrderService;
@@ -16,6 +18,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -49,6 +52,7 @@ public class DealerPortalController {
     private final PriceListRepository priceListRepository;
     private final ProductRepository productRepository;
     private final UnitConversionRepository unitConversionRepository;
+    private final DealerRepository dealerRepository;
 
     /**
      * Lấy thực thể Dealer liên kết với người dùng đang đăng nhập.
@@ -65,16 +69,29 @@ public class DealerPortalController {
                 .anyMatch(r -> r.getName() == ERole.ROLE_ADMIN);
 
         if (isAdmin && requestedDealerId != null) {
-            // Admin được chỉ định dealerId để mô phỏng
-            return currentUser.getDealer() != null && currentUser.getDealer().getId().equals(requestedDealerId)
-                    ? currentUser.getDealer()
-                    : null;
+            return dealerRepository.findById(requestedDealerId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý được chọn"));
         }
 
         if (currentUser.getDealer() == null) {
+            if (isAdmin) {
+                throw new IllegalArgumentException("Vui lòng chọn đại lý để sử dụng cổng đại lý");
+            }
             throw new AccessDeniedException("Tài khoản chưa được liên kết với hồ sơ đại lý nào");
         }
+        if (requestedDealerId != null && !requestedDealerId.equals(currentUser.getDealer().getId())) {
+            throw new AccessDeniedException("Bạn chỉ có quyền truy cập dữ liệu của chính đại lý mình");
+        }
         return currentUser.getDealer();
+    }
+
+    /** Danh sách lựa chọn cho quản trị viên hỗ trợ đại lý, không yêu cầu liên kết tài khoản. */
+    @GetMapping("/dealers")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse getDealerOptions() {
+        return ApiResponse.success("Danh sách đại lý", dealerRepository.findAll(Sort.by("name", "id"))
+                .stream().map(dealer -> new NamedResourceResponse(dealer.getId(), dealer.getCode(), dealer.getName()))
+                .toList());
     }
 
     /**
@@ -82,8 +99,8 @@ public class DealerPortalController {
      */
     @GetMapping("/profile")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
-    public ApiResponse getProfile(Principal principal) {
-        Dealer dealer = resolveAuthenticatedDealer(principal, null);
+    public ApiResponse getProfile(Principal principal, @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         DealerDebtResponse debt = dealerDebtService.getDealerDebtInfo(dealer);
         List<DealerDeliveryPointResponse> points = deliveryPointService.getDeliveryPointsByDealer(dealer.getId());
 
@@ -125,8 +142,8 @@ public class DealerPortalController {
      */
     @GetMapping({"/catalog", "/products"})
     @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('PRODUCT_VIEW'))")
-    public ApiResponse getCatalog(Principal principal) {
-        Dealer dealer = resolveAuthenticatedDealer(principal, null);
+    public ApiResponse getCatalog(Principal principal, @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         CustomerGroup group = dealer.getCustomerGroup();
         if (group == null) {
             throw new IllegalArgumentException("Đại lý chưa được gán nhóm khách hàng");
@@ -208,8 +225,8 @@ public class DealerPortalController {
      */
     @GetMapping("/debt")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
-    public ApiResponse getDebt(Principal principal) {
-        Dealer dealer = resolveAuthenticatedDealer(principal, null);
+    public ApiResponse getDebt(Principal principal, @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         DealerDebtResponse debt = dealerDebtService.getDealerDebtInfo(dealer);
         return ApiResponse.success("Thông tin công nợ đại lý", debt);
     }
@@ -225,8 +242,8 @@ public class DealerPortalController {
     @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_CREATE'))")
     public ResponseEntity<ApiResponse> createOrder(
             @Valid @RequestBody DealerPortalOrderRequest request,
-            Principal principal) {
-        Dealer dealer = resolveAuthenticatedDealer(principal, null);
+            Principal principal, @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
 
         OrderRequest orderRequest = OrderRequest.builder()
                 .dealerId(dealer.getId())
@@ -238,7 +255,7 @@ public class DealerPortalController {
                         .unit(item.getUnit()).quantity(item.getQuantity()).note(item.getNote()).build()).toList())
                 .build();
 
-        OrderResponse response = orderService.createOrder(orderRequest, principal.getName());
+        OrderResponse response = orderService.createPortalOrder(orderRequest, principal.getName());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Đặt hàng thành công. Đơn hàng đang ở trạng thái Chờ duyệt.", response));
     }
@@ -248,11 +265,10 @@ public class DealerPortalController {
      */
     @GetMapping("/orders")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
-    public ApiResponse getMyOrders(Principal principal) {
-        if (principal == null) {
-            throw new AccessDeniedException("Yêu cầu đăng nhập");
-        }
-        List<OrderResponse> orders = orderService.getOrdersForDealer(principal.getName());
+    public ApiResponse getMyOrders(Principal principal, @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
+        List<OrderResponse> orders = orderService.getOrders(
+                OrderFilterRequest.builder().dealerId(dealer.getId()).build()).getOrders();
         return ApiResponse.success("Danh sách đơn hàng của đại lý", orders);
     }
 
@@ -261,11 +277,13 @@ public class DealerPortalController {
      */
     @GetMapping("/orders/{id}")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
-    public ApiResponse getMyOrderDetail(@PathVariable Long id, Principal principal) {
-        if (principal == null) {
-            throw new AccessDeniedException("Yêu cầu đăng nhập");
+    public ApiResponse getMyOrderDetail(@PathVariable Long id, Principal principal,
+                                       @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
+        OrderResponse order = orderService.getOrderById(id, principal.getName());
+        if (!dealer.getId().equals(order.getDealerId())) {
+            throw new AccessDeniedException("Đơn hàng không thuộc đại lý đang chọn");
         }
-        OrderResponse order = orderService.getOrderByIdForDealer(id, principal.getName());
         return ApiResponse.success("Chi tiết đơn hàng", order);
     }
 
@@ -274,8 +292,8 @@ public class DealerPortalController {
      */
     @GetMapping("/delivery-points")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
-    public ApiResponse getDeliveryPoints(Principal principal) {
-        Dealer dealer = resolveAuthenticatedDealer(principal, null);
+    public ApiResponse getDeliveryPoints(Principal principal, @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         List<DealerDeliveryPointResponse> points = deliveryPointService.getDeliveryPointsByDealer(dealer.getId());
         return ApiResponse.success("Danh sách điểm giao hàng", points);
     }

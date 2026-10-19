@@ -10,6 +10,9 @@ public interface OrderService {
 
     OrderResponse createOrder(OrderRequest request, String username);
 
+    /** Đơn gửi qua cổng luôn chờ duyệt, kể cả khi ADMIN hỗ trợ đại lý. */
+    OrderResponse createPortalOrder(OrderRequest request, String username);
+
     List<OrderResponse> getAllOrders();
 
     /**

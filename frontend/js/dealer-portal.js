@@ -19,7 +19,8 @@
   /* ── Auth guard ─────────────────────────────────────────── */
   if (typeof Auth !== 'undefined' && !Auth.requireLogin()) return;
 
-  if (!Auth.hasAnyRole('ROLE_DEALER', 'ROLE_ADMIN') || !Auth.hasPermission('ORDER_CREATE')) {
+  if (!Auth.hasAnyRole('ROLE_DEALER', 'ROLE_ADMIN')
+      || !['ORDER_CREATE', 'ORDER_VIEW', 'PRODUCT_VIEW'].every(permission => Auth.hasPermission(permission))) {
     location.href = '/error?status=403';
     return;
   }
@@ -76,7 +77,17 @@
   async function loadDealerContext() {
     state.user = Auth.getUser();
     try {
-      const res = await Auth.apiFetch('/portal/profile');
+      const ready = await DealerPortalContext.init('dp-dealer-switcher-wrap', 'dp-dealer-select');
+      if (!ready) {
+        $('topbar-dealer-name').textContent = 'Chọn đại lý';
+        $('info-dealer-status').textContent = 'Chưa chọn đại lý';
+        $('info-dealer-assigned').textContent = 'Chọn đại lý để xem danh mục, công nợ và đặt hàng.';
+        $('dp-catalog-count').textContent = 'Chưa chọn đại lý';
+        $('dp-products-grid').innerHTML = '<p>Chọn đại lý để xem sản phẩm có thể đặt.</p>';
+        $('btn-submit-order').disabled = true;
+        return;
+      }
+      const res = await Auth.apiFetch(DealerPortalContext.url('/portal/profile'));
       const result = await res.json();
       if (!res.ok || !result.success || !result.data) {
         throw new Error(result.message || 'Không tải được hồ sơ đại lý');
@@ -85,7 +96,7 @@
       state.currentDealer = { ...profile, assignedUser: { fullName: profile.salesUserFullName } };
       state.dealers = [state.currentDealer];
       const switcher = $('dp-dealer-switcher-wrap');
-      if (switcher) switcher.hidden = true;
+      if (switcher) switcher.hidden = !DealerPortalContext.isAdmin;
       await applyDealer(state.currentDealer);
     } catch (err) {
       state.currentDealer = null;
@@ -142,7 +153,7 @@
     if (!sel) return;
     sel.innerHTML = '<option value="">— Đang tải điểm giao —</option>';
     try {
-      const res = await Auth.apiFetch('/portal/delivery-points');
+      const res = await Auth.apiFetch(DealerPortalContext.url('/portal/delivery-points'));
       const result = await res.json();
       state.deliveryPoints = (res.ok && result.success ? result.data : []) || [];
 
@@ -166,7 +177,7 @@
   /* ── Load Debt Info ─────────────────────────────────────── */
   async function loadDebtInfo() {
     try {
-      const res = await Auth.apiFetch('/portal/debt');
+      const res = await Auth.apiFetch(DealerPortalContext.url('/portal/debt'));
       const result = await res.json();
       if (!res.ok || !result.success || !result.data) {
         throw new Error(result.message || 'Không tải được công nợ, vui lòng thử lại');
@@ -213,7 +224,7 @@
   async function loadCatalogForDealer() {
     const grid = $('dp-products-grid');
     try {
-      const res = await Auth.apiFetch('/portal/catalog');
+      const res = await Auth.apiFetch(DealerPortalContext.url('/portal/catalog'));
       const result = await res.json();
       if (!res.ok || !result.success || !Array.isArray(result.data)) {
         throw new Error(result.message || 'Không tải được sản phẩm và bảng giá');
@@ -619,7 +630,7 @@
     };
 
     try {
-      const res = await Auth.apiFetch('/portal/orders', {
+      const res = await Auth.apiFetch(DealerPortalContext.url('/portal/orders'), {
         method: 'POST',
         body: JSON.stringify(payload),
       });

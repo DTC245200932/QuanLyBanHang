@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfig.class, RestAccessDeniedHandler.class, AuthEntryPointJwt.class, GlobalExceptionHandler.class, ObjectMapper.class})
 @DisplayName("DealerPortalController - API Cổng Đại lý theo dõi đơn hàng (S5-01)")
 class DealerOrderTrackingControllerTest {
+    @MockBean private com.quanlybanhang.repository.DealerRepository dealerRepository;
     @MockBean private com.quanlybanhang.repository.UserRepository userRepository;
     @MockBean private com.quanlybanhang.repository.ProductRepository productRepository;
     @MockBean private com.quanlybanhang.repository.PriceListRepository priceListRepository;
@@ -68,6 +69,9 @@ class DealerOrderTrackingControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        when(userRepository.findByUsername("dealer_user")).thenReturn(java.util.Optional.of(
+                com.quanlybanhang.model.User.builder().username("dealer_user")
+                        .dealer(com.quanlybanhang.model.Dealer.builder().id(1L).build()).build()));
         objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
 
         org.mockito.Mockito.doAnswer(invocation -> {
@@ -113,7 +117,8 @@ class DealerOrderTrackingControllerTest {
                 .totalLineItems(3)
                 .build();
 
-        when(orderService.getOrdersForDealer("dealer_user")).thenReturn(List.of(order1, order2));
+        when(orderService.getOrders(any(com.quanlybanhang.dto.request.OrderFilterRequest.class)))
+                .thenReturn(com.quanlybanhang.dto.response.OrderFilterResult.builder().orders(List.of(order1, order2)).build());
 
         mockMvc.perform(get("/api/portal/orders"))
                 .andExpect(status().isOk())
@@ -176,7 +181,7 @@ class DealerOrderTrackingControllerTest {
                 .items(List.of(item1, item2))
                 .build();
 
-        when(orderService.getOrderByIdForDealer(101L, "dealer_user")).thenReturn(order);
+        when(orderService.getOrderById(101L, "dealer_user")).thenReturn(order);
 
         mockMvc.perform(get("/api/portal/orders/101"))
                 .andExpect(status().isOk())
@@ -201,7 +206,7 @@ class DealerOrderTrackingControllerTest {
     @WithMockUser(username = "dealer_user", authorities = {"ROLE_DEALER", "ORDER_VIEW"})
     @DisplayName("GET /api/portal/orders/{id} - Đại lý cố truy cập đơn của đại lý khác bị trả về 403 Forbidden")
     void getMyOrderDetail_OtherDealerOrder_Returns403Forbidden() throws Exception {
-        when(orderService.getOrderByIdForDealer(999L, "dealer_user"))
+        when(orderService.getOrderById(999L, "dealer_user"))
                 .thenThrow(new AccessDeniedException("Bạn không có quyền xem đơn hàng của đại lý khác"));
 
         mockMvc.perform(get("/api/portal/orders/999"))

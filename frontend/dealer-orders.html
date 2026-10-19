@@ -56,13 +56,20 @@
             <div>
               <p class="dealer-orders-eyebrow">Cổng đại lý</p>
               <h1 id="dealer-orders-title">Đơn hàng của tôi</h1>
-              <p class="dealer-orders-intro">Theo dõi trạng thái xử lý, ngày giao dự kiến và số lượng thực giao của các đơn hàng bạn đã đặt.</p>
+              <p class="dealer-orders-intro" id="dealer-orders-intro">Theo dõi trạng thái xử lý, ngày giao dự kiến và số lượng thực giao của các đơn hàng bạn đã đặt.</p>
             </div>
             <div class="dealer-orders-heading__badge">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14H4V5a2 2 0 0 1 2-2Z" /><path d="M8 7h8M8 11h8M8 15h5" /></svg>
-              <span>Chỉ hiển thị đơn của bạn</span>
+              <span id="dealer-orders-scope">Chỉ hiển thị đơn của bạn</span>
             </div>
           </section>
+
+          <div class="dealer-orders-toolbar" id="dealer-orders-switcher" hidden>
+            <label class="dealer-orders-filter" for="dealer-orders-select">
+              <span>Chọn đại lý xem đơn hàng</span>
+              <select id="dealer-orders-select"><option value="">Đang tải đại lý…</option></select>
+            </label>
+          </div>
 
           <section class="dealer-order-stats" aria-label="Tổng quan đơn hàng">
             <article class="dealer-order-stat dealer-order-stat--all"><span class="dealer-order-stat__label">Tổng đơn hàng</span><strong id="stat-total">—</strong><span class="dealer-order-stat__hint">Tất cả trạng thái</span></article>
@@ -256,6 +263,7 @@
     <script src="/js/menu-config.js"></script>
     <script src="/js/toast.js"></script>
     <script src="/js/app-navigation.js"></script>
+    <script src="/js/dealer-portal-context.js"></script>
     <script src="/js/dealer-orders.js"></script>
   </body>
 </html>

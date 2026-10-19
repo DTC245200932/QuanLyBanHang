@@ -130,6 +130,57 @@ class SprintMergeIntegrationTest {
     }
 
     @Test
+    void adminWithoutDealerLinkCanSelectADealerThroughoutThePortal() throws Exception {
+        String admin = login("admin");
+        assertThat(users.findByUsername("admin").orElseThrow().getDealer()).isNull();
+        JsonNode options = call(get("/api/portal/dealers"), admin, null, 200).get("data");
+        assertThat(options.findValues("id").stream().map(JsonNode::asLong)).contains(dealer.getId());
+        for (String path : List.of("profile", "catalog", "debt", "delivery-points", "orders")) {
+            call(get("/api/portal/" + path).param("dealerId", dealer.getId().toString()), admin, null, 200);
+            call(get("/api/portal/" + path), admin, null, 400);
+        }
+        call(get("/api/portal/profile").param("dealerId", "-1"), admin, null, 400);
+        JsonNode created = call(post("/api/portal/orders").param("dealerId", dealer.getId().toString()),
+                admin, orderBody(1, true), 201).get("data");
+        long id = created.get("id").asLong();
+        assertThat(created.get("dealerId").asLong()).isEqualTo(dealer.getId());
+        assertThat(created.get("createdBy").asText()).isEqualTo("admin");
+        assertThat(created.get("status").asText()).isEqualTo("PENDING_APPROVAL");
+        assertThat(created.get("totalAmount").decimalValue()).isEqualByComparingTo("480000");
+        assertThat(stock().getReservedQuantity()).isEqualByComparingTo("0");
+        JsonNode orders = call(get("/api/portal/orders").param("dealerId", dealer.getId().toString()),
+                admin, null, 200).get("data");
+        assertThat(orders.size()).isEqualTo(1);
+        call(get("/api/portal/orders/" + id).param("dealerId", dealer.getId().toString()), admin, null, 200);
+        Dealer other = dealers.save(Dealer.builder().code("OTHER-" + product.getCode()).name("Đại lý khác")
+                .customerGroup(CustomerGroup.DAI_LY_CAP_2).warehouse(warehouse).build());
+        assertThat(call(get("/api/portal/orders").param("dealerId", other.getId().toString()), admin, null, 200)
+                .get("data").isEmpty()).isTrue();
+        call(get("/api/portal/orders/" + id).param("dealerId", other.getId().toString()), admin, null, 403);
+    }
+
+    @Test
+    void dealerCannotSelectAnotherDealerOrReadAdminOptions() throws Exception {
+        Dealer other = dealers.save(Dealer.builder().code("OTHER-" + product.getCode()).name("Đại lý khác")
+                .customerGroup(CustomerGroup.DAI_LY_CAP_2).warehouse(warehouse).build());
+        call(get("/api/portal/dealers"), dealerToken, null, 403);
+        for (String path : List.of("profile", "catalog", "products", "debt", "delivery-points", "orders", "orders/1")) {
+            call(get("/api/portal/" + path).param("dealerId", other.getId().toString()), dealerToken, null, 403);
+        }
+        call(post("/api/portal/orders").param("dealerId", other.getId().toString()), dealerToken, orderBody(1, false), 403);
+        call(get("/api/portal/profile").param("dealerId", dealer.getId().toString()), dealerToken, null, 200);
+        Set<Permission> before = new HashSet<>(matrix.getPermissions(ERole.ROLE_DEALER));
+        try {
+            matrix.updateRolePermissions(ERole.ROLE_DEALER, EnumSet.of(Permission.ORDER_CREATE, Permission.PRODUCT_VIEW));
+            for (String path : List.of("profile", "debt", "delivery-points", "orders", "orders/1")) {
+                call(get("/api/portal/" + path).param("dealerId", dealer.getId().toString()), dealerToken, null, 403);
+            }
+        } finally {
+            matrix.updateRolePermissions(ERole.ROLE_DEALER, before);
+        }
+    }
+
+    @Test
     void receiptsAndTransfersKeepPhysicalStockSeparateFromDraftsAndTransit() throws Exception {
         String admin = login("admin");
         Supplier supplier = suppliers.save(Supplier.builder().code("NCC-" + product.getCode()).name("NCC kiểm thử").build());

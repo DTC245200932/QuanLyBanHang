@@ -13,6 +13,7 @@
   const user = Auth.getUser() || {};
   const canManageUnits = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_SALES_MANAGER");
   const canRecordVouchers = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF");
+  const canViewOrders = Auth.hasPermission("ORDER_VIEW");
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (v) => String(v ?? "").replace(/[&<>'"]/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -64,7 +65,9 @@
         this.request("/products"),
         this.warehouseId ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
         this.warehouseId ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`) : [],
-        this.request("/orders"),
+        // Đơn vị tính/tồn kho không yêu cầu ORDER_VIEW. Chỉ tải lịch sử đơn
+        // khi ma trận quyền cho phép, tránh mở trang bị 403 dù menu đã hiện.
+        canViewOrders ? this.request("/orders") : [],
       ]);
 
       const conversions = await Promise.all((products || []).map((product) =>

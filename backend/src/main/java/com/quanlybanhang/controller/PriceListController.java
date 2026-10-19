@@ -49,7 +49,7 @@ public class PriceListController {
     }
 
     @GetMapping("/effective")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES', 'ACCOUNTANT', 'VIEWER', 'DEALER')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ApiResponse getEffectivePriceList(
             @RequestParam CustomerGroup customerGroup,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {

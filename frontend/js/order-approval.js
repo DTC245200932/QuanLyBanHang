@@ -1,7 +1,7 @@
 /**
  * order-approval.js — S4-05 Duyệt đơn vượt hạn mức / dưới giá sàn.
  *
- * Quyền: ORDER_APPROVE trong ma trận phân quyền (ROLE_ADMIN luôn được phép)
+ * Quyền: ORDER_APPROVE + ORDER_VIEW trong ma trận phân quyền (ROLE_ADMIN luôn được phép)
  * - Danh sách đơn chờ duyệt hiển thị rõ lý do cần duyệt và mức vi phạm
  * - Ba hành động: Duyệt, Từ chối, Trả lại sửa
  *   — Từ chối và Trả lại sửa bắt buộc nhập ý kiến
@@ -14,8 +14,8 @@
   const user = Auth.getUser();
 
   // ── Permission guard ──
-  if (!Auth.hasPermission("ORDER_APPROVE")) {
-    sessionStorage.setItem("errorMessage", "Bạn không có quyền truy cập chức năng duyệt đơn hàng.");
+  if (!Auth.hasPermission("ORDER_APPROVE") || !Auth.hasPermission("ORDER_VIEW")) {
+    sessionStorage.setItem("errorMessage", "Bạn cần quyền xem và duyệt đơn hàng để truy cập chức năng này.");
     window.location.href = "/error?status=403";
     return;
   }

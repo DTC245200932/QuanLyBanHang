@@ -82,6 +82,17 @@ test('debt limit menu uses the existing dashboard route', () => {
   assert.equal(item.href, '/dashboard?view=debt-limits');
 });
 
+test('order approval menu requires both viewing and approving orders', () => {
+  assert.ok(ids({
+    roles: ['ROLE_SALES_MANAGER'],
+    permissions: ['ORDER_APPROVE', 'ORDER_VIEW'],
+  }).includes('order-approval'));
+  assert.ok(!ids({
+    roles: ['ROLE_SALES_MANAGER'],
+    permissions: ['ORDER_APPROVE'],
+  }).includes('order-approval'));
+});
+
 const pageAt = href => menu.getPageForLocation(new URL(href, 'http://127.0.0.1:5500'));
 
 test('special dashboard view wins over the generic dashboard, independent of unrelated query values', () => {

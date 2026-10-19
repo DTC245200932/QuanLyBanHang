@@ -78,9 +78,9 @@ class DealerControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES"})
-    @DisplayName("Các vai trò hợp lệ được phép xem danh sách đại lý (200 OK)")
-    void allowedRolesCanReadDealers(String role) throws Exception {
+    @ValueSource(strings = {"CUSTOMER_VIEW", "ORDER_VIEW"})
+    @DisplayName("Quyền CUSTOMER_VIEW hoặc ORDER_VIEW được phép xem danh sách đại lý (200 OK)")
+    void allowedPermissionsCanReadDealers(String permission) throws Exception {
         when(dealerService.getAllDealers(any(), any(), any(), any(), any(), any(), any())).thenReturn(
                 new PageImpl<>(List.of(DealerResponse.builder()
                         .id(1L)
@@ -92,7 +92,8 @@ class DealerControllerTest {
                         .build()))
         );
 
-        mvc.perform(get("/api/dealers").with(user("reader").roles(role)))
+        mvc.perform(get("/api/dealers").with(user("reader")
+                        .authorities(new SimpleGrantedAuthority(permission))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].code").value("DL001"))
                 .andExpect(jsonPath("$.data.content[0].name").value("Đại lý Cấp 1 Minh Phát"))
@@ -213,7 +214,8 @@ class DealerControllerTest {
     @Test
     @DisplayName("Khai báo số dòng mỗi trang vượt quá 200 bị từ chối")
     void excessivePageSizeRejected() throws Exception {
-        mvc.perform(get("/api/dealers?size=250").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(get("/api/dealers?size=250").with(user("accountant")
+                        .authorities(new SimpleGrantedAuthority("CUSTOMER_VIEW"))))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(dealerService);
@@ -229,7 +231,8 @@ class DealerControllerTest {
                         .assignedUsers(List.of())
                         .build());
 
-        mvc.perform(get("/api/dealers/options").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(get("/api/dealers/options").with(user("accountant")
+                        .authorities(new SimpleGrantedAuthority("CUSTOMER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.customerGroups[0].value").value("DAI_LY_CAP_1"));
     }

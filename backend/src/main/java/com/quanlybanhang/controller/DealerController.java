@@ -44,7 +44,7 @@ public class DealerController {
     private final com.quanlybanhang.service.OrderService orderService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER', 'WAREHOUSE_MANAGER')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW')")
     public ApiResponse getAllDealers(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) CustomerGroup customerGroup,
@@ -79,7 +79,7 @@ public class DealerController {
     }
 
     @GetMapping("/options")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN', 'SALES', 'VIEWER', 'WAREHOUSE_MANAGER')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW')")
     public ApiResponse getDealerOptions() {
         DealerOptionsResponse options = dealerService.getDealerOptions();
         return ApiResponse.success("Lấy danh mục tham chiếu đại lý thành công", options);

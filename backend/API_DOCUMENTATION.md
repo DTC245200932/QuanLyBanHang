@@ -1116,9 +1116,9 @@ Quy tắc nghiệp vụ:
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý (tìm kiếm, lọc theo nhóm, khu vực, người phụ trách, trạng thái, phân trang) |
+| GET | `/dealers` | `CUSTOMER_VIEW` hoặc `ORDER_VIEW` | Danh sách đại lý (tìm kiếm, lọc theo nhóm, khu vực, người phụ trách, trạng thái, phân trang) |
 | GET | `/dealers/active` | `ORDER_CREATE` | Danh sách đại lý đang hoạt động (phục vụ dropdown chọn đại lý khi tạo đơn) |
-| GET | `/dealers/options` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh mục tham chiếu tạo/sửa đại lý (nhóm khách hàng, khu vực, người phụ trách) |
+| GET | `/dealers/options` | `CUSTOMER_VIEW` hoặc `ORDER_VIEW` | Danh mục tham chiếu tạo/sửa đại lý (nhóm khách hàng, khu vực, người phụ trách) |
 | GET | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Chi tiết hồ sơ đại lý |
 | POST | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo hồ sơ đại lý mới (kiểm tra tính duy nhất của mã đại lý) |
 | PUT | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật hồ sơ đại lý (kiểm tra trùng mã) |
@@ -2254,8 +2254,9 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) in hoặc xuất file PDF phi�
 
 Quy tắc nghiệp vụ:
 1. **Vai trò & Ma trận phân quyền**:
-   - Mã quyền: `ORDER_VIEW`.
-   - Các vai trò được cấp quyền: `ROLE_SALES` (Nhân viên kinh doanh), `ROLE_SALES_MANAGER` (Quản lý kinh doanh), `ROLE_ADMIN` (Quản trị viên), `ROLE_WAREHOUSE_MANAGER` (Quản lý kho), `ROLE_WAREHOUSE_STAFF` (Nhân viên kho), `ROLE_ACCOUNTANT` (Kế toán), `ROLE_VIEWER` (Người xem).
+   - Mã quyền xem/in: `ORDER_VIEW`.
+   - Tài khoản chỉ có `ORDER_CREATE` được xuất PDF/mã vạch cho đơn do chính mình tạo; tài khoản có `ORDER_VIEW` được xem theo phạm vi dữ liệu của mình.
+   - `ROLE_ADMIN` luôn được phép theo ma trận quyền.
 2. **Bảo mật phân quyền cấp dòng (Row-Level Security - RLS)**:
    - Nhân viên kinh doanh (`ROLE_SALES`) chỉ được phép xem, in hoặc xuất PDF các đơn hàng của đại lý do chính mình phụ trách (`assignedUser`) hoặc đơn do chính mình tạo (`createdBy`).
    - Cố tình truy cập hoặc in đơn hàng của đại lý khác sẽ bị chặn với mã lỗi **HTTP 403 Forbidden** (`AccessDeniedException`).
@@ -2275,8 +2276,8 @@ Quy tắc nghiệp vụ:
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/orders/{id}/pdf` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Xuất file PDF phiếu xác nhận đơn hàng kèm mã vạch. Mặc định trả `inline` để xem/in ngay trên trình duyệt; thêm `?download=true` để tải file về máy |
-| GET | `/orders/{id}/barcode` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Lấy ảnh mã vạch (Barcode Code 128) dạng PNG độc lập theo mã đơn hàng để in tem nhãn hoặc quét nhanh |
+| GET | `/orders/{id}/pdf` | `ORDER_VIEW` hoặc `ORDER_CREATE` | Xuất file PDF phiếu xác nhận đơn hàng kèm mã vạch. Tài khoản chỉ có `ORDER_CREATE` chỉ được xuất đơn do chính mình tạo; mặc định trả `inline`, thêm `?download=true` để tải file về máy |
+| GET | `/orders/{id}/barcode` | `ORDER_VIEW` hoặc `ORDER_CREATE` | Lấy ảnh mã vạch (Barcode Code 128) dạng PNG; tài khoản chỉ có `ORDER_CREATE` chỉ được lấy mã vạch đơn do chính mình tạo |
 
 #### Ví dụ Request xuất PDF xem trước (`GET /api/orders/1/pdf`):
 ```http

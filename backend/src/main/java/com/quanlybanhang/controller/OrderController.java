@@ -520,7 +520,7 @@ public class OrderController {
      * Mẫu in gồm thông tin đại lý, điểm giao, chi tiết dòng hàng, chiết khấu, tổng tiền và mã vạch để kho tra cứu.
      */
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize("hasAnyAuthority('ORDER_VIEW', 'ORDER_CREATE')")
     public ResponseEntity<byte[]> getOrderPdf(
             @PathVariable Long id,
             @RequestParam(required = false, defaultValue = "false") boolean download,
@@ -542,7 +542,7 @@ public class OrderController {
      * S4-08: Lấy ảnh mã vạch (Barcode Code 128) theo mã đơn hàng để kho tra cứu nhanh hoặc in tem nhãn.
      */
     @GetMapping(value = "/{id}/barcode", produces = MediaType.IMAGE_PNG_VALUE)
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize("hasAnyAuthority('ORDER_VIEW', 'ORDER_CREATE')")
     public ResponseEntity<byte[]> getOrderBarcode(
             @PathVariable Long id,
             Principal principal) {

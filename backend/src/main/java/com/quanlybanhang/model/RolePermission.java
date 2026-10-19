@@ -2,6 +2,8 @@ package com.quanlybanhang.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Quyền được gán cho một vai trò. Ma trận được lưu trong database để thay đổi
@@ -23,10 +25,12 @@ public class RolePermission {
     private Long id;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "role_name", nullable = false, length = 30)
     private ERole role;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 50)
     private Permission permission;
 }

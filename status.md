@@ -1,13 +1,26 @@
 # Trạng thái sprint 1–5
 
-Cập nhật **18/10/2026**, theo backlog nhóm gửi và bản tích hợp vào `develop`.
+Cập nhật **19/10/2026**, gồm bản rà soát backlog và sửa lỗi khởi động MySQL ở ma trận quyền.
 
 **Chưa thể nghiệm thu toàn bộ sprint 1–5.** Có backend hoặc giao diện chưa đồng nghĩa với đủ tính năng, nối đúng và kiểm quyền đầy đủ.
 
 - Nội dung backlog có **48 story**, từ S1-01 đến S5-09. Tiêu đề ghi 76 story/8 sprint nhưng không có nội dung sprint 6–8.
 - Bản tích hợp chứa 13 PR: **#78, #82, #87, #91, #92, #95, #96, #97, #98, #99, #100, #101, #102**. PR #95 và #100 được chuyển từ `main` sang `develop`.
-- **499 test backend, 55 test JavaScript và 5 test định tuyến đều qua**; `mvn verify` tạo được JAR. Có 5 test tích hợp HTTP + Spring Security + H2 thật, không mock service/repository.
-- Chưa nghiệm thu trên MySQL thật, SMTP thật, toàn bộ giao diện 360px hoặc tệp 5.000 SKU trong đợt này.
+- **515 test backend đều qua** bằng `mvn verify`, tạo được JAR. Có 6 test tích hợp HTTP + Spring Security + H2 thật, không mock service/repository.
+- Ngày 19/10: **6 test persistence trên MySQL 8.0.46 thật** và **5 test JavaScript tập trung vào thu hồi quyền/Admin** đều qua. JAR cũng khởi động được trên MySQL riêng dùng một lần, nâng cấp schema enum cũ và giữ quyền đã lưu. Đợt rà soát 18/10 đã chạy 55 test JavaScript và 5 test định tuyến.
+- Chưa nghiệm thu toàn bộ nghiệp vụ trên MySQL thật, SMTP thật, toàn bộ giao diện 360px hoặc tệp 5.000 SKU.
+
+## Sửa lỗi khởi động MySQL và lưu ma trận quyền — 19/10/2026
+
+| Hạng mục | Backend | Frontend | BE ↔ FE | Kiểm quyền / bằng chứng |
+|---|---|---|---|---|
+| `Data truncated for column 'permission'` | Xong: lưu `role_name`/`permission` bằng `VARCHAR`; tự nâng cấp enum cũ với `ddl-auto=update` | Có sẵn màn hình ma trận, tiếp tục dùng danh mục quyền từ API | Đã nối GET/PUT `/admin/permissions` | MySQL thật chấp nhận toàn bộ mã vai trò/quyền hiện tại, giữ dòng cũ và ID của nó. |
+| Lưu/khôi phục ma trận an toàn | Xong: transaction bao trọn xóa + insert; chỉ đổi quyền trong bộ nhớ sau khi DB ghi thành công | Có sẵn hiển thị lỗi khi API lưu thất bại | Đã nối luồng lưu/reset hiện có | Test lỗi insert xác nhận rollback cả quyền cũ trong DB và trạng thái trong bộ nhớ. |
+| Thu hồi hết quyền và đọc lại sau khởi động | Xong: vai trò thiếu dòng quyền được giữ rỗng; chỉ bổ sung quyền ADMIN còn thiếu | Đã kiểm: sau refresh, menu tạo đơn bị ẩn và truy cập trực tiếp bị chặn | Đã kiểm danh sách `permissions` từ refresh thật qua mã Auth/MenuConfig | Cùng JWT: API kho từ 200 → 403 sau thu hồi; ADMIN vẫn 200. Khởi động lại JAR thật vẫn giữ quyền rỗng, API vẫn 403 và ID các dòng ADMIN không đổi. |
+
+Phạm vi kiểm tra này là lưu/đọc ma trận và các đường API/menu nêu trên; các hạn chế phân quyền của story khác vẫn được ghi trong bảng sprint bên dưới.
+
+Bằng chứng: [kiểm tra MySQL, restart và kết nối quyền BE/FE](docs/permission-startup-verification-20261019.json).
 
 ## Cách đọc bảng
 
@@ -21,7 +34,7 @@ Cập nhật **18/10/2026**, theo backlog nhóm gửi và bản tích hợp vào
 | S1-02 | Gia hạn phiên, đăng xuất | Có | Có | Đã nối refresh/logout | JWT, blacklist, trạng thái tài khoản | FE còn lưu token/hồ sơ trong `sessionStorage`, trái skill backend; refresh token có hạn cố định. |
 | S1-03 | Quên và đặt lại mật khẩu | Có | Có | Đã nối forgot/reset | Token 30 phút, dùng một lần theo service | Có test; cần thử nhận email SMTP thật. |
 | S1-04 | Đổi mật khẩu | Có | Có | Đã nối từ hồ sơ | Người đăng nhập; tăng `tokenVersion` | Kiểm mật khẩu hiện tại/độ mạnh, thu hồi phiên cũ. Có test. |
-| S1-05 | Ma trận quyền | Một phần | Có | Đã nối đọc/lưu ma trận | **Chưa đồng bộ toàn hệ thống** | Nhiều API dùng quyền hoặc vai trò nên gỡ quyền vẫn gọi được. Đã chặn giá vốn/biên lợi nhuận với ADMIN; cổng có test thu hồi quyền thật. |
+| S1-05 | Ma trận quyền | Một phần | Có | Đã nối đọc/lưu ma trận | **Chưa đồng bộ toàn hệ thống**; ADMIN luôn được phép | Đã sửa lỗi enum MySQL, transaction và việc cấp lại quyền khi đọc ma trận. Một số API khác vẫn dùng quyền hoặc vai trò nên gỡ quyền còn gọi được; chưa nghiệm thu toàn hệ thống. |
 | S1-06 | Menu theo quyền, mobile | Có | Có | Menu lấy quyền từ phiên | Một phần, phụ thuộc S1-05 | Đã thêm quyền menu Đơn hàng/Duyệt đơn, sửa menu cổng. Cần kiểm toàn bộ trang ở 360px. |
 | S1-07 | Trang lỗi chung | Có | Có | Đã nối 403/404/phiên hết hạn | Route lỗi/xác thực | Có trang chung và hành động quay lại; test định tuyến qua. |
 | S1-08 | CRUD, tìm và phân trang tài khoản | Có | Có | Đã nối `/admin/users` | ADMIN hai phía | Có gửi mật khẩu tạm; cần SMTP thật. Đã nối chọn đại lý cho tài khoản đại lý. |

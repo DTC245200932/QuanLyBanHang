@@ -156,6 +156,18 @@ Tất cả endpoint dưới `/admin/**` yêu cầu `ROLE_ADMIN` và được ki�
 | PUT | `/admin/permissions/{role}` | Khai báo/cập nhật quyền cho vai trò; quyền được lưu vào database, ADMIN luôn được chuẩn hóa thành toàn bộ quyền |
 | POST | `/admin/permissions/reset` | Khôi phục ma trận quyền 7 vai trò về mặc định ban đầu và lưu vào database |
 
+Ma trận lưu mã vai trò/quyền dưới dạng `VARCHAR(30)`/`VARCHAR(50)` để các mã mới
+không phụ thuộc danh sách MySQL `ENUM` cũ. Với `ddl-auto=update`, Hibernate nâng cấp
+hai cột khi khởi động. Backend không xóa/ghi lại các dòng quyền đã có hoặc bổ sung
+quyền mặc định cho vai trò không có dòng dữ liệu. Chỉ các quyền `ROLE_ADMIN` còn
+thiếu được thêm vào: quản trị viên luôn được phép, đồng thời các dòng này đánh dấu
+ma trận đã khởi tạo để thu hồi mọi quyền của vai trò khác không kích hoạt seed lại.
+Bảng trống ở lần cài đặt đầu được khởi tạo mặc định.
+PUT từng vai trò và POST reset ghi trong transaction; chỉ cập nhật bộ quyền đang
+hoạt động sau khi ghi DB thành công. Lỗi ghi phải giữ nguyên ma trận trước đó.
+Sau khi thu hồi quyền, JWT đang dùng bị kiểm tra lại ở request kế tiếp; login/refresh
+trả danh sách `permissions` hiện tại để frontend ẩn menu và chặn trang tương ứng.
+
 ### Tìm kiếm
 
 ```text

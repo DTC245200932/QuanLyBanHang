@@ -84,38 +84,40 @@ public class RolePermissionConfig {
             }
 
             Map<ERole, Set<Permission>> loaded = new EnumMap<>(ERole.class);
+            for (ERole role : ERole.values()) {
+                loaded.put(role, EnumSet.noneOf(Permission.class));
+            }
             for (RolePermission item : stored) {
                 if (item.getRole() != null && item.getPermission() != null) {
-                    loaded.computeIfAbsent(item.getRole(), ignored -> EnumSet.noneOf(Permission.class))
-                            .add(item.getPermission());
+                    loaded.get(item.getRole()).add(item.getPermission());
                 }
             }
-            Map<ERole, Set<Permission>> defaults = defaultPermissions();
-            for (ERole role : ERole.values()) {
-                loaded.putIfAbsent(role, EnumSet.copyOf(defaults.get(role)));
+            Set<Permission> missingAdmin = EnumSet.allOf(Permission.class);
+            missingAdmin.removeAll(loaded.get(ERole.ROLE_ADMIN));
+            if (!missingAdmin.isEmpty()) {
+                // ADMIN is immutable. Keep its rows as an initialization marker, so
+                // revoking the last non-admin grant cannot make a legacy matrix
+                // look like a new installation on the next startup.
+                rolePermissionRepository.saveAllAndFlush(missingAdmin.stream()
+                        .map(permission -> RolePermission.builder()
+                                .role(ERole.ROLE_ADMIN).permission(permission).build())
+                        .toList());
             }
             rolePermissions.clear();
             rolePermissions.putAll(copyMatrix(loaded));
             enforceAdminPermissions();
-            // Bổ sung vai trò còn thiếu và sửa dữ liệu ADMIN cũ nếu cần.
-            persistAll(rolePermissions);
+            // No rows for a non-admin role means no grants; never restore its defaults.
         }
     }
 
     private void persistAll(Map<ERole, Set<Permission>> matrix) {
         if (rolePermissionRepository == null) return;
-        for (ERole role : ERole.values()) {
-            replaceStoredPermissions(role, matrix.getOrDefault(role, Set.of()));
-        }
+        rolePermissionRepository.replaceMatrix(matrix);
     }
 
     private void replaceStoredPermissions(ERole role, Set<Permission> permissions) {
         if (rolePermissionRepository == null) return;
-        rolePermissionRepository.deleteByRole(role);
-        List<RolePermission> rows = permissions.stream()
-                .map(permission -> RolePermission.builder().role(role).permission(permission).build())
-                .toList();
-        if (!rows.isEmpty()) rolePermissionRepository.saveAll(rows);
+        rolePermissionRepository.replaceByRole(role, permissions);
     }
 
     private void enforceAdminPermissions() {
@@ -133,8 +135,9 @@ public class RolePermissionConfig {
     public synchronized void updateRolePermissions(ERole role, Set<Permission> newPermissions) {
         if (role == null) throw new IllegalArgumentException("Vai trò không được để trống");
         if (role == ERole.ROLE_ADMIN) {
-            rolePermissions.put(role, EnumSet.allOf(Permission.class));
-            replaceStoredPermissions(role, rolePermissions.get(role));
+            Set<Permission> permissions = EnumSet.allOf(Permission.class);
+            replaceStoredPermissions(role, permissions);
+            rolePermissions.put(role, permissions);
             return;
         }
         if (newPermissions == null) newPermissions = Collections.emptySet();
@@ -159,15 +162,16 @@ public class RolePermissionConfig {
         }
         Set<Permission> permissions = newPermissions.isEmpty()
                 ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(newPermissions);
-        rolePermissions.put(role, permissions);
         replaceStoredPermissions(role, permissions);
+        rolePermissions.put(role, permissions);
     }
 
     public synchronized void resetToDefault() {
+        Map<ERole, Set<Permission>> defaults = defaultPermissions();
+        persistAll(defaults);
         rolePermissions.clear();
-        rolePermissions.putAll(defaultPermissions());
+        rolePermissions.putAll(defaults);
         enforceAdminPermissions();
-        persistAll(rolePermissions);
     }
 
     public synchronized Set<Permission> getPermissions(ERole role) {

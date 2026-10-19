@@ -2,15 +2,21 @@ package com.quanlybanhang.config;
 
 import com.quanlybanhang.model.ERole;
 import com.quanlybanhang.model.Permission;
+import com.quanlybanhang.model.RolePermission;
+import com.quanlybanhang.repository.RolePermissionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
 
 /**
  * Kiểm thử ma trận phân quyền 7 vai trò nghiệp vụ (S1-05).
@@ -156,5 +162,47 @@ class RolePermissionConfigTest {
 
         permissions.resetToDefault();
         assertThat(permissions.getPermissions(ERole.ROLE_VIEWER)).contains(Permission.REPORT_SALES);
+    }
+
+    @Test
+    void loadingAnExistingMatrixDoesNotRewriteRowsOrGrantMissingRolesDefaults() {
+        RolePermissionRepository repository = storedSalesPermissions();
+        assertThat(permissions.getPermissions(ERole.ROLE_SALES)).containsExactly(Permission.ORDER_VIEW);
+        assertThat(permissions.getPermissions(ERole.ROLE_VIEWER)).isEmpty();
+        assertThat(permissions.getPermissions(ERole.ROLE_ADMIN)).containsExactlyInAnyOrder(Permission.values());
+        verify(repository).findAll();
+        verifyNoMoreInteractions(repository);
+    }
+
+    @Test
+    void failedSaveKeepsThePreviousInMemoryPermissions() {
+        RolePermissionRepository repository = storedSalesPermissions();
+        doThrow(new DataIntegrityViolationException("simulated insert failure"))
+                .when(repository).replaceByRole(ERole.ROLE_SALES, Set.of(Permission.ORDER_CREATE));
+        assertThatThrownBy(() -> permissions.updateRolePermissions(ERole.ROLE_SALES, Set.of(Permission.ORDER_CREATE)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(permissions.getPermissions(ERole.ROLE_SALES)).containsExactly(Permission.ORDER_VIEW);
+    }
+
+    @Test
+    void failedResetKeepsThePreviousInMemoryMatrix() {
+        RolePermissionRepository repository = storedSalesPermissions();
+        var before = permissions.getAllPermissions();
+        doThrow(new DataIntegrityViolationException("simulated reset failure"))
+                .when(repository).replaceMatrix(anyMap());
+        assertThatThrownBy(() -> permissions.resetToDefault()).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(permissions.getAllPermissions()).isEqualTo(before);
+    }
+
+    private RolePermissionRepository storedSalesPermissions() {
+        RolePermissionRepository repository = mock(RolePermissionRepository.class);
+        List<RolePermission> stored = new ArrayList<>();
+        stored.add(RolePermission.builder().role(ERole.ROLE_SALES).permission(Permission.ORDER_VIEW).build());
+        for (Permission permission : Permission.values()) {
+            stored.add(RolePermission.builder().role(ERole.ROLE_ADMIN).permission(permission).build());
+        }
+        when(repository.findAll()).thenReturn(stored);
+        permissions.setRolePermissionRepository(repository);
+        return repository;
     }
 }

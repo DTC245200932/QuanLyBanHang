@@ -53,6 +53,7 @@ class SprintMergeIntegrationTest {
     @Autowired SupplierRepository suppliers;
     @Autowired PasswordEncoder passwords;
     @Autowired RolePermissionConfig matrix;
+    @Autowired RolePermissionRepository permissionRows;
 
     Warehouse warehouse, destination;
     Product product;
@@ -173,6 +174,32 @@ class SprintMergeIntegrationTest {
             call(post("/api/portal/orders"), dealerToken, orderBody(1, false), 403);
         } finally {
             matrix.updateRolePermissions(ERole.ROLE_DEALER, before);
+        }
+    }
+
+    @Test
+    void revokedSalesPermissionsSurviveReloadAndReachTheFrontendSession() throws Exception {
+        Set<Permission> before = new HashSet<>(matrix.getPermissions(ERole.ROLE_SALES));
+        String admin = login("admin");
+        String username = dealer.getAssignedUser().getUsername();
+        JsonNode session = call(post("/api/auth/login"), null,
+                Map.of("username", username, "password", "SprintTest2026"), 200);
+        call(get("/api/warehouse/options"), salesToken, null, 200);
+        try {
+            call(put("/api/admin/permissions/ROLE_SALES"), admin, List.of(), 200);
+            assertThat(permissionRows.findByRole(ERole.ROLE_SALES)).isEmpty();
+            RolePermissionConfig restarted = new RolePermissionConfig();
+            restarted.setRolePermissionRepository(permissionRows);
+            assertThat(restarted.getPermissions(ERole.ROLE_SALES)).isEmpty();
+            call(get("/api/warehouse/options"), salesToken, null, 403);
+            call(post("/api/orders/calculate"), salesToken, orderBody(1, false), 403);
+            JsonNode refreshed = call(post("/api/auth/refresh"), null,
+                    Map.of("refreshToken", session.get("refreshToken").asText()), 200);
+            assertThat(refreshed.get("roles").toString()).contains("ROLE_SALES");
+            assertThat(refreshed.get("permissions").isEmpty()).isTrue();
+            call(get("/api/warehouse/options"), admin, null, 200);
+        } finally {
+            matrix.updateRolePermissions(ERole.ROLE_SALES, before);
         }
     }
 

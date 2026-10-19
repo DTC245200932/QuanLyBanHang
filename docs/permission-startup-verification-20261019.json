@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-19",
+  "database": "Disposable MySQL 8.0.46 on loopback:33307",
+  "packagedApplicationStartup": true,
+  "legacyGrantAndIdPreserved": true,
+  "permissionColumnType": "varchar(50)",
+  "roleColumnType": "varchar(30)",
+  "missingAdminPermissionsAdded": 31,
+  "salesAccessBeforeRevocation": 200,
+  "salesAccessAfterRevocation": 403,
+  "adminAccessAfterRevocation": 200,
+  "refreshedSessionPermissions": [],
+  "frontendFromRealRefreshResponse": {
+    "canCreate": false,
+    "visible": false
+  },
+  "backendVerifyTests": 515,
+  "mysqlPersistenceTests": 6,
+  "focusedJavascriptTests": 5,
+  "packagedApplicationRestart": true,
+  "salesPermissionsAfterRestart": [],
+  "salesAccessAfterRestart": 403,
+  "adminAccessAfterRestart": 200,
+  "adminRowIdsUnchangedAfterRestart": true,
+  "frontendVerification": "Node VM runs production Auth and MenuConfig with the actual HTTP refresh payload; focused tests also run the create-order page guard."
+}

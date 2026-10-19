@@ -303,6 +303,44 @@ Get-NetTCPConnection -State Listen -LocalPort 3306
 - Kiểm tra username, password và cổng `3306`.
 - Kiểm tra tài khoản MySQL có quyền dùng hoặc tạo database `quanlybanhang`.
 
+### Backend dừng với `Data truncated for column 'permission'`
+
+Lỗi này có thể xảy ra khi `role_permissions.permission` vẫn là MySQL `ENUM`
+chỉ chứa danh sách quyền của phiên bản cũ. Hibernate 6 dùng kiểu này mặc định
+cho `@Enumerated(EnumType.STRING)` trên MySQL
+([tài liệu Hibernate](https://docs.jboss.org/hibernate/orm/6.4/introduction/html_single/Hibernate_Introduction.html)).
+
+Mã hiện tại lưu `role_name` bằng `VARCHAR(30)` và `permission` bằng `VARCHAR(50)`.
+Với cấu hình `spring.jpa.hibernate.ddl-auto=update` của repo, khởi động lại backend
+sẽ nâng cấp hai cột này và giữ các dòng quyền đang có. Tài khoản database phải
+có quyền `ALTER` trên bảng. Nếu môi trường quản lý schema riêng, áp dụng trước:
+
+```sql
+ALTER TABLE role_permissions
+  MODIFY COLUMN role_name VARCHAR(30) NOT NULL,
+  MODIFY COLUMN permission VARCHAR(50) NOT NULL;
+```
+
+Khi bảng đã có dữ liệu, backend giữ nguyên các quyền đã lưu; vai trò không có
+dòng quyền sẽ không được tự cấp quyền mặc định. Backend chỉ bổ sung các dòng
+`ROLE_ADMIN` còn thiếu để bảo đảm quản trị viên luôn có toàn bộ quyền và để việc
+thu hồi quyền cuối cùng của các vai trò khác không làm bảng trở thành bảng trống.
+Quyền mặc định chỉ được tạo khi bảng trống hoặc quản trị viên chủ động khôi phục
+ma trận. Lưu/khôi phục ma trận dùng transaction; nếu lưu thất bại, quyền cũ được giữ.
+
+Kiểm tra hồi quy mặc định dùng H2:
+
+```powershell
+cd D:\GitHub\QuanLyBanHang\backend
+.\mvnw.cmd "-Dtest=RolePermissionConfigTest,RolePermissionPersistenceTest,SprintMergeIntegrationTest" test
+```
+
+`RolePermissionPersistenceTest` cũng chạy được với MySQL bằng
+`-Dpermission.test.datasource.url=jdbc:mysql://127.0.0.1:33307/permission_regression`
+và các thuộc tính `permission.test.datasource.username`/`permission.test.datasource.password`.
+Chỉ dùng database kiểm thử trống, dùng một lần: test tạo schema enum cũ rồi kiểm tra
+nâng cấp, đọc/ghi toàn bộ mã quyền và rollback khi insert lỗi.
+
 ### Frontend báo `Failed to fetch`
 
 - Đảm bảo backend đang chạy ở cổng `8080`.

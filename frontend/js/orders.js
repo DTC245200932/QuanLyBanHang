@@ -78,12 +78,16 @@
   };
 
   const STATUS_CONFIG = {
+    DRAFT:            { label: 'Nháp', cls: 'order-status-badge--draft' },
     PENDING_APPROVAL: { label: 'Chờ duyệt', cls: 'order-status-badge--pending' },
     RECORDED:         { label: 'Đã ghi nhận', cls: 'order-status-badge--approved' },
     APPROVED:         { label: 'Đã duyệt', cls: 'order-status-badge--approved' },
     PICKING:          { label: 'Đang lấy hàng', cls: 'order-status-badge--picking' },
+    PROCESSING:       { label: 'Đang lấy hàng', cls: 'order-status-badge--picking' },
     EXPORTED:         { label: 'Đã xuất kho', cls: 'order-status-badge--exported' },
+    SHIPPED:          { label: 'Đã xuất kho', cls: 'order-status-badge--exported' },
     DELIVERED:        { label: 'Đã giao hàng', cls: 'order-status-badge--delivered' },
+    CLOSED:           { label: 'Đóng', cls: 'order-status-badge--delivered' },
     COMPLETED:        { label: 'Hoàn thành', cls: 'order-status-badge--delivered' },
     CANCELLED:        { label: 'Đã huỷ', cls: 'order-status-badge--cancelled' },
     REJECTED:         { label: 'Bị từ chối', cls: 'order-status-badge--rejected' },

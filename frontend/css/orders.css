@@ -616,7 +616,7 @@
 .ord-lifecycle-box__summary, .ord-lifecycle-reservation, .ord-lifecycle-step__content span, .ord-lifecycle-history__item span, .ord-lifecycle-step__content small, .ord-lifecycle-history__item small { display: block; color: var(--ink-500); font-size: .78rem; line-height: 1.45; }
 .ord-lifecycle-box__summary { margin: 4px 0 0; }
 .ord-lifecycle-reservation { color: var(--teal-deep); font-weight: 650; text-align: right; }
-.ord-lifecycle-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0 0 18px; list-style: none; }
+.ord-lifecycle-steps { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0 0 18px; list-style: none; }
 .ord-lifecycle-step { min-width: 0; }
 .ord-lifecycle-step__marker { display: block; width: 12px; height: 12px; margin-bottom: 8px; border: 2px solid var(--line); border-radius: 50%; background: var(--surface); }
 .ord-lifecycle-step--completed .ord-lifecycle-step__marker { border-color: var(--teal); background: var(--teal); }

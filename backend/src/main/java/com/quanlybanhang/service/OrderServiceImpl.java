@@ -844,10 +844,19 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
+        checkWarehouseAuthorizationForOrder(order, "cập nhật giao hàng");
+
         String oldStatus = order.getStatus();
-        if (request.getStatus() != null && !request.getStatus().isBlank()) {
-            order.setStatus(request.getStatus().trim());
-        } else if ("RECORDED".equalsIgnoreCase(order.getStatus())) {
+        String requestedStatus = request.getStatus() != null && !request.getStatus().isBlank()
+                ? normalizeLifecycleStatus(request.getStatus()) : null;
+        if (requestedStatus != null && !"DELIVERED".equals(requestedStatus)) {
+            throw new IllegalArgumentException("Cập nhật giao hàng chỉ được chuyển đơn sang trạng thái Đã giao");
+        }
+
+        boolean statusChanged = !"DELIVERED".equalsIgnoreCase(oldStatus);
+        if (statusChanged) {
+            // Không cho cập nhật giao hàng bỏ qua các bước Đang soạn và Đã xuất.
+            validateLifecycleTransition(oldStatus, "DELIVERED");
             order.setStatus("DELIVERED");
         }
 
@@ -879,6 +888,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
+        if (statusChanged) {
+            recordStatusHistory(saved, oldStatus, "DELIVERED", request.getDeliveryNote(), username);
+        }
         auditLogService.logAction("ORDER", saved.getOrderCode(), "DELIVERY_UPDATE",
                 oldStatus, saved.getStatus(),
                 "Cập nhật giao hàng: ngày " + saved.getActualDeliveryDate() + ", ghi chú: " + (saved.getDeliveryNote() != null ? saved.getDeliveryNote() : "Không"),
@@ -950,7 +962,7 @@ public class OrderServiceImpl implements OrderService {
         checkWarehouseAuthorizationForOrder(order, "cập nhật trạng thái");
 
         String oldStatus = order.getStatus();
-        String targetStatus = status.trim().toUpperCase();
+        String targetStatus = normalizeLifecycleStatus(status);
 
         if ("CANCELLED".equalsIgnoreCase(oldStatus)) {
             throw new IllegalArgumentException("Không thể cập nhật trạng thái của đơn hàng đã bị huỷ");
@@ -959,12 +971,9 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Vui lòng sử dụng chức năng huỷ đơn hàng kèm lý do huỷ");
         }
 
-        try {
-            OrderStatus.valueOf(targetStatus);
-        } catch (IllegalArgumentException e) {
-            if (!"PROCESSING".equals(targetStatus) && !"SHIPPED".equals(targetStatus) && !"COMPLETED".equals(targetStatus)) {
-                throw new IllegalArgumentException("Trạng thái đơn hàng không hợp lệ: " + status);
-            }
+        if (!Set.of("PICKING", "EXPORTED", "DELIVERED", "CLOSED").contains(targetStatus)) {
+            throw new IllegalArgumentException("Trạng thái vòng đời không hợp lệ: " + status
+                    + ". Duyệt, từ chối và trả lại phải dùng luồng phê duyệt riêng");
         }
 
         validateLifecycleTransition(oldStatus, targetStatus);
@@ -1025,51 +1034,68 @@ public class OrderServiceImpl implements OrderService {
         }
 
         List<OrderLifecycleStepResponse> steps = new ArrayList<>();
-        int currentStepOrder = resolveStepOrder(currentStatus);
+        OrderStatusHistory cancelledHistory = historyByStatus.get("CANCELLED");
+        int cancelledAtStep = cancelledHistory != null ? resolveStepOrder(cancelledHistory.getPreviousStatus()) : 0;
+        if (cancelledAtStep <= 0) {
+            cancelledAtStep = 1;
+        }
+        int currentStepOrder = isCancelled ? 8 : resolveStepOrder(currentStatus);
 
         // Step 1: DRAFT
         steps.add(buildStep(1, "DRAFT", "Nháp", "Đơn hàng đang ở trạng thái nháp",
-                resolveStepState(1, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(1, cancelledAtStep)
+                        : resolveStepState(1, currentStepOrder, false, isRejected, false),
                 historyByStatus.get("DRAFT"), order.getCreatedAt(), order.getCreatedBy()));
 
         // Step 2: PENDING_APPROVAL
         boolean skippedApproval = !wasApprovalRequired && !historyByStatus.containsKey("PENDING_APPROVAL");
         steps.add(buildStep(2, "PENDING_APPROVAL", "Chờ duyệt", "Chờ Quản lý kinh doanh duyệt (giá sàn / công nợ)",
-                skippedApproval ? "SKIPPED" : resolveStepState(2, currentStepOrder, isCancelled, isRejected, false),
+                skippedApproval ? "SKIPPED" : (isCancelled ? resolveCancelledStepState(2, cancelledAtStep)
+                        : resolveStepState(2, currentStepOrder, false, isRejected, false)),
                 historyByStatus.get("PENDING_APPROVAL"), null, null));
 
         // Step 3: APPROVED
         OrderStatusHistory approvedHist = historyByStatus.get("RECORDED");
         if (approvedHist == null) approvedHist = historyByStatus.get("APPROVED");
         steps.add(buildStep(3, "APPROVED", "Đã duyệt", "Đơn hàng đã được duyệt, sẵn sàng soạn hàng",
-                resolveStepState(3, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(3, cancelledAtStep)
+                        : resolveStepState(3, currentStepOrder, false, isRejected, false),
                 approvedHist, order.getRecordedAt(), order.getApprovedBy() != null ? order.getApprovedBy() : order.getCreatedBy()));
 
         // Step 4: PICKING
         OrderStatusHistory pickingHist = historyByStatus.get("PICKING");
         if (pickingHist == null) pickingHist = historyByStatus.get("PROCESSING");
         steps.add(buildStep(4, "PICKING", "Đang soạn hàng", "Kho đang thực hiện soạn hàng và đóng gói",
-                resolveStepState(4, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(4, cancelledAtStep)
+                        : resolveStepState(4, currentStepOrder, false, isRejected, false),
                 pickingHist, null, null));
 
         // Step 5: EXPORTED
         OrderStatusHistory exportedHist = historyByStatus.get("EXPORTED");
         if (exportedHist == null) exportedHist = historyByStatus.get("SHIPPED");
         steps.add(buildStep(5, "EXPORTED", "Đã xuất", "Đã xuất kho, đang vận chuyển đến đại lý",
-                resolveStepState(5, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(5, cancelledAtStep)
+                        : resolveStepState(5, currentStepOrder, false, isRejected, false),
                 exportedHist, null, null));
 
         // Step 6: DELIVERED
         steps.add(buildStep(6, "DELIVERED", "Đã giao", "Đã giao hàng thành công đến đại lý",
-                resolveStepState(6, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(6, cancelledAtStep)
+                        : resolveStepState(6, currentStepOrder, false, isRejected, false),
                 historyByStatus.get("DELIVERED"), null, null));
 
         // Step 7: CLOSED
         OrderStatusHistory closedHist = historyByStatus.get("CLOSED");
         if (closedHist == null) closedHist = historyByStatus.get("COMPLETED");
         steps.add(buildStep(7, "CLOSED", "Đóng", "Đơn hàng hoàn tất toàn bộ chu trình và đóng",
-                resolveStepState(7, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(7, cancelledAtStep)
+                        : resolveStepState(7, currentStepOrder, false, isRejected, false),
                 closedHist, null, null));
+
+        if (isCancelled) {
+            steps.add(buildStep(8, "CANCELLED", "Huỷ", "Đơn hàng bị huỷ trước khi xuất kho; tồn giữ chỗ đã được nhả",
+                    "CANCELLED", cancelledHistory, order.getCancelledAt(), order.getCancelledBy()));
+        }
 
         return OrderTrackingResponse.builder()
                 .orderId(order.getId())
@@ -2867,6 +2893,20 @@ public class OrderServiceImpl implements OrderService {
         if (stepOrder < currentStepOrder) return "COMPLETED";
         if (stepOrder == currentStepOrder) return "CURRENT";
         return "UPCOMING";
+    }
+
+    private String resolveCancelledStepState(int stepOrder, int cancelledAtStep) {
+        return stepOrder <= cancelledAtStep ? "COMPLETED" : "SKIPPED";
+    }
+
+    private String normalizeLifecycleStatus(String status) {
+        String normalized = status == null ? "" : status.trim().toUpperCase();
+        return switch (normalized) {
+            case "PROCESSING" -> "PICKING";
+            case "SHIPPED" -> "EXPORTED";
+            case "COMPLETED" -> "CLOSED";
+            default -> normalized;
+        };
     }
 
     private OrderLifecycleStepResponse buildStep(

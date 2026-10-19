@@ -609,9 +609,10 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | POST | `/orders` | `ORDER_CREATE` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | POST | `/orders/line-item/pricing` | `ORDER_CREATE` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
 | POST | `/orders/calculate` | `ORDER_CREATE` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
-| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL` hoặc `ROLE_ADMIN` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
-| GET | `/orders/{id}/tracking` | `ORDER_VIEW` hoặc `ROLE_ADMIN` | Theo dõi vòng đời đơn hàng (7 bước chuẩn, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS theo người phụ trách/kho) |
-| PUT | `/orders/{id}/status` | `WAREHOUSE_IMPORT` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` | Cập nhật từng bước kế tiếp của vòng đời đơn hàng; giới hạn theo kho được gán và tự động trừ tồn kho/giải phóng giữ chỗ khi chuyển sang `EXPORTED` |
+| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
+| GET | `/orders/{id}/tracking` | `ORDER_VIEW` | Theo dõi vòng đời đơn hàng (7 bước chính và nhánh Huỷ, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS theo người phụ trách/kho) |
+| PUT | `/orders/{id}/status` | `WAREHOUSE_IMPORT` hoặc `WAREHOUSE_EXPORT` | Cập nhật từng bước kế tiếp của vòng đời đơn hàng; chỉ nhận `PICKING`, `EXPORTED`, `DELIVERED`, `CLOSED`, giới hạn theo kho được gán và tự động trừ tồn kho/giải phóng giữ chỗ khi chuyển sang `EXPORTED` |
+| PUT | `/orders/{id}/delivery` | `WAREHOUSE_EXPORT` | Cập nhật thực giao; chỉ chuyển `EXPORTED` sang `DELIVERED`, không được bỏ qua bước vòng đời và không dùng role fallback |
 | PUT | `/orders/{id}/approve` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xác nhận đơn cổng được phân công | Phê duyệt đơn hàng (chuyển trạng thái sang `RECORDED`) và giữ chỗ tồn kho sau khi kiểm quyền |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xử lý đơn cổng được phân công | Từ chối đơn hàng với lý do bắt buộc (chuyển trạng thái sang `REJECTED`) |
 | PUT | `/orders/{id}/return?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Trả lại đơn để sửa với lý do bắt buộc (chuyển trạng thái sang `RETURNED`) |

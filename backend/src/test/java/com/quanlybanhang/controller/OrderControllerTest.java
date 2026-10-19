@@ -301,6 +301,34 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "warehouse_user", authorities = {"ROLE_WAREHOUSE_STAFF"})
+    @DisplayName("Cập nhật giao hàng không có WAREHOUSE_EXPORT bị chặn 403 theo ma trận (S4-06)")
+    void updateOrderDelivery_WithoutExportPermission_Returns403() throws Exception {
+        mockMvc.perform(put("/api/orders/1/delivery")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DELIVERED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "warehouse_user", authorities = {"WAREHOUSE_EXPORT"})
+    @DisplayName("Cập nhật giao hàng có WAREHOUSE_EXPORT được phép (S4-06)")
+    void updateOrderDelivery_WithExportPermission_Returns200() throws Exception {
+        OrderResponse response = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .status("DELIVERED")
+                .build();
+        when(orderService.updateOrderDelivery(eq(1L), any(), any())).thenReturn(response);
+
+        mockMvc.perform(put("/api/orders/1/delivery")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DELIVERED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+    }
+
+    @Test
     @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/line-item/pricing thành công -> 200 OK")
     void calculateLineItemPricing_Success_Returns200() throws Exception {

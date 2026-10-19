@@ -4,7 +4,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-function createMockEnvironment(apiResponses = {}) {
+function createMockEnvironment(apiResponses = {}, options = {}) {
+  const currentUser = options.currentUser || { id: 99, username: 'dealer.test', roles: ['ROLE_DEALER'],
+    permissions: ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'], dealerId: 10 };
   const elements = new Map();
   function getEl(id) {
     if (!elements.has(id)) {
@@ -15,6 +17,9 @@ function createMockEnvironment(apiResponses = {}) {
         disabled: false,
         textContent: '',
         innerHTML: '',
+        children: [],
+        replaceChildren(...children) { this.children = children; },
+        append(child) { this.children.push(child); },
         selectedOptions: [{ value: 'thùng', dataset: { price: '360000', factor: '24' } }],
         listeners: {},
         classList: {
@@ -41,7 +46,7 @@ function createMockEnvironment(apiResponses = {}) {
   const calls = [];
   const success = (data) => ({ ok: true, json: async () => ({ success: true, data }) });
 
-  const windowObj = {};
+  const windowObj = { location: { href: '/dealer-portal', pathname: '/dealer-portal', search: options.search || '' } };
   const context = vm.createContext({
     window: windowObj,
     document: {
@@ -53,7 +58,8 @@ function createMockEnvironment(apiResponses = {}) {
       readyState: 'complete',
       body: { style: {} },
     },
-    location: {},
+    location: windowObj.location,
+    URLSearchParams,
     Intl,
     Math,
     Date,
@@ -64,11 +70,13 @@ function createMockEnvironment(apiResponses = {}) {
     console: { log() {}, warn() {}, error() {} },
     Auth: {
       requireLogin: () => true,
-      hasAnyRole: (...roles) => roles.includes('ROLE_DEALER'),
-      hasPermission: () => true,
-      getUser: () => ({ id: 99, username: 'dealer.test', roles: ['ROLE_DEALER'], dealerId: 10 }),
+      hasAnyRole: (...roles) => roles.some(role => currentUser.roles.includes(role)),
+      hasPermission: permission => currentUser.roles.includes('ROLE_ADMIN') || currentUser.permissions.includes(permission),
+      getUser: () => currentUser,
       apiFetch: async (url, opts = {}) => {
         calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+        url = url.split('?')[0];
+        if (url === '/portal/dealers') return success(options.dealers || [{ id: 10, code: 'DL-10', name: 'Đại lý 10' }]);
         if (apiResponses[url]) return success(apiResponses[url]);
         if (url === '/portal/profile') {
           return success({ id: 10, code: 'DL-HOANGPHAT', name: 'Đại lý Hoàng Phát', customerGroup: 'DAI_LY_CAP_1', active: true });
@@ -142,6 +150,7 @@ function createMockEnvironment(apiResponses = {}) {
   }
 
   const script = fs.readFileSync(path.join(__dirname, '../frontend/js/dealer-portal.js'), 'utf8');
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../frontend/js/dealer-portal-context.js'), 'utf8'), context);
   vm.runInContext(script, context);
 
   return { context, elements, calls, portal: windowObj.DealerPortal };
@@ -160,6 +169,45 @@ test('S4-10: Cổng đại lý chỉ hiển thị sản phẩm và giá thuộc 
 
   // Verify catalog count: only products 101 and 102 (Heineken, Tiger) are in price list; 103 (Coca) is omitted
   assert.equal(elements.get('dp-catalog-count').textContent, '2 sản phẩm');
+});
+
+test('Admin chưa liên kết đại lý mở cổng và chọn đại lý, không gọi API thiếu ngữ cảnh', async () => {
+  const { context, elements, calls } = createMockEnvironment({}, {
+    currentUser: { roles: ['ROLE_ADMIN'], permissions: [] },
+  });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(calls.map(call => call.url), ['/portal/dealers']);
+  assert.equal(context.window.location.href, '/dealer-portal');
+  assert.equal(elements.get('dp-dealer-switcher-wrap').hidden, false);
+  assert.equal(elements.get('btn-submit-order').disabled, true);
+  const select = elements.get('dp-dealer-select');
+  select.value = '10';
+  select.listeners.change();
+  assert.equal(context.window.location.href, '/dealer-portal?dealerId=10');
+});
+
+test('Admin xem và gửi đơn qua cổng với đúng đại lý đã chọn', async () => {
+  const { elements, calls, portal } = createMockEnvironment({}, {
+    currentUser: { roles: ['ROLE_ADMIN'], permissions: [] }, search: '?dealerId=10',
+  });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  for (const path of ['profile', 'delivery-points', 'debt', 'catalog']) {
+    assert.ok(calls.some(call => call.url === `/portal/${path}?dealerId=10`), path);
+  }
+  assert.equal(elements.get('dp-dealer-switcher-wrap').hidden, false);
+  portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia Heineken', basePrice: 15000 }, 'lon', 1, 15000, 1);
+  await portal.submitDealerOrder();
+  assert.ok(calls.some(call => call.method === 'POST' && call.url === '/portal/orders?dealerId=10'));
+});
+
+test('Thu hồi quyền cần cho cổng chặn trang trước khi gọi API', () => {
+  for (const revoked of ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW']) {
+    const { context, calls } = createMockEnvironment({}, { currentUser: {
+      roles: ['ROLE_DEALER'], permissions: ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'].filter(p => p !== revoked),
+    } });
+    assert.equal(context.window.location.href, '/error?status=403', revoked);
+    assert.equal(calls.length, 0);
+  }
 });
 
 test('S4-10: Thêm sản phẩm vào giỏ, xem tổng tiền và tính toán công nợ còn lại trước khi gửi đơn', async () => {

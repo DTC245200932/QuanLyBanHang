@@ -16,8 +16,18 @@ test('admin can reach implemented account, audit and catalog pages', () => {
 
 test('admin keeps management menus when the session has stale permissions', () => {
   const visible = ids({roles:['ROLE_ADMIN'], permissions:[]});
-  for (const id of ['products', 'price-lists', 'discount-policies', 'debt-limits', 'users']) {
+  for (const id of ['products', 'price-lists', 'discount-policies', 'debt-limits', 'users', 'dealer-orders', 'dealer-portal']) {
     assert.ok(visible.includes(id), id);
+  }
+});
+
+test('dealer menus require the permissions of every API used by the page', () => {
+  const permissions = ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'];
+  assert.ok(ids({ roles: ['ROLE_DEALER'], permissions }).includes('dealer-portal'));
+  for (const revoked of permissions) {
+    const visible = ids({ roles: ['ROLE_DEALER'], permissions: permissions.filter(p => p !== revoked) });
+    assert.ok(!visible.includes('dealer-portal'), revoked);
+    assert.equal(visible.includes('dealer-orders'), revoked !== 'ORDER_VIEW');
   }
 });
 

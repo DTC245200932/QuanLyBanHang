@@ -93,17 +93,10 @@
 
   /**
    * Kiểm tra quyền đặt lại đơn hàng (ORDER_CREATE).
-   * Đại lý hoặc Quản trị viên có quyền ORDER_CREATE mới được thực hiện đặt lại.
+   * Đặt lại cần quyền tạo đơn và đọc danh mục để áp giá hiện hành.
    */
   function canReorder() {
-    if (typeof Auth === "undefined") return true;
-    const u = Auth.getUser();
-    if (!u) return false;
-    if (Auth.hasRole("ROLE_ADMIN")) return true;
-    if (Array.isArray(u.permissions)) {
-      return u.permissions.includes("ORDER_CREATE");
-    }
-    return Auth.hasRole("ROLE_DEALER");
+    return Auth.hasPermission('ORDER_CREATE') && Auth.hasPermission('PRODUCT_VIEW');
   }
 
   function setupShell() {
@@ -208,13 +201,14 @@
   }
 
   async function loadOrders() {
+    if (DealerPortalContext.isAdmin && !$('dealer-orders-select')?.value) return;
     const body = $("dealer-orders-body");
     if (body) {
       body.innerHTML = '<tr><td colspan="6"><div class="dealer-orders-loading">Đang tải danh sách đơn hàng…</div></td></tr>';
     }
     if ($("dealer-orders-message")) $("dealer-orders-message").hidden = true;
     try {
-      const response = await Auth.apiFetch("/portal/orders");
+      const response = await Auth.apiFetch(DealerPortalContext.url('/portal/orders'));
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.message || "Không thể tải danh sách đơn hàng.");
       state.orders = getOrders(payload);
@@ -272,7 +266,7 @@
       $("dealer-order-detail-content").innerHTML = '<div class="dealer-orders-loading">Đang tải chi tiết đơn hàng…</div>';
     }
     try {
-      const response = await Auth.apiFetch(`/portal/orders/${encodeURIComponent(id)}`);
+      const response = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(id)}`));
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.message || "Không thể tải chi tiết đơn hàng.");
       state.selectedOrder = unwrap(payload);
@@ -403,7 +397,7 @@
 
     try {
       // 1. Tải chi tiết đơn hàng cũ
-      const sourceResponse = await Auth.apiFetch(`/portal/orders/${encodeURIComponent(orderId)}`);
+      const sourceResponse = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(orderId)}`));
       const sourcePayload = await sourceResponse.json();
       if (!sourceResponse.ok || !sourcePayload.success) {
         throw new Error(sourcePayload.message || 'Không tải được đơn hàng cũ');
@@ -419,7 +413,7 @@
         $("reorder-source-code").textContent = sourceOrder.orderCode || `Đơn #${sourceOrder.id}`;
       }
 
-      const catalogResponse = await Auth.apiFetch('/portal/catalog');
+      const catalogResponse = await Auth.apiFetch(DealerPortalContext.url('/portal/catalog'));
       const catalogPayload = await catalogResponse.json();
       if (!catalogResponse.ok || !catalogPayload.success || !Array.isArray(catalogPayload.data)) {
         throw new Error(catalogPayload.message || 'Không tải được bảng giá hiện hành');
@@ -584,7 +578,7 @@
     };
 
     try {
-      const response = await Auth.apiFetch('/portal/orders', {
+      const response = await Auth.apiFetch(DealerPortalContext.url('/portal/orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -759,5 +753,26 @@
     }
   });
 
-  loadOrders();
+  async function init() {
+    try {
+      if (DealerPortalContext.isAdmin) {
+        $('dealer-orders-title').textContent = 'Đơn hàng đại lý';
+        $('dealer-orders-intro').textContent = 'Chọn đại lý để theo dõi trạng thái, ngày giao dự kiến và số lượng thực giao.';
+        $('dealer-orders-scope').textContent = 'Đơn hàng của đại lý được chọn';
+      }
+      const ready = await DealerPortalContext.init('dealer-orders-switcher', 'dealer-orders-select');
+      if (ready) {
+        await loadOrders();
+      } else {
+        $('orders-summary').textContent = 'Chưa chọn đại lý';
+        $('dealer-orders-body').innerHTML = '<tr><td colspan="6"><div class="dealer-orders-empty">Chọn đại lý để xem đơn hàng.</div></td></tr>';
+      }
+    } catch (error) {
+      $('dealer-orders-body').innerHTML = '';
+      $('dealer-orders-message').textContent = error.message;
+      $('dealer-orders-message').hidden = false;
+    }
+  }
+
+  init();
 })();

@@ -532,7 +532,9 @@ class DealerControllerTest {
         var history = com.quanlybanhang.dto.response.DealerPurchaseHistoryResponse.builder()
                 .productId(10L).name("Sản phẩm đã mua").avgQty(new java.math.BigDecimal("5")).build();
         when(dealerService.getDealerPurchaseHistory(1L, 3, false)).thenReturn(List.of(history));
-        mvc.perform(get("/api/dealers/1/purchase-history?months=3").with(user("sales01").roles("SALES")))
+        mvc.perform(get("/api/dealers/1/purchase-history?months=3").with(user("sales01")
+                        .authorities(new SimpleGrantedAuthority("ROLE_SALES"),
+                                new SimpleGrantedAuthority("ORDER_VIEW"))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].productId").value(10))
                 .andExpect(jsonPath("$.data[0].avgQty").value(5));
     }

@@ -99,7 +99,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL", "ORDER_VIEW"})
     @DisplayName("GET /api/orders trả về danh sách đơn hàng")
     void getAllOrders_Authenticated_Returns200() throws Exception {
         OrderResponse resp = OrderResponse.builder()

@@ -91,7 +91,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE", "ORDER_VIEW"})
     @DisplayName("GET /api/orders có phân trang và bộ lọc trả về dữ liệu chuẩn S4-05")
     void getOrders_PaginationAndFilter_ReturnsPage() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -240,7 +240,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "admin_user", roles = "ADMIN")
+    @WithMockUser(username = "admin_user", authorities = {"ROLE_ADMIN", "ORDER_APPROVE"})
     @DisplayName("GET /api/orders/{id}/approval-history - Trả về danh sách lịch sử duyệt")
     void getOrderApprovalHistory_Returns200() throws Exception {
         OrderApprovalHistoryResponse item = OrderApprovalHistoryResponse.builder()

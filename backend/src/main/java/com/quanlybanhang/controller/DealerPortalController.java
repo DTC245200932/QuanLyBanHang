@@ -98,7 +98,7 @@ public class DealerPortalController {
      * S4-10: Lấy thông tin hồ sơ đại lý đang đăng nhập kèm nhân viên phụ trách, công nợ và điểm giao hàng.
      */
     @GetMapping("/profile")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ApiResponse getProfile(Principal principal, @RequestParam(required = false) Long dealerId) {
         Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         DealerDebtResponse debt = dealerDebtService.getDealerDebtInfo(dealer);
@@ -141,7 +141,7 @@ public class DealerPortalController {
      * Quy tắc bảo mật: Không hiển thị sản phẩm hoặc bảng giá của các nhóm khách hàng khác.
      */
     @GetMapping({"/catalog", "/products"})
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('PRODUCT_VIEW'))")
+    @PreAuthorize("hasAuthority('PRODUCT_VIEW')")
     public ApiResponse getCatalog(Principal principal, @RequestParam(required = false) Long dealerId) {
         Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         CustomerGroup group = dealer.getCustomerGroup();
@@ -224,7 +224,7 @@ public class DealerPortalController {
      * S4-10: Tra cứu thông tin công nợ, hạn mức và công nợ còn lại của đại lý trước khi gửi đơn.
      */
     @GetMapping("/debt")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ApiResponse getDebt(Principal principal, @RequestParam(required = false) Long dealerId) {
         Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         DealerDebtResponse debt = dealerDebtService.getDealerDebtInfo(dealer);
@@ -239,7 +239,7 @@ public class DealerPortalController {
      * - Đơn gửi lên LUÔN ở trạng thái Chờ duyệt (PENDING_APPROVAL), do nhân viên phụ trách xác nhận.
      */
     @PostMapping("/orders")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_CREATE'))")
+    @PreAuthorize("hasAuthority('ORDER_CREATE')")
     public ResponseEntity<ApiResponse> createOrder(
             @Valid @RequestBody DealerPortalOrderRequest request,
             Principal principal, @RequestParam(required = false) Long dealerId) {
@@ -264,7 +264,7 @@ public class DealerPortalController {
      * S4-10, S5-01: Lấy danh sách đơn hàng của riêng đại lý đăng nhập.
      */
     @GetMapping("/orders")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ApiResponse getMyOrders(Principal principal, @RequestParam(required = false) Long dealerId) {
         Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         List<OrderResponse> orders = orderService.getOrders(
@@ -276,7 +276,7 @@ public class DealerPortalController {
      * S4-10, S5-01: Xem chi tiết một đơn hàng của riêng đại lý đăng nhập.
      */
     @GetMapping("/orders/{id}")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ApiResponse getMyOrderDetail(@PathVariable Long id, Principal principal,
                                        @RequestParam(required = false) Long dealerId) {
         Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
@@ -291,7 +291,7 @@ public class DealerPortalController {
      * S4-10: Lấy danh sách điểm giao hàng của đại lý đăng nhập.
      */
     @GetMapping("/delivery-points")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DEALER') and hasAuthority('ORDER_VIEW'))")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ApiResponse getDeliveryPoints(Principal principal, @RequestParam(required = false) Long dealerId) {
         Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         List<DealerDeliveryPointResponse> points = deliveryPointService.getDeliveryPointsByDealer(dealer.getId());

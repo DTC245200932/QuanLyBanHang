@@ -140,6 +140,20 @@ class RolePermissionConfigTest {
     }
 
     @Test
+    @DisplayName("Cập nhật một vai trò không làm thay đổi quyền của vai trò khác")
+    void updatingOneRoleDoesNotChangeAnotherRole() {
+        Set<Permission> viewerBefore = permissions.getPermissions(ERole.ROLE_VIEWER);
+        permissions.updateRolePermissions(ERole.ROLE_SALES, EnumSet.of(Permission.ORDER_VIEW));
+
+        assertThat(permissions.getPermissions(ERole.ROLE_SALES))
+                .containsExactly(Permission.ORDER_VIEW);
+        assertThat(permissions.getPermissions(ERole.ROLE_VIEWER))
+                .containsExactlyInAnyOrderElementsOf(viewerBefore);
+        assertThat(permissions.getPermissions(ERole.ROLE_ADMIN))
+                .containsExactlyInAnyOrder(Permission.values());
+    }
+
+    @Test
     @DisplayName("Cập nhật quyền từ chối gán quyền sửa tồn kho (WAREHOUSE_ADJUST) cho Nhân viên kinh doanh")
     void updatePermissionsRejectsWarehouseAdjustForSales() {
         Set<Permission> illegalPerms = EnumSet.of(Permission.ORDER_CREATE, Permission.WAREHOUSE_ADJUST);

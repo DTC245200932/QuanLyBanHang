@@ -2,6 +2,26 @@
 
 Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
 
+## S5-07 — Chuyển kho nội bộ (backend + frontend) — 20/10/2026
+
+Nguồn tiêu chí: `4. Product Backlog!A60:F60`. Thực hiện trên nhánh `feature/S5-07-backend-va-frontend-chuyen_kho_noi_bo`, nền `develop` tại `c74485d`; không merge/pull/lấy code nhánh khác, không tự commit.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối và ma trận quyền |
+|---|---|---|---|
+| Chọn kho đi, kho đến, danh sách hàng và số lượng | Đã có; củng cố kiểm kho hoạt động/không trùng, SKU duy nhất, đơn vị quy đổi đóng băng, số lượng tối đa 4 số thập phân, mã tùy chọn/tự sinh | Đã làm màn `/warehouse/transfers`, menu **Kho hàng → Chuyển kho nội bộ**, tạo phiếu theo đơn vị cơ sở, tìm hàng theo mã/tên | POST `/warehouse/transfers`; options/products hẹp không đòi thêm PRODUCT_VIEW/WAREHOUSE_VIEW/ORDER_VIEW để tạo |
+| Hàng đang chuyển chưa cộng kho đến | Trừ tồn thực tế kho đi, chỉ tăng inTransit ở kho đến; chặn dùng phần đã giữ chỗ cho đơn; khóa kho và dòng tồn | Giải thích rõ hai mốc xuất/nhận, hiển thị trạng thái từ API | Dùng cùng sổ tồn với S5-05, không suy lượng giữ chỗ bằng danh sách đơn trên trình duyệt |
+| Kho đến xác nhận thực nhận | Khóa phiếu, cộng đúng thực nhận, gỡ lượng đang chuyển của phiếu; chặn thao tác lặp/đồng thời | Chi tiết có số đã chuyển/thực nhận, Điền nhận đủ và Xác nhận thực nhận | Chỉ WAREHOUSE_TRANSFER/ADMIN và kho đến trong phạm vi; server trả canReceive |
+| Chênh lệch bắt buộc lý do | Thiếu/thừa/nhận 0 đều yêu cầu lý do; lưu theo dòng, snapshot hệ số, transaction rollback khi lỗi | Nhập và đối chiếu chênh lệch theo dòng; không mất số lượng/lý do khi POST lỗi | API kiểm lại tất cả dòng; chặn ID giả, trùng, mâu thuẫn hoặc thiếu dòng |
+| Hủy khi đang chuyển | Bắt buộc lý do, hoàn tồn kho đi và gỡ inTransit; đã nhận/đã hủy không thao tác lại | Hiện thao tác theo quyền/phạm vi; xem lại lý do hủy | Chỉ WAREHOUSE_TRANSFER/ADMIN và kho đi trong phạm vi; server trả canCancel |
+| Xem, tìm/lọc và phân trang | Danh sách/chi tiết chỉ phiếu có một đầu kho trong phạm vi; lọc kho/trạng thái/mã, phân trang server | Có bộ lọc, tải lại, phân trang, lỗi/rỗng rõ ràng, hủy phản hồi cũ | WAREHOUSE_VIEW hoặc WAREHOUSE_TRANSFER; quyền được cấp cho vai trò bất kỳ đều áp dụng; không role fallback |
+| Lưu ma trận quyền và bố cục | JWT hiện tại bị thu hồi quyền trả 403; quyền role kho không thay thế quyền bị bỏ; ADMIN luôn được phép | Thu hồi TRANSFER thành chỉ đọc nếu còn VIEW; mất cả hai thì ẩn menu/chặn trang; đóng form/chi tiết và hủy read đang chờ | Dùng shell/topbar/transition chung, lề cân và bảng cuộn nội bộ; không lưu nghiệp vụ vào browser storage |
+
+Kiểm chứng: **577 test backend qua**, bao gồm HTTP/JWT/JPA/H2 và các ca chuyển vượt tồn, cạnh tranh với giữ chỗ đơn hàng, nhận/hủy đồng thời, nhận thừa/thiếu, rollback nhiều dòng, snapshot hệ số và grant/revoke trên token cũ. **87 test JS qua**; test route S5-07/S5-05 qua. Chrome `warehouse-transfers.browser.cjs` qua luồng lập/nhận/hủy, XSS, lỗi/retry và giữ input, phản hồi cũ, ma trận/ADMIN, sáu kích thước 1920/1440/1024/768/390/320. Kiểm bố cục chung: **138 kiểm tra trên 23 trang × 6 kích thước**; đã xem ảnh desktop/mobile.
+
+Kiểm tra điều hướng chung qua: click/Back/Forward/Reload, nội dung trang, mobile và reduced-motion; sidebar giữ scroll **392 → 392**, không có lỗi JS. **7 test route/bảo vệ file liên quan qua**, `git diff --check` sạch. Bộ route đầy đủ vẫn có assertion tên Cổng đại lý lệch trước đợt này, không sửa trang ngoài phạm vi.
+
+Giới hạn: chưa chạy trên MySQL thật, không thay đổi dữ liệu/schema DB thật. Cần khởi động lại **backend và server frontend** để nhận service/API/route mới. Không thay đổi nghiệp vụ S5-06 hoặc triển khai kiểm kê/cảnh báo S5-08/09.
+
 ## S5-05 — Sổ tồn theo SKU và kho (backend + frontend) — 20/10/2026
 
 Nhánh `feature/S5-05-frontend-va-backend-xem_so_ton_kho_theoSKU_va_kho`, bắt đầu từ develop `b6b07a4`. Đã đọc AGENTS.md và cả hai skill trong SKILLS. Menu **Kho hàng → Tồn kho**, URL `/warehouse/inventory`; link/tab cũ `?tab=inventory` chuyển tới trang mới. Trang dùng app-shell, app-navigation và khung nội dung chung, không đặt outer width/gutter riêng.
@@ -252,7 +272,7 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 | S5-04 | Phiếu nhập NCC, lô, nháp/xác nhận | Có | **Một phần** | **Chưa nối đủ** | Có quyền nhập/điều chỉnh; thiếu scope kho | Test cộng tồn đúng lúc. FE phiếu cũ chưa gửi đủ supplierId/chứng từ/lô/HSD, chưa có xác nhận nháp mới. |
 | S5-05 | Sổ tồn thực tế/giữ chỗ/khả dụng | Có | **Một phần** | **Chưa đủ 3 cột** | Có API tồn; quyền/scope chưa đủ | API có ba số; FE chỉ nạp `inventoryBaseQty`. Cần hai cột còn lại và lọc trạng thái tồn. |
 | S5-06 | Giữ chỗ, hủy/quá hạn nhả tồn | Một phần | Có qua duyệt/hủy | Đã nối luồng chính | Quyền duyệt/hủy còn hạn chế chung | Có scheduler/transaction/khóa tồn. Cần xử lý đồng thời cùng đơn, đơn thiếu kho, bảo vệ tồn đã giữ trong xuất/chuyển. |
-| S5-07 | Chuyển kho, đang đi, nhận chênh lệch | Có | **Chưa** | **Chưa có màn hình chuyển/nhận** | Có WAREHOUSE_TRANSFER ở BE; thiếu FE | Test tách kho đi/trên đường/kho nhận qua. Cần scope, khóa đồng thời và bảo vệ tồn đã giữ. |
+| S5-07 | Chuyển kho, đang đi, nhận chênh lệch | Có | Có | Đã nối tạo/danh sách/chi tiết/nhận/hủy; xem phần cập nhật S5-07 đầu file | WAREHOUSE_TRANSFER để ghi, VIEW hoặc TRANSFER để đọc; kiểm scope kho và thu hồi quyền, ADMIN luôn được phép | Đã kiểm khóa đồng thời, bảo vệ tồn đã giữ, nhận/hủy lặp, lý do chênh lệch và rollback. Chưa nghiệm thu MySQL thật. |
 | S5-08 | Kiểm kê, chốt chênh lệch | **Chưa** | **Chưa** | **Chưa** | Chưa có quyền/luồng chốt riêng | Tab hiện tại không có phiếu snapshot, số đếm, lý do chốt và API duyệt QL kho. Điều chỉnh chung không đáp ứng story. |
 | S5-09 | Tồn tối thiểu và cảnh báo | **Chưa** | **Chưa** | **Chưa** | Chưa có luồng cấu hình | Chưa có ngưỡng theo SKU + kho, API cấu hình và cảnh báo dashboard từ dữ liệu đó. |
 

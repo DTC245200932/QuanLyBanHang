@@ -26,6 +26,8 @@ public class WarehouseTransferResponse {
 
     private WarehouseTransferStatus status;
     private String statusDescription;
+    private boolean canReceive;
+    private boolean canCancel;
 
     private String note;
     private String receiveNote;

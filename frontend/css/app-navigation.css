@@ -10,7 +10,7 @@
 /* One centered content frame for every sidebar page. Keep this after each
    page stylesheet so legacy max-width/padding rules cannot shift its edges.
    Scope to direct content children: sidebar, toolbar, tables and dialogs keep
-   their own layout. The dealer portal/print/auth pages are standalone. */
+   their own layout. Print/auth pages remain standalone. */
 :root {
   --app-content-max-width: 1240px;
   --app-content-gutter: 28px;

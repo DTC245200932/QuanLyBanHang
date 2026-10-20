@@ -2,6 +2,35 @@
 
 Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
 
+## Màu thông báo ma trận quyền — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Phản hồi lưu/khôi phục quyền | Không đổi | Thành công nền xanh nhạt/chữ xanh; không có thay đổi dùng màu trung tính; lỗi thật vẫn đỏ. Reset trạng thái màu theo từng thông báo, dùng role status/alert tương ứng | Giữ nguyên API, payload, kiểm quyền ADMIN và đồng bộ phiên; chỉ đổi hiển thị |
+
+Chrome/API mock: `tests/permission-feedback.browser.cjs` kiểm lưu xanh, không thay đổi không gọi PUT, lỗi sau thành công đổi về đỏ, khôi phục mặc định xanh; đã xem ảnh. **84 test JS hiện có qua**. Không sửa hoặc lưu ma trận DB thật, giữ nguyên các thay đổi khác đang có.
+
+## Rút gọn giá trị dài trong Nhật ký thao tác — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Giá trị trước/sau trong danh sách | Không đổi | Giới hạn nhãn 240px, hiển thị ellipsis khi dài; bỏ giới hạn % gây vòng lặp kích thước trong table auto-layout | Chỉ cách hiển thị; không cắt dữ liệu API hoặc đổi quyền truy cập nhật ký |
+| Đọc đầy đủ | Không đổi | Tooltip chứa nguyên văn; nút Xem giữ toàn bộ trước/sau; bảng trong modal tự xuống dòng kể cả chuỗi không có dấu cách | Giữ escape HTML cả nội dung lẫn thuộc tính title; không đổi dữ liệu xuất Excel |
+
+Kiểm chứng: `tests/audit-values.browser.cjs` chạy Chrome/API mock ở **1920/1440/390/320px**, chuỗi hàng nghìn ký tự có/không có khoảng trắng, giá trị ngắn và null: ellipsis hoạt động, bảng không bị kéo rộng hàng nghìn pixel, toàn trang không tràn ngang, popup còn nguyên dữ liệu và không chèn được HTML. Đã xem ảnh desktop/mobile; **84 test JS hiện có qua**. Không sửa backend/DB, giữ nguyên các thay đổi Cổng đại lý đang có trong worktree.
+
+## Cổng đại lý dùng menu và khung nội dung chung — 20/10/2026
+
+Phần này thay thế mô tả cổng đại lý “standalone” ở các mốc trước bên dưới.
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Menu trên Cổng đại lý | Không đổi | Dùng `app-shell.js` và `app-navigation.js`; có sidebar, breadcrumb, profile/logout như các trang khác; khung `.content` dùng lề/chiều rộng chung | Menu và guard dùng ma trận hiện tại; ADMIN thấy chức năng quản trị, DEALER không nhận thêm quyền |
+| Giỏ hàng và ngữ cảnh đại lý | Không đổi | Chuyển các node điều khiển vào slot thanh trên, không clone/trùng ID; giữ chọn đại lý ADMIN, catalog, giỏ và preview | Giữ toàn bộ endpoint `/portal/*`, không gọi API thiếu ngữ cảnh và không đổi phạm vi dữ liệu |
+| Điện thoại | Không đổi | Nút mở/đóng menu chung; thanh giỏ dưới thuộc vùng nội dung, trở thành inert khi menu mở; drawer/modal ở ngoài shell để không bị khóa theo menu | Thu hồi ORDER_CREATE khi đang mở cổng vẫn chuyển 403, không chỉ ẩn một nút |
+
+Kiểm chứng: **84 test JS qua**. Chrome thật/API mock kiểm ADMIN chọn đại lý rồi tải catalog, DEALER có menu đúng quyền, giỏ mở từ thanh trên và thanh dưới, mobile menu mở/đóng, thu hồi quyền và các luồng S4 hiện có; không pageerror. Đã xem ảnh desktop và mobile. Bài căn lề mở rộng thành **20 trang/tab × 6 kích thước = 120 ca qua**, gồm Cổng đại lý tại 1920/1440/1024/768/390/320px; hồi quy điều hướng, giữ cuộn và transition chờ quyền qua. Không thay đổi backend, không chạy/sửa DB thật.
+
 ## Menu đứng yên, chỉ chuyển cảnh nội dung — 20/10/2026
 
 | Hạng mục | Backend | Frontend | Kết nối / phân quyền |

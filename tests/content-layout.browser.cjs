@@ -7,7 +7,7 @@ const base = process.env.NAV_TEST_URL || 'http://127.0.0.1:5519';
 const output = path.join(require('node:os').tmpdir(), 'qlbh-content-layout');
 const cases = [
   '/dashboard', '/dashboard?view=debt-limits', '/profile', '/products', '/product-groups',
-  '/create-order', '/orders', '/order-approval', '/dealer-orders', '/price-lists',
+  '/create-order', '/orders', '/order-approval', '/dealer-orders', '/dealer-portal', '/price-lists',
   '/discount-policies', '/dealers', '/suppliers', '/warehouse/units?tab=inventory',
   '/warehouse/units?tab=units', '/warehouse/units?tab=receipts', '/warehouse/units?tab=ledger',
   '/admin/users', '/admin/audit-logs',
@@ -81,7 +81,7 @@ const dealers = ['Minh Phát', 'Tân Bình', 'Hà Nội', 'Khách lẻ', 'Hoàng
         }
         assert.equal(dimensions.sidebarWidth, 260, 'Sidebar sizing must not change');
         assert.equal(await page.locator('.main-area').count(), 1);
-        if ([1920, 390].includes(width) && ['/dashboard?view=debt-limits', '/discount-policies', '/profile', '/orders'].includes(route)) {
+        if ([1920, 390].includes(width) && ['/dashboard?view=debt-limits', '/discount-policies', '/profile', '/orders', '/dealer-portal'].includes(route)) {
           await page.screenshot({ path: path.join(output, `${route.split('?')[0].replaceAll('/', '-')}-${width}.png`) });
         }
       }

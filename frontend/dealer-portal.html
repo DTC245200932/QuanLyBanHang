@@ -6,23 +6,17 @@
     <title>Cổng đặt hàng đại lý | SaleStock</title>
     <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/dashboard.css" />
-    <link rel="stylesheet" href="/css/app-navigation.css" />
     <link rel="stylesheet" href="/css/toast.css" />
     <link rel="stylesheet" href="/css/dealer-portal.css" />
+    <link rel="stylesheet" href="/css/app-shell.css" />
+    <link rel="stylesheet" href="/css/app-navigation.css" />
 <script src="/js/app-transition.js"></script>
 </head>
   <body class="dealer-portal-body">
-    <!-- Top bar -->
-    <header class="dp-topbar">
-      <div class="dp-topbar__inner">
-        <a class="dp-brand" href="/dealer-portal" aria-label="Cổng đặt hàng đại lý">
-          <img src="/assets/brand-mark.svg" alt="" class="dp-brand__logo" />
-          <div class="dp-brand__text">
-            <span class="dp-brand__name">SaleStock</span>
-            <span class="dp-brand__portal-tag">Cổng đại lý</span>
-          </div>
-        </a>
-
+    <div class="portal-shell" data-app-content>
+    <!-- Page controls move into the shared toolbar, without duplicate IDs. -->
+    <header data-standalone-header>
+      <div data-app-topbar-actions>
         <div class="dp-topbar__dealer-summary" id="dp-topbar-dealer-summary">
           <div class="dp-dealer-chip" id="dp-dealer-chip">
             <span class="dp-dealer-chip__icon" aria-hidden="true">
@@ -44,18 +38,12 @@
             </svg>
             <span class="dp-cart-badge" id="cart-badge-count">0</span>
           </button>
-          <a class="dp-icon-btn" href="/dashboard" title="Về trang tổng quan" aria-label="Về tổng quan">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-              <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
-          </a>
         </div>
       </div>
     </header>
 
     <!-- Main Container -->
-    <main class="dp-main">
+    <main class="content dp-main">
       <!-- Dealer context & Debt card -->
       <section class="dp-card dp-dealer-card" aria-label="Thông tin đại lý và công nợ">
         <div class="dp-dealer-card__header">
@@ -180,6 +168,8 @@
         <span>Xem giỏ hàng</span>
       </button>
     </div>
+
+    </div><!-- Shared app content; dialogs remain outside the inert mobile shell. -->
 
     <!-- Shopping Cart Drawer / Modal -->
     <div class="dp-drawer-overlay" id="dp-cart-drawer" hidden>
@@ -360,6 +350,8 @@
     <script src="/js/auth.js"></script>
     <script src="/js/toast.js"></script>
     <script src="/js/menu-config.js"></script>
+    <script src="/js/app-shell.js"></script>
+    <script src="/js/app-navigation.js"></script>
     <script src="/js/dealer-portal-context.js"></script>
     <script src="/js/dealer-portal.js"></script>
   </body>

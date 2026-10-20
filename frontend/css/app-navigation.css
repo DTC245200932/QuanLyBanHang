@@ -6,6 +6,40 @@
 .app-breadcrumb a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 2px; }
 .app-breadcrumb [aria-current="page"] { color: var(--ink-900); font-weight: 600; }
 .app-breadcrumb__separator { color: var(--ink-400); }
+
+/* Preserve the menu viewport; wheel scrolling must not spill into the page. */
+html { scrollbar-gutter: stable; }
+.sidebar__nav {
+  min-height: 0;
+  overscroll-behavior-y: contain;
+  overflow-anchor: none;
+  scroll-behavior: auto;
+  scrollbar-gutter: stable;
+}
+
+/* Native cross-document transitions keep page scripts/forms isolated. Only
+   the white content cross-fades; the menu and toolbar never slide or fade. */
+@view-transition { navigation: auto; }
+.sidebar { view-transition-name: app-sidebar; }
+.topbar { view-transition-name: app-topbar; }
+.main-area { view-transition-name: app-main; }
+::view-transition-group(root),
+::view-transition-group(app-sidebar),
+::view-transition-group(app-topbar),
+::view-transition-group(app-main) { animation: none; }
+::view-transition-old(root),
+::view-transition-old(app-sidebar),
+::view-transition-old(app-topbar) { display: none; }
+::view-transition-new(root),
+::view-transition-new(app-sidebar),
+::view-transition-new(app-topbar) { animation: none; }
+::view-transition-old(app-main) { animation: app-content-out 80ms ease-out both; }
+::view-transition-new(app-main) { animation: app-content-in 120ms ease-out both; }
+@keyframes app-content-out { to { opacity: 0; } }
+@keyframes app-content-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+}
 @media (max-width: 640px) {
   .topbar { height: auto; min-height: var(--topbar-height); padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
   .topbar__actions { flex-shrink: 0; }

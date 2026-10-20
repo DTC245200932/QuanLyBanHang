@@ -1,11 +1,53 @@
 /** Sidebar và breadcrumb dùng cùng một cấu hình trang trên toàn ứng dụng. */
 const AppNavigation = (() => {
+  let renderedMenu = '';
+  const stateKey = 'saleStockNavigation';
+  const navigation = window.navigation;
+
+  function readState(entry) {
+    try { return entry?.getState?.()?.[stateKey]; } catch { return null; }
+  }
+
+  function scrollOwner() {
+    const user = Auth.getUser();
+    return String(user?.id ?? user?.username ?? '');
+  }
+
+  function savedScrollTop() {
+    let state = readState(navigation?.currentEntry) || window.history.state?.[stateKey];
+    // A new document inherits the menu's viewport, not the white page's scroll.
+    if (!state && ['push', 'replace'].includes(navigation?.activation?.navigationType)) {
+      state = readState(navigation.activation.from);
+    }
+    return state?.owner === scrollOwner() && Number.isFinite(state.top) ? Math.max(0, state.top) : 0;
+  }
+
+  let menuScrollTop = savedScrollTop();
+
+  function saveScrollPosition() {
+    const nav = document.getElementById('sidebar-nav');
+    if (!nav || !nav.childElementCount) return;
+    menuScrollTop = nav.scrollTop;
+    const state = { owner: scrollOwner(), top: menuScrollTop };
+    try {
+      if (navigation?.updateCurrentEntry) {
+        navigation.updateCurrentEntry({ state: { ...navigation.currentEntry.getState(), [stateKey]: state } });
+      } else {
+        window.history.replaceState({ ...window.history.state, [stateKey]: state }, '');
+      }
+    } catch { /* History state is optional; ordinary links must remain usable. */ }
+  }
+
   function renderSidebar(user) {
     const nav = document.getElementById('sidebar-nav');
     if (!nav) return;
+    const items = MenuConfig.getMenuForUser(user);
+    const signature = JSON.stringify(items);
+    if (renderedMenu === signature && nav.childElementCount) return;
+    const top = nav.childElementCount ? nav.scrollTop : menuScrollTop;
     const fragment = document.createDocumentFragment();
     let lastSection = null;
-    for (const item of MenuConfig.getMenuForUser(user)) {
+    for (const item of items) {
       if (item.section && item.section !== lastSection) {
         lastSection = item.section;
         const section = document.createElement('div');
@@ -22,6 +64,9 @@ const AppNavigation = (() => {
       fragment.append(link);
     }
     nav.replaceChildren(fragment);
+    nav.scrollTop = top;
+    menuScrollTop = nav.scrollTop;
+    renderedMenu = signature;
   }
 
   function renderBreadcrumb(page) {
@@ -64,12 +109,19 @@ const AppNavigation = (() => {
 
   async function initialize() {
     if (!Auth.isLoggedIn()) return;
+    // Render the existing shell before the first await, then reconcile with DB.
+    // While synchronizing, stale menu links cannot be activated.
+    const nav = document.getElementById('sidebar-nav');
+    if (nav) nav.inert = true;
+    renderSidebar(Auth.getUser());
+    refresh();
     // Nạp lại permissions từ DB trước khi dựng menu để thay đổi
     // ma trận không tạo ra tình trạng menu hiện nhưng API trả 403 (hoặc ngược lại).
     await Auth.ready;
     renderSidebar(Auth.getUser());
     refresh();
     enforcePageAccess();
+    if (nav) nav.inert = false;
   }
 
   function enforcePageAccess() {
@@ -105,15 +157,21 @@ const AppNavigation = (() => {
   (actionPermissions[pageId] || []).forEach(binding => Auth.bindPermissions(...binding));
 
   initialize();
+  document.getElementById('sidebar-nav')?.addEventListener('scroll', saveScrollPosition, { passive: true });
+  document.addEventListener('click', saveScrollPosition, { capture: true });
+  window.addEventListener('pagehide', saveScrollPosition);
+  window.addEventListener('pageswap', saveScrollPosition);
   window.addEventListener('auth:permissions-changed', () => {
-    const container = document.getElementById('sidebar-nav');
-    const scrollTop = container?.scrollTop || 0;
     renderSidebar(Auth.getUser());
-    if (container) container.scrollTop = scrollTop;
     refresh();
     enforcePageAccess();
   });
-  window.addEventListener('pageshow', refresh);
+  window.addEventListener('pageshow', () => {
+    menuScrollTop = savedScrollTop();
+    const nav = document.getElementById('sidebar-nav');
+    if (nav) nav.scrollTop = menuScrollTop;
+    refresh();
+  });
   window.addEventListener('popstate', refresh);
   return { refresh };
 })();

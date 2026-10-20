@@ -420,6 +420,22 @@
         <span class="order-detail-field__label">Người tạo</span>
         <span class="order-detail-field__value">${escapeHtml(order.createdBy || "—")}</span>
       </div>
+      <div class="order-detail-field">
+        <span class="order-detail-field__label">Tồn giữ chỗ (S5-06)</span>
+        <span class="order-detail-field__value">
+          ${(() => {
+            const st = String(order.status || "").toUpperCase();
+            if (st === "APPROVED" || st === "RECORDED" || st === "PROCESSING") {
+              const expireText = order.reservationExpiresAt ? ` (Hạn: ${formatDateTime(order.reservationExpiresAt)})` : "";
+              return `<span class="oa-status-badge oa-status-badge--approved" style="display:inline-flex;padding:2px 8px;font-size:0.75rem;">Đang giữ chỗ tồn kho${escapeHtml(expireText)}</span>`;
+            }
+            if (st === "PENDING_APPROVAL") {
+              return `<span class="oa-status-badge oa-status-badge--pending" style="display:inline-flex;padding:2px 8px;font-size:0.75rem;">Chờ duyệt (Chưa giữ chỗ)</span>`;
+            }
+            return `<span style="color:var(--ink-500);font-size:0.8125rem;">Đã nhả tồn kho</span>`;
+          })()}
+        </span>
+      </div>
       ${order.notes ? `<div class="order-detail-field" style="grid-column: 1/-1">
         <span class="order-detail-field__label">Ghi chú</span>
         <span class="order-detail-field__value">${escapeHtml(order.notes)}</span>

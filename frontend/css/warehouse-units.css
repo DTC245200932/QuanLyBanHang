@@ -602,6 +602,36 @@
   background: #f8fafc !important;
 }
 
+.supplier-picker-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.btn--outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink-700);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn--outline:hover {
+  background: var(--line-light);
+  border-color: var(--line-dark, #cbd5e1);
+  color: var(--navy-900);
+}
+.badge--draft {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
 /* Line items section */
 .line-items-section {
   background: #fbfcfe;

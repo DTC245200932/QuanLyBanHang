@@ -19,7 +19,10 @@ async function openOrderForm(debtResponse) {
   const success = (data) => ({ ok: true, json: async () => ({ success: true, data }) });
   const context = vm.createContext({
     document: { getElementById: element, createElement: () => element(Symbol()), addEventListener() {} },
-    location: {}, MenuConfig: {},
+    location: { search: '' },
+    window: { location: { search: '' } },
+    URLSearchParams,
+    MenuConfig: {},
     requestAnimationFrame: (fn) => fn(), setTimeout() {}, clearTimeout() {},
     Auth: {
       requireLogin: () => true, hasAnyRole: () => true, hasPermission: () => true,

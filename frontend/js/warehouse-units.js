@@ -371,6 +371,10 @@
     const allowed = tabId === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
       : tabId === "create-receipt" ? canRecordVouchers : Auth.hasPermission("WAREHOUSE_VIEW");
     if (!allowed) return;
+    if (tabId === "inventory-report") {
+      window.location.href = "/warehouse/inventory";
+      return;
+    }
     tabs.forEach((tab) => {
       const active = tab.dataset.tab === tabId;
       tab.classList.toggle("nav-tab--active", active);

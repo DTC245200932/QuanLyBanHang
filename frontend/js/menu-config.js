@@ -139,7 +139,7 @@ const MenuConfig = (() => {
       section: "Kho hàng",
       label: "Tồn kho",
       icon: '<path d="M3 9.5 12 4l9 5.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5Z"/><path d="M8 21v-7h8v7M8 11h8"/>',
-      href: "/warehouse/units?tab=inventory",
+      href: "/warehouse/inventory",
       permission: "WAREHOUSE_VIEW",
       roles: [
         "ROLE_ADMIN",
@@ -266,6 +266,9 @@ const MenuConfig = (() => {
   function getPageForLocation(currentLocation) {
     const pathname = currentLocation.pathname.replace(/\/+$/, "") || "/";
     const query = new URLSearchParams(currentLocation.search);
+    if (pathname === "/warehouse/units" && query.get("tab") === "inventory") {
+      return menuItems.find(item => item.id === "warehouse");
+    }
     if (pathname === "/warehouse/units") {
       const validTabs = ["units", "receipts", "ledger", "inventory"];
       if (!validTabs.includes(query.get("tab"))) query.set("tab", "units");

@@ -2,6 +2,22 @@
 
 Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
 
+## S5-05 — Sổ tồn theo SKU và kho (backend + frontend) — 20/10/2026
+
+Nhánh `feature/S5-05-frontend-va-backend-xem_so_ton_kho_theoSKU_va_kho`, bắt đầu từ develop `b6b07a4`. Đã đọc AGENTS.md và cả hai skill trong SKILLS. Menu **Kho hàng → Tồn kho**, URL `/warehouse/inventory`; link/tab cũ `?tab=inventory` chuyển tới trang mới. Trang dùng app-shell, app-navigation và khung nội dung chung, không đặt outer width/gutter riêng.
+
+| AC / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Ba cột tồn thực tế, giữ chỗ, khả dụng theo SKU/kho | API read-only mới `/api/warehouse/stock-ledger`; truy vấn DB phân trang, khả dụng không âm, không cộng hàng đang chuyển; SKU chưa có bản ghi tồn trả 0 qua LEFT JOIN, không ghi DB | Hiển thị ba cột riêng, đơn vị theo sổ tồn đã ghi nhận, kho và nhóm hàng ở từng dòng; không cộng tổng lượng giữa SKU khác đơn vị | `WAREHOUSE_VIEW` hoặc ADMIN ở cả controller/service và FE; không phụ thuộc PRODUCT_VIEW, ORDER_VIEW hoặc quyền nhập kho |
+| Lọc kho, nhóm hàng, trạng thái tồn; tìm mã/tên | Lọc trên server, keyword không phân biệt hoa thường và escape `%/_/!`; trạng thái IN_STOCK/OUT_OF_STOCK/FULLY_RESERVED; metadata bộ lọc từ `/options` | Tìm theo mã/tên, lọc kết hợp, đặt lại, phân trang/đổi số dòng, phản hồi chậm không ghi đè bộ lọc mới | Tập kho lấy lại từ DB mỗi request; tài khoản đã gán kho chỉ xem kho được gán; role kho thiếu phân công không được fallback toàn hệ thống; ID kho ngoài phạm vi trả 403 |
+| Lưu thay đổi ma trận quyền | Token đang đăng nhập mất WAREHOUSE_VIEW bị chặn 403 ở cả list/options; role kho/MANAGE/IMPORT không thay thế quyền này; ADMIN luôn được phép | Thu hồi quyền ẩn menu/chặn trang, xóa dòng đang xem và hủy yêu cầu/xuất đang chờ | Đã kiểm tài khoản STAFF chỉ có VIEW, revoke rồi grant lại cùng token; VIEWER chỉ có VIEW dùng được trang không cần role kho |
+| Xuất Excel và trạng thái lỗi | Dùng cùng API và bộ lọc, mỗi trang export kiểm lại quyền/phạm vi | Xuất toàn bộ kết quả bộ lọc đã áp dụng, đủ ba lượng tồn; lỗi tải không biến thành tồn 0, có Tải lại; thiếu kho/không có kết quả có hướng dẫn rõ | Không trả giá bán/giá vốn; không lưu nghiệp vụ vào browser storage; đổi bộ lọc hoặc mất quyền hủy xuất |
+| Tương thích và bố cục | Không thêm schema, seed, quyền mới; không đổi API inventory cũ phục vụ S4 | Giữ sidebar/topbar/chuyển cảnh chung, bảng cuộn bên trong trên màn hình nhỏ; các tab đơn vị tính/chứng từ/sổ cái cũ giữ nguyên | Không merge, pull, chuyển nhánh hoặc tự commit |
+
+Kiểm chứng cuối: **68 test backend qua** (StockLedgerControllerTest 3, StockLedgerServiceTest 5, WarehouseControllerTest 10, WarehouseServiceTest 28, SprintMergeIntegrationTest 22). Tích hợp dùng HTTP/JWT/JPA/H2, kiểm lượng thập phân và đơn vị gốc, SKU chưa có tồn không tạo bản ghi, trạng thái, tìm ký tự đặc biệt, phân trang, phạm vi kho và thu hồi quyền trên phiên cũ. **86 test JS qua**; **6 test route/bảo vệ file liên quan qua**. Chrome `tests/stock-ledger.browser.cjs` kiểm ba cột/bộ lọc/phân trang/export toàn bộ, lỗi/retry/empty, phản hồi cũ, chống chèn HTML, sáu kích thước và grant/revoke/ADMIN. `tests/content-layout.browser.cjs`: **132 kiểm tra trên 22 trang × 6 kích thước**, lề cân và không tràn ngang toàn trang; đã xem ảnh desktop/mobile. `tests/navigation.browser.cjs` qua, sidebar giữ scroll 352→352 qua điều hướng; `git diff --check` sạch.
+
+Giới hạn: chưa chạy với MySQL thật; không đổi dữ liệu DB thật. Cần khởi động lại **backend và server frontend** để nhận API/route mới. Không gộp cảnh báo tồn tối thiểu S5-09 vào trạng thái tồn S5-05. Case test route cũ lệch tên Cổng đại lý ngoài phạm vi đã được ghi ở phần S5-03; không sửa nội dung trang đó.
+
 ## S5-03 — Mã vị trí tùy chọn, tự sinh tại backend — 20/10/2026
 
 | Hạng mục | Backend | Frontend | Kết nối / ma trận quyền |

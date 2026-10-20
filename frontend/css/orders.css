@@ -673,6 +673,14 @@
     width: 100%;
   }
 
+  /* Row flex bases become heights in the stacked toolbar. */
+  .ord-search-wrap,
+  .ord-filter-group,
+  .ord-filter-item {
+    flex-basis: auto;
+    min-width: 0;
+  }
+
   .ord-date-toolbar {
     flex-direction: column;
     align-items: stretch;
@@ -681,6 +689,23 @@
   .ord-date-group {
     flex-direction: column;
     align-items: stretch;
+    min-width: 0;
+  }
+
+  .ord-date-inputs {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .ord-date-field {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+
+  .ord-date-field input[type="date"] {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
   }
 
   .ord-financial-summary {

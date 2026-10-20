@@ -7,6 +7,39 @@
 .app-breadcrumb [aria-current="page"] { color: var(--ink-900); font-weight: 600; }
 .app-breadcrumb__separator { color: var(--ink-400); }
 
+/* One centered content frame for every sidebar page. Keep this after each
+   page stylesheet so legacy max-width/padding rules cannot shift its edges.
+   Scope to direct content children: sidebar, toolbar, tables and dialogs keep
+   their own layout. The dealer portal/print/auth pages are standalone. */
+:root {
+  --app-content-max-width: 1240px;
+  --app-content-gutter: 28px;
+  --app-content-top: 38px;
+}
+
+.main-area > :is(.content, .admin-main, .catalog-main, .price-main, .disc-main, .profile-layout) {
+  width: min(var(--app-content-max-width), calc(100% - 2 * var(--app-content-gutter)));
+  min-width: 0;
+  max-width: none;
+  margin-inline: auto;
+  padding-inline: 0;
+}
+
+.main-area > :is(.content, .admin-main, .catalog-main, .price-main, .disc-main) {
+  padding-block: var(--app-content-top) 60px;
+}
+
+.main-area > .profile-layout {
+  margin-block: var(--app-content-top) 60px;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --app-content-gutter: 16px;
+    --app-content-top: 24px;
+  }
+}
+
 /* Preserve the menu viewport; wheel scrolling must not spill into the page. */
 html { scrollbar-gutter: stable; }
 .sidebar__nav {

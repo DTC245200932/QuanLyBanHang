@@ -2346,6 +2346,35 @@ Content-Type: image/png
 ```
 Response Body: Binary data PNG (ảnh mã vạch Code 128)
 
+### S5-03 — Màn hình Kho & vị trí lưu — 20/10/2026
+
+Frontend tại `/warehouses` (menu **Kho hàng → Kho & vị trí lưu**), dùng các API có sẵn dưới đây.
+Mọi đường dẫn trong bảng có prefix `/api`. ADMIN luôn được phép; các vai trò khác bắt buộc có quyền trong ma trận DB, không fallback theo tên vai trò.
+
+| Method | Endpoint | Quyền | Dữ liệu / hành vi |
+|---|---|---|---|
+| GET | `/warehouses` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` | Danh sách kho, mã/tên/địa chỉ/người phụ trách/trạng thái và số vị trí/đại lý |
+| GET | `/warehouses/{id}` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` | Chi tiết và `locations` của kho |
+| POST / PUT | `/warehouses`, `/warehouses/{id}` | `WAREHOUSE_MANAGE` | `code`, `name`, `address`, `managerName` (hoặc `managerUserId` theo API có sẵn), `active` |
+| POST / PUT | `/warehouses/{id}/locations`, `/warehouse-locations/{id}` | `WAREHOUSE_MANAGE` | `code`, `name`, `locationType`, `parentLocationId`, `description`, `active` |
+| GET | `/warehouses/dealer-assignments?keyword=&page=0&size=20` | `WAREHOUSE_MANAGE` | **Bổ sung**: Page gồm `content`, `totalElements`, `last`; mỗi dòng chỉ `id/code/name/active/warehouseId/warehouseCode/warehouseName`, không cung cấp công nợ/thông tin tài chính. `page >= 0`, `size` từ 1–200 |
+| PUT | `/warehouses/dealer-assignments/{dealerId}` | `WAREHOUSE_MANAGE` | **Bổ sung**: body `{"warehouseId": 1}`; gán kho đang hoạt động, lưu DB và audit; response cùng projection tối thiểu, không sửa kho của đơn đã tồn tại |
+
+Luồng kho phục vụ dùng projection riêng để quyền quản lý kho không phải phụ thuộc `CUSTOMER_VIEW`, `CUSTOMER_EDIT`, `USER_VIEW` hoặc nhận thêm dữ liệu tài chính. Endpoint khách hàng `/dealers/{id}/default-warehouse` vẫn giữ hợp đồng và quyền cũ.
+
+Vị trí mới ở mức `ZONE` (khu) hoặc `SHELF` (kệ). Kệ chỉ nhận khu cha thuộc cùng kho. `parentLocationId: 0` có nghĩa bỏ khu cha (sửa lỗi nhánh xử lý trước đây không chạy); bỏ trường khi cập nhật vẫn giữ cha cũ. Khu không làm con của khu khác và không được đổi thành kệ nếu đang chứa vị trí con. Kiểu vị trí cũ của backend vẫn được giữ khi chỉnh sửa, không tự chuyển đổi dữ liệu.
+
+**Mã vị trí là tùy chọn** (không áp dụng cho mã kho):
+
+- Tạo mới: không gửi `code`, gửi `null`, chuỗi rỗng hoặc toàn khoảng trắng thì server tự sinh `KHU-001` cho khu, `KE-001` cho kệ; các kiểu cũ dùng tên enum làm tiền tố. Số thứ tự theo từng kho và tiền tố, tiếp tục sau mã số lớn nhất đang có, kể cả mã số được nhập tay; sau 999 tiếp tục 1000.
+- Có nhập `code`: giữ mã riêng, chỉ chuẩn hóa bỏ khoảng trắng đầu/cuối và viết hoa như hợp đồng cũ; trùng mã trong cùng kho trả 400, không âm thầm thay bằng mã tự sinh. Kho khác có thể dùng cùng mã.
+- Cập nhật: `code` trống/null/không gửi giữ nguyên mã cũ, không tự cấp lại mã khi đổi tên hoặc loại vị trí. Nhập mã khác sẽ kiểm tra trùng trước khi đổi. Tối đa 50 ký tự.
+- Cấp mã thực hiện trong transaction backend, khóa ghi trên kho (cả tạo mới với mã tay và tự sinh, và đổi mã), đồng thời giữ unique constraint `(warehouse_id, code)`. Frontend không tính số thứ tự hoặc lưu counter trong trình duyệt. Không thêm bảng/cột DB.
+
+Mã audit gán kho dùng `ASSIGN_WAREHOUSE` (16 ký tự), thay mã cũ 24 ký tự vượt giới hạn `audit_logs.action VARCHAR(20)` làm rollback giao dịch. Áp dụng cho cả endpoint kho mới và endpoint khách hàng cũ.
+
+Không đổi schema, không tạo quyền mới, không tự cấp thêm quyền vào ma trận đã lưu. Thu hồi `WAREHOUSE_MANAGE` phải chặn API ghi và API danh sách gán đại lý bằng 403 ở request kế tiếp; giữ `WAREHOUSE_VIEW` thì trang còn xem được nhưng không có thao tác sửa/gán.
+
 ### Bổ sung sửa lỗi Sprint 4 — 20/10/2026
 
 Các đường dẫn bên dưới có prefix `/api`. Quyền lấy từ ma trận DB ở mỗi request; token đã đăng nhập không giữ quyền bị thu hồi. ADMIN luôn toàn quyền, nhưng vẫn phải tuân thủ trạng thái và ràng buộc dữ liệu hợp lệ.

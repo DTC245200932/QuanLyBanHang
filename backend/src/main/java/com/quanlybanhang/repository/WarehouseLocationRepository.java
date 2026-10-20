@@ -10,6 +10,9 @@ import java.util.Optional;
 
 public interface WarehouseLocationRepository extends JpaRepository<WarehouseLocation, Long>, JpaSpecificationExecutor<WarehouseLocation> {
 
+    @org.springframework.data.jpa.repository.Query("select l.code from WarehouseLocation l where l.warehouse.id = :warehouseId")
+    List<String> findCodesByWarehouseId(@org.springframework.data.repository.query.Param("warehouseId") Long warehouseId);
+
     List<WarehouseLocation> findByWarehouseIdOrderByCodeAsc(Long warehouseId);
 
     List<WarehouseLocation> findByWarehouseIdAndActiveTrueOrderByCodeAsc(Long warehouseId);

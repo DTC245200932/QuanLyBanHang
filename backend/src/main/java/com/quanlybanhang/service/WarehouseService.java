@@ -24,6 +24,11 @@ public interface WarehouseService {
 
     WarehouseResponse updateWarehouse(Long id, WarehouseRequest request, String username);
 
+    org.springframework.data.domain.Page<WarehouseDealerResponse> getDealerWarehouseAssignments(
+            String keyword, org.springframework.data.domain.Pageable pageable);
+
+    WarehouseDealerResponse assignDealerWarehouse(Long dealerId, Long warehouseId, String username);
+
     void deleteWarehouse(Long id, String username);
 
     // ── Quản lý Vị trí lưu kho ở mức kệ hoặc khu (S5-03) ──

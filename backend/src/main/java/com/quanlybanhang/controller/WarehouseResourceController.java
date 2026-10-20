@@ -23,6 +23,28 @@ public class WarehouseResourceController {
 
     private final WarehouseService warehouseService;
 
+    // S5-03 uses a narrow warehouse-only projection, not the customer/finance APIs.
+    @GetMapping("/api/warehouses/dealer-assignments")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('WAREHOUSE_MANAGE')")
+    public ApiResponse getDealerWarehouseAssignments(@RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        if (page < 0 || size < 1 || size > 200) {
+            throw new IllegalArgumentException("Trang phải không âm; số dòng mỗi trang từ 1 đến 200");
+        }
+        return ApiResponse.success("Danh sách kho phục vụ đại lý", warehouseService.getDealerWarehouseAssignments(
+                keyword, org.springframework.data.domain.PageRequest.of(page, size,
+                        org.springframework.data.domain.Sort.by("name").ascending())));
+    }
+
+    @PutMapping("/api/warehouses/dealer-assignments/{dealerId}")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('WAREHOUSE_MANAGE')")
+    public ApiResponse assignDealerWarehouse(@PathVariable Long dealerId,
+            @Valid @RequestBody com.quanlybanhang.dto.request.DealerWarehouseAssignRequest request,
+            Principal principal) {
+        return ApiResponse.success("Đã lưu kho phục vụ mặc định", warehouseService.assignDealerWarehouse(
+                dealerId, request.getWarehouseId(), principal.getName()));
+    }
+
     // ── /api/warehouses ──
 
     @GetMapping("/api/warehouses")

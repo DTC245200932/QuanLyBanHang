@@ -95,6 +95,79 @@ class SprintMergeIntegrationTest {
     }
 
     @Test
+    void automaticLocationCodesArePerWarehouseAndSafeForConcurrentCreates() throws Exception {
+        String admin = login("admin");
+        String url = "/api/warehouses/" + warehouse.getId() + "/locations";
+        call(post(url), admin, Map.of("name", "Kệ có nhãn", "code", "KE-009", "locationType", "SHELF"), 200);
+        var jobs = new ArrayList<CompletableFuture<JsonNode>>();
+        for (int i = 0; i < 4; i++) {
+            jobs.add(CompletableFuture.supplyAsync(() -> {
+                try { return call(post(url), admin, Map.of("name", "Kệ tự sinh", "code", " ", "locationType", "SHELF"), 200).get("data"); }
+                catch (Exception e) { throw new RuntimeException(e); }
+            }));
+        }
+        var created = jobs.stream().map(CompletableFuture::join).toList();
+        assertThat(created.stream().map(n -> n.get("code").asText()).toList())
+                .containsExactlyInAnyOrder("KE-010", "KE-011", "KE-012", "KE-013");
+        long id = created.get(0).get("id").asLong();
+        assertThat(call(put("/api/warehouse-locations/" + id), admin,
+                Map.of("code", "", "name", "Tên đã sửa", "locationType", "SHELF"), 200).at("/data/code").asText())
+                .isEqualTo(created.get(0).get("code").asText());
+        assertThat(call(post("/api/warehouses/" + destination.getId() + "/locations"), admin,
+                Map.of("name", "Kệ kho khác", "locationType", "SHELF"), 200).at("/data/code").asText()).isEqualTo("KE-001");
+        assertThat(call(post(url), admin, Map.of("name", "Khu tự sinh", "locationType", "ZONE"), 200)
+                .at("/data/code").asText()).isEqualTo("KHU-001");
+        assertThat(call(post(url), admin, Map.of("name", "Khu có nhãn", "code", "NHAN-KHU-X", "locationType", "ZONE"), 200)
+                .at("/data/code").asText()).isEqualTo("NHAN-KHU-X");
+        call(post(url), admin, Map.of("name", "Mã trùng", "code", "KE-009", "locationType", "SHELF"), 400);
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_SALES);
+        try {
+            matrix.updateRolePermissions(ERole.ROLE_SALES, Set.of(Permission.WAREHOUSE_MANAGE));
+            call(post(url), salesToken, Map.of("name", "Được cấp quyền", "locationType", "SHELF"), 200);
+            matrix.updateRolePermissions(ERole.ROLE_SALES, Set.of());
+            call(post(url), salesToken, Map.of("name", "Đã thu hồi", "locationType", "SHELF"), 403);
+        } finally { matrix.updateRolePermissions(ERole.ROLE_SALES, original); }
+    }
+
+    @Test
+    void warehouseManagementUsesLiveMatrixAndPersistsLocationsAndDealerWarehouse() throws Exception {
+        User viewer = createUser("warehouse-ui-" + UUID.randomUUID(), ERole.ROLE_VIEWER, null);
+        String token = login(viewer.getUsername());
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_VIEWER);
+        try {
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, EnumSet.of(Permission.WAREHOUSE_MANAGE));
+            long zoneId = call(post("/api/warehouses/" + warehouse.getId() + "/locations"), token,
+                    Map.of("code", "ZONE-A", "name", "Khu A", "locationType", "ZONE", "parentLocationId", 0), 200)
+                    .at("/data/id").asLong();
+            long shelfId = call(post("/api/warehouses/" + warehouse.getId() + "/locations"), token,
+                    Map.of("code", "SHELF-A", "name", "Kệ A", "locationType", "SHELF", "parentLocationId", zoneId), 200)
+                    .at("/data/id").asLong();
+            call(put("/api/warehouse-locations/" + zoneId), token,
+                    Map.of("code", "ZONE-A", "name", "Khu A", "locationType", "SHELF"), 400);
+            JsonNode detached = call(put("/api/warehouse-locations/" + shelfId), token,
+                    Map.of("code", "SHELF-A", "name", "Kệ A", "locationType", "SHELF", "parentLocationId", 0), 200);
+            assertThat(detached.at("/data/parentLocationId").isNull()).isTrue();
+            JsonNode assigned = call(put("/api/warehouses/dealer-assignments/" + dealer.getId()), token,
+                    Map.of("warehouseId", destination.getId()), 200).get("data");
+            assertThat(assigned.get("warehouseId").asLong()).isEqualTo(destination.getId());
+            assertThat(assigned.has("debtLimit")).isFalse();
+            assertThat(dealers.findById(dealer.getId()).orElseThrow().getWarehouse().getId()).isEqualTo(destination.getId());
+            call(get("/api/warehouses/dealer-assignments"), token, null, 200);
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, EnumSet.of(Permission.WAREHOUSE_VIEW));
+            call(get("/api/warehouses"), token, null, 200);
+            call(get("/api/warehouses/" + warehouse.getId()), token, null, 200);
+            call(get("/api/warehouses/dealer-assignments"), token, null, 403);
+            call(put("/api/warehouses/dealer-assignments/" + dealer.getId()), token,
+                    Map.of("warehouseId", warehouse.getId()), 403);
+            call(put("/api/warehouse-locations/" + shelfId), token,
+                    Map.of("code", "SHELF-A", "name", "Kệ A", "locationType", "SHELF"), 403);
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, Set.of());
+            call(get("/api/warehouses"), token, null, 403);
+            call(get("/api/warehouse-locations"), token, null, 403);
+        } finally { matrix.updateRolePermissions(ERole.ROLE_VIEWER, original); }
+    }
+
+    @Test
     void debtAndOverdueDoNotDisappearWhenFulfillmentStatusChanges() throws Exception {
         String admin = login("admin");
         long id = call(post("/api/orders"), managerToken, orderBody(1, false), 201).at("/data/id").asLong();

@@ -1038,7 +1038,7 @@ public class DealerServiceImpl implements DealerService {
             auditLogService.logAction(
                     "DEALER",
                     saved.getId() != null ? saved.getId().toString() : "N/A",
-                    "ASSIGN_DEFAULT_WAREHOUSE",
+                    "ASSIGN_WAREHOUSE",
                     null,
                     note,
                     currentUsername != null ? currentUsername : "system"

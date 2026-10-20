@@ -21,7 +21,7 @@ public class WarehouseLocationRequest {
     /** ID kho chứa vị trí này (bắt buộc nếu không nằm trên URL) */
     private Long warehouseId;
 
-    @NotBlank(message = "Mã vị trí không được để trống")
+    /** Optional on create: server generates a code. Blank on update preserves the existing code. */
     @Size(max = 50, message = "Mã vị trí không được vượt quá 50 ký tự")
     private String code;
 

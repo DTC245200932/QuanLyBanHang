@@ -2,6 +2,31 @@
 
 Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
 
+## S5-03 — Mã vị trí tùy chọn, tự sinh tại backend — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Tạo khu/kệ với mã để trống | Tự sinh theo từng kho: `KHU-001`, `KE-001`; lấy số lớn nhất của tiền tố hiện có rồi tăng, bỏ qua mã chữ tùy chỉnh; khóa ghi trên kho và unique constraint chống trùng đồng thời | Bỏ dấu bắt buộc và required của mã vị trí; có hướng dẫn để trống tự sinh, gửi mã rỗng và hiển thị mã từ API, không sinh ở JavaScript | Giữ `WAREHOUSE_MANAGE` hoặc ADMIN cho mọi POST/PUT; không thêm quyền/fallback role |
+| Mã riêng và sửa vị trí | Mã riêng chỉ trim/viết hoa như trước, trùng trong cùng kho trả lỗi; khác kho được cùng mã; sửa với mã trống/null giữ mã hiện có | Cho nhập mã nhãn có sẵn; sửa mã để trống có giải thích giữ mã cũ | Đã kiểm cấp quyền rồi thu hồi ngay trên cùng token, POST mã trống trả 403 sau thu hồi |
+
+Kiểm chứng lần bổ sung: **59 test backend qua** (12 controller, 28 service, 19 tích hợp H2/JWT/JPA). Kiểm bốn POST tạo kệ đồng thời nhận bốn mã khác nhau, mã tay `KE-009` khiến mã tiếp theo bắt đầu `KE-010`, kho khác bắt đầu `KE-001`, chuỗi quá 999, giữ mã khi sửa và chặn mã tay trùng. **85 test JavaScript qua**; Chrome kiểm form không bắt buộc mã, hiển thị mã backend trả về và giữ mã khi sửa trống, cùng các luồng/quyền/kích thước của trang. Đã xem ảnh form. Không thay schema hoặc MySQL thật; cần khởi động lại backend. **Mã kho vẫn nhập bắt buộc**, chỉ mã vị trí được tự sinh. Cập nhật hợp đồng tại backend/API_DOCUMENTATION.md.
+
+## S5-03 — Frontend quản lý nhiều kho và vị trí lưu — 20/10/2026
+
+Nhánh `feature/S5-03-frontend-quan_ly_nhieu_kho_va_vi_tri_luu`. Menu **Kho hàng → Kho & vị trí lưu**, URL `/warehouses`. Đọc AGENTS.md và cả hai SKILLS; tái sử dụng app-shell/app-navigation, nội dung nằm trong khung chung, không tạo lề/chiều rộng ngoài riêng.
+
+| Hạng mục / AC | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Nhiều kho: mã, tên, địa chỉ, người phụ trách, trạng thái | Tái sử dụng GET/POST/PUT `/api/warehouses` | Danh sách, tìm kiếm/lọc trạng thái, thêm/sửa kho, người phụ trách nhập tên | Xem với `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE`; thay đổi với `WAREHOUSE_MANAGE`; không cần quyền xem tài khoản |
+| Vị trí lưu: khu/kệ trong từng kho | Tái sử dụng API vị trí; sửa bỏ cha bằng `parentLocationId=0`; chặn khu con/cycle và đổi khu đang chứa con thành kệ | Chọn kho xem vị trí; thêm/sửa khu/kệ, chọn khu cha trong cùng kho, mô tả và trạng thái | Cùng quyền xem/quản lý trên cả FE và BE; không tự đổi kiểu vị trí cũ khi sửa |
+| Kho phục vụ mặc định của đại lý | Bổ sung projection tối thiểu GET/PUT `/api/warehouses/dealer-assignments`; lưu DB và audit; chặn kho ngừng hoạt động | Danh sách đại lý có tìm kiếm/phân trang, gán/chuyển kho mặc định, không sửa kho đơn hàng đã có | Chỉ `WAREHOUSE_MANAGE` hoặc ADMIN; không yêu cầu thêm quyền khách hàng/tài chính, không trả dữ liệu công nợ |
+| Sửa lỗi audit khi gán kho | Mã cũ 24 ký tự vượt cột action VARCHAR(20), làm rollback; đổi thành `ASSIGN_WAREHOUSE`, cả luồng mới và endpoint khách hàng cũ | Báo thành công sau API thành công; giữ dữ liệu form và báo lỗi server nếu thất bại | Không đổi schema hoặc dữ liệu DB thật; không nới quyền endpoint khách hàng cũ |
+| Cấp/thu hồi quyền trên phiên đang mở | API lấy quyền hiện tại, không fallback role quản lý kho | Đồng bộ trước khi ghi; thu hồi quyền đóng form và ẩn thao tác; giữ quyền xem thì chỉ đọc, mất cả hai quyền chuyển 403 | ADMIN vẫn toàn quyền; kiểm bằng tài khoản VIEWER chỉ có quyền được cấp, không có role thứ hai |
+
+Kiểm chứng: **80 test backend qua**, gồm WarehouseResourceControllerTest, WarehouseServiceTest, DealerServiceTest và **18 test tích hợp HTTP/JWT/JPA/H2**, có gán kho/lưu vị trí và thu hồi quyền ngay trên cùng access token. **85 test JavaScript qua**. `tests/warehouses.browser.cjs` chạy Chrome/API mock kiểm thêm/sửa kho, khu/kệ, bỏ cha, gán đại lý, lỗi lưu, grant/revoke, readonly, ADMIN và 6 kích thước 1920/1440/1024/768/390/320. `tests/content-layout.browser.cjs` kiểm **126 trường hợp trên 21 trang × 6 kích thước**, khung cân lề, không tràn ngang toàn trang. Đã xem ảnh desktop/mobile. Thêm kiểm thử route `/warehouses` và legacy URL.
+
+Giới hạn kiểm chứng: không chạy/lưu dữ liệu vào MySQL thật; backend sửa cần được khởi động lại để có endpoint mới. Bộ test route cũ có một assertion ngoài S5-03 đang chờ chuỗi “Cổng đại lý” trong khi trang hiện tại dùng “Cổng đặt hàng đại lý”; giữ nguyên nội dung trang đó, không coi lỗi có sẵn này là lỗi S5-03. Không merge, pull, đổi nhánh hay tự commit.
+
 ## Màu thông báo ma trận quyền — 20/10/2026
 
 | Hạng mục | Backend | Frontend | Kết nối / phân quyền |

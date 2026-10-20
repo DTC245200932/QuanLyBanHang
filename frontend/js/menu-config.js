@@ -126,6 +126,15 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "warehouses",
+      section: "Kho hàng",
+      label: "Kho & vị trí lưu",
+      icon: '<path d="m3 9 9-6 9 6v12H3zM8 21V11h8v10M8 15h8"/>',
+      href: "/warehouses",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_MANAGE"],
+      roles: ALL_ROLES,
+    },
+    {
       id: "warehouse",
       section: "Kho hàng",
       label: "Tồn kho",

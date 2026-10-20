@@ -46,6 +46,7 @@ class FrontendRoutingTest(unittest.TestCase):
             "/admin/users": "Quản lý tài khoản",
             "/admin/audit-logs": "Nhật ký thao tác",
             "/warehouse/units?tab=inventory": "Đơn vị tính",
+            "/warehouses": "Kho & vị trí lưu",
             "/products": "Sản phẩm",
             "/product-groups": "Nhóm hàng",
             "/price-lists": "Bảng giá",
@@ -88,6 +89,16 @@ class FrontendRoutingTest(unittest.TestCase):
                 self.assertEqual(308, status)
                 self.assertEqual(clean, headers["Location"])
                 self.assertEqual(b"", body)
+
+    def test_s503_warehouse_page_and_legacy_url(self):
+        status, _, body = self.get("/warehouses")
+        self.assertEqual(200, status)
+        self.assertIn('id="wh-dealers"', body.decode("utf-8"))
+        self.assertIn('/js/warehouses.js', body.decode("utf-8"))
+        self.assertEqual(200, self.get("/warehouses", method="HEAD")[0])
+        status, headers, _ = self.get("/warehouses.html?warehouseId=1")
+        self.assertEqual(308, status)
+        self.assertEqual("/warehouses?warehouseId=1", headers["Location"])
 
     def test_head_works_without_response_body(self):
         status, headers, body = self.get("/dashboard", method="HEAD")

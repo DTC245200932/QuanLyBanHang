@@ -122,6 +122,9 @@ const AppNavigation = (() => {
     refresh();
     enforcePageAccess();
     if (nav) nav.inert = false;
+    // Release the static outgoing menu only after restoring this menu and
+    // reconciling its permissions. Does not grant access or skip Auth.ready.
+    window.AppTransition?.navigationReady();
   }
 
   function enforcePageAccess() {

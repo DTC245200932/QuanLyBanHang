@@ -2,6 +2,19 @@
 
 Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
 
+## Menu đứng yên, chỉ chuyển cảnh nội dung — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Giữ menu khi đổi chức năng | Không đổi | Giữ snapshot menu cũ đứng yên, không fade; chỉ nhả sau khi menu trang mới khôi phục cuộn và đồng bộ quyền xong | Giữ `Auth.ready`, menu inert khi chờ; không cấp quyền bằng snapshot |
+| Chỉ chuyển cảnh phần trắng | Không đổi | Đặt tên transition trên khung nội dung thực, không chụp cả `.main-area`; fade 100–160ms, không trượt; topbar nằm trong nền tĩnh để tránh blur chữ | Không sửa DOM form, replay script, gom trang thành SPA hay cache dữ liệu nghiệp vụ |
+| Mạng chậm / chuyển nhanh | Không đổi | Watchdog 1 giây chỉ kết thúc giữ ảnh, không mở khóa quyền; xử lý transition bị hủy và trang đang parse; callback cũ không phá transition mới | Backend vẫn kiểm ma trận ở từng request; frontend vẫn chặn 403 khi bị thu hồi quyền |
+| Reload / Back / Forward / mobile | Không đổi | Giữ điều hướng HTML gốc, history và vị trí menu; giảm chuyển động tắt transition; browser không hỗ trợ dùng tải trang bình thường | Không can thiệp liên kết, submit, tải file hay API; không sửa DB |
+
+**Lưu ý chính xác về kiến trúc:** đây là giữ nguyên menu **về hiển thị**, không phải chỉ fetch một mảnh HTML. Trình duyệt vẫn nạp tài liệu đích và các script khởi tạo riêng như cũ, nên không phải di trú vòng đời của từng trang sang SPA/PJAX. Dùng [cross-document view transitions của trình duyệt](https://developer.chrome.com/docs/web-platform/view-transitions/cross-document); không cam kết hiệu ứng này trên browser không hỗ trợ.
+
+Kiểm chứng: **84 test JS qua**. Chrome thật/API mock: `tests/menu-transition.browser.cjs` xác nhận menu cũ opacity 1 và đứng yên khi chờ quyền, menu mới opacity 0, chỉ khung nội dung có tên transition, cuộn 312px → 312px; form tạo tài khoản mở được, watchdog không mở menu khi quyền chưa đồng bộ, chuyển trang liên tiếp và thu hồi quyền của VIEWER đều qua, không pageerror. Đã xem ảnh giữa/sau chuyển cảnh và sửa lỗi topbar bị blur trong snapshot. `tests/navigation.browser.cjs` qua Back/Forward/Reload/mobile/reduced-motion; `tests/s4-workflows.browser.cjs` qua giỏ/xác nhận/vòng đời/thu hồi quyền; `tests/content-layout.browser.cjs` qua **114 ca căn lề**. Không thử MySQL thật, không thay đổi logic backend, không merge/chuyển nhánh.
+
 ## Đồng bộ căn lề các trang trong menu — 20/10/2026
 
 | Hạng mục | Backend | Frontend | Kết nối / phân quyền |

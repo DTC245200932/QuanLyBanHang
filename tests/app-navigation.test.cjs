@@ -8,6 +8,7 @@ function setup({ top = 0, from = 0, type = 'push', native = true, page = 'dashbo
   let user = { id: 7, roles: ['ROLE_VIEWER'], permissions: ['PRODUCT_VIEW'] };
   let entryState = top ? { saleStockNavigation: { owner: '7', top } } : undefined;
   let replacements = 0;
+  let readySignals = 0;
   let finishSync;
   const ready = new Promise(resolve => { finishSync = resolve; });
   const addEventListener = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
@@ -33,7 +34,8 @@ function setup({ top = 0, from = 0, type = 'push', native = true, page = 'dashbo
     { id: 'products', href: '/products', label: 'Sản phẩm', section: 'Kinh doanh', icon: '' },
   ];
   const context = vm.createContext({
-    window: { navigation: native ? navigation : undefined, history, location: { pathname: '/' + page }, addEventListener },
+    window: { navigation: native ? navigation : undefined, history, location: { pathname: '/' + page }, addEventListener,
+      AppTransition: { navigationReady() { readySignals++; } } },
     document: {
       getElementById: id => id === 'sidebar-nav' ? nav : null,
       createDocumentFragment: node, createElement: node,
@@ -49,6 +51,7 @@ function setup({ top = 0, from = 0, type = 'push', native = true, page = 'dashbo
   return {
     nav, history, context, emit, finishSync,
     replacements: () => replacements, state: () => entryState,
+    readySignals: () => readySignals,
     revoke: () => { user = { ...user, permissions: [] }; },
   };
 }
@@ -57,9 +60,11 @@ test('new pages inherit sidebar scroll before permissions finish loading, withou
   const app = setup({ from: 420 });
   assert.equal(app.nav.scrollTop, 420);
   assert.equal(app.nav.inert, true);
+  assert.equal(app.readySignals(), 0);
   app.finishSync();
   await new Promise(setImmediate);
   assert.equal(app.nav.inert, false);
+  assert.equal(app.readySignals(), 1);
   assert.equal(app.replacements(), 1);
   app.emit('pageshow');
   assert.equal(app.nav.scrollTop, 420);

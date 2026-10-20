@@ -54,6 +54,7 @@ class SprintMergeIntegrationTest {
     @Autowired PasswordEncoder passwords;
     @Autowired RolePermissionConfig matrix;
     @Autowired OrderRepository orders;
+    @Autowired StockMinimumRepository minimums;
 
     Warehouse warehouse, destination;
     Product product;
@@ -743,6 +744,149 @@ class SprintMergeIntegrationTest {
         assertThat(secondTarget.getBaseQuantity()).isZero(); assertThat(secondTarget.getInTransitQuantity()).isZero();
         call(get("/api/warehouse/transfers/search").param("page", "-1"), admin, null, 400);
         call(get("/api/warehouse/transfers/products").param("warehouseId", warehouse.getId().toString()).param("size", "201"), admin, null, 400);
+    }
+
+    @Test
+    void minimumStockIsPerSkuWarehouseAndUsesStrictAvailableQuantityBoundary() throws Exception {
+        String admin = login("admin");
+        var inventory = stock(); inventory.setBaseQuantity(new BigDecimal("10.5")); inventory.setReservedQuantity(new BigDecimal("3.25"));
+        inventory.setInTransitQuantity(new BigDecimal("100")); inventories.save(inventory);
+        String setting = "/api/warehouse/stock-minimums/" + warehouse.getId() + "/" + product.getId();
+        call(put(setting), admin, Map.of("minimumQuantity", "7.25", "baseUnit", "lon"), 200);
+        assertThat(alerts(admin).at("/data/totalElements").asInt()).isZero(); // equal is not below
+        call(put(setting), admin, Map.of("minimumQuantity", "7.2501", "baseUnit", "lon"), 200);
+        JsonNode low = alerts(admin).at("/data/content/0");
+        assertThat(low.get("belowMinimum").asBoolean()).isTrue();
+        assertThat(low.get("availableQuantity").decimalValue()).isEqualByComparingTo("7.25");
+        assertThat(low.get("minimumQuantity").decimalValue()).isEqualByComparingTo("7.2501");
+        assertThat(minimums.findByWarehouseIdAndProductId(warehouse.getId(), product.getId())).isPresent();
+        assertThat(call(get("/api/warehouse/stock-ledger").param("warehouseId", warehouse.getId().toString())
+                .param("keyword", product.getCode()).param("belowMinimum", "true"), admin, null, 200).at("/data/totalElements").asInt()).isEqualTo(1);
+        JsonNode other = call(get("/api/warehouse/stock-ledger").param("warehouseId", destination.getId().toString())
+                .param("keyword", product.getCode()), admin, null, 200).at("/data/content/0");
+        assertThat(other.get("minimumQuantity").isNull()).isTrue(); assertThat(other.get("belowMinimum").asBoolean()).isFalse();
+        call(put(setting), admin, Map.of("minimumQuantity", 0, "baseUnit", "lon"), 200);
+        assertThat(alerts(admin).at("/data/totalElements").asInt()).isZero();
+        call(delete(setting), admin, null, 200);
+        assertThat(minimums.findByWarehouseIdAndProductId(warehouse.getId(), product.getId())).isEmpty();
+        assertThat(stock().getBaseQuantity()).isEqualByComparingTo("10.5"); assertThat(stock().getReservedQuantity()).isEqualByComparingTo("3.25");
+    }
+
+    @Test
+    void minimumStockCoversMissingInventoryAndReevaluatesWithoutCachedAlerts() throws Exception {
+        String admin = login("admin");
+        long before = inventories.count();
+        String path = "/api/warehouse/stock-minimums/" + destination.getId() + "/" + product.getId();
+        call(put(path), admin, Map.of("minimumQuantity", 1, "baseUnit", "lon"), 200);
+        assertThat(inventories.count()).isEqualTo(before); // configuring does not manufacture physical inventory
+        var query = get("/api/warehouse/stock-alerts").param("warehouseId", destination.getId().toString()).param("keyword", product.getCode());
+        JsonNode first = call(query, admin, null, 200).at("/data/content/0");
+        assertThat(first.get("availableQuantity").decimalValue()).isZero(); assertThat(first.get("belowMinimum").asBoolean()).isTrue();
+        inventories.save(WarehouseInventory.builder().warehouse(destination).product(product).baseUnit("lon").baseQuantity(BigDecimal.ONE).build());
+        assertThat(call(query, admin, null, 200).at("/data/totalElements").asInt()).isZero();
+        var stock = targetStock(); stock.setReservedQuantity(BigDecimal.ONE); inventories.save(stock);
+        assertThat(call(query, admin, null, 200).at("/data/totalElements").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void minimumStockRejectsInvalidInputAndDoesNotAlertForInactiveOrMismatchedUnits() throws Exception {
+        String admin = login("admin");
+        String path = "/api/warehouse/stock-minimums/" + warehouse.getId() + "/" + product.getId();
+        for (String value : List.of("-1", "0.00001", "100000000000"))
+            call(put(path), admin, Map.of("minimumQuantity", value, "baseUnit", "lon"), 400);
+        call(put(path), admin, Map.of("minimumQuantity", 1, "baseUnit", "thùng"), 400);
+        call(put(path), admin, Map.of("baseUnit", "lon"), 400);
+        call(put(path), admin, Map.of("minimumQuantity", 1), 400);
+        call(put(path), admin, Map.of("minimumQuantity", 241, "baseUnit", "lon"), 200);
+        assertThat(alerts(admin).at("/data/totalElements").asInt()).isEqualTo(1);
+        product.setActive(false); products.save(product);
+        assertThat(alerts(admin).at("/data/totalElements").asInt()).isZero();
+        call(put(path), admin, Map.of("minimumQuantity", 242, "baseUnit", "lon"), 400);
+        product.setActive(true); products.save(product); warehouse.setActive(false); warehouses.save(warehouse);
+        assertThat(alerts(admin).at("/data/totalElements").asInt()).isZero();
+        warehouse.setActive(true); warehouses.save(warehouse);
+        var inventory = stock(); inventory.setBaseUnit("hộp"); inventories.save(inventory);
+        assertThat(alerts(admin).at("/data/totalElements").asInt()).isZero();
+        JsonNode row = call(get("/api/warehouse/stock-ledger").param("warehouseId", warehouse.getId().toString())
+                .param("keyword", product.getCode()), admin, null, 200).at("/data/content/0");
+        assertThat(row.get("minimumUnitMatches").asBoolean()).isFalse(); assertThat(row.get("minimumUnit").asText()).isEqualTo("lon");
+        call(put(path), admin, Map.of("minimumQuantity", 241, "baseUnit", "hộp"), 200);
+        assertThat(alerts(admin).at("/data/totalElements").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void minimumStockMatrixGrantRevokeAndWarehouseScopeAreIndependentOfFixedRoles() throws Exception {
+        Set<Permission> before = new HashSet<>(matrix.getPermissions(ERole.ROLE_VIEWER));
+        try {
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, EnumSet.of(Permission.WAREHOUSE_MANAGE));
+            User user = createUser("minimum-" + UUID.randomUUID(), ERole.ROLE_VIEWER, null);
+            user.setWarehouses(Set.of(warehouse)); users.save(user); String token = login(user.getUsername());
+            String path = "/api/warehouse/stock-minimums/" + warehouse.getId() + "/" + product.getId();
+            call(put(path), token, Map.of("minimumQuantity", 241, "baseUnit", "lon"), 200);
+            JsonNode options = call(get("/api/warehouse/stock-minimums/options"), token, null, 200);
+            assertThat(options.at("/data/warehouses").size()).isEqualTo(1);
+            JsonNode configuration = call(get("/api/warehouse/stock-minimums").param("warehouseId", warehouse.getId().toString())
+                    .param("keyword", product.getCode()), token, null, 200).at("/data/content/0");
+            for (String field : List.of("physicalQuantity", "reservedQuantity", "availableQuantity", "price", "costPrice"))
+                assertThat(configuration.has(field)).as(field).isFalse();
+            call(get("/api/warehouse/stock-ledger"), token, null, 403); call(get("/api/warehouse/stock-alerts"), token, null, 403);
+            String outside = "/api/warehouse/stock-minimums/" + destination.getId() + "/" + product.getId();
+            call(put(outside), token, Map.of("minimumQuantity", 1, "baseUnit", "lon"), 403); call(delete(outside), token, null, 403);
+            call(get("/api/warehouse/stock-minimums").param("warehouseId", destination.getId().toString()), token, null, 403);
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, EnumSet.of(Permission.WAREHOUSE_VIEW));
+            assertThat(alerts(token).at("/data/totalElements").asInt()).isEqualTo(1);
+            call(get("/api/warehouse/stock-alerts").param("warehouseId", destination.getId().toString()), token, null, 403);
+            call(put(path), token, Map.of("minimumQuantity", 250, "baseUnit", "lon"), 403); call(delete(path), token, null, 403);
+            call(get("/api/warehouse/stock-minimums/options"), token, null, 403); call(get("/api/warehouse/stock-minimums"), token, null, 403);
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, Set.of());
+            call(get("/api/warehouse/stock-alerts"), token, null, 403);
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, EnumSet.of(Permission.WAREHOUSE_MANAGE, Permission.WAREHOUSE_VIEW));
+            call(delete(path), token, null, 200);
+            assertThat(alerts(token).at("/data/totalElements").asInt()).isZero();
+        } finally { matrix.updateRolePermissions(ERole.ROLE_VIEWER, before); }
+    }
+
+    private JsonNode alerts(String token) throws Exception {
+        return call(get("/api/warehouse/stock-alerts").param("warehouseId", warehouse.getId().toString())
+                .param("keyword", product.getCode()), token, null, 200);
+    }
+
+    @Test
+    void minimumConfigurationDoesNotPreventDeletingUnusedSkuOrWarehouse() throws Exception {
+        String admin = login("admin");
+        var emptyWarehouse = warehouses.save(Warehouse.builder().code("MIN-" + UUID.randomUUID()).name("Kho chưa có giao dịch").build());
+        var unusedProduct = products.save(Product.builder().code("MIN-" + UUID.randomUUID()).name("SKU chưa có giao dịch")
+                .category(product.getCategory()).unit("kg").build());
+        call(put("/api/warehouse/stock-minimums/" + emptyWarehouse.getId() + "/" + unusedProduct.getId()), admin,
+                Map.of("minimumQuantity", 1, "baseUnit", "kg"), 200);
+        call(delete("/api/products/" + unusedProduct.getId()), admin, null, 200);
+        assertThat(minimums.findByWarehouseIdAndProductId(emptyWarehouse.getId(), unusedProduct.getId())).isEmpty();
+        call(put("/api/warehouse/stock-minimums/" + emptyWarehouse.getId() + "/" + product.getId()), admin,
+                Map.of("minimumQuantity", 1, "baseUnit", "lon"), 200);
+        call(delete("/api/warehouses/" + emptyWarehouse.getId()), admin, null, 200);
+        assertThat(minimums.findByWarehouseIdAndProductId(emptyWarehouse.getId(), product.getId())).isEmpty();
+    }
+
+    @Test
+    void warehouseRoleWithNoAssignedWarehouseCannotConfigureOrSeeGlobalAlerts() throws Exception {
+        Set<Permission> before = new HashSet<>(matrix.getPermissions(ERole.ROLE_WAREHOUSE_STAFF));
+        try {
+            matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, EnumSet.of(Permission.WAREHOUSE_MANAGE, Permission.WAREHOUSE_VIEW));
+            User user = createUser("minimum-scope-" + UUID.randomUUID(), ERole.ROLE_WAREHOUSE_STAFF, null);
+            user.setWarehouses(Set.of()); users.save(user);
+            String token = login(user.getUsername());
+            assertThat(call(get("/api/warehouse/stock-minimums/options"), token, null, 200).at("/data/warehouses").size()).isZero();
+            assertThat(call(get("/api/warehouse/stock-minimums"), token, null, 200).at("/data/totalElements").asInt()).isZero();
+            assertThat(call(get("/api/warehouse/stock-alerts"), token, null, 200).at("/data/totalElements").asInt()).isZero();
+            String path = "/api/warehouse/stock-minimums/" + warehouse.getId() + "/" + product.getId();
+            call(put(path), token, Map.of("minimumQuantity", 241, "baseUnit", "lon"), 403);
+            user.setWarehouses(Set.of(warehouse)); users.save(user);
+            call(put(path), token, Map.of("minimumQuantity", 241, "baseUnit", "lon"), 200);
+            assertThat(alerts(token).at("/data/totalElements").asInt()).isEqualTo(1);
+            call(put("/api/warehouse/stock-minimums/" + warehouse.getId() + "/0"), token,
+                    Map.of("minimumQuantity", 1, "baseUnit", "lon"), 400);
+            call(delete("/api/warehouse/stock-minimums/" + warehouse.getId() + "/0"), token, null, 400);
+        } finally { matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, before); }
     }
 
     private Map<String, Object> transferBody(int quantity) {

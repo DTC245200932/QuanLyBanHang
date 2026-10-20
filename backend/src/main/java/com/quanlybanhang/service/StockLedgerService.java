@@ -32,6 +32,16 @@ public class StockLedgerService {
 
     public Page<StockLedgerEntryResponse> search(Long warehouseId, Long categoryId, String keyword,
             StockStatus status, int page, int size) {
+        return search(warehouseId, categoryId, keyword, status, false, page, size);
+    }
+
+    public Page<StockLedgerEntryResponse> searchBelowMinimum(Long warehouseId, Long categoryId, String keyword,
+            StockStatus status, int page, int size) {
+        return search(warehouseId, categoryId, keyword, status, true, page, size);
+    }
+
+    private Page<StockLedgerEntryResponse> search(Long warehouseId, Long categoryId, String keyword,
+            StockStatus status, boolean belowMinimum, int page, int size) {
         if (page < 0 || size < 1 || size > 200) throw new IllegalArgumentException("Trang phải không âm; số dòng mỗi trang từ 1 đến 200");
         if ((warehouseId != null && warehouseId < 1) || (categoryId != null && categoryId < 1))
             throw new IllegalArgumentException("Mã kho/nhóm hàng không hợp lệ");
@@ -43,18 +53,24 @@ public class StockLedgerService {
         if (allowed.isEmpty()) return Page.empty(paging);
         String term = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim().toLowerCase(Locale.ROOT)
                 .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        return ledger.findLedger(allowed, warehouseId, categoryId, term, status == null ? null : status.name(), paging)
-                .map(StockLedgerEntryResponse::from);
+        var rows = belowMinimum ? ledger.findBelowMinimum(allowed, warehouseId, categoryId, term, status == null ? null : status.name(), paging)
+                : ledger.findLedger(allowed, warehouseId, categoryId, term, status == null ? null : status.name(), paging);
+        return rows.map(StockLedgerEntryResponse::from);
     }
 
     /** Permission is mandatory; roles may ONLY restrict data scope, never grant access. */
     private List<Warehouse> visibleWarehouses() {
+        return visibleWarehousesFor("WAREHOUSE_VIEW");
+    }
+
+    /** Internal scope helper; callers cannot replace a missing matrix permission with a role. */
+    public List<Warehouse> visibleWarehousesFor(String permission) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) throw new AccessDeniedException("Bạn chưa được xác thực");
         Set<String> grants = new HashSet<>();
         auth.getAuthorities().forEach(a -> grants.add(a.getAuthority()));
         boolean admin = grants.contains("ROLE_ADMIN");
-        if (!admin && !grants.contains("WAREHOUSE_VIEW")) throw new AccessDeniedException("Bạn không có quyền xem tồn kho");
+        if (!admin && !grants.contains(permission)) throw new AccessDeniedException("Bạn không có quyền sử dụng chức năng kho này");
         List<Warehouse> all = warehouses.findAllByOrderByCodeAsc();
         if (admin) return all;
         User user = users.findByUsername(auth.getName()).orElseThrow(() -> new AccessDeniedException("Không tìm thấy tài khoản"));

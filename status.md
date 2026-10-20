@@ -2,6 +2,23 @@
 
 Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
 
+## S5-09 — Tồn tối thiểu và cảnh báo (backend + frontend) — 20/10/2026
+
+Nguồn AC: `4. Product Backlog!A62:F62`. Thực hiện trên nhánh `feature/S5-09-frontend-va-backend-canh-bao-ton-duoi-muc-toi-thieu`, nền `38b9795`; đã đọc AGENTS.md và hai skill trong SKILLS. Không merge/pull/lấy code nhánh khác, không tự commit.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Khai báo mức tối thiểu theo SKU và kho | Đã làm bảng riêng có unique SKU–kho, lượng decimal, đơn vị snapshot, người/thời điểm; transaction, khóa kho và audit | Đã làm `/warehouse/minimums`, menu **Kho hàng → Ngưỡng tồn tối thiểu**; tìm/lọc/phân trang, lưu/sửa/bỏ khai báo; lỗi lưu giữ input | GET options/list, PUT/DELETE `/warehouse/stock-minimums`; WAREHOUSE_MANAGE hoặc ADMIN; không cần VIEW/PRODUCT_VIEW và không lộ số tồn qua DTO cấu hình |
+| Hàng dưới ngưỡng nổi bật trong sổ tồn | Bổ sung minimumQuantity/minimumUnit/minimumUnitMatches/belowMinimum và lọc server `belowMinimum=true` | Tô nền/viền cảnh báo kèm nhãn, có cột ngưỡng và bộ lọc; xuất Excel kèm ngưỡng/cảnh báo | WAREHOUSE_VIEW hoặc ADMIN; không thay ba lượng/trạng thái tồn S5-05, không tính nghiệp vụ bằng JS |
+| Cảnh báo trên dashboard kho | GET `/warehouse/stock-alerts`, phân trang và phạm vi kho từ DB; không dùng cờ cache | Khối cảnh báo ở **Tổng quan**, tổng số SKU–kho và 5 dòng đầu, link mở sổ tồn đúng bộ lọc, tải lại/định kỳ 30 giây khi trang hiện | Chỉ WAREHOUSE_VIEW hoặc ADMIN; lỗi API không hiện thành không có hàng thiếu |
+| Ngưỡng và thay đổi tồn | So tồn khả dụng (thực tế trừ giữ chỗ, không tính đang chuyển), nghiêm ngặt `<`; bằng ngưỡng/0/chưa khai báo không cảnh báo; SKU chưa có tồn = 0 mà không tự tạo tồn | Ghi rõ cơ sở so sánh; phân biệt chưa khai báo và mức 0; đơn vị đổi báo cần khai báo lại | Ngưỡng theo đúng kho/SKU/đơn vị; kho/SKU ngừng hoạt động không cảnh báo; không tự đổi snapshot cũ |
+| Ma trận và phạm vi | Grant/revoke có hiệu lực ngay trên JWT cũ; MANAGE và VIEW độc lập; kho ngoài phạm vi trả 403; role kho chưa gán kho trả tập rỗng | Đồng bộ quyền trước nạp, thu hồi ẩn menu/đóng form/xóa dữ liệu cảnh báo; chặn trang cấu hình, không role fallback | Đã kiểm vai trò không mặc định (VIEWER), STAFF thiếu phân công rồi gán lại, Admin luôn được phép |
+| Bố cục/tương thích | API tồn cũ giữ nguyên; cấu hình không sửa tồn thực tế/giữ chỗ | Dùng app-shell/app-navigation và lề chung, bảng cuộn nội bộ, form native dialog; desktop/mobile | Không lưu ngưỡng vào browser storage; tài liệu API và route đã cập nhật |
+
+Kiểm chứng cuối: **583 test backend qua**, bao gồm 6 test S5-09 tích hợp HTTP/JWT/JPA/H2: ranh giới thập phân/equality, độc lập SKU–kho, mức 0/bỏ khai báo, tồn chưa phát sinh và biến động giữ chỗ, dữ liệu sai/đơn vị đổi/kho-SKU ngừng hoạt động, grant/revoke trên cùng token, scope kho và xóa hợp lệ SKU/kho không bị cấu hình cản trở. **88 test JS qua**, **8 test route/bảo vệ file liên quan qua**. Chrome `stock-minimums.browser.cjs` qua cấu hình/lưu/bỏ, giữ input khi lỗi, validation, XSS, lọc/tô cảnh báo sổ tồn, dashboard khi bổ sung hàng/lỗi API, live grant/revoke, không role fallback, ADMIN và 6 kích thước. Hồi quy `stock-ledger.browser.cjs` và `warehouse-transfers.browser.cjs` qua. Bố cục chung **144 kiểm tra trên 24 trang × 6 kích thước**; đã xem ảnh desktop/mobile/form 320px. Điều hướng chung qua click/Back/Forward/Reload/mobile/reduced-motion, sidebar giữ scroll **432 → 432**, không lỗi JS. `git diff --check` sạch. Bộ test route đầy đủ có assertion tên Cổng đại lý lệch có sẵn (xem các cập nhật trước); không đổi trang ngoài phạm vi.
+
+Giới hạn: có bảng DB mới `warehouse_stock_minimums`; cần khởi động lại **backend** để tạo bảng theo `ddl-auto=update` và **server frontend** để nhận route. Chưa nghiệm thu MySQL thật, không thay dữ liệu/schema DB thật; kiểm tích hợp trên H2/MySQL-mode. Không triển khai kiểm kê S5-08 hoặc thay đổi nghiệp vụ giữ chỗ S5-06. Không tự commit/merge/push.
+
 ## S5-07 — Chuyển kho nội bộ (backend + frontend) — 20/10/2026
 
 Nguồn tiêu chí: `4. Product Backlog!A60:F60`. Thực hiện trên nhánh `feature/S5-07-backend-va-frontend-chuyen_kho_noi_bo`, nền `develop` tại `c74485d`; không merge/pull/lấy code nhánh khác, không tự commit.
@@ -274,13 +291,13 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 | S5-06 | Giữ chỗ, hủy/quá hạn nhả tồn | Một phần | Có qua duyệt/hủy | Đã nối luồng chính | Quyền duyệt/hủy còn hạn chế chung | Có scheduler/transaction/khóa tồn. Cần xử lý đồng thời cùng đơn, đơn thiếu kho, bảo vệ tồn đã giữ trong xuất/chuyển. |
 | S5-07 | Chuyển kho, đang đi, nhận chênh lệch | Có | Có | Đã nối tạo/danh sách/chi tiết/nhận/hủy; xem phần cập nhật S5-07 đầu file | WAREHOUSE_TRANSFER để ghi, VIEW hoặc TRANSFER để đọc; kiểm scope kho và thu hồi quyền, ADMIN luôn được phép | Đã kiểm khóa đồng thời, bảo vệ tồn đã giữ, nhận/hủy lặp, lý do chênh lệch và rollback. Chưa nghiệm thu MySQL thật. |
 | S5-08 | Kiểm kê, chốt chênh lệch | **Chưa** | **Chưa** | **Chưa** | Chưa có quyền/luồng chốt riêng | Tab hiện tại không có phiếu snapshot, số đếm, lý do chốt và API duyệt QL kho. Điều chỉnh chung không đáp ứng story. |
-| S5-09 | Tồn tối thiểu và cảnh báo | **Chưa** | **Chưa** | **Chưa** | Chưa có luồng cấu hình | Chưa có ngưỡng theo SKU + kho, API cấu hình và cảnh báo dashboard từ dữ liệu đó. |
+| S5-09 | Tồn tối thiểu và cảnh báo | Có | Có | Đã nối cấu hình, cảnh báo sổ tồn và dashboard; xem cập nhật S5-09 đầu file | WAREHOUSE_MANAGE để khai báo, WAREHOUSE_VIEW để xem; ma trận DB ở cả BE/FE, thu hồi trên phiên cũ, kiểm phạm vi kho | Đã triển khai hai AC; cảnh báo dựa trên tồn khả dụng, bằng ngưỡng không cảnh báo. Có bảng DB mới; chưa nghiệm thu MySQL thật. |
 
 ## Việc cần làm tiếp
 
 1. Đồng bộ quyền với ma trận và giới hạn dữ liệu kho/đại lý ở mọi đường đọc/ghi, đặc biệt điểm giao, tạo đơn, sửa công nợ và phiếu kho.
 2. Sửa transaction import tài khoản; kiểm bảng giá chỉ định; thống nhất nguồn công nợ/vòng đời đơn/xuất hàng.
-3. Hoàn thiện UI S5-03/S5-04/S5-05/S5-07; triển khai cả BE/FE S5-08/S5-09.
+3. Hoàn thiện UI S5-04 và triển khai BE/FE S5-08; nghiệm thu S5-03/S5-05/S5-07/S5-09 trên MySQL thật theo các cập nhật đầu file.
 4. Nối preview chiết khấu cho cổng/đặt lại, UI sales xác nhận đơn cổng; nghiệm thu MySQL/SMTP/360px theo AC.
 
 Chi tiết: [báo cáo rà soát](docs/SPRINT_1_5_AUDIT_20261018.md).

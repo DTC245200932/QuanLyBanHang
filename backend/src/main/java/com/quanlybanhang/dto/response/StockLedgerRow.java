@@ -19,4 +19,12 @@ public interface StockLedgerRow {
     BigDecimal getAvailableQuantity();
     String getStockStatus();
     LocalDateTime getUpdatedAt();
+    BigDecimal getMinimumQuantity();
+    String getMinimumUnit();
+    Integer getMinimumUnitMatchesFlag();
+    Integer getBelowMinimumFlag();
+    String getMinimumUpdatedBy();
+    LocalDateTime getMinimumUpdatedAt();
+    Boolean getWarehouseActive();
+    Boolean getProductActive();
 }

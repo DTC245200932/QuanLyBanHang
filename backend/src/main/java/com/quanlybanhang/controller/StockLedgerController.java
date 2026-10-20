@@ -21,7 +21,10 @@ public class StockLedgerController {
     public ApiResponse search(@RequestParam(required = false) Long warehouseId,
             @RequestParam(required = false) Long categoryId, @RequestParam(required = false) String keyword,
             @RequestParam(required = false) StockStatus stockStatus,
+            @RequestParam(defaultValue = "false") boolean belowMinimum,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.success("Sổ tồn theo SKU và kho", service.search(warehouseId, categoryId, keyword, stockStatus, page, size));
+        return ApiResponse.success("Sổ tồn theo SKU và kho", belowMinimum
+                ? service.searchBelowMinimum(warehouseId, categoryId, keyword, stockStatus, page, size)
+                : service.search(warehouseId, categoryId, keyword, stockStatus, page, size));
     }
 }

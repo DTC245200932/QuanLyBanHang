@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ngưỡng tồn tối thiểu | SaleStock</title><link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/dashboard.css"><link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/toast.css">
+  <link rel="stylesheet" href="/css/stock-ledger.css"><link rel="stylesheet" href="/css/stock-minimums.css"><link rel="stylesheet" href="/css/app-navigation.css"><script src="/js/app-transition.js"></script>
+</head><body>
+  <div data-app-content><main class="content stock-page minimum-page">
+    <header class="stock-heading"><div><h1>Ngưỡng tồn tối thiểu</h1><p>Khai báo mức cần duy trì cho từng SKU tại từng kho để chủ động bổ sung hàng.</p></div><button id="min-reload" type="button" class="btn btn--secondary">Tải lại</button></header>
+    <p class="stock-note">Mức tối thiểu dùng đơn vị cơ sở của SKU tại kho. Cảnh báo trong sổ tồn và dashboard khi <strong>tồn khả dụng &lt; mức tối thiểu</strong>. Mức 0 không cảnh báo; bỏ khai báo không thay đổi số tồn thực tế.</p>
+    <p id="min-error" class="stock-error" role="alert" hidden></p>
+    <section class="stock-panel" aria-label="Khai báo mức tối thiểu theo SKU và kho">
+      <form id="min-filter" class="stock-filters" role="search"><label class="stock-keyword">Tìm sản phẩm<input id="min-keyword" type="search" maxlength="150" placeholder="Mã SKU hoặc tên sản phẩm"></label>
+        <label>Kho<select id="min-warehouse" disabled><option value="">Đang tải kho…</option></select></label><label>Nhóm hàng<select id="min-category" disabled><option value="">Đang tải nhóm…</option></select></label>
+        <div class="stock-actions"><button id="min-apply" type="submit" class="btn btn--primary" disabled>Lọc</button><button id="min-reset" type="button" class="btn btn--secondary" disabled>Đặt lại</button></div></form>
+      <div class="stock-result-heading"><h2>Mức tối thiểu theo SKU và kho</h2><span id="min-count" role="status">Đang tải…</span></div>
+      <div class="stock-table-scroll" tabindex="0" role="region" aria-label="Bảng khai báo mức tối thiểu"><table class="stock-table minimum-table"><thead><tr><th>Sản phẩm</th><th>Nhóm hàng</th><th>Kho</th><th>Đơn vị cơ sở</th><th class="stock-number">Mức tối thiểu</th><th>Người cập nhật</th><th>Thời điểm</th><th>Thao tác</th></tr></thead><tbody id="min-rows"><tr><td colspan="8" class="stock-empty">Đang tải dữ liệu…</td></tr></tbody></table></div>
+      <footer class="stock-pagination"><label>Số dòng<select id="min-size"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label><span id="min-page"></span><div class="stock-actions"><button id="min-prev" type="button" class="btn btn--secondary" disabled>Trước</button><button id="min-next" type="button" class="btn btn--secondary" disabled>Sau</button></div></footer>
+    </section>
+  </main></div>
+  <dialog id="min-dialog" class="minimum-dialog" aria-labelledby="min-title"><header class="stock-heading"><h2 id="min-title">Khai báo mức tối thiểu</h2><button id="min-close" type="button" class="btn btn--secondary">Đóng</button></header>
+    <p id="min-context" class="minimum-context"></p><form id="min-form"><label>Mức tối thiểu <span id="min-unit"></span><input id="min-quantity" type="number" min="0" max="99999999999.9999" step="0.0001" required inputmode="decimal" placeholder="Nhập số lượng không âm"></label>
+      <p class="minimum-hint">Bằng ngưỡng không cảnh báo. Giá trị 0 sẽ không phát cảnh báo tối thiểu cho SKU và kho này.</p><p id="min-form-error" class="stock-error" role="alert" hidden></p>
+      <div class="minimum-dialog-actions"><button id="min-clear" type="button" class="btn btn--secondary" hidden>Bỏ khai báo</button><button id="min-save" type="submit" class="btn btn--primary">Lưu mức tối thiểu</button></div></form>
+  </dialog>
+  <script src="/js/auth.js"></script><script src="/js/menu-config.js"></script><script src="/js/app-shell.js"></script><script src="/js/app-navigation.js"></script><script src="/js/toast.js"></script><script src="/js/stock-minimums.js"></script>
+</body></html>

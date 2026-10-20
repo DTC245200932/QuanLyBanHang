@@ -138,6 +138,13 @@ test('all menu links resolve back to their own page instead of another view on t
   assert.equal(pageAt('/not-a-page'), null);
 });
 
+test('S5-09: minimum configuration follows MANAGE, never a warehouse role or VIEW fallback', () => {
+  assert.ok(menu.getMenuForUser({roles:['ROLE_VIEWER'],permissions:['WAREHOUSE_MANAGE']}).some(item=>item.id==='stock-minimums'));
+  assert.ok(!menu.getMenuForUser({roles:['ROLE_WAREHOUSE_MANAGER'],permissions:['WAREHOUSE_VIEW']}).some(item=>item.id==='stock-minimums'));
+  assert.ok(menu.getMenuForUser({roles:['ROLE_ADMIN'],permissions:[]}).some(item=>item.id==='stock-minimums'));
+  assert.equal(pageAt('/warehouse/minimums').id,'stock-minimums');
+});
+
 test('S5-07: transfer menu follows matrix permission, not a fixed role', () => {
   for (const permission of ['WAREHOUSE_TRANSFER', 'WAREHOUSE_VIEW']) {
     assert.ok(menu.getMenuForUser({roles:['ROLE_VIEWER'],permissions:[permission]}).some(item=>item.id==='warehouse-transfers'));

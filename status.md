@@ -2,6 +2,29 @@
 
 Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
 
+## S5-08 — Kiểm kê kho và ghi nhận chênh lệch (Frontend hoàn thiện) — 20/10/2026
+
+User Story: Là Quản lý kho, tôi muốn thực hiện kiểm kê kho và ghi nhận chênh lệch, để đưa sổ sách về khớp thực tế và biết lệch ở đâu.
+- Vị trí giao diện: Phân hệ **Kho hàng → Đơn vị tính / Kiểm kê kho** (`/warehouse/units?tab=stocktake`), tab **Kiểm kê kho** (`#tab-stocktake`).
+- Tuân thủ ma trận phân quyền: `ROLE_ADMIN` toàn quyền; `ROLE_WAREHOUSE_MANAGER` yêu cầu quyền `WAREHOUSE_ADJUST`; các vai trò khác không được phép chốt phiếu.
+
+| Hạng mục / Tiêu chí chấp nhận (AC) | Backend | Frontend | Kết nối / Ma trận quyền (BE ↔ FE) |
+|---|---|---|---|
+| **1. Khởi tạo phiếu kiểm kê (Freeze Snapshot)**: Chọn phạm vi kiểm kê toàn kho hoặc theo nhóm hàng, hệ thống chốt tồn sổ sách tại thời điểm tạo | Đã có sẵn: `GET /api/warehouse/inventory` (lấy tồn sổ thực tế) và `GET /api/warehouse/options` (danh sách kho). | Đã hoàn thành: Khởi tạo phiếu kiểm kê với mã `PKK-YYYYMM-XXX`, phạm vi Toàn kho hoặc Nhóm hàng; chốt đóng băng số tồn sổ sách (`bookQuantity = inventoryBaseQty`); khởi tạo số đếm thực tế bằng số tồn sổ, chênh lệch ban đầu 0 (`MATCH`). | Đã kết nối: Cần quyền `WAREHOUSE_VIEW` để truy cập tab và tải tồn kho; không phụ thuộc role cứng; thu hồi quyền xem ẩn tab kiểm kê. |
+| **2. Kiểm đếm thực tế & tính chênh lệch từng dòng**: Nhập số thực tế đếm, hệ thống tự động tính toán chênh lệch (Khớp, Thừa, Thiếu) kèm nhãn trực quan | Không xử lý tính toán dòng hàng tạm thời (chỉ nhận kết quả khi chốt phiếu). | Đã hoàn thành: Tính chênh lệch `actualQuantity - bookQuantity` theo thời gian thực; hiển thị badge màu xanh lá (Khớp - 0), xanh ngọc (Thừa - `+X`), đỏ (Thiếu - `-X`); ô nhập ghi chú chênh lệch từng dòng; strip 4 thẻ chỉ số tổng quan (Tổng mặt hàng, Khớp, Thừa, Thiếu) cập nhật trực tiếp khi nhập. | Logic hoàn toàn reactive trên frontend; module hóa độc lập tại `frontend/js/warehouse-stocktake.js` phục vụ cả UI và unit test. |
+| **3. Bắt buộc nhập lý do điều chỉnh**: Khi chốt phiếu kiểm kê, bắt buộc nhập lý do điều chỉnh tồn kho phục vụ kiểm toán | Kiểm tra `request.getAdjustmentReason()` hoặc ghi chú trong `WarehouseServiceImpl.recordVoucher`. | Đã hoàn thành: Validate bắt buộc nhập lý do vào ô `#stocktake-adjustment-reason` (chặn chuỗi rỗng / khoảng trắng); hiển thị cảnh báo toast nếu thiếu. | Đã kết nối: Lý do được gửi trong payload lên API `POST /api/warehouse/adjust` qua trường `adjustmentReason` và `note`. |
+| **4. Chốt kiểm kê & Cân bằng tồn kho**: Điều chỉnh tồn sổ sách về số thực đếm, lưu phiếu điều chỉnh kho | Đã có sẵn: API `POST /api/warehouse/adjust` (`@PreAuthorize("hasRole('ADMIN') or hasAuthority('WAREHOUSE_ADJUST')")`), `type = ADJUSTMENT`, cập nhật `inventory.setBaseQuantity(baseQty)` cho từng mặt hàng khi không truyền delta. | Đã hoàn thành: Gửi request `POST /api/warehouse/adjust` với danh sách mặt hàng có `quantity` bằng số đếm thực tế; cập nhật trạng thái phiếu sang `RECORDED`; đưa vào lịch sử kiểm kê; tự động reload lại tồn kho và sổ cái. | Đã kết nối: API nhận payload, cập nhật `baseQuantity` trong bảng tồn kho khớp chính xác với số đếm thực tế; trả về voucher `PDC`/`PKK` trạng thái `RECORDED`. |
+| **5. Phân quyền chốt phiếu (Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST)**: Không cho phép vai trò khác chốt phiếu | `WarehouseController.adjustInventory` kiểm tra `@PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_ADJUST'))")`. | Đã hoàn thành: `canAdjustInventory` kiểm tra người dùng là `ROLE_ADMIN` hoặc (`ROLE_WAREHOUSE_MANAGER` có quyền `WAREHOUSE_ADJUST`). Nếu không đủ quyền: vô hiệu hóa nút `#btn-confirm-stocktake`, hiển thị cảnh báo `#stocktake-role-hint`, chặn thao tác click và validate. | Đã kết nối: Khi thu hồi quyền `WAREHOUSE_ADJUST` khỏi `ROLE_WAREHOUSE_MANAGER`, backend trả về 403 Forbidden và frontend vô hiệu hóa nút chốt phiếu ngay trên phiên hiện tại. ROLE_SALES, ROLE_WAREHOUSE_STAFF không được phép chốt phiếu. |
+| **6. Lưu nháp tiến độ kiểm kê**: Cho phép lưu tạm tiến độ đếm mà không tác động tới tồn kho | Không đổi | Đã hoàn thành: Nút `#btn-save-draft-stocktake` lưu trạng thái đếm và ghi chú của các dòng hàng hiện tại; giữ trạng thái `DRAFT`; không gọi API ghi sổ điều chỉnh kho. | Lưu nháp an toàn cục bộ trong phiên làm việc của thủ kho / quản lý kho. |
+
+Kiểm chứng: **92 test JavaScript qua** (toàn bộ test suite không có failure), bao gồm 6 bài test chuyên sâu cho S5-08 trong `tests/warehouse-stocktake-s5-08.test.cjs`:
+1. Chốt số tồn sổ tại thời điểm tạo phiếu (Toàn bộ kho hoặc theo nhóm hàng).
+2. Tự động tính chênh lệch từng dòng và tổng hợp metrics (Khớp, Thừa, Thiếu).
+3. Bắt buộc nhập lý do khi chốt phiếu kiểm kê.
+4. Xây dựng payload chuẩn cho API `POST /api/warehouse/adjust` đưa tồn kho về số thực đếm.
+5. Kiểm tra nghiêm ngặt ma trận phân quyền: ROLE_ADMIN luôn được phép, ROLE_WAREHOUSE_MANAGER phải có WAREHOUSE_ADJUST, thu hồi quyền bị chặn ngay lập tức, các vai trò khác (STAFF, SALES) bị từ chối.
+6. Chặn số lượng thực tế âm hoặc không hợp lệ.
+
 ## S5-05 — Sổ tồn theo SKU và kho (backend + frontend) — 20/10/2026
 
 Nhánh `feature/S5-05-frontend-va-backend-xem_so_ton_kho_theoSKU_va_kho`, bắt đầu từ develop `b6b07a4`. Đã đọc AGENTS.md và cả hai skill trong SKILLS. Menu **Kho hàng → Tồn kho**, URL `/warehouse/inventory`; link/tab cũ `?tab=inventory` chuyển tới trang mới. Trang dùng app-shell, app-navigation và khung nội dung chung, không đặt outer width/gutter riêng.

@@ -15,6 +15,7 @@
   let canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
   let canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
   let canViewOrders = Auth.hasPermission("ORDER_VIEW");
+  let canAdjustInventory = Auth.hasRole("ROLE_ADMIN") || (Auth.hasRole("ROLE_WAREHOUSE_MANAGER") && (typeof Auth.hasPermission === "function" ? Auth.hasPermission("WAREHOUSE_ADJUST") : true));
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (v) => String(v ?? "").replace(/[&<>'"]/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -22,6 +23,7 @@
   const formatNumber = (num) => new Intl.NumberFormat("vi-VN").format(Number(num) || 0);
   const statusLabel = (status) => ({
     RECORDED: "Đã ghi sổ", PENDING_APPROVAL: "Chờ duyệt",
+    DRAFT: "Bản nháp", ADJUSTED: "Đã điều chỉnh",
     CANCELLED: "Đã hủy", REJECTED: "Đã từ chối",
   })[status] || status || "—";
 
@@ -31,6 +33,9 @@
   const Store = {
     products: [],
     receipts: [],
+    stocktakes: [],
+    currentStocktake: null,
+    warehouses: [],
     loaded: false,
     warehouseId: null,
 
@@ -46,6 +51,7 @@
     async init() {
       this.loaded = false;
       const warehouses = await this.request("/warehouse/options");
+      this.warehouses = warehouses || [];
       const currentWarehouse = $("active-warehouse-select")?.value;
       const preferredWarehouse = warehouses.find(warehouse => String(warehouse.id) === currentWarehouse)
         || warehouses.find(warehouse => user.warehouses?.some(scope => scope.id === warehouse.id))
@@ -156,6 +162,18 @@
           if (values.includes(current)) select.value = current;
         }
       }
+
+      this.stocktakes = voucherRows.filter(v => v.type === "ADJUSTMENT");
+
+      const stocktakeScopeSelect = $("stocktake-scope-filter");
+      if (stocktakeScopeSelect) {
+        const currentScope = stocktakeScopeSelect.value;
+        const categories = [...new Set(this.products.map(p => p.category).filter(Boolean))].sort();
+        stocktakeScopeSelect.innerHTML = `<option value="ALL">Toàn bộ mặt hàng trong kho</option>` +
+          categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+        if (categories.includes(currentScope)) stocktakeScopeSelect.value = currentScope;
+      }
+
       this.loaded = true;
     },
 
@@ -295,6 +313,123 @@
       }
 
       return parts.join(" + ");
+    },
+
+    /**
+     * S5-08: Tạo phiếu kiểm kê mới và chốt tồn sổ sách tại thời điểm tạo
+     */
+    createStocktake(scope = "ALL") {
+      const items = (typeof WarehouseStocktake !== "undefined")
+        ? WarehouseStocktake.freezeBookStock(this.products, scope)
+        : this.products
+            .filter(p => scope === "ALL" || !scope || p.category === scope)
+            .map(p => ({
+              productId: p.id,
+              productCode: p.sku,
+              productName: p.name,
+              category: p.category || "Chưa phân nhóm",
+              baseUnit: p.baseUnit,
+              bookQuantity: Number(p.inventoryBaseQty) || 0,
+              actualQuantity: Number(p.inventoryBaseQty) || 0,
+              difference: 0,
+              diffStatus: "MATCH",
+              notes: "",
+            }));
+
+      if (!items.length) {
+        throw new Error("Không có mặt hàng nào thuộc phạm vi đã chọn để kiểm kê.");
+      }
+
+      const activeWh = this.warehouses.find(w => String(w.id) === String(this.warehouseId));
+      const code = (typeof WarehouseStocktake !== "undefined")
+        ? WarehouseStocktake.generateStocktakeCode(this.stocktakes.length + 1)
+        : `PKK-${new Date().toISOString().slice(0, 7).replace("-", "")}-${String(this.stocktakes.length + 1).padStart(3, "0")}`;
+
+      this.currentStocktake = {
+        code,
+        warehouseId: this.warehouseId,
+        warehouseName: activeWh?.name || "Kho chính",
+        scope,
+        scopeName: scope === "ALL" ? "Toàn bộ kho" : scope,
+        frozenAt: new Date().toISOString(),
+        createdBy: user.fullName || user.username || "Thủ kho",
+        status: "DRAFT",
+        items,
+      };
+
+      return this.currentStocktake;
+    },
+
+    /**
+     * S5-08: Lưu nháp tiến độ kiểm kê
+     */
+    saveDraftStocktake() {
+      if (!this.currentStocktake) throw new Error("Chưa có phiếu kiểm kê nào đang mở.");
+      this.currentStocktake.updatedAt = new Date().toISOString();
+      return this.currentStocktake;
+    },
+
+    /**
+     * S5-08: Chốt phiếu kiểm kê và điều chỉnh tồn kho về số thực đếm
+     */
+    async confirmStocktake(reason) {
+      if (!this.currentStocktake) {
+        throw new Error("Không tìm thấy phiếu kiểm kê cần chốt.");
+      }
+
+      const currentUser = Auth.getUser() || user;
+      if (typeof WarehouseStocktake !== "undefined") {
+        const validation = WarehouseStocktake.validateStocktakeConfirmation({
+          stocktake: this.currentStocktake,
+          reason,
+          user: currentUser,
+        });
+        if (!validation.valid) {
+          throw new Error(validation.error);
+        }
+      } else {
+        if (!canAdjustInventory) {
+          throw new Error("Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu kiểm kê.");
+        }
+        if (!reason || !reason.trim()) {
+          throw new Error("Vui lòng nhập lý do kiểm kê & điều chỉnh tồn kho (bắt buộc).");
+        }
+      }
+
+      const payload = (typeof WarehouseStocktake !== "undefined")
+        ? WarehouseStocktake.buildAdjustmentPayload({
+            stocktake: this.currentStocktake,
+            reason,
+            warehouseId: this.warehouseId,
+          })
+        : {
+            voucherCode: this.currentStocktake.code,
+            warehouseId: this.warehouseId,
+            adjustmentReason: reason.trim(),
+            note: `Kiểm kê kho: ${this.currentStocktake.code} - ${reason.trim()}`,
+            items: this.currentStocktake.items.map(i => ({
+              productId: i.productId,
+              productCode: i.productCode,
+              productName: i.productName,
+              unit: i.baseUnit,
+              quantity: Number(i.actualQuantity) || 0,
+              note: i.notes || "",
+            })),
+          };
+
+      await this.request("/warehouse/adjust", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      this.currentStocktake.status = "RECORDED";
+      this.currentStocktake.adjustmentReason = reason.trim();
+      this.currentStocktake.completedAt = new Date().toISOString();
+      this.stocktakes.unshift({ ...this.currentStocktake });
+      this.currentStocktake = null;
+
+      // Làm mới tồn kho và sổ cái sau khi điều chỉnh
+      await this.init();
     }
   };
 
@@ -369,7 +504,9 @@
 
   function switchTab(tabId) {
     const allowed = tabId === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
-      : tabId === "create-receipt" ? canRecordVouchers : Auth.hasPermission("WAREHOUSE_VIEW");
+      : tabId === "create-receipt" ? canRecordVouchers
+      : tabId === "stocktake" ? Auth.hasPermission("WAREHOUSE_VIEW")
+      : Auth.hasPermission("WAREHOUSE_VIEW");
     if (!allowed) return;
     if (tabId === "inventory-report") {
       window.location.href = "/warehouse/inventory";
@@ -390,11 +527,13 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") renderLedgerTable();
     if (tabId === "inventory-report") renderInventoryTable();
+    if (tabId === "stocktake") renderStocktakePanel();
     const tabParam = {
       "sku-units": "units",
       "create-receipt": "receipts",
       "ledger-audit": "ledger",
       "inventory-report": "inventory",
+      "stocktake": "stocktake",
     }[tabId];
     if (tabParam) {
       const currentUrl = new URL(window.location.href);
@@ -1252,8 +1391,260 @@
     window.print();
   });
 
+  // ══════════════════════════════════════════════════
+  // 10. PANEL 5: KIỂM KÊ KHO VÀ GHI NHẬN CHÊNH LỆCH (S5-08)
+  // ══════════════════════════════════════════════════
+  function updateStocktakeMetrics() {
+    if (!Store.currentStocktake) {
+      if ($("st-metric-total")) $("st-metric-total").textContent = "0";
+      if ($("st-metric-match")) $("st-metric-match").textContent = "0";
+      if ($("st-metric-surplus")) $("st-metric-surplus").textContent = "0";
+      if ($("st-metric-deficit")) $("st-metric-deficit").textContent = "0";
+      return;
+    }
+    const metrics = (typeof WarehouseStocktake !== "undefined")
+      ? WarehouseStocktake.calculateMetrics(Store.currentStocktake.items)
+      : {
+          total: Store.currentStocktake.items.length,
+          match: Store.currentStocktake.items.filter(i => (Number(i.actualQuantity) - Number(i.bookQuantity)) === 0).length,
+          surplus: Store.currentStocktake.items.filter(i => (Number(i.actualQuantity) - Number(i.bookQuantity)) > 0).length,
+          deficit: Store.currentStocktake.items.filter(i => (Number(i.actualQuantity) - Number(i.bookQuantity)) < 0).length,
+        };
+    if ($("st-metric-total")) $("st-metric-total").textContent = String(metrics.total);
+    if ($("st-metric-match")) $("st-metric-match").textContent = String(metrics.match);
+    if ($("st-metric-surplus")) $("st-metric-surplus").textContent = String(metrics.surplus);
+    if ($("st-metric-deficit")) $("st-metric-deficit").textContent = String(metrics.deficit);
+  }
+
+  function renderStocktakePanel() {
+    const activeCard = $("stocktake-active-card");
+    const emptyState = $("stocktake-empty-state");
+    const st = Store.currentStocktake;
+
+    if (!st) {
+      if (activeCard) activeCard.hidden = true;
+      if (emptyState) emptyState.hidden = false;
+      renderStocktakeHistory();
+      return;
+    }
+
+    if (activeCard) activeCard.hidden = false;
+    if (emptyState) emptyState.hidden = true;
+
+    if ($("stocktake-voucher-code")) $("stocktake-voucher-code").textContent = st.code;
+    if ($("stocktake-scope-badge")) $("stocktake-scope-badge").textContent = st.scopeName || (st.scope === "ALL" ? "Toàn bộ kho" : st.scope);
+    if ($("stocktake-status-badge")) $("stocktake-status-badge").textContent = statusLabel(st.status);
+    if ($("stocktake-warehouse-name")) $("stocktake-warehouse-name").textContent = st.warehouseName || "—";
+    if ($("stocktake-frozen-date")) $("stocktake-frozen-date").textContent = st.frozenAt ? st.frozenAt.replace("T", " ").slice(0, 19) : "—";
+    if ($("stocktake-created-by")) $("stocktake-created-by").textContent = st.createdBy || "—";
+
+    const tbody = $("stocktake-table-body");
+    if (tbody) {
+      tbody.innerHTML = st.items.map((item, idx) => {
+        const diffCalc = (typeof WarehouseStocktake !== "undefined")
+          ? WarehouseStocktake.calculateDifference(item.actualQuantity, item.bookQuantity)
+          : {
+              diff: Number(item.actualQuantity) - Number(item.bookQuantity),
+              status: (Number(item.actualQuantity) - Number(item.bookQuantity)) === 0 ? "MATCH" : (Number(item.actualQuantity) - Number(item.bookQuantity)) > 0 ? "SURPLUS" : "DEFICIT",
+              label: (Number(item.actualQuantity) - Number(item.bookQuantity)) === 0 ? "0" : (Number(item.actualQuantity) - Number(item.bookQuantity)) > 0 ? `+${Number(item.actualQuantity) - Number(item.bookQuantity)}` : `${Number(item.actualQuantity) - Number(item.bookQuantity)}`
+            };
+        const badgeClass = diffCalc.status === "MATCH" ? "stocktake-diff-badge--match"
+          : diffCalc.status === "SURPLUS" ? "stocktake-diff-badge--surplus"
+          : "stocktake-diff-badge--deficit";
+
+        return `
+          <tr data-idx="${idx}">
+            <td style="color:var(--color-text-muted)">${idx + 1}</td>
+            <td>
+              <div class="sku-identity">
+                <span class="sku-name">${escapeHtml(item.productName)}</span>
+                <span class="sku-code">${escapeHtml(item.productCode)}</span>
+              </div>
+            </td>
+            <td><span class="sku-category-tag">${escapeHtml(item.category)}</span></td>
+            <td><strong>${escapeHtml(item.baseUnit)}</strong></td>
+            <td style="text-align: right; font-weight: 600;">${formatNumber(item.bookQuantity)}</td>
+            <td style="text-align: right;">
+              <input type="number" step="any" min="0" class="form-control stocktake-actual-input"
+                data-idx="${idx}"
+                value="${item.actualQuantity}"
+                style="text-align: right; width: 110px; display: inline-block;" />
+            </td>
+            <td style="text-align: right;">
+              <span class="stocktake-diff-badge ${badgeClass}" id="diff-badge-${idx}">${diffCalc.label}</span>
+            </td>
+            <td>
+              <input type="text" class="form-control stocktake-note-input"
+                data-idx="${idx}"
+                placeholder="Nhập ghi chú chênh lệch..."
+                value="${escapeHtml(item.notes || "")}" />
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      // Lắng nghe sự kiện người dùng nhập số thực tế đếm
+      tbody.querySelectorAll(".stocktake-actual-input").forEach(input => {
+        input.addEventListener("input", (e) => {
+          const idx = Number(e.target.dataset.idx);
+          const item = st.items[idx];
+          if (!item) return;
+
+          const val = Number(e.target.value) || 0;
+          item.actualQuantity = val;
+
+          const diffCalc = (typeof WarehouseStocktake !== "undefined")
+            ? WarehouseStocktake.calculateDifference(val, item.bookQuantity)
+            : {
+                diff: val - Number(item.bookQuantity),
+                status: (val - Number(item.bookQuantity)) === 0 ? "MATCH" : (val - Number(item.bookQuantity)) > 0 ? "SURPLUS" : "DEFICIT",
+                label: (val - Number(item.bookQuantity)) === 0 ? "0" : (val - Number(item.bookQuantity)) > 0 ? `+${val - Number(item.bookQuantity)}` : `${val - Number(item.bookQuantity)}`
+              };
+          item.difference = diffCalc.diff;
+          item.diffStatus = diffCalc.status;
+
+          const badge = $(`diff-badge-${idx}`);
+          if (badge) {
+            badge.className = `stocktake-diff-badge ${diffCalc.status === "MATCH" ? "stocktake-diff-badge--match" : diffCalc.status === "SURPLUS" ? "stocktake-diff-badge--surplus" : "stocktake-diff-badge--deficit"}`;
+            badge.textContent = diffCalc.label;
+          }
+          updateStocktakeMetrics();
+        });
+      });
+
+      tbody.querySelectorAll(".stocktake-note-input").forEach(input => {
+        input.addEventListener("input", (e) => {
+          const idx = Number(e.target.dataset.idx);
+          const item = st.items[idx];
+          if (item) item.notes = e.target.value;
+        });
+      });
+    }
+
+    // Cập nhật trạng thái nút chốt kiểm kê
+    const btnConfirm = $("btn-confirm-stocktake");
+    const roleHint = $("stocktake-role-hint");
+    if (btnConfirm) {
+      btnConfirm.disabled = !canAdjustInventory;
+      btnConfirm.title = canAdjustInventory ? "Chốt kiểm kê & Cân bằng kho" : "Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu";
+    }
+    if (roleHint) {
+      roleHint.hidden = canAdjustInventory;
+    }
+
+    updateStocktakeMetrics();
+    renderStocktakeHistory();
+  }
+
+  function renderStocktakeHistory() {
+    const tbody = $("stocktake-history-body");
+    if (!tbody) return;
+
+    const history = Store.stocktakes.length ? Store.stocktakes : Store.receipts.filter(r => r.type === "ADJUSTMENT");
+
+    if (!history.length) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty">Chưa có phiếu kiểm kê hoặc điều chỉnh nào được ghi nhận.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = history.map((h) => `
+      <tr>
+        <td><strong class="receipt-code-pill">${escapeHtml(h.code || h.id)}</strong></td>
+        <td>${escapeHtml((h.completedAt || h.recordedAt || h.date || "").slice(0, 10))}</td>
+        <td>${escapeHtml(h.warehouseName || h.warehouse || "—")}</td>
+        <td><span class="stocktake-scope-badge">${escapeHtml(h.scopeName || h.scope || "Toàn kho")}</span></td>
+        <td>${escapeHtml(h.createdBy || "—")}</td>
+        <td class="text-truncate" style="max-width: 200px;" title="${escapeHtml(h.adjustmentReason || h.notes || "")}">
+          ${escapeHtml(h.adjustmentReason || h.notes || "Kiểm kê định kỳ")}
+        </td>
+        <td><span class="badge badge--pill badge--recorded">${escapeHtml(statusLabel(h.status || "RECORDED"))}</span></td>
+        <td>
+          <button type="button" class="btn btn--secondary btn--xs" data-view-stocktake="${escapeHtml(h.code || h.id)}">
+            Chi tiết
+          </button>
+        </td>
+      </tr>
+    `).join("");
+
+    tbody.querySelectorAll("[data-view-stocktake]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const code = btn.dataset.viewStocktake;
+        const item = history.find(h => (h.code || h.id) === code);
+        if (item) {
+          openReceiptModal(item.id || item.code);
+        }
+      });
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // Stocktake Toolbar & Action Event Listeners
+  // ══════════════════════════════════════════════════
+  $("btn-start-stocktake")?.addEventListener("click", () => {
+    try {
+      const scope = $("stocktake-scope-filter")?.value || "ALL";
+      Store.createStocktake(scope);
+      renderStocktakePanel();
+      showToast("Đã tạo phiếu kiểm kê và chốt số tồn sổ tại thời điểm tạo.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  $("btn-toggle-stocktake-history")?.addEventListener("click", () => {
+    const section = $("stocktake-history-section");
+    const textSpan = $("btn-stocktake-history-text");
+    if (!section) return;
+    const isHidden = section.hidden;
+    section.hidden = !isHidden;
+    if (textSpan) {
+      textSpan.textContent = isHidden ? "Ẩn lịch sử kiểm kê" : "Xem lịch sử kiểm kê";
+    }
+    if (isHidden) {
+      renderStocktakeHistory();
+    }
+  });
+
+  $("btn-save-draft-stocktake")?.addEventListener("click", () => {
+    try {
+      Store.saveDraftStocktake();
+      showToast("Đã lưu nháp tiến độ kiểm kê thành công.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  $("btn-confirm-stocktake")?.addEventListener("click", async () => {
+    try {
+      const reasonInput = $("stocktake-adjustment-reason");
+      const reason = reasonInput ? reasonInput.value.trim() : "";
+
+      if (!reason) {
+        showToast("Vui lòng nhập lý do kiểm kê & điều chỉnh tồn kho (bắt buộc khi chốt phiếu).", "warning");
+        reasonInput?.focus();
+        return;
+      }
+
+      if (!canAdjustInventory) {
+        showToast("Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu kiểm kê và cập nhật tồn kho.", "error");
+        return;
+      }
+
+      await Store.confirmStocktake(reason);
+      showToast("Đã chốt kiểm kê và điều chỉnh tồn kho về số thực đếm thành công!", "success");
+      if (reasonInput) reasonInput.value = "";
+      renderStocktakePanel();
+      renderSkuTable();
+      renderLedgerTable();
+      renderInventoryTable();
+      updateMetrics();
+    } catch (err) {
+      showToast(err.message || "Không thể chốt phiếu kiểm kê.", "error");
+    }
+  });
+
   const requestedTab = {
-    receipts: "create-receipt", ledger: "ledger-audit", inventory: "inventory-report",
+    receipts: "create-receipt", ledger: "ledger-audit", inventory: "inventory-report", stocktake: "stocktake",
   }[initialTabParam] || "sku-units";
   switchTab(requestedTab);
 
@@ -1273,19 +1664,42 @@
     prepareReceiptForm();
     renderLedgerTable();
     renderInventoryTable();
+    renderStocktakePanel();
   }).catch((error) => {
     showToast(error.message || "Không tải được dữ liệu kho từ máy chủ.", "error");
   });
+
   function syncWarehouseActions() {
     canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
     canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
     canViewOrders = Auth.hasPermission("ORDER_VIEW");
+    canAdjustInventory = (typeof WarehouseStocktake !== "undefined")
+      ? WarehouseStocktake.canUserConfirmStocktake(Auth.getUser() || user)
+      : (Auth.hasRole("ROLE_ADMIN") || (Auth.hasRole("ROLE_WAREHOUSE_MANAGER") && (typeof Auth.hasPermission === "function" ? Auth.hasPermission("WAREHOUSE_ADJUST") : true)));
+
     tabs.forEach(tab => {
       tab.hidden = !(tab.dataset.tab === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
-        : tab.dataset.tab === "create-receipt" ? canRecordVouchers : Auth.hasPermission("WAREHOUSE_VIEW"));
+        : tab.dataset.tab === "create-receipt" ? canRecordVouchers
+        : tab.dataset.tab === "stocktake" ? Auth.hasPermission("WAREHOUSE_VIEW")
+        : Auth.hasPermission("WAREHOUSE_VIEW"));
     });
     $("tab-create-receipt").hidden = !canRecordVouchers;
+    $("tab-stocktake").hidden = !Auth.hasPermission("WAREHOUSE_VIEW");
     $("btn-open-create-unit-modal").hidden = !canManageUnits;
+
+    // S5-08: Nút chốt kiểm kê và gợi ý phân quyền
+    const btnConfirm = $("btn-confirm-stocktake");
+    const roleHint = $("stocktake-role-hint");
+    if (btnConfirm) {
+      btnConfirm.disabled = !canAdjustInventory;
+      btnConfirm.title = canAdjustInventory
+        ? "Chốt kiểm kê & Cân bằng kho"
+        : "Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu kiểm kê";
+    }
+    if (roleHint) {
+      roleHint.hidden = canAdjustInventory;
+    }
+
     document.querySelectorAll("#receipt-type-radios input").forEach(radio => {
       const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[radio.value];
       radio.disabled = !Auth.hasPermission(permission);

@@ -15,6 +15,8 @@ import java.util.List;
 public class OrderResponse {
 
     private Long id;
+    private Boolean canConfirmPortalOrder;
+    private String nextLifecycleStatus;
     private String orderCode;
     private String customerName;
     private com.quanlybanhang.model.CustomerGroup customerGroup;

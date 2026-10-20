@@ -335,6 +335,13 @@ public class OrderController {
         return ApiResponse.success(message, response);
     }
 
+    @PutMapping("/{id}/confirm")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ORDER_CONFIRM')")
+    public ApiResponse confirmPortalOrder(@PathVariable Long id, Principal principal) {
+        return ApiResponse.success("Đã xác nhận đơn đại lý và giữ chỗ tồn kho",
+                orderService.confirmPortalOrder(id, principal.getName()));
+    }
+
     /**
      * Quản lý kinh doanh hoặc nhân viên kinh doanh phụ trách từ chối đơn hàng (S2-10, S4-10).
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).

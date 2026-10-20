@@ -33,6 +33,13 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     List<Order> findByDealerIdAndStatusOrderByRecordedAtAsc(Long dealerId, String status);
 
+    List<Order> findByDealerIdAndStatusInOrderByRecordedAtAsc(Long dealerId, java.util.Collection<String> statuses);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.dealer.id = :dealerId AND o.status IN :statuses")
+    java.math.BigDecimal sumTotalAmountByDealerIdAndStatusIn(
+            @org.springframework.data.repository.query.Param("dealerId") Long dealerId,
+            @org.springframework.data.repository.query.Param("statuses") java.util.Collection<String> statuses);
+
     @org.springframework.data.jpa.repository.Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.dealer.id = :dealerId AND o.status = :status")
     java.math.BigDecimal sumTotalAmountByDealerIdAndStatus(
             @org.springframework.data.repository.query.Param("dealerId") Long dealerId,

@@ -694,3 +694,5 @@
     grid-template-columns: 1fr;
   }
 }
+
+.ord-table-actions [data-action="confirm-portal"] { width: auto; padding-inline: 10px; }

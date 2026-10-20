@@ -844,7 +844,7 @@ public class DealerServiceImpl implements DealerService {
         long inProgressOrderCount = orderRepository.countByDealerIdAndStatusNotIn(
                 dealer.getId(), List.of("CANCELLED", "REJECTED"));
 
-        BigDecimal currentDebt = orderRepository.sumTotalAmountByDealerIdAndStatus(dealer.getId(), "RECORDED");
+        BigDecimal currentDebt = orderRepository.sumTotalAmountByDealerIdAndStatusIn(dealer.getId(), OrderStatus.debtBearingStatuses());
         if (currentDebt == null) {
             currentDebt = BigDecimal.ZERO;
         }
@@ -855,7 +855,7 @@ public class DealerServiceImpl implements DealerService {
         boolean hasOverdueDebt = false;
         int maxOverdueDays = 0;
         if (maxDebtDays > 0) {
-            List<Order> recordedOrders = orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(dealer.getId(), "RECORDED");
+            List<Order> recordedOrders = orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(dealer.getId(), OrderStatus.debtBearingStatuses());
             LocalDate today = LocalDate.now();
             for (Order o : recordedOrders) {
                 LocalDateTime recTime = o.getRecordedAt() != null ? o.getRecordedAt() : o.getCreatedAt();

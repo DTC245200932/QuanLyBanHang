@@ -4,6 +4,7 @@ import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.request.OrderFilterRequest;
+import com.quanlybanhang.dto.request.OrderCalculateRequest;
 import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.model.*;
 import com.quanlybanhang.repository.PriceListRepository;
@@ -258,6 +259,22 @@ public class DealerPortalController {
         OrderResponse response = orderService.createPortalOrder(orderRequest, principal.getName());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Đặt hàng thành công. Đơn hàng đang ở trạng thái Chờ duyệt.", response));
+    }
+
+    /** Price/discount/debt preview uses the same sanitized items and order-day price as creation. */
+    @PostMapping("/orders/preview")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_CREATE') and hasAuthority('PRODUCT_VIEW') and hasAuthority('ORDER_VIEW'))")
+    public ApiResponse previewOrder(@Valid @RequestBody DealerPortalOrderRequest request,
+                                    Principal principal, @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
+        List<OrderItemRequest> items = request.getItems().stream().map(item -> OrderItemRequest.builder()
+                .productId(item.getProductId()).productCode(item.getProductCode()).unit(item.getUnit())
+                .quantity(item.getQuantity()).note(item.getNote()).build()).toList();
+        OrderCalculateResponse pricing = orderService.calculateOrder(OrderCalculateRequest.builder()
+                .dealerId(dealer.getId()).orderDate(LocalDate.now()).items(items).build());
+        return ApiResponse.success("Tổng tiền, chiết khấu và công nợ theo dữ liệu hiện hành", Map.of(
+                "pricing", pricing,
+                "debt", dealerDebtService.checkOrderDebt(dealer.getId(), pricing.getTotalAmount())));
     }
 
     /**

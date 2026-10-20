@@ -32,6 +32,10 @@ Kết luận: **7 story cơ bản đạt luồng chính; S4-02, S4-03 và S4-10 
 4. **S4-10 — số tiền trước gửi**: `frontend/js/dealer-portal.js:515` đặt chiết khấu bằng 0, tổng giỏ và công nợ dự kiến tính từ subtotal; backend lại áp chính sách chiết khấu khi tạo đơn. Workbook không yêu cầu một endpoint preview cụ thể, nhưng yêu cầu tổng tiền xem trước; khi có chiết khấu thì cần đồng bộ số này với server.
 5. **Cần chốt nghiệp vụ, không tự quy thành lỗi**: S4-01 dùng ngày giao mong muốn để tìm giá trong luồng tạo đơn (`OrderServiceImpl.java:288`), trong khi AC chỉ nói bảng giá “đang hiệu lực”. Cần thống nhất là giá ngày đặt hay ngày giao. S4-06 có API vòng đời nhưng chưa có đủ UI kho để diễn tập mọi bước; AC của sales vẫn đã có theo dõi/hủy.
 
+## Cập nhật sau audit
+
+Các phát hiện nghiệp vụ bên trên đã được xử lý trong đợt sửa tiếp theo cùng ngày; xem [báo cáo sửa Sprint 4](SPRINT_4_FIXES_20261020.md) và `status.md` để đọc kết quả mới. Giữ phần audit gốc làm bằng chứng trước sửa, không dùng kết luận cũ thay cho trạng thái hiện tại.
+
 ## Sửa menu nhảy và chuyển trang giật
 
 | Hạng mục | Backend | Frontend | Nối API / quyền |

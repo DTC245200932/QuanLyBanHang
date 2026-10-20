@@ -54,7 +54,7 @@ public class RolePermissionConfig {
         defaults.put(ERole.ROLE_ADMIN, EnumSet.allOf(Permission.class));
         defaults.put(ERole.ROLE_SALES_MANAGER, EnumSet.of(
                 PRODUCT_VIEW, PRODUCT_CREATE, PRODUCT_EDIT, PRODUCT_DELETE,
-                ORDER_VIEW, ORDER_CREATE, ORDER_EDIT, ORDER_CANCEL, ORDER_APPROVE,
+                ORDER_VIEW, ORDER_CREATE, ORDER_EDIT, ORDER_CANCEL, ORDER_APPROVE, ORDER_CONFIRM,
                 CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT, WAREHOUSE_VIEW,
                 FINANCE_VIEW_COST_PRICE, FINANCE_VIEW_PROFIT_MARGIN,
                 FINANCE_VIEW_DEBT, FINANCE_MANAGE,
@@ -67,7 +67,7 @@ public class RolePermissionConfig {
                 REPORT_INVENTORY
         ));
         defaults.put(ERole.ROLE_SALES, EnumSet.of(
-                PRODUCT_VIEW, ORDER_VIEW, ORDER_CREATE, ORDER_EDIT, ORDER_CANCEL,
+                PRODUCT_VIEW, ORDER_VIEW, ORDER_CREATE, ORDER_EDIT, ORDER_CANCEL, ORDER_CONFIRM,
                 CUSTOMER_VIEW, CUSTOMER_CREATE, CUSTOMER_EDIT, REPORT_SALES
         ));
         defaults.put(ERole.ROLE_WAREHOUSE_STAFF, EnumSet.of(

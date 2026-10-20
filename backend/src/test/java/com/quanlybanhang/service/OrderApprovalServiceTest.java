@@ -54,6 +54,9 @@ class OrderApprovalServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("manager01", "",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ORDER_APPROVE"))));
         orderService.setOrderApprovalHistoryRepository(orderApprovalHistoryRepository);
 
         dealer = Dealer.builder()
@@ -76,6 +79,9 @@ class OrderApprovalServiceTest {
                 .createdAt(LocalDateTime.now())
                 .build();
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearAuthentication() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
 
     @Test
     @DisplayName("Duyệt đơn hàng thành công -> chuyển sang giữ chỗ tồn kho (RECORDED) và lưu lịch sử duyệt")

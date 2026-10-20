@@ -2345,3 +2345,37 @@ HTTP/1.1 200 OK
 Content-Type: image/png
 ```
 Response Body: Binary data PNG (ảnh mã vạch Code 128)
+
+### Bổ sung sửa lỗi Sprint 4 — 20/10/2026
+
+Các đường dẫn bên dưới có prefix `/api`. Quyền lấy từ ma trận DB ở mỗi request; token đã đăng nhập không giữ quyền bị thu hồi. ADMIN luôn toàn quyền, nhưng vẫn phải tuân thủ trạng thái và ràng buộc dữ liệu hợp lệ.
+
+| API / trường | Quyền | Hành vi |
+|---|---|---|
+| `POST /portal/orders/preview` | `ORDER_CREATE` + `PRODUCT_VIEW` + `ORDER_VIEW`, hoặc ADMIN | Tính giá, chiết khấu, tồn khả dụng và công nợ dự kiến; không lưu đơn/giữ tồn |
+| `PUT /orders/{id}/confirm` | `ORDER_CONFIRM`, hoặc ADMIN | Xác nhận đơn cổng đang chờ duyệt, không vi phạm; chỉ người phụ trách đại lý hoặc ADMIN; kiểm lại công nợ/tồn trước giữ chỗ |
+| `PUT /orders/{id}/approve` | `ORDER_APPROVE`, hoặc ADMIN | Luồng duyệt, kể cả xử lý ngoại lệ giá/công nợ; không fallback theo role hoặc ORDER_CREATE |
+| `OrderResponse.canConfirmPortalOrder` | Theo người đang gọi | Gợi ý hiện nút xác nhận: quyền, người phụ trách, đơn cổng, trạng thái và vi phạm đã ghi nhận; API vẫn kiểm lại điều kiện hiện tại |
+| `OrderResponse.nextLifecycleStatus` | `WAREHOUSE_EXPORT` và kho được phân công, hoặc ADMIN | Bước tiếp theo hoặc null: RECORDED/APPROVED → PICKING → EXPORTED → DELIVERED → CLOSED |
+
+Preview nhận cùng body với `POST /portal/orders`:
+
+```json
+{
+  "expectedDeliveryDate": "2026-10-25",
+  "items": [{"productId": 101, "unit": "thùng", "quantity": 2}]
+}
+```
+
+Đại lý được xác định từ tài khoản đăng nhập; ADMIN dùng query `dealerId` để chọn ngữ cảnh. Không tin giá, nhóm khách hàng, kho hoặc dealerId do đại lý tự gửi trong body. Response `data` gồm `pricing` (OrderCalculateResponse: items/subtotalAmount/discountAmount/totalAmount và thông tin tồn) và `debt` (OrderDebtCheckResponse: currentDebt/debtLimit/projectedDebt/remainingLimit/isBlocked/hasOverdueDebt…). Tạo đơn vẫn tính lại trên server, không tin số tiền preview do client cung cấp.
+
+Frontend bắt buộc tính lại trước xác nhận/gửi; lỗi preview chặn gửi và có nút thử lại. Thay đổi tổng tiền sau xác nhận phải xác nhận lại, phản hồi cũ không được ghi đè giỏ mới. API `confirm` trả 403 khi thiếu quyền/sai người phụ trách, 400 khi không phải đơn cổng chờ duyệt hoặc có vi phạm. Đơn vi phạm cần luồng `approve`, không cấp quyền duyệt rộng chỉ để xác nhận đơn thường.
+
+`ORDER_CONFIRM` có nhãn **Xác nhận đơn đại lý** trong ma trận. Mặc định cho SALES/SALES_MANAGER chỉ áp dụng DB mới hoặc thao tác khôi phục mặc định. DB đã cấu hình **không tự được bổ sung quyền**: Admin cần tích và lưu cho vai trò mong muốn, không ghi đè các thiết lập quyền đã lưu.
+
+Quy tắc nhất quán khi tính/tạo đơn:
+
+- Giá và chiết khấu dùng ngày đặt hiện tại, không dùng ngày giao mong muốn; sản phẩm ngừng kinh doanh bị chặn.
+- Đơn có đại lý bắt buộc dùng kho phục vụ đang hoạt động gắn với đại lý. Gửi warehouseId khác trả 403; thiếu kho phục vụ trả 400, không chọn kho đầu tiên thay thế.
+- Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
+- Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.

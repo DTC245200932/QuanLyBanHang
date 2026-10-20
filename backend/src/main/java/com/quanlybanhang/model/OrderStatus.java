@@ -97,4 +97,11 @@ public enum OrderStatus {
         String s = status.trim().toUpperCase();
         return "APPROVED".equals(s) || "RECORDED".equals(s);
     }
+
+    /** Delivery/closure is not proof of payment. Until a payment ledger exists,
+     * approved orders remain debt-bearing throughout their fulfillment lifecycle. */
+    public static java.util.List<String> debtBearingStatuses() {
+        return java.util.List.of("APPROVED", "RECORDED", "PICKING", "PROCESSING",
+                "EXPORTED", "SHIPPED", "DELIVERED", "CLOSED", "COMPLETED");
+    }
 }

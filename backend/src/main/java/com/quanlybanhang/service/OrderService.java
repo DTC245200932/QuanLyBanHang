@@ -13,6 +13,9 @@ public interface OrderService {
     /** Đơn gửi qua cổng luôn chờ duyệt, kể cả khi ADMIN hỗ trợ đại lý. */
     OrderResponse createPortalOrder(OrderRequest request, String username);
 
+    /** Assigned representative confirms a non-violating portal order, without granting exception approval. */
+    OrderResponse confirmPortalOrder(Long id, String username);
+
     List<OrderResponse> getAllOrders();
 
     /**

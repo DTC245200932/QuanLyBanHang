@@ -231,6 +231,40 @@ public class WarehouseServiceImpl implements WarehouseService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<WarehouseDealerResponse> getDealerWarehouseAssignments(
+            String keyword, org.springframework.data.domain.Pageable pageable) {
+        String term = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        return dealerRepository.searchDealers(term, null, null, null, null, null, pageable)
+                .map(this::mapDealerWarehouse);
+    }
+
+    @Override
+    @Transactional
+    public WarehouseDealerResponse assignDealerWarehouse(Long dealerId, Long warehouseId, String username) {
+        Dealer dealer = dealerRepository.findById(dealerId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý"));
+        Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho phục vụ"));
+        if (!Boolean.TRUE.equals(warehouse.getActive())) {
+            throw new IllegalArgumentException("Chỉ được gán kho đang hoạt động cho đại lý");
+        }
+        String before = dealer.getWarehouse() == null ? null : dealer.getWarehouse().getCode();
+        dealer.setWarehouse(warehouse);
+        Dealer saved = dealerRepository.save(dealer);
+        auditLogService.logAction("DEALER", dealerId.toString(), "ASSIGN_WAREHOUSE",
+                before, warehouse.getCode(), username);
+        return mapDealerWarehouse(saved);
+    }
+
+    private WarehouseDealerResponse mapDealerWarehouse(Dealer dealer) {
+        Warehouse warehouse = dealer.getWarehouse();
+        return new WarehouseDealerResponse(dealer.getId(), dealer.getCode(), dealer.getName(), dealer.getActive(),
+                warehouse == null ? null : warehouse.getId(), warehouse == null ? null : warehouse.getCode(),
+                warehouse == null ? null : warehouse.getName());
+    }
+
+    @Override
     @Transactional
     public void deleteWarehouse(Long id, String username) {
         Warehouse warehouse = warehouseRepository.findById(id)
@@ -361,25 +395,25 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new IllegalArgumentException("ID kho không được để trống");
         }
 
-        Warehouse warehouse = warehouseRepository.findById(targetWarehouseId)
+        // Serialize code allocation within a warehouse, including manually entered codes.
+        // The existing (warehouse_id, code) unique constraint remains the final safeguard.
+        Warehouse warehouse = warehouseRepository.findByIdForUpdate(targetWarehouseId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + targetWarehouseId));
 
-        if (request.getCode() == null || request.getCode().isBlank()) {
-            throw new IllegalArgumentException("Mã vị trí không được để trống");
-        }
         if (request.getName() == null || request.getName().isBlank()) {
             throw new IllegalArgumentException("Tên vị trí không được để trống");
         }
 
-        String code = request.getCode().trim().toUpperCase();
+        LocationType locationType = request.getLocationType() != null ? request.getLocationType() : LocationType.SHELF;
+        String code = request.getCode() == null || request.getCode().isBlank()
+                ? generateLocationCode(targetWarehouseId, locationType)
+                : request.getCode().trim().toUpperCase(Locale.ROOT);
         if (warehouseLocationRepository.existsByWarehouseIdAndCode(targetWarehouseId, code)) {
             throw new IllegalArgumentException("Mã vị trí '" + code + "' đã tồn tại trong kho " + warehouse.getName());
         }
 
-        LocationType locationType = request.getLocationType() != null ? request.getLocationType() : LocationType.SHELF;
-
         WarehouseLocation parent = null;
-        if (request.getParentLocationId() != null) {
+        if (request.getParentLocationId() != null && request.getParentLocationId() > 0) {
             parent = warehouseLocationRepository.findById(request.getParentLocationId())
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy vị trí cha với ID: " + request.getParentLocationId()));
 
@@ -388,6 +422,9 @@ public class WarehouseServiceImpl implements WarehouseService {
             }
             if (parent.getLocationType() != LocationType.ZONE) {
                 throw new IllegalArgumentException("Vị trí cha phải là Khu vực (ZONE)");
+            }
+            if (locationType == LocationType.ZONE) {
+                throw new IllegalArgumentException("Khu vực không được nằm trong khu vực khác");
             }
         }
 
@@ -418,6 +455,27 @@ public class WarehouseServiceImpl implements WarehouseService {
         return mapToLocationResponse(saved);
     }
 
+    /** Caller holds the warehouse row lock until this transaction commits. */
+    private String generateLocationCode(Long warehouseId, LocationType type) {
+        String prefix = switch (type) {
+            case ZONE -> "KHU-";
+            case SHELF -> "KE-";
+            default -> type.name() + "-";
+        };
+        java.math.BigInteger highest = java.math.BigInteger.ZERO;
+        for (String existing : warehouseLocationRepository.findCodesByWarehouseId(warehouseId)) {
+            if (existing == null || !existing.toUpperCase(Locale.ROOT).startsWith(prefix)) continue;
+            String suffix = existing.substring(prefix.length());
+            if (suffix.matches("[0-9]+")) highest = highest.max(new java.math.BigInteger(suffix));
+        }
+        String digits = highest.add(java.math.BigInteger.ONE).toString();
+        String code = prefix + "0".repeat(Math.max(0, 3 - digits.length())) + digits;
+        if (code.length() > 50) {
+            throw new IllegalArgumentException("Không thể tự sinh mã vị trí trong giới hạn 50 ký tự; vui lòng nhập mã riêng");
+        }
+        return code;
+    }
+
     @Override
     @Transactional
     public WarehouseLocationResponse updateLocation(Long id, WarehouseLocationRequest request, String username) {
@@ -432,8 +490,10 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy vị trí kho với ID: " + id));
 
         if (request.getCode() != null && !request.getCode().isBlank()) {
-            String newCode = request.getCode().trim().toUpperCase();
+            String newCode = request.getCode().trim().toUpperCase(Locale.ROOT);
             if (!newCode.equalsIgnoreCase(location.getCode())) {
+                warehouseRepository.findByIdForUpdate(location.getWarehouse().getId())
+                        .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho của vị trí"));
                 if (warehouseLocationRepository.existsByWarehouseIdAndCodeAndIdNot(location.getWarehouse().getId(), newCode, id)) {
                     throw new IllegalArgumentException("Mã vị trí '" + newCode + "' đã được sử dụng trong kho này");
                 }
@@ -445,11 +505,20 @@ public class WarehouseServiceImpl implements WarehouseService {
             location.setName(request.getName().trim());
         }
 
+        if (request.getLocationType() != null && request.getLocationType() != LocationType.ZONE
+                && warehouseLocationRepository.countByParentId(id) > 0) {
+            throw new IllegalArgumentException("Không thể đổi loại khu vực đang chứa vị trí trực thuộc");
+        }
         if (request.getLocationType() != null) {
             location.setLocationType(request.getLocationType());
         }
 
-        if (request.getParentLocationId() != null) {
+        if (location.getLocationType() == LocationType.ZONE) {
+            if (request.getParentLocationId() != null && request.getParentLocationId() > 0) {
+                throw new IllegalArgumentException("Khu vực không được nằm trong khu vực khác");
+            }
+            location.setParent(null);
+        } else if (request.getParentLocationId() != null && request.getParentLocationId() > 0) {
             if (request.getParentLocationId().equals(id)) {
                 throw new IllegalArgumentException("Vị trí không thể là cha của chính nó");
             }

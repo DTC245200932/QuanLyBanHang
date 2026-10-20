@@ -25,6 +25,7 @@ ROUTES = {
     "/suppliers": "suppliers.html",
     "/product-units": "product-units.html",
     "/warehouse/units": "warehouse/units.html",
+    "/warehouses": "warehouses.html",
     "/admin/users": "admin/users.html",
     "/admin/audit-logs": "admin/audit-logs.html",
     "/forgot-password": "forgot-password.html",

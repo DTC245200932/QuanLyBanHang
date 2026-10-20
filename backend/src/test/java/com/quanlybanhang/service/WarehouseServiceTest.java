@@ -118,6 +118,46 @@ class WarehouseServiceTest {
     }
 
     @Test
+    void shelfParentCanBeRemovedWithoutLookingUpZero() {
+        WarehouseLocation parent = WarehouseLocation.builder().id(20L).warehouse(khoHcm).locationType(LocationType.ZONE).build();
+        WarehouseLocation shelf = WarehouseLocation.builder().id(21L).code("S1").name("Shelf")
+                .warehouse(khoHcm).locationType(LocationType.SHELF).parent(parent).build();
+        when(warehouseLocationRepository.findById(21L)).thenReturn(Optional.of(shelf));
+        when(warehouseLocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        var result = warehouseService.updateLocation(21L, WarehouseLocationRequest.builder().parentLocationId(0L).build(), "staff");
+        assertThat(result.getParentLocationId()).isNull();
+        verify(warehouseLocationRepository, never()).findById(0L);
+    }
+
+    @Test
+    void zoneContainingShelvesCannotChangeIntoShelf() {
+        WarehouseLocation zone = WarehouseLocation.builder().id(20L).warehouse(khoHcm).locationType(LocationType.ZONE).build();
+        when(warehouseLocationRepository.findById(20L)).thenReturn(Optional.of(zone));
+        when(warehouseLocationRepository.countByParentId(20L)).thenReturn(1L);
+        assertThatThrownBy(() -> warehouseService.updateLocation(20L,
+                WarehouseLocationRequest.builder().locationType(LocationType.SHELF).build(), "staff"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("trực thuộc");
+        verify(warehouseLocationRepository, never()).save(any());
+    }
+
+    @Test
+    void dealerWarehouseAssignmentRejectsInactiveWarehouseAndUsesMinimalResponse() {
+        Dealer dealer = Dealer.builder().id(5L).code("DL5").name("Dealer").build();
+        khoHcm.setActive(false);
+        when(dealerRepository.findById(5L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoHcm));
+        assertThatThrownBy(() -> warehouseService.assignDealerWarehouse(5L, 1L, "manager"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("hoạt động");
+        verify(dealerRepository, never()).save(any());
+        khoHcm.setActive(true);
+        when(dealerRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        var response = warehouseService.assignDealerWarehouse(5L, 1L, "manager");
+        assertThat(response.warehouseId()).isEqualTo(1L);
+        assertThat(response.warehouseCode()).isEqualTo("KHO-HCM");
+        verify(auditLogService).logAction("DEALER", "5", "ASSIGN_WAREHOUSE", null, "KHO-HCM", "manager");
+    }
+
+    @Test
     @DisplayName("Thủ kho nhập 10 thùng (hệ số 24) -> sổ sách tồn kho ghi nhận 240 lon")
     void importGoods_ByCarton_LedgerRecordsInCans() {
         WarehouseVoucherRequest request = WarehouseVoucherRequest.builder()
@@ -408,7 +448,7 @@ class WarehouseServiceTest {
                 .locationType(LocationType.ZONE)
                 .build();
 
-        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoHcm));
         when(warehouseLocationRepository.existsByWarehouseIdAndCode(1L, "ZONE-A")).thenReturn(false);
         when(warehouseLocationRepository.save(any(WarehouseLocation.class))).thenAnswer(invocation -> {
             WarehouseLocation loc = invocation.getArgument(0);
@@ -444,7 +484,7 @@ class WarehouseServiceTest {
                 .parentLocationId(201L)
                 .build();
 
-        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoHcm));
         when(warehouseLocationRepository.existsByWarehouseIdAndCode(1L, "SHELF-A1")).thenReturn(false);
         when(warehouseLocationRepository.findById(201L)).thenReturn(Optional.of(zoneA));
         when(warehouseLocationRepository.save(any(WarehouseLocation.class))).thenAnswer(invocation -> {
@@ -483,7 +523,7 @@ class WarehouseServiceTest {
                 .parentLocationId(202L)
                 .build();
 
-        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoHcm));
         when(warehouseLocationRepository.existsByWarehouseIdAndCode(1L, "SHELF-A1-1")).thenReturn(false);
         when(warehouseLocationRepository.findById(202L)).thenReturn(Optional.of(parentShelf));
 
@@ -491,6 +531,55 @@ class WarehouseServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Vị trí cha phải là Khu vực (ZONE)");
         verify(warehouseLocationRepository, never()).save(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"ZONE,KHU-001", "SHELF,KE-001"})
+    void blankLocationCodeIsGeneratedOnServer(LocationType type, String expected) {
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseLocationRepository.findCodesByWarehouseId(1L)).thenReturn(List.of("MA-RIENG", "KE-A"));
+        when(warehouseLocationRepository.save(any())).thenAnswer(i -> {
+            WarehouseLocation l = i.getArgument(0); l.setId(700L); return l;
+        });
+        var response = warehouseService.createLocation(1L, WarehouseLocationRequest.builder()
+                .name("Vị trí mới").code("  ").locationType(type).build(), "staff");
+        assertThat(response.getCode()).isEqualTo(expected);
+        verify(warehouseRepository).findByIdForUpdate(1L);
+    }
+
+    @Test
+    void generatedCodeSkipsManualNumericCodesAndContinuesPast999() {
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseLocationRepository.findCodesByWarehouseId(1L))
+                .thenReturn(List.of("KE-001", "KE-999", "KE-TANG-2", "KHU-2000"));
+        when(warehouseLocationRepository.save(any())).thenAnswer(i -> {
+            WarehouseLocation l = i.getArgument(0); l.setId(700L); return l;
+        });
+        var response = warehouseService.createLocation(1L, WarehouseLocationRequest.builder()
+                .name("Kệ mới").locationType(LocationType.SHELF).build(), "staff");
+        assertThat(response.getCode()).isEqualTo("KE-1000");
+    }
+
+    @Test
+    void duplicateManualLocationCodeIsRejectedNotReplacedWithAutoCode() {
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoHcm));
+        when(warehouseLocationRepository.existsByWarehouseIdAndCode(1L, "KE-RIENG")).thenReturn(true);
+        assertThatThrownBy(() -> warehouseService.createLocation(1L, WarehouseLocationRequest.builder()
+                .name("Kệ mới").code(" ke-rieng ").locationType(LocationType.SHELF).build(), "staff"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("đã tồn tại");
+        verify(warehouseLocationRepository, never()).findCodesByWarehouseId(any());
+        verify(warehouseLocationRepository, never()).save(any());
+    }
+
+    @Test
+    void blankCodeOnUpdateKeepsExistingCode() {
+        WarehouseLocation shelf = WarehouseLocation.builder().id(21L).warehouse(khoHcm)
+                .code("MA-NHAN-CU").name("Kệ cũ").locationType(LocationType.SHELF).build();
+        when(warehouseLocationRepository.findById(21L)).thenReturn(Optional.of(shelf));
+        when(warehouseLocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        var response = warehouseService.updateLocation(21L, WarehouseLocationRequest.builder().code(" ").name("Kệ sửa").build(), "staff");
+        assertThat(response.getCode()).isEqualTo("MA-NHAN-CU");
+        verify(warehouseLocationRepository, never()).findCodesByWarehouseId(any());
     }
 
     @Test

@@ -21,6 +21,17 @@ test('admin keeps management menus when the session has stale permissions', () =
   }
 });
 
+test('S5-03 warehouse menu follows view/manage permissions without a warehouse role fallback', () => {
+  for (const role of ['ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_MANAGER']) {
+    for (const permission of ['WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE']) {
+      assert.ok(ids({ roles: [role], permissions: [permission] }).includes('warehouses'));
+    }
+    assert.ok(!ids({ roles: [role], permissions: [] }).includes('warehouses'));
+  }
+  assert.ok(ids({ roles: ['ROLE_ADMIN'], permissions: [] }).includes('warehouses'));
+  assert.equal(menu.getPageForLocation(new URL('http://localhost/warehouses')).id, 'warehouses');
+});
+
 test('dealer menus require the permissions of every API used by the page', () => {
   const permissions = ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'];
   assert.ok(ids({ roles: ['ROLE_DEALER'], permissions }).includes('dealer-portal'));

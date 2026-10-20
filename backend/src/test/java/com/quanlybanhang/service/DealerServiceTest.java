@@ -672,7 +672,7 @@ class DealerServiceTest {
         assertThat(res.getDefaultWarehouseName()).isEqualTo("Kho Đà Nẵng");
         assertThat(dealer.getWarehouse()).isEqualTo(warehouse);
         verify(dealerRepository).save(dealer);
-        verify(auditLogService).logAction(eq("DEALER"), eq("10"), eq("ASSIGN_DEFAULT_WAREHOUSE"), any(), any(), eq("manager"));
+        verify(auditLogService).logAction(eq("DEALER"), eq("10"), eq("ASSIGN_WAREHOUSE"), any(), any(), eq("manager"));
     }
 
     @Test

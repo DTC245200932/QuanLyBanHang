@@ -10,7 +10,7 @@ const cases = [
   '/create-order', '/orders', '/order-approval', '/dealer-orders', '/dealer-portal', '/price-lists',
   '/discount-policies', '/dealers', '/suppliers', '/warehouse/units?tab=inventory',
   '/warehouse/units?tab=units', '/warehouse/units?tab=receipts', '/warehouse/units?tab=ledger',
-  '/admin/users', '/admin/audit-logs',
+  '/admin/users', '/admin/audit-logs', '/warehouses',
 ];
 const user = { id: 1, username: 'admin', fullName: 'Quản trị viên', email: 'admin@example.invalid',
   phone: '0900000000', roles: ['ROLE_ADMIN'], permissions: [], warehouses: [], territories: [] };
@@ -39,6 +39,7 @@ const dealers = ['Minh Phát', 'Tân Bình', 'Hà Nội', 'Khách lẻ', 'Hoàng
       else if (['/users/profile', '/auth/me'].includes(endpoint)) data = user;
       else if (endpoint === '/admin/assignment-options') data = { roles: user.roles, warehouses: [], territories: [], dealers: [] };
       else if (['/admin/users', '/admin/audit-logs'].includes(endpoint)) data = { content: [], totalElements: 0, totalPages: 1, number: 0, first: true, last: true };
+      else if (endpoint === '/warehouses/dealer-assignments') data = { content: [], totalElements: 0, totalPages: 1, number: 0, first: true, last: true };
       else if (endpoint === '/dealers/options') data = { assignedUsers: [], territories: [] };
       else if (['/dealers', '/dealers/active', '/finance/debt', '/portal/dealers'].includes(endpoint)) data = dealers;
       else if (endpoint === '/orders/draft') data = null;

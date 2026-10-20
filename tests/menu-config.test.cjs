@@ -32,6 +32,14 @@ test('S5-03 warehouse menu follows view/manage permissions without a warehouse r
   assert.equal(menu.getPageForLocation(new URL('http://localhost/warehouses')).id, 'warehouses');
 });
 
+test('S5-05 keeps the inventory menu on the permission matrix and resolves old links', () => {
+  const item = menu.menuItems.find(item => item.id === 'warehouse');
+  assert.equal(item.href, '/warehouse/inventory');
+  assert.ok(ids({ roles: ['ROLE_VIEWER'], permissions: ['WAREHOUSE_VIEW'] }).includes('warehouse'));
+  assert.ok(!ids({ roles: ['ROLE_WAREHOUSE_MANAGER'], permissions: ['WAREHOUSE_MANAGE'] }).includes('warehouse'));
+  assert.equal(menu.getPageForLocation(new URL('http://localhost/warehouse/units?tab=inventory')).id, 'warehouse');
+});
+
 test('dealer menus require the permissions of every API used by the page', () => {
   const permissions = ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'];
   assert.ok(ids({ roles: ['ROLE_DEALER'], permissions }).includes('dealer-portal'));

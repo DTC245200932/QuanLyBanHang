@@ -95,6 +95,83 @@ class SprintMergeIntegrationTest {
     }
 
     @Test
+    void stockLedgerShowsPhysicalReservedAvailableAndZeroStockWithoutWriting() throws Exception {
+        WarehouseInventory stock = stock();
+        stock.setBaseQuantity(new BigDecimal("10.5000")); stock.setReservedQuantity(new BigDecimal("3.2500"));
+        stock.setBaseUnit("hộp");
+        stock.setInTransitQuantity(new BigDecimal("40")); inventories.save(stock);
+        long before = inventories.count();
+        JsonNode row = call(get("/api/warehouse/stock-ledger").param("warehouseId", warehouse.getId().toString())
+                .param("categoryId", product.getCategory().getId().toString()).param("keyword", product.getCode()), managerToken, null, 200)
+                .at("/data/content/0");
+        assertThat(row.get("physicalQuantity").decimalValue()).isEqualByComparingTo("10.5");
+        assertThat(row.get("reservedQuantity").decimalValue()).isEqualByComparingTo("3.25");
+        assertThat(row.get("availableQuantity").decimalValue()).isEqualByComparingTo("7.25");
+        assertThat(row.get("baseUnit").asText()).isEqualTo("hộp");
+        assertThat(row.get("stockStatus").asText()).isEqualTo("IN_STOCK");
+        assertThat(row.has("price") || row.has("costPrice")).isFalse();
+        JsonNode zero = call(get("/api/warehouse/stock-ledger").param("warehouseId", destination.getId().toString())
+                .param("keyword", product.getCode()), managerToken, null, 200).at("/data/content/0");
+        assertThat(zero.get("physicalQuantity").decimalValue()).isZero();
+        assertThat(zero.get("reservedQuantity").decimalValue()).isZero();
+        assertThat(zero.get("availableQuantity").decimalValue()).isZero();
+        assertThat(zero.get("stockStatus").asText()).isEqualTo("OUT_OF_STOCK");
+        assertThat(inventories.count()).isEqualTo(before);
+    }
+
+    @Test
+    void stockLedgerFiltersStatusSearchAndPaginationOnServer() throws Exception {
+        WarehouseInventory stock = stock(); stock.setReservedQuantity(stock.getBaseQuantity()); inventories.save(stock);
+        for (String status : List.of("IN_STOCK", "OUT_OF_STOCK", "FULLY_RESERVED")) {
+            JsonNode data = call(get("/api/warehouse/stock-ledger").param("warehouseId", warehouse.getId().toString())
+                    .param("keyword", product.getCode()).param("stockStatus", status), managerToken, null, 200).get("data");
+            assertThat(data.get("totalElements").asLong()).isEqualTo(status.equals("FULLY_RESERVED") ? 1 : 0);
+        }
+        String term = "Search%_!" + UUID.randomUUID();
+        product.setName(term); products.save(product);
+        products.save(Product.builder().code("NEXT-" + UUID.randomUUID()).name(term).category(product.getCategory()).unit("kg").build());
+        var first = call(get("/api/warehouse/stock-ledger").param("warehouseId", warehouse.getId().toString())
+                .param("keyword", term.toLowerCase()).param("size", "1"), managerToken, null, 200).get("data");
+        var second = call(get("/api/warehouse/stock-ledger").param("warehouseId", warehouse.getId().toString())
+                .param("keyword", term).param("size", "1").param("page", "1"), managerToken, null, 200).get("data");
+        assertThat(first.get("totalElements").asLong()).isEqualTo(2);
+        assertThat(first.at("/content/0/productId")).isNotEqualTo(second.at("/content/0/productId"));
+        assertThat(first.get("last").asBoolean()).isFalse();
+        assertThat(second.get("last").asBoolean()).isTrue();
+        call(get("/api/warehouse/stock-ledger").param("size", "201"), managerToken, null, 400);
+        call(get("/api/warehouse/stock-ledger").param("page", "-1"), managerToken, null, 400);
+    }
+
+    @Test
+    void stockLedgerHonorsLivePermissionsAndWarehouseAssignments() throws Exception {
+        User staff = createUser("stock-reader-" + UUID.randomUUID(), ERole.ROLE_WAREHOUSE_STAFF, null);
+        staff.setWarehouses(Set.of(warehouse)); users.save(staff);
+        String token = login(staff.getUsername());
+        JsonNode options = call(get("/api/warehouse/stock-ledger/options"), token, null, 200).get("data");
+        assertThat(options.get("warehouses").size()).isEqualTo(1);
+        assertThat(options.at("/warehouses/0/id").asLong()).isEqualTo(warehouse.getId());
+        assertThat(call(get("/api/warehouse/stock-ledger").param("keyword", product.getCode()), token, null, 200)
+                .at("/data/totalElements").asLong()).isEqualTo(1);
+        call(get("/api/warehouse/stock-ledger").param("warehouseId", destination.getId().toString()), token, null, 403);
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_WAREHOUSE_STAFF);
+        try {
+            matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, Set.of(Permission.WAREHOUSE_VIEW));
+            call(get("/api/warehouse/stock-ledger/options"), token, null, 200);
+            call(get("/api/warehouse/stock-ledger"), token, null, 200);
+            matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, Set.of(Permission.WAREHOUSE_IMPORT));
+            call(get("/api/warehouse/stock-ledger"), token, null, 403);
+            call(get("/api/warehouse/stock-ledger/options"), token, null, 403);
+            matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, Set.of(Permission.WAREHOUSE_VIEW));
+            staff.setWarehouses(Set.of()); users.save(staff);
+            assertThat(call(get("/api/warehouse/stock-ledger/options"), token, null, 200).at("/data/warehouses").isEmpty()).isTrue();
+            assertThat(call(get("/api/warehouse/stock-ledger"), token, null, 200).at("/data/totalElements").asLong()).isZero();
+            call(get("/api/warehouse/stock-ledger").param("warehouseId", warehouse.getId().toString()), token, null, 403);
+        } finally { matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, original); }
+        String admin = login("admin");
+        call(get("/api/warehouse/stock-ledger").param("warehouseId", destination.getId().toString()), admin, null, 200);
+    }
+
+    @Test
     void automaticLocationCodesArePerWarehouseAndSafeForConcurrentCreates() throws Exception {
         String admin = login("admin");
         String url = "/api/warehouses/" + warehouse.getId() + "/locations";
@@ -531,7 +608,8 @@ class SprintMergeIntegrationTest {
         if (token != null) request.header("Authorization", "Bearer " + token);
         if (body != null) request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));
         var response = mvc.perform(request).andReturn().getResponse();
-        assertThat(response.getStatus()).as("%s", response.getContentAsString()).isEqualTo(expected);
-        return json.readTree(response.getContentAsString());
+        String payload = response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(response.getStatus()).as("%s", payload).isEqualTo(expected);
+        return json.readTree(payload);
     }
 }

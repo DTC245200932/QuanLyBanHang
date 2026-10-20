@@ -2346,6 +2346,33 @@ Content-Type: image/png
 ```
 Response Body: Binary data PNG (ảnh mã vạch Code 128)
 
+### S5-05 — Sổ tồn theo SKU và kho — 20/10/2026
+
+Menu **Kho hàng → Tồn kho**, URL `/warehouse/inventory`. Link cũ `/warehouse/units?tab=inventory` được chuyển sang trang mới và giữ các bộ lọc còn lại. Các phân hệ đơn vị tính/chứng từ/sổ cái kho và API tồn cũ phục vụ S4 vẫn giữ nguyên.
+
+| Method | Endpoint (prefix `/api`) | Quyền | Nội dung |
+|---|---|---|---|
+| GET | `/warehouse/stock-ledger/options` | `WAREHOUSE_VIEW` hoặc ADMIN | `warehouses`, `categories` dạng `{id,code,name}`, `stockStatuses` dạng `{value,label}`; kho chỉ nằm trong phạm vi được phép |
+| GET | `/warehouse/stock-ledger` | `WAREHOUSE_VIEW` hoặc ADMIN | Spring Page trong `data`: `content`, `totalElements`, `totalPages`, `number`, `last`… |
+
+Query: `warehouseId` (bỏ trống = tất cả kho trong phạm vi), `categoryId` (nhóm hàng cụ thể), `keyword` (mã SKU/tên sản phẩm, không phân biệt hoa thường, tối đa 150 ký tự), `stockStatus`, `page` (từ 0), `size` (1–200, mặc định 20). Tìm kiếm dùng parameter binding, `%`, `_`, `!` trong từ khóa được tìm như ký tự thường. Sắp xếp cố định theo mã kho/mã SKU/ID để phân trang ổn định.
+
+Mỗi dòng gồm `warehouseId/Code/Name`, `productId/Code/Name`, `categoryId/Name`, `baseUnit`, `physicalQuantity`, `reservedQuantity`, `availableQuantity`, `stockStatus`, `stockStatusLabel`, `updatedAt`. Không trả giá bán/giá vốn/thông tin tài chính. Đơn vị lấy từ sổ tồn đã ghi nhận, fallback đơn vị sản phẩm chỉ khi chưa có bản ghi tồn.
+
+Ba lượng tồn đọc trực tiếp từ DB: thực tế = base_quantity, giữ chỗ = reserved_quantity, khả dụng = max(thực tế − giữ chỗ, 0). Hàng đang chuyển chưa được cộng vào kho nhận. SKU chưa có bản ghi tồn tại kho được trả về 0 qua LEFT JOIN, **không tự tạo hoặc sửa bản ghi DB**; sản phẩm/kho ngừng hoạt động vẫn tra cứu được để không che tồn cũ. Không cộng tổng số lượng giữa SKU khác đơn vị.
+
+| `stockStatus` | Nhãn | Điều kiện |
+|---|---|---|
+| `IN_STOCK` | Còn khả dụng | Tồn thực tế > 0 và còn khả dụng > 0 |
+| `OUT_OF_STOCK` | Hết tồn | Tồn thực tế <= 0, kể cả SKU chưa phát sinh tồn |
+| `FULLY_RESERVED` | Đã giữ hết | Tồn thực tế > 0 nhưng khả dụng = 0 |
+
+Đây không phải cảnh báo dưới ngưỡng tối thiểu của S5-09. Không thêm bảng, cột, dữ liệu seed, quyền mới hoặc tự cấp lại quyền mặc định.
+
+Phạm vi dữ liệu được nạp lại từ tài khoản DB mỗi request: ADMIN xem mọi kho; tài khoản có phân công kho chỉ xem tập kho được gán. Vai trò kho thiếu phân công trả danh sách rỗng, không fallback toàn hệ thống. Vai trò nội bộ khác không gán kho giữ quy ước phạm vi toàn hệ thống nhưng vẫn **bắt buộc WAREHOUSE_VIEW**. Truy vấn ID kho ngoài phạm vi trả 403. Vai trò kho/WAREHOUSE_MANAGE/WAREHOUSE_IMPORT không thay thế quyền xem này. Cả controller và service kiểm quyền, token cũ bị chặn ngay sau khi quyền bị thu hồi; tài khoản chỉ là đại lý vẫn bị chặn API nội bộ bởi DealerApiScopeFilter.
+
+Frontend chỉ dùng hai API mới; không đòi thêm PRODUCT_VIEW, ORDER_VIEW, CUSTOMER_VIEW hoặc quyền nhập kho để xem sổ tồn. Lỗi tải không được hiện như tồn bằng 0; dữ liệu phản hồi cũ không ghi đè bộ lọc mới. Xuất Excel tải toàn bộ trang kết quả theo **bộ lọc đã áp dụng**, quyền/phạm vi được kiểm tại mỗi request; đổi bộ lọc hoặc mất quyền hủy xuất. Dữ liệu nghiệp vụ chỉ ở DB và bộ nhớ trang, không lưu localStorage/sessionStorage.
+
 ### S5-03 — Màn hình Kho & vị trí lưu — 20/10/2026
 
 Frontend tại `/warehouses` (menu **Kho hàng → Kho & vị trí lưu**), dùng các API có sẵn dưới đây.

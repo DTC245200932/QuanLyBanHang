@@ -83,73 +83,17 @@ public class SecurityConfig {
                 .requestMatchers("/api/users/**").authenticated()
                 .requestMatchers("/api/test/public").permitAll()
 
-                // ── Admin only: quản lý user, cấu hình hệ thống, ma trận phân quyền ──
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-
-                // ── Quản lý: ADMIN + SALES_MANAGER + WAREHOUSE_MANAGER ──
-                .requestMatchers("/api/manager/**").hasAnyRole(
-                        "ADMIN", "SALES_MANAGER", "WAREHOUSE_MANAGER")
-
-                // ── Điều chỉnh kho: CHỈ ADMIN + WAREHOUSE_MANAGER (đảm bảo SALES và WAREHOUSE_STAFF không sửa được tồn kho!) ──
-                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**", "/api/warehouse/vouchers/*/adjust").hasAnyRole(
-                        "ADMIN", "WAREHOUSE_MANAGER")
-
-                // S4-03: filter chỉ yêu cầu đăng nhập; @PreAuthorize kiểm tra permission trong ma trận.
-                .requestMatchers("/api/warehouse/options", "/api/warehouse/inventory")
-                        .authenticated()
-
-                // Chứng từ kho: Quản lý kho, Thủ kho, Quản lý kinh doanh, Admin, Viewer
-                .requestMatchers("/api/warehouse/vouchers", "/api/warehouse/vouchers/**")
-                        .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "VIEWER")
-
-                // Danh mục kho & vị trí lưu (S5-03): hỗ trợ tra cứu cho các vai trò kinh doanh/kho; thao tác quản trị bảo vệ bằng @PreAuthorize
-                .requestMatchers("/api/warehouses", "/api/warehouses/**",
+                // Ma trận quyền tại controller quyết định quyền nghiệp vụ.
+                // Chỉ cấu hình ma trận và nhật ký hệ thống dành riêng cho ADMIN.
+                .requestMatchers("/api/admin/permissions", "/api/admin/permissions/**",
+                        "/api/admin/audit-logs", "/api/admin/audit-logs/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**", "/api/manager/**",
+                        "/api/warehouse/**", "/api/warehouses", "/api/warehouses/**",
                         "/api/warehouse-locations", "/api/warehouse-locations/**",
-                        "/api/warehouse/warehouses", "/api/warehouse/warehouses/**",
-                        "/api/warehouse/locations", "/api/warehouse/locations/**",
-                        "/api/warehouse/products/**", "/api/warehouse/orders/**")
-                        .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "SALES", "VIEWER")
-
-                // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
-                .requestMatchers("/api/warehouse/**").hasAnyRole(
-                        "ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF")
-
-                // ── Đơn hàng: mọi role trừ VIEWER có thể tạo/sửa, nhưng VIEWER có thể xem ──
-                // Chi tiết dùng @PreAuthorize trên từng method
-                .requestMatchers("/api/orders/**").authenticated()
-
-                // ── Sản phẩm & Nhóm hàng: mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
-                .requestMatchers("/api/products/**").authenticated()
-                .requestMatchers("/api/categories/**").authenticated()
-                .requestMatchers("/api/suppliers/**").authenticated()
-
-                // ── Bảng giá (S2-10): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
-                .requestMatchers("/api/price-lists/**").authenticated()
-
-                // ── Chính sách chiết khấu theo sản lượng (S3-01): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
-                .requestMatchers("/api/volume-discounts/**").authenticated()
-                // ── Quản lý hồ sơ đại lý (S3-03): mọi role hợp lệ đã đăng nhập; chi tiết phân quyền qua @PreAuthorize ──
-                .requestMatchers("/api/dealers/**").authenticated()
-
-                // ── Cổng đại lý (S4-10, S5-01): theo dõi trạng thái đơn hàng, tự đặt hàng ──
-                .requestMatchers("/api/portal/**").authenticated()
-
-                // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
-                .requestMatchers("/api/customers/**").hasAnyRole(
-                        "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")
-
-                // ── Giá vốn & Biên lợi nhuận: Quản lý kinh doanh và Quản trị viên ──
-                .requestMatchers("/api/finance/cost-price", "/api/finance/cost-price/**",
-                        "/api/finance/profit-margin", "/api/finance/profit-margin/**")
-                        .hasAnyRole("ADMIN", "SALES_MANAGER")
-
-                // ── Tài chính khác (công nợ, quản lý): ADMIN, SALES_MANAGER, ACCOUNTANT ──
-                .requestMatchers("/api/finance/**").hasAnyRole(
-                        "ADMIN", "SALES_MANAGER", "ACCOUNTANT")
-
-                // ── Báo cáo: mọi role đã đăng nhập ──
-                // Chi tiết loại báo cáo dùng @PreAuthorize
-                .requestMatchers("/api/reports/**").authenticated()
+                        "/api/orders/**", "/api/products/**", "/api/categories/**",
+                        "/api/suppliers/**", "/api/price-lists/**", "/api/volume-discounts/**",
+                        "/api/dealers/**", "/api/portal/**", "/api/finance/**",
+                        "/api/reports/**").authenticated()
 
                 .requestMatchers("/api/test/**").authenticated()
 

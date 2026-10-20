@@ -74,9 +74,9 @@ public class OrderController {
         this.objectMapper = objectMapper;
     }
 
-    private static final String DRAFT_ROLES = "hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')";
+    private static final String DRAFT_ROLES = "hasAuthority('ORDER_CREATE')";
 
-    private static final String VIEW_ROLES = "hasAuthority('ORDER_VIEW') or hasAnyRole('ADMIN', 'SALES_MANAGER', 'SALES', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ACCOUNTANT', 'VIEWER')";
+    private static final String VIEW_ROLES = "hasAuthority('ORDER_VIEW')";
 
     /**
      * S4-07: Xem danh sách đơn hàng kèm bộ lọc và tổng tiền tập kết quả đang lọc.
@@ -236,7 +236,7 @@ public class OrderController {
      * Cập nhật thông tin giao hàng và số lượng thực giao cho từng dòng hàng (S5-01).
      */
     @PutMapping("/{id}/delivery")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('WAREHOUSE_EXPORT')")
     public ApiResponse updateOrderDelivery(
             @PathVariable Long id,
             @Valid @RequestBody com.quanlybanhang.dto.request.OrderDeliveryUpdateRequest request,
@@ -263,7 +263,7 @@ public class OrderController {
      * Đơn đã xuất kho thì không huỷ được, phải đi đường trả hàng.
      */
     @PutMapping("/{id}/cancel")
-    @PreAuthorize("hasAuthority('ORDER_CANCEL') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_CANCEL')")
     public ApiResponse cancelOrder(
             @PathVariable Long id,
             @RequestBody(required = false) OrderCancelRequest request,
@@ -293,7 +293,7 @@ public class OrderController {
      * Nhân viên kinh doanh theo dõi trực tiếp khâu xử lý mà không cần gọi hỏi kho.
      */
     @GetMapping("/{id}/tracking")
-    @PreAuthorize("hasAuthority('ORDER_VIEW') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ApiResponse getOrderTracking(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderTrackingResponse tracking = orderService.getOrderTracking(id, username);
@@ -304,7 +304,7 @@ public class OrderController {
      * S4-06: Cập nhật trạng thái vòng đời của đơn hàng (Soạn hàng, Xuất kho, Giao hàng, Đóng).
      */
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyAuthority('WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('WAREHOUSE_EXPORT')")
     public ApiResponse updateOrderStatus(
             @PathVariable Long id,
             @Valid @RequestBody OrderStatusUpdateRequest request,
@@ -320,7 +320,7 @@ public class OrderController {
      * Đơn được duyệt mới chuyển sang giữ chỗ tồn kho và chờ xuất kho.
      */
     @PutMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE')")
     public ApiResponse approveOrder(
             @PathVariable Long id,
             @RequestParam(required = false) Integer reservationHours,
@@ -335,12 +335,19 @@ public class OrderController {
         return ApiResponse.success(message, response);
     }
 
+    @PutMapping("/{id}/confirm")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ORDER_CONFIRM')")
+    public ApiResponse confirmPortalOrder(@PathVariable Long id, Principal principal) {
+        return ApiResponse.success("Đã xác nhận đơn đại lý và giữ chỗ tồn kho",
+                orderService.confirmPortalOrder(id, principal.getName()));
+    }
+
     /**
      * Quản lý kinh doanh hoặc nhân viên kinh doanh phụ trách từ chối đơn hàng (S2-10, S4-10).
      * Đơn hàng của đại lý bị khoá vẫn được xử lý tiếp nhưng có cảnh báo (S3-07).
      */
     @PutMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CREATE') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE')")
     public ApiResponse rejectOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -362,7 +369,7 @@ public class OrderController {
      * S5-06: Tự động hoặc kích hoạt thủ công nhả tồn giữ chỗ cho các đơn hàng đã quá hạn.
      */
     @PostMapping("/release-expired-reservations")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CANCEL') or hasAuthority('WAREHOUSE_APPROVE') or hasAnyRole('ADMIN', 'SALES_MANAGER', 'WAREHOUSE_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ORDER_APPROVE', 'ORDER_CANCEL', 'WAREHOUSE_APPROVE')")
     public ApiResponse releaseExpiredReservations() {
         int count = orderService.releaseExpiredReservations();
         return ApiResponse.success("Đã nhả tồn giữ chỗ cho " + count + " đơn hàng quá hạn", count);
@@ -373,7 +380,7 @@ public class OrderController {
      * Bắt buộc có ý kiến/lý do trả lại (400 Bad Request nếu thiếu hoặc để trống).
      */
     @PutMapping("/{id}/return")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE')")
     public ApiResponse returnOrder(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -392,7 +399,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/return")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE')")
     public ApiResponse returnOrderPost(
             @PathVariable Long id,
             @RequestParam(required = false) String reason,
@@ -405,7 +412,7 @@ public class OrderController {
      * S4-05: Lấy lịch sử duyệt đơn hàng (bất biến, không thể sửa/xoá).
      */
     @GetMapping("/{id}/approval-history")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE')")
     public ApiResponse getOrderApprovalHistory(@PathVariable Long id) {
         List<OrderApprovalHistoryResponse> history = orderService.getOrderApprovalHistory(id);
         return ApiResponse.success("Lịch sử duyệt đơn hàng", history);
@@ -440,7 +447,7 @@ public class OrderController {
      * Bản sao luôn bắt đầu ở trạng thái Nháp.
      */
     @PostMapping("/{id}/copy")
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') and hasAuthority('ORDER_VIEW')")
     public ResponseEntity<ApiResponse> copyOrder(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         OrderResponse response = orderService.copyOrder(id, username);
@@ -452,7 +459,7 @@ public class OrderController {
      * S4-09: Sao chép các dòng hàng của đơn cũ trực tiếp vào bản nháp tạo đơn của người dùng.
      */
     @PostMapping("/{id}/copy-to-draft")
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') and hasAuthority('ORDER_VIEW')")
     public ApiResponse copyOrderToDraft(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyOrderToDraft(id, username);
@@ -463,7 +470,7 @@ public class OrderController {
      * S4-04: Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới.
      */
     @PostMapping("/dealer/{dealerId}/last-order-to-draft")
-    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_CREATE') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse copyLastOrderToDraft(@PathVariable Long dealerId, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyLastOrderToDraft(dealerId, username);
@@ -475,8 +482,12 @@ public class OrderController {
      * Trả về text/html để client mở tab in hoặc chuyển thành PDF.
      */
     @GetMapping(value = "/{id}/print", produces = "text/html;charset=UTF-8")
-    @PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')")
-    public org.springframework.http.ResponseEntity<String> printOrder(@PathVariable Long id) {
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
+    public org.springframework.http.ResponseEntity<String> printOrder(@PathVariable Long id, Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        // Kiểm tra RLS trước khi dựng HTML; không để ORDER_VIEW trở thành quyền
+        // đọc mọi đơn hàng đối với nhân viên kinh doanh/đại lý.
+        orderService.getOrderById(id, username);
         String html = orderService.generateOrderPrintHtml(id);
         return org.springframework.http.ResponseEntity.ok()
                 .header("Content-Type", "text/html;charset=UTF-8")
@@ -484,7 +495,7 @@ public class OrderController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORDER_APPROVE')")
     public ApiResponse reviewOrderStatus(
             @PathVariable Long id,
             @Valid @RequestBody OrderStatusUpdateRequest request,
@@ -520,7 +531,7 @@ public class OrderController {
      * Mẫu in gồm thông tin đại lý, điểm giao, chi tiết dòng hàng, chiết khấu, tổng tiền và mã vạch để kho tra cứu.
      */
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ResponseEntity<byte[]> getOrderPdf(
             @PathVariable Long id,
             @RequestParam(required = false, defaultValue = "false") boolean download,
@@ -542,7 +553,7 @@ public class OrderController {
      * S4-08: Lấy ảnh mã vạch (Barcode Code 128) theo mã đơn hàng để kho tra cứu nhanh hoặc in tem nhãn.
      */
     @GetMapping(value = "/{id}/barcode", produces = MediaType.IMAGE_PNG_VALUE)
-    @PreAuthorize(VIEW_ROLES)
+    @PreAuthorize("hasAuthority('ORDER_VIEW')")
     public ResponseEntity<byte[]> getOrderBarcode(
             @PathVariable Long id,
             Principal principal) {

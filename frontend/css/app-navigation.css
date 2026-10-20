@@ -6,6 +6,81 @@
 .app-breadcrumb a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 2px; }
 .app-breadcrumb [aria-current="page"] { color: var(--ink-900); font-weight: 600; }
 .app-breadcrumb__separator { color: var(--ink-400); }
+
+/* One centered content frame for every sidebar page. Keep this after each
+   page stylesheet so legacy max-width/padding rules cannot shift its edges.
+   Scope to direct content children: sidebar, toolbar, tables and dialogs keep
+   their own layout. Print/auth pages remain standalone. */
+:root {
+  --app-content-max-width: 1240px;
+  --app-content-gutter: 28px;
+  --app-content-top: 38px;
+}
+
+.main-area > :is(.content, .admin-main, .catalog-main, .price-main, .disc-main, .profile-layout) {
+  width: min(var(--app-content-max-width), calc(100% - 2 * var(--app-content-gutter)));
+  min-width: 0;
+  max-width: none;
+  margin-inline: auto;
+  padding-inline: 0;
+}
+
+.main-area > :is(.content, .admin-main, .catalog-main, .price-main, .disc-main) {
+  padding-block: var(--app-content-top) 60px;
+}
+
+.main-area > .profile-layout {
+  margin-block: var(--app-content-top) 60px;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --app-content-gutter: 16px;
+    --app-content-top: 24px;
+  }
+}
+
+/* Preserve the menu viewport; wheel scrolling must not spill into the page. */
+html { scrollbar-gutter: stable; }
+.sidebar__nav {
+  min-height: 0;
+  overscroll-behavior-y: contain;
+  overflow-anchor: none;
+  scroll-behavior: auto;
+  scrollbar-gutter: stable;
+}
+
+/* Native cross-document transitions keep page scripts/forms isolated. Snapshot
+   only the actual content frame, not its entire parent/sidebar-height canvas. */
+@view-transition { navigation: auto; }
+.sidebar { view-transition-name: app-sidebar; }
+/* Keep the toolbar in the static root snapshot. Extracting a backdrop-filter
+   toolbar into a separate snapshot can blur its text during the transition. */
+.main-area, .topbar { view-transition-name: none; }
+.main-area > :is(.content, .admin-main, .catalog-main, .price-main, .disc-main, .profile-layout) {
+  view-transition-name: app-content;
+}
+::view-transition-group(root),
+::view-transition-group(app-sidebar),
+::view-transition-group(app-content) { animation: none; }
+::view-transition-old(root) { display: none; }
+::view-transition-new(root) { animation: none; }
+/* The old menu stays fully opaque; the new snapshot must not flash behind it.
+   A paused 1ms animation holds the native transition until the menu is ready.
+   Its JS watchdog releases it even if page initialization fails. */
+::view-transition-old(app-sidebar) { opacity: 1; animation: app-menu-still 1ms both; }
+::view-transition-new(app-sidebar) { opacity: 0; animation: app-menu-wait 1ms both; }
+.app-shell-settling::view-transition-old(app-sidebar),
+.app-shell-settling::view-transition-new(app-sidebar) { animation-play-state: paused; }
+::view-transition-old(app-content) { animation: app-content-out 100ms ease-out both; }
+::view-transition-new(app-content) { animation: app-content-in 160ms ease-out both; }
+@keyframes app-menu-still { from { opacity: 1; } to { opacity: 1; } }
+@keyframes app-menu-wait { from { opacity: 0; } to { opacity: 0; } }
+@keyframes app-content-out { to { opacity: 0; } }
+@keyframes app-content-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+}
 @media (max-width: 640px) {
   .topbar { height: auto; min-height: var(--topbar-height); padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
   .topbar__actions { flex-shrink: 0; }

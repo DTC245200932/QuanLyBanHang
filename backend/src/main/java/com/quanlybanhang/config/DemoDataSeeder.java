@@ -391,6 +391,22 @@ public class DemoDataSeeder {
 
     private void seedOrder(String code, Dealer dealer, Map<CustomerGroup, PriceList> prices,
                            List<OrderItemRequest> items, String outcome, Warehouse warehouse) {
+        // Trusted startup-only seed, never an HTTP authorization fallback.
+        // Give bootstrap its explicit ADMIN context and always restore the caller.
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var bootstrap = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        bootstrap.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                ACTOR, "", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        try {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(bootstrap);
+            seedOrderAsBootstrap(code, dealer, prices, items, outcome, warehouse);
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(previous);
+        }
+    }
+
+    private void seedOrderAsBootstrap(String code, Dealer dealer, Map<CustomerGroup, PriceList> prices,
+                                     List<OrderItemRequest> items, String outcome, Warehouse warehouse) {
         // Chỉ chuyển trạng thái/ghi phiếu xuất trong lần tạo đầu tiên.
         if (orders.existsByOrderCode(code)) return;
         if (!Boolean.TRUE.equals(dealer.getActive()) || Boolean.TRUE.equals(dealer.getLocked())) return;

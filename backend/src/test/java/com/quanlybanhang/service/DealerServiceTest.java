@@ -66,6 +66,29 @@ class DealerServiceTest {
         SecurityContextHolder.clearContext();
     }
 
+    @Test
+    void customerPermissionDoesNotAllowChangingDebtLimits() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("manager", "",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_SALES_MANAGER"),
+                                new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT"))));
+        Dealer dealer = Dealer.builder().id(1L).code("DL1").debtLimit(new BigDecimal("1000")).maxDebtDays(10).build();
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        DealerRequest request = DealerRequest.builder().code("DL1").name("Đại lý").debtLimit(new BigDecimal("2000")).build();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> dealerService.updateDealer(1L, request, "manager"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(dealer.getDebtLimit()).isEqualByComparingTo("1000");
+        verify(dealerRepository, never()).save(any());
+    }
+
+    @Test
+    void customerCreatePermissionDoesNotAllowInitializingDebtWithoutFinancePermission() {
+        DealerRequest request = DealerRequest.builder().code("DL1").name("Đại lý").maxDebtDays(30).build();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> dealerService.createDealer(request, "manager"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verify(dealerRepository, never()).save(any());
+    }
+
     private User buildSalesUser(Long id, String username, String fullName) {
         Role salesRole = Role.builder().id(1L).name(ERole.ROLE_SALES).build();
         return User.builder()
@@ -80,6 +103,9 @@ class DealerServiceTest {
     @Test
     @DisplayName("Tạo đại lý thành công với đầy đủ các trường thông tin theo S3-03")
     void createDealer_persistsAllFields() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("accountant01", "",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("FINANCE_MANAGE"))));
         DealerRequest request = DealerRequest.builder()
                 .code("DL001")
                 .name("Đại lý Cấp 1 Minh Phát")

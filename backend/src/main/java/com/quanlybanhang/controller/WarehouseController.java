@@ -60,7 +60,7 @@ public class WarehouseController {
     // ═══════════════════════════════════════════════════════════════
 
     @GetMapping("/options")
-    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'WAREHOUSE_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'ORDER_CREATE', 'WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT', 'WAREHOUSE_MANAGE'))")
     public ApiResponse warehouseOptions() {
         return ApiResponse.success("Danh sách kho đang hoạt động", warehouseService.getWarehouseOptions());
     }
@@ -70,7 +70,7 @@ public class WarehouseController {
     // ═══════════════════════════════════════════════════════════════
 
     @GetMapping("/warehouses")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getAllWarehouses(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Boolean active) {
@@ -79,14 +79,14 @@ public class WarehouseController {
     }
 
     @GetMapping("/warehouses/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getWarehouseById(@PathVariable Long id) {
         WarehouseResponse warehouse = warehouseService.getWarehouseById(id);
         return ApiResponse.success("Lấy thông tin chi tiết kho thành công", warehouse);
     }
 
     @PostMapping("/warehouses")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse createWarehouse(
             @Valid @RequestBody WarehouseRequest request,
             Principal principal) {
@@ -96,7 +96,7 @@ public class WarehouseController {
     }
 
     @PutMapping("/warehouses/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse updateWarehouse(
             @PathVariable Long id,
             @Valid @RequestBody WarehouseRequest request,
@@ -107,7 +107,7 @@ public class WarehouseController {
     }
 
     @DeleteMapping("/warehouses/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse deleteWarehouse(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         warehouseService.deleteWarehouse(id, username);
@@ -119,7 +119,7 @@ public class WarehouseController {
     // ═══════════════════════════════════════════════════════════════
 
     @GetMapping("/locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLocations(
             @RequestParam(required = false) Long warehouseId,
             @RequestParam(required = false) LocationType type,
@@ -131,7 +131,7 @@ public class WarehouseController {
     }
 
     @GetMapping("/warehouses/{warehouseId}/locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLocationsByWarehouse(
             @PathVariable Long warehouseId,
             @RequestParam(required = false) LocationType type,
@@ -143,14 +143,14 @@ public class WarehouseController {
     }
 
     @GetMapping("/locations/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLocationById(@PathVariable Long id) {
         WarehouseLocationResponse location = warehouseService.getLocationById(id);
         return ApiResponse.success("Lấy chi tiết vị trí lưu kho thành công", location);
     }
 
     @PostMapping("/locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse createLocation(
             @Valid @RequestBody WarehouseLocationRequest request,
             Principal principal) {
@@ -160,7 +160,7 @@ public class WarehouseController {
     }
 
     @PostMapping("/warehouses/{warehouseId}/locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse createLocationForWarehouse(
             @PathVariable Long warehouseId,
             @Valid @RequestBody WarehouseLocationRequest request,
@@ -171,7 +171,7 @@ public class WarehouseController {
     }
 
     @PutMapping("/locations/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse updateLocation(
             @PathVariable Long id,
             @Valid @RequestBody WarehouseLocationRequest request,
@@ -182,7 +182,7 @@ public class WarehouseController {
     }
 
     @DeleteMapping("/locations/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse deleteLocation(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         warehouseService.deleteLocation(id, username);
@@ -194,7 +194,7 @@ public class WarehouseController {
     // ═══════════════════════════════════════════════════════════════
 
     @PostMapping("/locations/{locationId}/products")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse assignProductToLocation(
             @PathVariable Long locationId,
             @Valid @RequestBody ProductLocationRequest request,
@@ -205,7 +205,7 @@ public class WarehouseController {
     }
 
     @DeleteMapping("/locations/{locationId}/products/{productId}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse removeProductFromLocation(
             @PathVariable Long locationId,
             @PathVariable Long productId,
@@ -216,14 +216,14 @@ public class WarehouseController {
     }
 
     @GetMapping("/locations/{locationId}/products")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getProductsByLocation(@PathVariable Long locationId) {
         List<ProductLocationResponse> list = warehouseService.getProductsByLocation(locationId);
         return ApiResponse.success("Danh sách sản phẩm lưu tại vị trí", list);
     }
 
     @GetMapping("/products/{productId}/locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLocationsByProduct(
             @PathVariable Long productId,
             @RequestParam(required = false) Long warehouseId) {
@@ -232,7 +232,7 @@ public class WarehouseController {
     }
 
     @GetMapping("/warehouses/{warehouseId}/products/{productId}/location")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getProductLocationInWarehouse(
             @PathVariable Long warehouseId,
             @PathVariable Long productId) {
@@ -245,7 +245,7 @@ public class WarehouseController {
     // ═══════════════════════════════════════════════════════════════
 
     @GetMapping("/orders/{orderId}/picking-list")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('ORDER_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_VIEW'))")
     public ApiResponse getOrderPickingList(@PathVariable Long orderId) {
         OrderPickingListResponse pickingList = warehouseService.getOrderPickingList(orderId);
         return ApiResponse.success("Danh sách vị trí kệ soạn hàng theo đơn", pickingList);
@@ -260,7 +260,7 @@ public class WarehouseController {
      * Đảm bảo Nhân viên kinh doanh (ROLE_SALES) và Thủ kho (ROLE_WAREHOUSE_STAFF) không sửa được tồn kho!
      */
     @PostMapping("/adjust")
-    @PreAuthorize("hasAuthority('WAREHOUSE_ADJUST') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_ADJUST'))")
     public ApiResponse adjustInventory(
             @Valid @RequestBody WarehouseVoucherRequest request,
             Principal principal) {
@@ -274,7 +274,7 @@ public class WarehouseController {
      * Chỉ Quản lý kho và Quản trị viên được quyền điều chỉnh.
      */
     @PostMapping("/vouchers/{id}/adjust")
-    @PreAuthorize("hasAuthority('WAREHOUSE_ADJUST') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_ADJUST'))")
     public ApiResponse adjustVoucher(
             @PathVariable Long id,
             @Valid @RequestBody WarehouseVoucherRequest request,
@@ -291,7 +291,7 @@ public class WarehouseController {
      * Nếu không: ghi sổ và cộng tồn kho ngay.
      */
     @PostMapping("/import")
-    @PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_IMPORT'))")
     public ApiResponse importGoods(
             @Valid @RequestBody WarehouseVoucherRequest request,
             Principal principal) {
@@ -308,7 +308,7 @@ public class WarehouseController {
      * API tạo nhanh phiếu nhập kho ở trạng thái Nháp (DRAFT) (S5-04).
      */
     @PostMapping("/import/draft")
-    @PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_IMPORT'))")
     public ApiResponse createImportDraft(
             @Valid @RequestBody WarehouseVoucherRequest request,
             Principal principal) {
@@ -324,7 +324,7 @@ public class WarehouseController {
      * Khi xác nhận mới thực hiện cộng tồn kho và cập nhật sổ tồn kho lô.
      */
     @PostMapping("/vouchers/{id}/confirm")
-    @PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_APPROVE'))")
     public ApiResponse confirmVoucher(
             @PathVariable Long id,
             Principal principal) {
@@ -338,7 +338,7 @@ public class WarehouseController {
      * Phiếu đã xác nhận (CONFIRMED / RECORDED) KHÔNG SỬA ĐƯỢC, sẽ trả lỗi để yêu cầu lập phiếu điều chỉnh.
      */
     @PutMapping("/vouchers/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_IMPORT'))")
     public ApiResponse updateVoucher(
             @PathVariable Long id,
             @Valid @RequestBody WarehouseVoucherRequest request,
@@ -353,7 +353,7 @@ public class WarehouseController {
      * Phiếu đã xác nhận KHÔNG THỂ XÓA, chỉ được lập phiếu điều chỉnh.
      */
     @DeleteMapping("/vouchers/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_IMPORT'))")
     public ApiResponse deleteVoucher(
             @PathVariable Long id,
             Principal principal) {
@@ -367,7 +367,7 @@ public class WarehouseController {
      * Tự động quy đổi từ đơn vị xuất (thùng, lốc) về đơn vị cơ sở (lon) khi ghi sổ.
      */
     @PostMapping("/export")
-    @PreAuthorize("hasAuthority('WAREHOUSE_EXPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_EXPORT'))")
     public ApiResponse exportGoods(
             @Valid @RequestBody WarehouseVoucherRequest request,
             Principal principal) {
@@ -382,7 +382,7 @@ public class WarehouseController {
      * và thông tin vị trí kệ/khu lưu trữ (S5-03).
      */
     @GetMapping("/inventory")
-    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'WAREHOUSE_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'ORDER_CREATE', 'WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getInventory(@RequestParam(required = false) Long warehouseId) {
         List<WarehouseInventoryResponse> stock = warehouseService.getInventory(warehouseId);
         return ApiResponse.success("Danh sách tồn kho", stock);
@@ -392,7 +392,7 @@ public class WarehouseController {
      * API xem danh sách tồn kho theo Lô & Hạn sử dụng (S5-04).
      */
     @GetMapping("/inventory/lots")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLotInventory(
             @RequestParam(required = false) Long warehouseId,
             @RequestParam(required = false) Long productId) {
@@ -404,7 +404,7 @@ public class WarehouseController {
      * API xem danh sách các phiếu kho đã tạo (lọc theo kho, loại phiếu, trạng thái, nhà cung cấp).
      */
     @GetMapping("/vouchers")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_VIEW'))")
     public ApiResponse getVouchers(
             @RequestParam(required = false) Long warehouseId,
             @RequestParam(required = false) WarehouseVoucherType type,
@@ -418,7 +418,7 @@ public class WarehouseController {
      * API xem chi tiết phiếu kho theo ID.
      */
     @GetMapping("/vouchers/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_VIEW'))")
     public ApiResponse getVoucherById(@PathVariable Long id) {
         WarehouseVoucherResponse voucher = warehouseService.getVoucherById(id);
         return ApiResponse.success("Chi tiết phiếu kho", voucher);
@@ -433,7 +433,7 @@ public class WarehouseController {
      * Hàng xuất khỏi kho đi, ghi nhận đang trên đường chuyển, CHƯA cộng vào kho đến.
      */
     @PostMapping(value = {"/transfers", "/transfer"})
-    @PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or hasAuthority('WAREHOUSE_EXPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_TRANSFER'))")
     public ApiResponse createTransfer(
             @Valid @RequestBody WarehouseTransferRequest request,
             Principal principal) {
@@ -446,7 +446,7 @@ public class WarehouseController {
      * Danh sách phiếu chuyển kho nội bộ.
      */
     @GetMapping("/transfers")
-    @PreAuthorize("hasAnyAuthority('WAREHOUSE_TRANSFER', 'WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_TRANSFER'))")
     public ApiResponse getTransfers(
             @RequestParam(required = false) Long fromWarehouseId,
             @RequestParam(required = false) Long toWarehouseId,
@@ -459,7 +459,7 @@ public class WarehouseController {
      * Chi tiết phiếu chuyển kho nội bộ theo ID.
      */
     @GetMapping("/transfers/{id}")
-    @PreAuthorize("hasAnyAuthority('WAREHOUSE_TRANSFER', 'WAREHOUSE_VIEW') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_TRANSFER'))")
     public ApiResponse getTransferById(@PathVariable Long id) {
         WarehouseTransferResponse transfer = warehouseService.getTransferById(id);
         return ApiResponse.success("Chi tiết phiếu chuyển kho", transfer);
@@ -471,7 +471,7 @@ public class WarehouseController {
      * Chênh lệch khi nhận bắt buộc phải nhập lý do giải trình.
      */
     @PostMapping("/transfers/{id}/receive")
-    @PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or hasAuthority('WAREHOUSE_IMPORT') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_TRANSFER'))")
     public ApiResponse receiveTransfer(
             @PathVariable Long id,
             @RequestBody(required = false) WarehouseTransferReceiveRequest request,
@@ -486,7 +486,7 @@ public class WarehouseController {
      * Hoàn lại tồn kho cho kho xuất và xóa hàng đang trên đường.
      */
     @PostMapping("/transfers/{id}/cancel")
-    @PreAuthorize("hasAuthority('WAREHOUSE_TRANSFER') or hasAuthority('WAREHOUSE_APPROVE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_TRANSFER'))")
     public ApiResponse cancelTransfer(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body,

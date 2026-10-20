@@ -14,9 +14,10 @@
  *  GET    /products          (dùng lại, lấy danh sách SKU)
  *  GET    /categories        (dùng lại, lấy nhóm hàng)
  */
-(() => {
+(async () => {
   if (!Auth.requireLogin()) return;
-  if (!Auth.hasAnyRole('ROLE_SALES_MANAGER', 'ROLE_ADMIN')) {
+  await Auth.ready;
+  if (!Auth.hasPermission('PRODUCT_EDIT')) {
     window.location.href = '/error?status=403';
     return;
   }
@@ -134,7 +135,7 @@
   /* ─── Load data ─── */
   async function loadProducts() {
     try {
-      const body = await apiFetch('/products');
+      const body = await apiFetch('/products/lookup');
       state.products = Array.isArray(body.data) ? body.data.filter((p) => p.active !== false) : [];
     } catch {
       state.products = [];
@@ -144,7 +145,7 @@
 
   async function loadCategories() {
     try {
-      const body = await apiFetch('/categories');
+      const body = await apiFetch('/categories/options');
       state.categories = Array.isArray(body.data) ? body.data : [];
     } catch {
       state.categories = [];

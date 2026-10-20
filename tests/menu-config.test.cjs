@@ -31,6 +31,13 @@ test('dealer menus require the permissions of every API used by the page', () =>
   }
 });
 
+test('dealer-only accounts never see internal menus rejected by portal data scoping', () => {
+  const visible = ids({ roles: ['ROLE_DEALER'], permissions: ['ORDER_VIEW', 'PRODUCT_VIEW', 'USER_VIEW', 'WAREHOUSE_VIEW'] });
+  assert.ok(visible.includes('dealer-orders'));
+  for (const id of ['orders', 'products', 'users', 'warehouse']) assert.ok(!visible.includes(id));
+  assert.ok(ids({ roles: ['ROLE_DEALER', 'ROLE_SALES'], permissions: ['ORDER_VIEW'] }).includes('orders'));
+});
+
 test('permission removal hides permission-gated menus for non-admin roles', () => {
   const sales = ids({roles:['ROLE_SALES'], permissions:['PRODUCT_VIEW', 'CUSTOMER_VIEW']});
   assert.ok(sales.includes('products'));
@@ -41,19 +48,20 @@ test('permission removal hides permission-gated menus for non-admin roles', () =
   assert.ok(!ids({roles:['ROLE_SALES'], permissions:['PRODUCT_VIEW', 'ORDER_CREATE']}).includes('dealers'));
 });
 
-test('warehouse staff and viewers do not receive admin or business management menus', () => {
+test('granted permissions enable menus regardless of the default role', () => {
   for (const role of ['ROLE_WAREHOUSE_STAFF', 'ROLE_VIEWER']) {
     const visible = ids({roles:[role], permissions:['USER_VIEW', 'PRODUCT_VIEW', 'WAREHOUSE_VIEW', 'WAREHOUSE_IMPORT']});
     assert.ok(visible.includes('products'));
     assert.ok(visible.includes('warehouse'));
-    assert.ok(!visible.includes('users'));
+    assert.ok(visible.includes('users'));
+    assert.ok(!ids({roles:[role], permissions:[]}).includes('users'));
     assert.ok(!visible.includes('audit-logs'));
     assert.ok(!visible.includes('price-lists'));
   }
 });
 
 test('sales manager can use groups, prices and conversions; permission removal hides product pages', () => {
-  const visible = ids({roles:['ROLE_SALES_MANAGER'], permissions:['PRODUCT_VIEW', 'WAREHOUSE_VIEW']});
+  const visible = ids({roles:['ROLE_SALES_MANAGER'], permissions:['PRODUCT_VIEW', 'PRODUCT_EDIT', 'WAREHOUSE_VIEW']});
   for (const id of ['product-groups', 'price-lists', 'product-units']) assert.ok(visible.includes(id));
   assert.ok(!ids({roles:['ROLE_SALES_MANAGER'], permissions:[]}).includes('products'));
 });
@@ -66,20 +74,28 @@ test('every visible page has an absolute, extensionless link even from a nested 
   }
 });
 
-test('debt limit menu follows finance roles and view permission', () => {
+test('debt limit menu follows the finance permission matrix', () => {
   assert.ok(ids({roles:['ROLE_ADMIN'], permissions:[]}).includes('debt-limits'));
-  for (const role of ['ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER']) {
+  for (const role of ['ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER', 'ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER']) {
     assert.ok(ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
     assert.ok(!ids({roles:[role], permissions:[]}).includes('debt-limits'));
-  }
-  for (const role of ['ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER']) {
-    assert.ok(!ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
   }
 });
 
 test('debt limit menu uses the existing dashboard route', () => {
   const item = menu.menuItems.find(item => item.id === 'debt-limits');
   assert.equal(item.href, '/dashboard?view=debt-limits');
+});
+
+test('order approval menu requires both viewing and approving orders', () => {
+  assert.ok(ids({
+    roles: ['ROLE_SALES_MANAGER'],
+    permissions: ['ORDER_APPROVE', 'ORDER_VIEW'],
+  }).includes('order-approval'));
+  assert.ok(!ids({
+    roles: ['ROLE_SALES_MANAGER'],
+    permissions: ['ORDER_APPROVE'],
+  }).includes('order-approval'));
 });
 
 const pageAt = href => menu.getPageForLocation(new URL(href, 'http://127.0.0.1:5500'));

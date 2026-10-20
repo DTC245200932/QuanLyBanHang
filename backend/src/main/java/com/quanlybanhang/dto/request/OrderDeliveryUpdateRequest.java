@@ -17,8 +17,8 @@ import java.util.List;
 public class OrderDeliveryUpdateRequest {
 
     /**
-     * Trạng thái đơn hàng sau khi cập nhật giao hàng:
-     * ví dụ "PROCESSING", "SHIPPED", "DELIVERED", "COMPLETED".
+     * Trạng thái đơn hàng sau khi cập nhật giao hàng. Luồng giao hàng chỉ
+     * được chuyển bước EXPORTED -> DELIVERED; các bước kho dùng API status.
      */
     private String status;
 

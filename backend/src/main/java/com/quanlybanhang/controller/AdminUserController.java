@@ -25,12 +25,13 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("isAuthenticated()")
 public class AdminUserController {
     private final AdminUserService adminUserService;
     private final RolePermissionConfig rolePermissionConfig;
 
     @GetMapping("/users")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USER_VIEW')")
     public ApiResponse search(@RequestParam(required = false) String search,
                               @RequestParam(required = false) ERole role,
                               @RequestParam(required = false) Boolean active,
@@ -43,23 +44,27 @@ public class AdminUserController {
     }
 
     @GetMapping("/users/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USER_VIEW')")
     public ApiResponse get(@PathVariable Long id) {
         return ApiResponse.success("Chi tiết tài khoản", adminUserService.get(id));
     }
 
     @PostMapping("/users")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('USER_CREATE') and hasAuthority('USER_ASSIGN_ROLE'))")
     public ResponseEntity<ApiResponse> create(@Valid @RequestBody AdminUserRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
                 "Đã tạo tài khoản và gửi thông tin kích hoạt qua email", adminUserService.create(request)));
     }
 
     @PostMapping("/users/import/preview")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('USER_CREATE') and hasAuthority('USER_ASSIGN_ROLE'))")
     public ApiResponse previewImport(@RequestBody List<AdminUserRequest> rows) {
         return ApiResponse.success("Kết quả kiểm tra tệp nhập người dùng",
                 adminUserService.previewImport(rows));
     }
 
     @PostMapping("/users/import")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('USER_CREATE') and hasAuthority('USER_ASSIGN_ROLE'))")
     public ApiResponse importUsers(@RequestBody List<AdminUserRequest> rows) {
         var result = adminUserService.importUsers(rows);
         return ApiResponse.success("Đã nhập " + result.getImportedRows() + "/" + result.getTotalRows()
@@ -67,6 +72,7 @@ public class AdminUserController {
     }
 
     @PutMapping("/users/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USER_EDIT')")
     public ApiResponse update(@PathVariable Long id,
                               @Valid @RequestBody AdminUserRequest request,
                               Authentication authentication) {
@@ -75,6 +81,7 @@ public class AdminUserController {
     }
 
     @PostMapping("/users/{id}/lock")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USER_LOCK')")
     public ApiResponse lock(@PathVariable Long id,
                             @Valid @RequestBody LockUserRequest request,
                             Authentication authentication) {
@@ -86,11 +93,13 @@ public class AdminUserController {
     }
 
     @PostMapping("/users/{id}/unlock")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USER_LOCK')")
     public ApiResponse unlock(@PathVariable Long id) {
         return ApiResponse.success("Đã mở khoá tài khoản", adminUserService.unlock(id));
     }
 
     @GetMapping("/assignment-options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USER_VIEW', 'USER_CREATE', 'USER_EDIT', 'USER_ASSIGN_ROLE')")
     public ApiResponse assignmentOptions() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("roles", Arrays.stream(ERole.values()).map(Enum::name).toList());
@@ -101,6 +110,7 @@ public class AdminUserController {
     }
 
     @GetMapping("/permissions")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse permissions() {
         Map<String, Object> matrix = new LinkedHashMap<>();
         rolePermissionConfig.getAllPermissions().forEach((role, permissions) ->
@@ -117,6 +127,7 @@ public class AdminUserController {
     }
 
     @PutMapping("/permissions/{role}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse updatePermissions(@PathVariable ERole role,
                                          @RequestBody java.util.Set<Permission> permissions) {
         rolePermissionConfig.updateRolePermissions(role, permissions);
@@ -124,7 +135,15 @@ public class AdminUserController {
                 rolePermissionConfig.getPermissions(role).stream().map(Permission::name).sorted().toList());
     }
 
+    @PutMapping("/permissions")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse updatePermissionMatrix(@RequestBody Map<ERole, java.util.Set<Permission>> matrix) {
+        rolePermissionConfig.updatePermissions(matrix);
+        return permissions();
+    }
+
     @PostMapping("/permissions/reset")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse resetPermissions() {
         rolePermissionConfig.resetToDefault();
         return ApiResponse.success("Đã khôi phục ma trận phân quyền về mặc định", null);

@@ -127,12 +127,13 @@ class RolePermissionConfigTest {
     }
 
     @Test
-    @DisplayName("Cập nhật quyền từ chối gán giá vốn/biên lợi nhuận cho vai trò không phù hợp")
-    void updatePermissionsRejectsCostPriceForNonSalesManager() {
+    @DisplayName("Quyền giá vốn do ma trận quyết định, không bị role mặc định chặn")
+    void costPermissionCanBeGrantedAndRevoked() {
         Set<Permission> illegalPerms = EnumSet.of(Permission.PRODUCT_VIEW, Permission.FINANCE_VIEW_COST_PRICE);
-        assertThatThrownBy(() -> permissions.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, illegalPerms))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Giá vốn và biên lợi nhuận chỉ được phép cấp cho vai trò Quản lý kinh doanh");
+        permissions.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, illegalPerms);
+        assertThat(permissions.hasPermission(ERole.ROLE_WAREHOUSE_STAFF, Permission.FINANCE_VIEW_COST_PRICE)).isTrue();
+        permissions.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, Set.of());
+        assertThat(permissions.hasPermission(ERole.ROLE_WAREHOUSE_STAFF, Permission.FINANCE_VIEW_COST_PRICE)).isFalse();
 
         permissions.updateRolePermissions(ERole.ROLE_ADMIN, EnumSet.noneOf(Permission.class));
         assertThat(permissions.getPermissions(ERole.ROLE_ADMIN))
@@ -140,12 +141,27 @@ class RolePermissionConfigTest {
     }
 
     @Test
-    @DisplayName("Cập nhật quyền từ chối gán quyền sửa tồn kho (WAREHOUSE_ADJUST) cho Nhân viên kinh doanh")
-    void updatePermissionsRejectsWarehouseAdjustForSales() {
+    @DisplayName("Cập nhật một vai trò không làm thay đổi quyền của vai trò khác")
+    void updatingOneRoleDoesNotChangeAnotherRole() {
+        Set<Permission> viewerBefore = permissions.getPermissions(ERole.ROLE_VIEWER);
+        permissions.updateRolePermissions(ERole.ROLE_SALES, EnumSet.of(Permission.ORDER_VIEW));
+
+        assertThat(permissions.getPermissions(ERole.ROLE_SALES))
+                .containsExactly(Permission.ORDER_VIEW);
+        assertThat(permissions.getPermissions(ERole.ROLE_VIEWER))
+                .containsExactlyInAnyOrderElementsOf(viewerBefore);
+        assertThat(permissions.getPermissions(ERole.ROLE_ADMIN))
+                .containsExactlyInAnyOrder(Permission.values());
+    }
+
+    @Test
+    @DisplayName("Cấp và thu hồi quyền kho qua ma trận không phụ thuộc role")
+    void warehousePermissionCanBeGrantedAndRevoked() {
         Set<Permission> illegalPerms = EnumSet.of(Permission.ORDER_CREATE, Permission.WAREHOUSE_ADJUST);
-        assertThatThrownBy(() -> permissions.updateRolePermissions(ERole.ROLE_SALES, illegalPerms))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Nhân viên kinh doanh không được phép sửa tồn kho");
+        permissions.updateRolePermissions(ERole.ROLE_SALES, illegalPerms);
+        assertThat(permissions.hasPermission(ERole.ROLE_SALES, Permission.WAREHOUSE_ADJUST)).isTrue();
+        permissions.updateRolePermissions(ERole.ROLE_SALES, Set.of(Permission.ORDER_CREATE));
+        assertThat(permissions.hasPermission(ERole.ROLE_SALES, Permission.WAREHOUSE_ADJUST)).isFalse();
     }
 
     @Test
@@ -156,5 +172,40 @@ class RolePermissionConfigTest {
 
         permissions.resetToDefault();
         assertThat(permissions.getPermissions(ERole.ROLE_VIEWER)).contains(Permission.REPORT_SALES);
+    }
+
+    @Test
+    void emptyRoleSurvivesReload() {
+        var repository = org.mockito.Mockito.mock(com.quanlybanhang.repository.RolePermissionRepository.class);
+        var states = org.mockito.Mockito.mock(com.quanlybanhang.repository.RolePermissionStateRepository.class);
+        org.mockito.Mockito.when(repository.findAll()).thenReturn(java.util.List.of());
+        org.mockito.Mockito.when(states.findAll()).thenReturn(java.util.List.of(
+                com.quanlybanhang.model.RolePermissionState.builder().role(ERole.ROLE_SALES).configured(true).build()));
+        RolePermissionConfig restarted = new RolePermissionConfig();
+        restarted.setRolePermissionRepository(repository);
+        restarted.setRolePermissionStateRepository(states);
+        assertThat(restarted.getPermissions(ERole.ROLE_SALES)).isEmpty();
+    }
+
+    @Test
+    void failedSaveDoesNotPublishNewPermissions() {
+        var repository = org.mockito.Mockito.mock(com.quanlybanhang.repository.RolePermissionRepository.class);
+        permissions.setRolePermissionRepository(repository);
+        Set<Permission> previous = permissions.getPermissions(ERole.ROLE_SALES);
+        org.mockito.Mockito.doThrow(new IllegalStateException("database unavailable"))
+                .when(repository).deleteByRole(ERole.ROLE_SALES);
+        assertThatThrownBy(() -> permissions.updateRolePermissions(ERole.ROLE_SALES, Set.of()))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(permissions.getPermissions(ERole.ROLE_SALES)).containsExactlyInAnyOrderElementsOf(previous);
+    }
+
+    @Test
+    void multipleRolesUseUnionAndAdminKeepsAllPermissions() {
+        permissions.updateRolePermissions(ERole.ROLE_SALES, Set.of());
+        permissions.updateRolePermissions(ERole.ROLE_VIEWER, Set.of(Permission.ORDER_VIEW));
+        assertThat(permissions.getPermissions(java.util.List.of(ERole.ROLE_SALES, ERole.ROLE_VIEWER)))
+                .containsExactly(Permission.ORDER_VIEW);
+        permissions.updateRolePermissions(ERole.ROLE_ADMIN, Set.of());
+        assertThat(permissions.getPermissions(ERole.ROLE_ADMIN)).containsExactlyInAnyOrder(Permission.values());
     }
 }

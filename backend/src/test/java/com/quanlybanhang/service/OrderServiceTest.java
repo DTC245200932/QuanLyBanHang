@@ -89,6 +89,8 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("manager", "",
+                List.of(new SimpleGrantedAuthority("ORDER_APPROVE"))));
         biaHeineken = Product.builder()
                 .id(10L)
                 .code("SP-KEN330")
@@ -96,6 +98,13 @@ class OrderServiceTest {
                 .unit("lon")
                 .price(new BigDecimal("19000"))
                 .build();
+        Warehouse configuredWarehouse = Warehouse.builder().id(1L).code("TEST-WH").name("Kho kiểm thử").build();
+        org.mockito.Mockito.lenient().when(warehouseRepository.findById(1L)).thenReturn(Optional.of(configuredWarehouse));
+        org.mockito.Mockito.lenient().when(warehouseRepository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of(configuredWarehouse));
+        WarehouseInventory configuredStock = WarehouseInventory.builder().warehouse(configuredWarehouse).product(biaHeineken)
+                .baseQuantity(new BigDecimal("1000000")).reservedQuantity(BigDecimal.ZERO).build();
+        org.mockito.Mockito.lenient().when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any()))
+                .thenReturn(List.of(configuredStock));
     }
 
     @AfterEach
@@ -461,10 +470,10 @@ class OrderServiceTest {
         // NVKD phụ trách xác nhận
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("sales.assigned", null,
-                        List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+                        List.of(new SimpleGrantedAuthority("ROLE_SALES"), new SimpleGrantedAuthority("ORDER_CONFIRM")))
         );
 
-        OrderResponse response = orderService.approveOrder(1001L, "sales.assigned");
+        OrderResponse response = orderService.confirmPortalOrder(1001L, "sales.assigned");
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("RECORDED");
@@ -500,12 +509,12 @@ class OrderServiceTest {
         // NVKD khác cố tình xác nhận
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("sales.other", null,
-                        List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+                        List.of(new SimpleGrantedAuthority("ROLE_SALES"), new SimpleGrantedAuthority("ORDER_CONFIRM")))
         );
 
-        assertThatThrownBy(() -> orderService.approveOrder(1001L, "sales.other"))
+        assertThatThrownBy(() -> orderService.confirmPortalOrder(1001L, "sales.other"))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh");
+                .hasMessageContaining("đại lý mình phụ trách");
     }
 
     @Test
@@ -536,6 +545,9 @@ class OrderServiceTest {
     }
 
     private void mockEffectivePrices(Dealer dealer) {
+        if (dealer.getWarehouse() == null) {
+            dealer.setWarehouse(Warehouse.builder().id(1L).code("TEST-WH").name("Kho kiểm thử").build());
+        }
         var priceList = com.quanlybanhang.model.PriceList.builder()
                 .id(1L).customerGroup(dealer.getCustomerGroup())
                 .items(List.of(com.quanlybanhang.model.PriceListItem.builder()
@@ -1103,6 +1115,7 @@ class OrderServiceTest {
                 .id(2L)
                 .code("DL-PENDING")
                 .name("Đại lý Chờ Duyệt")
+                .warehouse(Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").build())
                 .locked(false)
                 .customerGroup(com.quanlybanhang.model.CustomerGroup.KHACH_LE)
                 .build();

@@ -4,6 +4,32 @@ Base URL: `http://localhost:8080/api`
 
 Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
 
+## Ma trận quyền — cập nhật 20/10/2026
+
+**Quyền DB, không phải role mặc định, quyết định truy cập nghiệp vụ.** Các bảng role cũ bên dưới chỉ mô tả cấu hình mặc định; hợp đồng quyền ở mục này được ưu tiên. ROLE_ADMIN luôn được phép. Vai trò vẫn có thể giới hạn phạm vi đơn/kho/đại lý; không bỏ kiểm tra phạm vi khi cấp thêm quyền.
+
+| Method / endpoint | Quyền / hợp đồng |
+|---|---|
+| GET `/auth/permissions` | Đã đăng nhập; trả `{roles: [...], permissions: [...]}` từ Authentication hiện tại, không tin danh sách quyền do client gửi |
+| GET `/admin/permissions` | ADMIN; giữ nguyên catalog quyền và matrix |
+| PUT `/admin/permissions` | ADMIN; body là object `{ "ROLE_SALES": ["ORDER_VIEW", "ORDER_CREATE"], "ROLE_VIEWER": [] }`; chỉ thay vai trò có trong body, lưu toàn bộ thay đổi trong một transaction; trả matrix/catalog mới. Body rỗng không hợp lệ |
+| PUT `/admin/permissions/{role}` | ADMIN; array quyền, vẫn tương thích API cũ; `[]` là thu hồi hết quyền và được lưu qua restart |
+| GET `/products/lookup`, `/products/lookup/{id}` | Một trong PRODUCT_VIEW/CREATE/EDIT, ORDER_CREATE, WAREHOUSE_VIEW/MANAGE/IMPORT/EXPORT; danh mục tham chiếu tối thiểu, không trả giá vốn hoặc doanh thu; list hỗ trợ `search`, `active` |
+| GET `/categories/options` | PRODUCT_VIEW/CREATE/EDIT; chỉ id/code/name cho bộ chọn, không trả doanh thu |
+| Sản phẩm / nhóm hàng | GET chi tiết/danh sách: PRODUCT_VIEW; POST: PRODUCT_CREATE; PUT/PATCH/chuyển nhóm: PRODUCT_EDIT; DELETE: PRODUCT_DELETE. Lịch sử giá: FINANCE_VIEW_COST_PRICE |
+| Nhập sản phẩm Excel | Preview/import cần cả PRODUCT_CREATE + PRODUCT_EDIT vì file có thể chứa SKU tạo mới và cập nhật; template cần một trong hai |
+| Bảng giá / chiết khấu | Đọc: một trong PRODUCT_VIEW/PRODUCT_EDIT/ORDER_CREATE; ghi: PRODUCT_EDIT; lấy bảng hiệu lực/tính chiết khấu để đặt đơn: ORDER_CREATE |
+| Nhà cung cấp / đơn vị quy đổi | Nhà cung cấp đọc: WAREHOUSE_VIEW/MANAGE, ghi: WAREHOUSE_MANAGE. Đơn vị đọc hỗ trợ quyền tham chiếu của sản phẩm/đặt đơn/kho; ghi: WAREHOUSE_MANAGE |
+| Kho | Nhập: WAREHOUSE_IMPORT; xuất: WAREHOUSE_EXPORT; xác nhận phiếu: WAREHOUSE_APPROVE; điều chỉnh: WAREHOUSE_ADJUST; chuyển: WAREHOUSE_TRANSFER; danh mục kho/vị trí ghi: WAREHOUSE_MANAGE |
+| Vòng đời đơn / giao hàng | WAREHOUSE_EXPORT; chỉ WAREHOUSE_IMPORT không cho phép xuất/chuyển vòng đời đơn. Giữ các kiểm tra phạm vi kho, thứ tự trạng thái và điều kiện hủy |
+| Sao chép đơn / đơn gần nhất | Cả ORDER_CREATE + ORDER_VIEW, áp dụng cho `/orders/{id}/copy`, `/copy-to-draft`, `/orders/dealer/{dealerId}/last-order-to-draft` và đường tương ứng dưới `/dealers` |
+| Giá vốn / lợi nhuận / công nợ | FINANCE_VIEW_COST_PRICE / FINANCE_VIEW_PROFIT_MARGIN / FINANCE_VIEW_DEBT; thay đổi hạn mức hoặc ngày nợ cần FINANCE_MANAGE, kể cả gửi trường này qua POST/PUT hồ sơ đại lý |
+| Tài khoản | Đọc USER_VIEW; tạo/import USER_CREATE + USER_ASSIGN_ROLE; sửa USER_EDIT, đổi vai trò còn cần USER_ASSIGN_ROLE; khóa/mở USER_LOCK. Chỉ quản lý ma trận và audit log yêu cầu riêng ADMIN |
+
+Sau khi lưu thành công, request tiếp theo của token đang đăng nhập dùng quyền mới; không phải đăng nhập lại. Frontend đồng bộ qua `/auth/permissions` khi mở trang, focus và mỗi 15 giây khi trang hoạt động; browser có thể trì hoãn timer của tab nền. API vẫn chặn ngay ở server kể cả giao diện chưa kịp cập nhật. Người dùng nhiều vai trò nhận hợp quyền của mọi vai trò được gán.
+
+Tài khoản chỉ có ROLE_DEALER dùng API `/portal/**` và hồ sơ cá nhân, không truy cập API nghiệp vụ nội bộ. Menu tuân theo cùng phạm vi; tài khoản có thêm vai trò nội bộ vẫn phải có permission và qua kiểm tra phạm vi tương ứng.
+
 ## Hợp đồng đã đồng bộ ngày 19/10/2026
 
 Phần này cập nhật hợp đồng của bản ghép sprint 1–5. Các giới hạn nghiệm thu được ghi ở
@@ -609,9 +635,10 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | POST | `/orders` | `ORDER_CREATE` | Tạo đơn hàng cho đại lý (tự động áp bảng giá hiệu lực theo nhóm khách hàng; chặn nếu SKU ngoài bảng giá; bán dưới giá sàn chuyển sang `PENDING_APPROVAL`) |
 | POST | `/orders/line-item/pricing` | `ORDER_CREATE` | Tra cứu giá bảng giá, giá sàn, tính chiết khấu sản lượng và kiểm tra cảnh báo dưới giá sàn cho một dòng sản phẩm |
 | POST | `/orders/calculate` | `ORDER_CREATE` | Tính toán lại chiết khấu sản lượng và tổng tiền toàn bộ đơn hàng khi thay đổi số lượng |
-| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL` hoặc `ROLE_ADMIN` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
-| GET | `/orders/{id}/tracking` | `ORDER_VIEW` hoặc `ROLE_ADMIN` | Theo dõi vòng đời đơn hàng (7 bước chuẩn, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS theo người phụ trách/kho) |
-| PUT | `/orders/{id}/status` | `WAREHOUSE_IMPORT` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` | Cập nhật từng bước kế tiếp của vòng đời đơn hàng; giới hạn theo kho được gán và tự động trừ tồn kho/giải phóng giữ chỗ khi chuyển sang `EXPORTED` |
+| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL` | Hủy đơn hàng kèm lý do bắt buộc; tự động giải phóng tồn kho giữ chỗ (`reservedQuantity`); chặn huỷ đơn đã xuất kho trở đi (`EXPORTED`, `DELIVERED`, `CLOSED`) |
+| GET | `/orders/{id}/tracking` | `ORDER_VIEW` | Theo dõi vòng đời đơn hàng (7 bước chính và nhánh Huỷ, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS theo người phụ trách/kho) |
+| PUT | `/orders/{id}/status` | `WAREHOUSE_IMPORT` hoặc `WAREHOUSE_EXPORT` | Cập nhật từng bước kế tiếp của vòng đời đơn hàng; chỉ nhận `PICKING`, `EXPORTED`, `DELIVERED`, `CLOSED`, giới hạn theo kho được gán và tự động trừ tồn kho/giải phóng giữ chỗ khi chuyển sang `EXPORTED` |
+| PUT | `/orders/{id}/delivery` | `WAREHOUSE_EXPORT` | Cập nhật thực giao; chỉ chuyển `EXPORTED` sang `DELIVERED`, không được bỏ qua bước vòng đời và không dùng role fallback |
 | PUT | `/orders/{id}/approve` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xác nhận đơn cổng được phân công | Phê duyệt đơn hàng (chuyển trạng thái sang `RECORDED`) và giữ chỗ tồn kho sau khi kiểm quyền |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xử lý đơn cổng được phân công | Từ chối đơn hàng với lý do bắt buộc (chuyển trạng thái sang `REJECTED`) |
 | PUT | `/orders/{id}/return?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Trả lại đơn để sửa với lý do bắt buộc (chuyển trạng thái sang `RETURNED`) |
@@ -974,7 +1001,7 @@ Hỗ trợ Quản lý kinh doanh khai báo bảng giá theo nhóm khách hàng v
 | GET | `/price-lists?customerGroup={cg}&active={true/false}&keyword={q}` | Đã đăng nhập | Xem danh sách các bảng giá (hỗ trợ lọc theo nhóm khách hàng, trạng thái, tìm kiếm mã/tên) |
 | GET | `/price-lists/{id}` | Đã đăng nhập | Xem chi tiết bảng giá kèm toàn bộ danh sách dòng giá (sản phẩm, giá bán, giá sàn) |
 | GET | `/price-lists/customer-groups` | Đã đăng nhập | Danh sách các nhóm khách hàng (Đại lý cấp 1, Đại lý cấp 2, Khách lẻ) |
-| GET | `/price-lists/effective?customerGroup={cg}&date={yyyy-MM-dd}` | Đã đăng nhập | Tìm bảng giá đang có hiệu lực cho nhóm khách hàng tại thời điểm chỉ định |
+| GET | `/price-lists/effective?customerGroup={cg}&date={yyyy-MM-dd}` | `ORDER_CREATE` | Tìm bảng giá đang có hiệu lực cho nhóm khách hàng tại thời điểm chỉ định khi tạo đơn |
 | POST | `/price-lists` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Tạo bảng giá mới (bắt buộc mã, tên, nhóm khách hàng, ngày bắt đầu/kết thúc, danh sách dòng giá) |
 | PUT | `/price-lists/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Sửa thông tin bảng giá (**Chặn nếu bảng giá đã phát sinh đơn hàng** -> 400 Bad Request) |
 | DELETE | `/price-lists/{id}` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Xóa bảng giá (**Chặn nếu bảng giá đã phát sinh đơn hàng** -> 400 Bad Request) |
@@ -1116,9 +1143,9 @@ Quy tắc nghiệp vụ:
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh sách đại lý (tìm kiếm, lọc theo nhóm, khu vực, người phụ trách, trạng thái, phân trang) |
+| GET | `/dealers` | `CUSTOMER_VIEW` hoặc `ORDER_VIEW` | Danh sách đại lý (tìm kiếm, lọc theo nhóm, khu vực, người phụ trách, trạng thái, phân trang) |
 | GET | `/dealers/active` | `ORDER_CREATE` | Danh sách đại lý đang hoạt động (phục vụ dropdown chọn đại lý khi tạo đơn) |
-| GET | `/dealers/options` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Danh mục tham chiếu tạo/sửa đại lý (nhóm khách hàng, khu vực, người phụ trách) |
+| GET | `/dealers/options` | `CUSTOMER_VIEW` hoặc `ORDER_VIEW` | Danh mục tham chiếu tạo/sửa đại lý (nhóm khách hàng, khu vực, người phụ trách) |
 | GET | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_SALES`, `ROLE_VIEWER` | Chi tiết hồ sơ đại lý |
 | POST | `/dealers` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Khai báo hồ sơ đại lý mới (kiểm tra tính duy nhất của mã đại lý) |
 | PUT | `/dealers/{id}` | `ROLE_ACCOUNTANT`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Cập nhật hồ sơ đại lý (kiểm tra trùng mã) |
@@ -2254,8 +2281,9 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) in hoặc xuất file PDF phi�
 
 Quy tắc nghiệp vụ:
 1. **Vai trò & Ma trận phân quyền**:
-   - Mã quyền: `ORDER_VIEW`.
-   - Các vai trò được cấp quyền: `ROLE_SALES` (Nhân viên kinh doanh), `ROLE_SALES_MANAGER` (Quản lý kinh doanh), `ROLE_ADMIN` (Quản trị viên), `ROLE_WAREHOUSE_MANAGER` (Quản lý kho), `ROLE_WAREHOUSE_STAFF` (Nhân viên kho), `ROLE_ACCOUNTANT` (Kế toán), `ROLE_VIEWER` (Người xem).
+   - Mã quyền xem/in: `ORDER_VIEW`.
+   - Tài khoản chỉ có `ORDER_CREATE` được xuất PDF/mã vạch cho đơn do chính mình tạo; tài khoản có `ORDER_VIEW` được xem theo phạm vi dữ liệu của mình.
+   - `ROLE_ADMIN` luôn được phép theo ma trận quyền.
 2. **Bảo mật phân quyền cấp dòng (Row-Level Security - RLS)**:
    - Nhân viên kinh doanh (`ROLE_SALES`) chỉ được phép xem, in hoặc xuất PDF các đơn hàng của đại lý do chính mình phụ trách (`assignedUser`) hoặc đơn do chính mình tạo (`createdBy`).
    - Cố tình truy cập hoặc in đơn hàng của đại lý khác sẽ bị chặn với mã lỗi **HTTP 403 Forbidden** (`AccessDeniedException`).
@@ -2275,8 +2303,8 @@ Quy tắc nghiệp vụ:
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| GET | `/orders/{id}/pdf` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Xuất file PDF phiếu xác nhận đơn hàng kèm mã vạch. Mặc định trả `inline` để xem/in ngay trên trình duyệt; thêm `?download=true` để tải file về máy |
-| GET | `/orders/{id}/barcode` | `ORDER_VIEW`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF`, `ROLE_ACCOUNTANT`, `ROLE_VIEWER` | Lấy ảnh mã vạch (Barcode Code 128) dạng PNG độc lập theo mã đơn hàng để in tem nhãn hoặc quét nhanh |
+| GET | `/orders/{id}/pdf` | `ORDER_VIEW` hoặc `ORDER_CREATE` | Xuất file PDF phiếu xác nhận đơn hàng kèm mã vạch. Tài khoản chỉ có `ORDER_CREATE` chỉ được xuất đơn do chính mình tạo; mặc định trả `inline`, thêm `?download=true` để tải file về máy |
+| GET | `/orders/{id}/barcode` | `ORDER_VIEW` hoặc `ORDER_CREATE` | Lấy ảnh mã vạch (Barcode Code 128) dạng PNG; tài khoản chỉ có `ORDER_CREATE` chỉ được lấy mã vạch đơn do chính mình tạo |
 
 #### Ví dụ Request xuất PDF xem trước (`GET /api/orders/1/pdf`):
 ```http
@@ -2317,3 +2345,37 @@ HTTP/1.1 200 OK
 Content-Type: image/png
 ```
 Response Body: Binary data PNG (ảnh mã vạch Code 128)
+
+### Bổ sung sửa lỗi Sprint 4 — 20/10/2026
+
+Các đường dẫn bên dưới có prefix `/api`. Quyền lấy từ ma trận DB ở mỗi request; token đã đăng nhập không giữ quyền bị thu hồi. ADMIN luôn toàn quyền, nhưng vẫn phải tuân thủ trạng thái và ràng buộc dữ liệu hợp lệ.
+
+| API / trường | Quyền | Hành vi |
+|---|---|---|
+| `POST /portal/orders/preview` | `ORDER_CREATE` + `PRODUCT_VIEW` + `ORDER_VIEW`, hoặc ADMIN | Tính giá, chiết khấu, tồn khả dụng và công nợ dự kiến; không lưu đơn/giữ tồn |
+| `PUT /orders/{id}/confirm` | `ORDER_CONFIRM`, hoặc ADMIN | Xác nhận đơn cổng đang chờ duyệt, không vi phạm; chỉ người phụ trách đại lý hoặc ADMIN; kiểm lại công nợ/tồn trước giữ chỗ |
+| `PUT /orders/{id}/approve` | `ORDER_APPROVE`, hoặc ADMIN | Luồng duyệt, kể cả xử lý ngoại lệ giá/công nợ; không fallback theo role hoặc ORDER_CREATE |
+| `OrderResponse.canConfirmPortalOrder` | Theo người đang gọi | Gợi ý hiện nút xác nhận: quyền, người phụ trách, đơn cổng, trạng thái và vi phạm đã ghi nhận; API vẫn kiểm lại điều kiện hiện tại |
+| `OrderResponse.nextLifecycleStatus` | `WAREHOUSE_EXPORT` và kho được phân công, hoặc ADMIN | Bước tiếp theo hoặc null: RECORDED/APPROVED → PICKING → EXPORTED → DELIVERED → CLOSED |
+
+Preview nhận cùng body với `POST /portal/orders`:
+
+```json
+{
+  "expectedDeliveryDate": "2026-10-25",
+  "items": [{"productId": 101, "unit": "thùng", "quantity": 2}]
+}
+```
+
+Đại lý được xác định từ tài khoản đăng nhập; ADMIN dùng query `dealerId` để chọn ngữ cảnh. Không tin giá, nhóm khách hàng, kho hoặc dealerId do đại lý tự gửi trong body. Response `data` gồm `pricing` (OrderCalculateResponse: items/subtotalAmount/discountAmount/totalAmount và thông tin tồn) và `debt` (OrderDebtCheckResponse: currentDebt/debtLimit/projectedDebt/remainingLimit/isBlocked/hasOverdueDebt…). Tạo đơn vẫn tính lại trên server, không tin số tiền preview do client cung cấp.
+
+Frontend bắt buộc tính lại trước xác nhận/gửi; lỗi preview chặn gửi và có nút thử lại. Thay đổi tổng tiền sau xác nhận phải xác nhận lại, phản hồi cũ không được ghi đè giỏ mới. API `confirm` trả 403 khi thiếu quyền/sai người phụ trách, 400 khi không phải đơn cổng chờ duyệt hoặc có vi phạm. Đơn vi phạm cần luồng `approve`, không cấp quyền duyệt rộng chỉ để xác nhận đơn thường.
+
+`ORDER_CONFIRM` có nhãn **Xác nhận đơn đại lý** trong ma trận. Mặc định cho SALES/SALES_MANAGER chỉ áp dụng DB mới hoặc thao tác khôi phục mặc định. DB đã cấu hình **không tự được bổ sung quyền**: Admin cần tích và lưu cho vai trò mong muốn, không ghi đè các thiết lập quyền đã lưu.
+
+Quy tắc nhất quán khi tính/tạo đơn:
+
+- Giá và chiết khấu dùng ngày đặt hiện tại, không dùng ngày giao mong muốn; sản phẩm ngừng kinh doanh bị chặn.
+- Đơn có đại lý bắt buộc dùng kho phục vụ đang hoạt động gắn với đại lý. Gửi warehouseId khác trả 403; thiếu kho phục vụ trả 400, không chọn kho đầu tiên thay thế.
+- Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
+- Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.

@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-function createMockEnvironment(apiResponses = {}, options = {}) {
+async function createMockEnvironment(apiResponses = {}, options = {}) {
   const currentUser = options.currentUser || { id: 99, username: 'dealer.test', roles: ['ROLE_DEALER'],
     permissions: ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'], dealerId: 10 };
   const elements = new Map();
@@ -69,6 +69,7 @@ function createMockEnvironment(apiResponses = {}, options = {}) {
     encodeURIComponent,
     console: { log() {}, warn() {}, error() {} },
     Auth: {
+      refreshPermissions: async () => true,
       requireLogin: () => true,
       hasAnyRole: (...roles) => roles.some(role => currentUser.roles.includes(role)),
       hasPermission: permission => currentUser.roles.includes('ROLE_ADMIN') || currentUser.permissions.includes(permission),
@@ -77,7 +78,17 @@ function createMockEnvironment(apiResponses = {}, options = {}) {
         calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
         url = url.split('?')[0];
         if (url === '/portal/dealers') return success(options.dealers || [{ id: 10, code: 'DL-10', name: 'Đại lý 10' }]);
+        if (typeof apiResponses[url] === 'function') return apiResponses[url](opts);
         if (apiResponses[url]) return success(apiResponses[url]);
+        if (url === '/portal/orders/preview') {
+          const items = JSON.parse(opts.body).items.map(item => {
+            const price = (item.productId === 101 ? 15000 : 13000) * (item.unit === 'thùng' ? 24 : 1);
+            return { ...item, price, subtotalAmount: price * item.quantity, discountAmount: 0, totalAmount: price * item.quantity };
+          });
+          const total = items.reduce((sum, item) => sum + item.totalAmount, 0);
+          return success({ pricing: { items, subtotalAmount: total, discountAmount: 0, totalAmount: total },
+            debt: { currentDebt: 30000000, debtLimit: 100000000, remainingLimit: 70000000, projectedDebt: 30000000 + total, isBlocked: false, hasOverdueDebt: false } });
+        }
         if (url === '/portal/profile') {
           return success({ id: 10, code: 'DL-HOANGPHAT', name: 'Đại lý Hoàng Phát', customerGroup: 'DAI_LY_CAP_1', active: true });
         }
@@ -152,12 +163,13 @@ function createMockEnvironment(apiResponses = {}, options = {}) {
   const script = fs.readFileSync(path.join(__dirname, '../frontend/js/dealer-portal.js'), 'utf8');
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../frontend/js/dealer-portal-context.js'), 'utf8'), context);
   vm.runInContext(script, context);
+  await new Promise(setImmediate);
 
-  return { context, elements, calls, portal: windowObj.DealerPortal };
+  return { context, elements, calls, get portal() { return windowObj.DealerPortal; } };
 }
 
 test('S4-10: Cổng đại lý chỉ hiển thị sản phẩm và giá thuộc bảng giá nhóm khách hàng của mình', async () => {
-  const { elements, calls } = createMockEnvironment();
+  const { elements, calls } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   assert.ok(calls.some((call) => call.url === '/portal/catalog'));
@@ -172,7 +184,7 @@ test('S4-10: Cổng đại lý chỉ hiển thị sản phẩm và giá thuộc 
 });
 
 test('Admin chưa liên kết đại lý mở cổng và chọn đại lý, không gọi API thiếu ngữ cảnh', async () => {
-  const { context, elements, calls } = createMockEnvironment({}, {
+  const { context, elements, calls } = await createMockEnvironment({}, {
     currentUser: { roles: ['ROLE_ADMIN'], permissions: [] },
   });
   await new Promise(resolve => setTimeout(resolve, 20));
@@ -187,7 +199,7 @@ test('Admin chưa liên kết đại lý mở cổng và chọn đại lý, khô
 });
 
 test('Admin xem và gửi đơn qua cổng với đúng đại lý đã chọn', async () => {
-  const { elements, calls, portal } = createMockEnvironment({}, {
+  const { elements, calls, portal } = await createMockEnvironment({}, {
     currentUser: { roles: ['ROLE_ADMIN'], permissions: [] }, search: '?dealerId=10',
   });
   await new Promise(resolve => setTimeout(resolve, 20));
@@ -200,18 +212,19 @@ test('Admin xem và gửi đơn qua cổng với đúng đại lý đã chọn',
   assert.ok(calls.some(call => call.method === 'POST' && call.url === '/portal/orders?dealerId=10'));
 });
 
-test('Thu hồi quyền cần cho cổng chặn trang trước khi gọi API', () => {
+test('Thu hồi quyền cần cho cổng chặn trang trước khi gọi API', async () => {
   for (const revoked of ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW']) {
-    const { context, calls } = createMockEnvironment({}, { currentUser: {
+    const { context, calls } = await createMockEnvironment({}, { currentUser: {
       roles: ['ROLE_DEALER'], permissions: ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'].filter(p => p !== revoked),
     } });
+    await new Promise(setImmediate);
     assert.equal(context.window.location.href, '/error?status=403', revoked);
     assert.equal(calls.length, 0);
   }
 });
 
 test('S4-10: Thêm sản phẩm vào giỏ, xem tổng tiền và tính toán công nợ còn lại trước khi gửi đơn', async () => {
-  const { elements, portal } = createMockEnvironment();
+  const { elements, portal } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   // Verify debt metric values
@@ -221,6 +234,7 @@ test('S4-10: Thêm sản phẩm vào giỏ, xem tổng tiền và tính toán c�
 
   // Add 5 thùng Heineken (unitPrice = 360,000đ; total = 1,800,000đ)
   portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia Heineken 330ml', basePrice: 15000 }, 'thùng', 24, 360000, 5);
+  await portal.refreshCartPreview();
 
   // Verify cart totals
   assert.equal(elements.get('cart-badge-count').textContent, 5);
@@ -233,18 +247,19 @@ test('S4-10: Thêm sản phẩm vào giỏ, xem tổng tiền và tính toán c�
 });
 
 test('S4-10: Cảnh báo khi đơn hàng làm vượt hạn mức công nợ còn lại của đại lý', async () => {
-  const { elements, portal } = createMockEnvironment();
+  const { elements, portal } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   // Add huge quantity exceeding available credit (200 thùng = 72,000,000đ > 70,000,000đ)
   portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia Heineken 330ml', basePrice: 15000 }, 'thùng', 24, 360000, 200);
+  await portal.refreshCartPreview();
 
   assert.equal(elements.get('dp-debt-warning-msg').hidden, false);
   assert.match(elements.get('dp-debt-warning-msg').textContent, /vượt hạn mức công nợ còn lại/);
 });
 
 test('S4-10: Đơn gửi lên luôn ở trạng thái Chờ duyệt (PENDING_APPROVAL), gửi đúng payload và reset giỏ hàng', async () => {
-  const { context, elements, calls, portal } = createMockEnvironment();
+  const { context, elements, calls, portal } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   const pointEl = context.document.getElementById('dp-delivery-point-select');
@@ -273,4 +288,82 @@ test('S4-10: Đơn gửi lên luôn ở trạng thái Chờ duyệt (PENDING_APP
   assert.equal(elements.get('dp-success-code').textContent, 'DH-DL-20261014-001');
   assert.equal(elements.get('dp-success-modal').hidden, false);
   assert.equal(elements.get('cart-badge-count').textContent, 0);
+});
+
+test('S4-10: tổng tiền và công nợ dùng chiết khấu backend, không lấy tổng giỏ tự tính', async () => {
+  const preview = { pricing: { subtotalAmount: 100000, discountAmount: 20000, totalAmount: 80000,
+    items: [{ productId: 101, price: 100000, totalAmount: 80000 }] },
+    debt: { currentDebt: 30000000, remainingLimit: 70000000, debtLimit: 100000000, isBlocked: false } };
+  const { portal, elements } = await createMockEnvironment({ '/portal/orders/preview': preview });
+  await new Promise(setImmediate);
+  portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia', basePrice: 15000 }, 'lon', 1, 15000, 1);
+  await portal.refreshCartPreview();
+  assert.match(elements.get('dp-discount-val').textContent, /20\.000/);
+  assert.match(elements.get('dp-total-val').textContent, /80\.000/);
+  assert.match(elements.get('dp-projected-remaining-debt').textContent, /69\.920\.000/);
+  assert.equal(elements.get('btn-submit-order').disabled, false);
+});
+
+test('S4-10: preview lỗi chặn gửi đơn và cho phép tính lại, không dùng tổng tiền cũ', async () => {
+  const { portal, elements, calls } = await createMockEnvironment({ '/portal/orders/preview': () =>
+    ({ ok: false, json: async () => ({ success: false, message: 'Bảng giá đã hết hiệu lực' }) }) });
+  await new Promise(setImmediate);
+  portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia', basePrice: 15000 }, 'lon', 1, 15000, 1);
+  await portal.refreshCartPreview();
+  assert.equal(elements.get('btn-submit-order').disabled, true);
+  assert.equal(elements.get('btn-refresh-cart-preview').hidden, false);
+  await portal.submitDealerOrder();
+  assert.ok(!calls.some(call => call.url === '/portal/orders' && call.method === 'POST'));
+});
+
+test('S4-10: bỏ quyền sau khi mở trang không gửi preview hay tạo đơn mới', async () => {
+  const user = { roles: ['ROLE_DEALER'], permissions: ['ORDER_VIEW', 'PRODUCT_VIEW', 'ORDER_CREATE'], dealerId: 10 };
+  const { portal, calls } = await createMockEnvironment({}, { currentUser: user });
+  await new Promise(setImmediate);
+  portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia', basePrice: 15000 }, 'lon', 1, 15000, 1);
+  await portal.refreshCartPreview();
+  const before = calls.length;
+  user.permissions = user.permissions.filter(permission => permission !== 'ORDER_CREATE');
+  assert.equal(await portal.refreshCartPreview(true), false);
+  await portal.submitDealerOrder();
+  assert.equal(calls.length, before);
+});
+
+test('S4-10: phản hồi preview trễ không ghi đè giỏ mới', async () => {
+  const pending = [];
+  const { portal, elements } = await createMockEnvironment({ '/portal/orders/preview': () =>
+    new Promise(resolve => pending.push(resolve)) });
+  await new Promise(setImmediate);
+  portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia', basePrice: 15000 }, 'lon', 1, 15000, 1);
+  const oldRequest = portal.refreshCartPreview();
+  portal.state.cart[0].quantity = 2;
+  portal.updateCartUI();
+  const newRequest = portal.refreshCartPreview();
+  const response = amount => ({ ok: true, json: async () => ({ success: true, data: {
+    pricing: { subtotalAmount: amount, discountAmount: 0, totalAmount: amount, items: [{ price: 15000, totalAmount: amount }] },
+    debt: { currentDebt: 0, remainingLimit: 100000000, debtLimit: 100000000, isBlocked: false } } }) });
+  pending[1](response(30000));
+  await newRequest;
+  pending[0](response(15000));
+  await oldRequest;
+  assert.equal(portal.state.preview.pricing.totalAmount, 30000);
+  assert.match(elements.get('dp-total-val').textContent, /30\.000/);
+});
+
+test('S4-10: giá thay đổi sau khi xác nhận phải xem lại tổng mới, chưa tạo đơn', async () => {
+  let amount = 15000;
+  const { portal, context, calls } = await createMockEnvironment({ '/portal/orders/preview': () =>
+    ({ ok: true, json: async () => ({ success: true, data: {
+      pricing: { subtotalAmount: amount, discountAmount: 0, totalAmount: amount, items: [{ price: amount, totalAmount: amount }] },
+      debt: { currentDebt: 0, remainingLimit: 100000000, debtLimit: 100000000, isBlocked: false } } }) }) });
+  await new Promise(setImmediate);
+  context.document.getElementById('dp-delivery-date-input').value = '2026-10-25';
+  portal.addToCart({ id: 101, sku: 'KEN330', name: 'Bia', basePrice: 15000 }, 'lon', 1, 15000, 1);
+  await portal.openConfirmModal();
+  amount = 18000;
+  await portal.submitDealerOrder();
+  assert.ok(!calls.some(call => call.url === '/portal/orders' && call.method === 'POST'));
+  assert.equal(portal.state.confirmedPreview.total, 18000);
+  await portal.submitDealerOrder();
+  assert.equal(calls.filter(call => call.url === '/portal/orders' && call.method === 'POST').length, 1);
 });

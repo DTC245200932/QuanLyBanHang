@@ -10,9 +10,10 @@
  * - Phê duyệt / Từ chối đơn hàng bán dưới giá sàn hoặc vượt hạn mức (Quản lý kinh doanh).
  * - Huỷ đơn hàng giải phóng tồn kho (có cảnh báo).
  */
-(() => {
+ (async () => {
   /* ── 1. Auth Guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
   const user = Auth.getUser();
   if (!Auth.hasPermission('ORDER_VIEW')) {
@@ -20,8 +21,8 @@
     return;
   }
 
-  const CAN_APPROVE = Auth.hasPermission('ORDER_APPROVE');
-  const CAN_CANCEL = Auth.hasPermission('ORDER_CANCEL');
+  let CAN_APPROVE = Auth.hasPermission('ORDER_APPROVE');
+  let CAN_CANCEL = Auth.hasPermission('ORDER_CANCEL');
   const CANCELLABLE_STATUSES = new Set([
     'DRAFT', 'PENDING_APPROVAL', 'RECORDED', 'APPROVED', 'PICKING', 'PROCESSING',
   ]);
@@ -77,12 +78,16 @@
   };
 
   const STATUS_CONFIG = {
+    DRAFT:            { label: 'Nháp', cls: 'order-status-badge--draft' },
     PENDING_APPROVAL: { label: 'Chờ duyệt', cls: 'order-status-badge--pending' },
     RECORDED:         { label: 'Đã ghi nhận', cls: 'order-status-badge--approved' },
     APPROVED:         { label: 'Đã duyệt', cls: 'order-status-badge--approved' },
     PICKING:          { label: 'Đang lấy hàng', cls: 'order-status-badge--picking' },
+    PROCESSING:       { label: 'Đang lấy hàng', cls: 'order-status-badge--picking' },
     EXPORTED:         { label: 'Đã xuất kho', cls: 'order-status-badge--exported' },
+    SHIPPED:          { label: 'Đã xuất kho', cls: 'order-status-badge--exported' },
     DELIVERED:        { label: 'Đã giao hàng', cls: 'order-status-badge--delivered' },
+    CLOSED:           { label: 'Đóng', cls: 'order-status-badge--delivered' },
     COMPLETED:        { label: 'Hoàn thành', cls: 'order-status-badge--delivered' },
     CANCELLED:        { label: 'Đã huỷ', cls: 'order-status-badge--cancelled' },
     REJECTED:         { label: 'Bị từ chối', cls: 'order-status-badge--rejected' },
@@ -570,6 +575,8 @@
           <button type="button" class="dlr-action-btn ord-btn-view" data-action="view" data-id="${ord.id}" title="Xem chi tiết đơn" aria-label="Xem chi tiết đơn ${escHtml(ord.orderCode)}">
             <svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
+          ${!CAN_APPROVE && Auth.hasPermission('ORDER_CONFIRM') && ord.canConfirmPortalOrder ? `
+            <button type="button" class="dlr-action-btn ord-btn-approve" data-action="confirm-portal" data-id="${ord.id}" title="Xác nhận đơn đại lý">Xác nhận</button>` : ''}
           ${CAN_APPROVE && isPending ? `
             <button type="button" class="dlr-action-btn ord-btn-approve" data-action="approve" data-id="${ord.id}" title="Phê duyệt đơn" aria-label="Phê duyệt ${escHtml(ord.orderCode)}">
               <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -641,6 +648,10 @@
       });
     });
 
+    tbody.querySelectorAll('[data-action="confirm-portal"]').forEach(btn => {
+      btn.addEventListener('click', () => handleConfirmPortalOrder(Number(btn.dataset.id)));
+    });
+
     tbody.querySelectorAll('[data-action="reject"]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const orderId = Number(btn.dataset.id);
@@ -710,6 +721,8 @@
     $('btn-detail-approve').hidden = true;
     $('btn-detail-reject').hidden = true;
     $('btn-detail-cancel').hidden = true;
+    $('btn-detail-confirm-portal').hidden = true;
+    $('btn-detail-next-status').hidden = true;
     $('btn-detail-tracking').disabled = true;
     $('ord-lifecycle-box').hidden = false;
     $('ord-lifecycle-summary').textContent = 'Đang tải trạng thái và lịch sử…';
@@ -809,6 +822,10 @@
       if (isCancellable) {
         $('btn-detail-cancel').hidden = false;
       }
+      $('btn-detail-confirm-portal').hidden = CAN_APPROVE || !Auth.hasPermission('ORDER_CONFIRM') || !order.canConfirmPortalOrder;
+      const next = $('btn-detail-next-status');
+      next.hidden = !Auth.hasPermission('WAREHOUSE_EXPORT') || !order.nextLifecycleStatus;
+      next.textContent = order.nextLifecycleStatus ? `Chuyển sang ${lifecycleStatusLabel(order.nextLifecycleStatus)}` : 'Chuyển bước tiếp theo';
     } catch (e) {
       $('ord-detail-title').textContent = 'Lỗi xem chi tiết đơn';
       $('ord-items-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:16px;">${escHtml(e.message)}</td></tr>`;
@@ -866,6 +883,38 @@
   }
 
   /* ── 13. Actions: Approve / Reject / Cancel ────────────────── */
+  async function handleConfirmPortalOrder(orderId) {
+    if (!Auth.hasPermission('ORDER_CONFIRM')) return;
+    if (!confirm('Xác nhận đơn đại lý và giữ chỗ hàng trong kho?')) return;
+    try {
+      const response = await Auth.apiFetch(`/orders/${orderId}/confirm`, { method: 'PUT' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || 'Không xác nhận được đơn đại lý.');
+      showToast(result.message, 'success');
+      closeOrderDetailModal();
+      await loadInitialData();
+    } catch (error) { showToast(error.message, 'error'); }
+  }
+
+  async function advanceLifecycle() {
+    const order = state.activeOrder;
+    if (!Auth.hasPermission('WAREHOUSE_EXPORT') || !order?.nextLifecycleStatus) return;
+    if (!confirm(`Chuyển đơn ${order.orderCode} sang ${lifecycleStatusLabel(order.nextLifecycleStatus)}?`)) return;
+    const button = $('btn-detail-next-status');
+    button.disabled = true;
+    try {
+      const response = await Auth.apiFetch(`/orders/${order.id}/status`, {
+        method: 'PUT', body: JSON.stringify({ status: order.nextLifecycleStatus }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || 'Không chuyển được trạng thái đơn.');
+      showToast(result.message, 'success');
+      await loadInitialData();
+      await openOrderDetailModal(order.id);
+    } catch (error) { showToast(error.message, 'error'); }
+    finally { button.disabled = false; }
+  }
+
   async function handleApproveOrder(orderId) {
     if (!CAN_APPROVE) return;
     if (!confirm('Bạn có chắc chắn muốn phê duyệt đơn hàng này?')) return;
@@ -1142,6 +1191,10 @@
     $('btn-detail-approve')?.addEventListener('click', () => {
       if (state.activeOrder) handleApproveOrder(state.activeOrder.id);
     });
+    $('btn-detail-confirm-portal')?.addEventListener('click', () => {
+      if (state.activeOrder) handleConfirmPortalOrder(state.activeOrder.id);
+    });
+    $('btn-detail-next-status')?.addEventListener('click', advanceLifecycle);
     $('btn-detail-reject')?.addEventListener('click', () => {
       if (state.activeOrder) openRejectModal(state.activeOrder.id);
     });
@@ -1174,4 +1227,19 @@
   /* ── 15. Bootstrap ─────────────────────────────────────────── */
   setupEventListeners();
   loadInitialData();
+  window.addEventListener("auth:permissions-changed", () => {
+    CAN_APPROVE = Auth.hasPermission("ORDER_APPROVE");
+    CAN_CANCEL = Auth.hasPermission("ORDER_CANCEL");
+    renderTable();
+    if (!CAN_CANCEL) { closeCancelModal(); $("btn-detail-cancel").hidden = true; }
+    if (!CAN_APPROVE) {
+      closeRejectModal();
+      $("btn-detail-approve").hidden = true;
+      $("btn-detail-reject").hidden = true;
+    }
+    $('btn-detail-confirm-portal').hidden = true;
+    $('btn-detail-next-status').hidden = true;
+    closeOrderDetailModal();
+    if (Auth.hasPermission('ORDER_VIEW')) loadInitialData();
+  });
 })();

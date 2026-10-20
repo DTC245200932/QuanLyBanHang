@@ -56,7 +56,8 @@ const MenuConfig = (() => {
       icon: '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 12h6M9 16h4"/>',
       href: "/orders",
       permission: "ORDER_VIEW",
-      roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_SALES", "ROLE_ACCOUNTANT", "ROLE_VIEWER", "ROLE_WAREHOUSE_MANAGER"],
+      // Quyền trong ma trận là nguồn quyết định; không loại Thủ kho chỉ vì role mặc định.
+      roles: ALL_ROLES,
     },
     {
       id: "create-order",
@@ -74,6 +75,7 @@ const MenuConfig = (() => {
       icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
       href: "/order-approval",
       permission: "ORDER_APPROVE",
+      requiredPermissions: ["ORDER_VIEW"],
       roles: ALL_ROLES,
     },
     {
@@ -101,6 +103,7 @@ const MenuConfig = (() => {
       label: "Bảng giá",
       icon: '<path d="M20 12V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14l4-3 4 3 4-3 4 3v-7"/><path d="M8 8h8M8 12h5"/>',
       href: "/price-lists",
+      permission: "PRODUCT_EDIT",
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER"],
     },
     {
@@ -109,6 +112,7 @@ const MenuConfig = (() => {
       label: "Chiết khấu sản lượng",
       icon: '<path d="M9 14l2 2 4-4"/><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7"/><circle cx="18" cy="18" r="4"/><path d="M15 18h6M18 15v6"/>',
       href: "/discount-policies",
+      permission: "PRODUCT_EDIT",
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER"],
     },
     {
@@ -117,14 +121,9 @@ const MenuConfig = (() => {
       label: "Đại lý",
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
       href: "/dealers",
-      permission: "CUSTOMER_VIEW",
-      roles: [
-        "ROLE_ADMIN",
-        "ROLE_SALES_MANAGER",
-        "ROLE_SALES",
-        "ROLE_ACCOUNTANT",
-        "ROLE_VIEWER",
-      ],
+      permissions: ["CUSTOMER_VIEW", "ORDER_VIEW"],
+      // Cho phép ma trận cấp quyền truy cập hồ sơ đại lý cho mọi role phù hợp.
+      roles: ALL_ROLES,
     },
     {
       id: "warehouse",
@@ -147,6 +146,7 @@ const MenuConfig = (() => {
       label: "Nhà cung cấp",
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
       href: "/suppliers",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_MANAGE"],
       roles: [
         "ROLE_ADMIN",
         "ROLE_WAREHOUSE_MANAGER",
@@ -160,7 +160,7 @@ const MenuConfig = (() => {
       label: "Đơn vị tính",
       icon: '<path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>',
       href: "/warehouse/units?tab=units",
-      permission: "WAREHOUSE_VIEW",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_MANAGE"],
       roles: [
         "ROLE_ADMIN",
         "ROLE_SALES_MANAGER",
@@ -175,7 +175,7 @@ const MenuConfig = (() => {
       label: "Nhập / Xuất kho",
       icon: '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
       href: "/warehouse/units?tab=receipts",
-      permission: "WAREHOUSE_IMPORT",
+      permissions: ["WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT"],
       roles: [
         "ROLE_ADMIN",
         "ROLE_WAREHOUSE_MANAGER",
@@ -206,7 +206,7 @@ const MenuConfig = (() => {
       label: "Quản lý tài khoản",
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>',
       href: "/admin/users",
-      roles: ["ROLE_ADMIN"],
+      roles: ALL_ROLES,
       permission: "USER_VIEW",
     },
     {
@@ -232,9 +232,13 @@ const MenuConfig = (() => {
     const roles = user?.roles || [];
     const permissions = user?.permissions || [];
     const isAdmin = roles.includes("ROLE_ADMIN");
+    const dealerOnly = roles.includes("ROLE_DEALER") && !roles.some(role => role !== "ROLE_DEALER");
     return menuItems.filter((item) => {
-      if (!item.roles.some((role) => roles.includes(role))) return false;
       if (isAdmin) return true;
+      // Tài khoản chỉ là đại lý truy cập dữ liệu của chính mình qua cổng.
+      if (dealerOnly && !["dashboard", "profile", "dealer-orders", "dealer-portal"].includes(item.id)) return false;
+      if (["dealer-orders", "dealer-portal", "audit-logs"].includes(item.id)
+          && !item.roles.some((role) => roles.includes(role))) return false;
       if (item.requiredPermissions && !item.requiredPermissions.every(permission => permissions.includes(permission))) return false;
       if (item.permission) return permissions.includes(item.permission);
       if (item.permissions) return item.permissions.some((permission) => permissions.includes(permission));

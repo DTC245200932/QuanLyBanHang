@@ -65,6 +65,35 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfig.class, RolePermissionConfig.class, RestAccessDeniedHandler.class, AuthEntryPointJwt.class, ObjectMapper.class})
 class RoleBasedAccessControlTest {
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "GET,/api/finance/cost-price,FINANCE_VIEW_COST_PRICE,ROLE_SALES_MANAGER",
+            "GET,/api/finance/profit-margin,FINANCE_VIEW_PROFIT_MARGIN,ROLE_SALES_MANAGER",
+            "POST,/api/warehouse/import,WAREHOUSE_IMPORT,ROLE_WAREHOUSE_STAFF",
+            "POST,/api/warehouse/export,WAREHOUSE_EXPORT,ROLE_WAREHOUSE_STAFF",
+            "POST,/api/warehouse/adjust,WAREHOUSE_ADJUST,ROLE_WAREHOUSE_MANAGER",
+            "POST,/api/warehouse/vouchers/1/confirm,WAREHOUSE_APPROVE,ROLE_WAREHOUSE_STAFF",
+            "GET,/api/admin/users,USER_VIEW,ROLE_SALES_MANAGER"
+    })
+    void permissionGrantAndRevocationOverrideHardcodedRoles(String method, String path, String permission, String role) throws Exception {
+        var grant = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .user("matrix-user").authorities(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_VIEWER"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority(permission));
+        var revoked = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .user("matrix-user").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority(role));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .request(org.springframework.http.HttpMethod.valueOf(method), path)
+                        .with(grant).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":1,\"quantity\":50,\"delta\":5}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .request(org.springframework.http.HttpMethod.valueOf(method), path)
+                        .with(revoked).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":1,\"quantity\":50,\"delta\":5}"))
+                .andExpect(status().isForbidden());
+    }
+
     @Autowired
     private WebApplicationContext context;
 
@@ -134,7 +163,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG được sửa tồn kho (403 Forbidden)")
     void salesCannotAdjustInventory() throws Exception {
         mockMvc.perform(post("/api/warehouse/adjust")
@@ -144,7 +173,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG được tạo phiếu chuyển kho (403 Forbidden)")
     void salesCannotCreateTransfer() throws Exception {
         mockMvc.perform(post("/api/warehouse/transfers")
@@ -154,7 +183,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG xem được giá vốn (403 Forbidden)")
     void salesCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
@@ -162,7 +191,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG xem được biên lợi nhuận (403 Forbidden)")
     void salesCannotViewProfitMargin() throws Exception {
         mockMvc.perform(get("/api/finance/profit-margin"))
@@ -170,7 +199,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG truy cập được quản trị hệ thống (403 Forbidden)")
     void salesCannotAccessAdmin() throws Exception {
         mockMvc.perform(get("/api/admin/users"))
@@ -182,7 +211,7 @@ class RoleBasedAccessControlTest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho KHÔNG xem được giá vốn (403 Forbidden)")
     void warehouseStaffCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
@@ -190,7 +219,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho KHÔNG xem được biên lợi nhuận (403 Forbidden)")
     void warehouseStaffCannotViewProfitMargin() throws Exception {
         mockMvc.perform(get("/api/finance/profit-margin"))
@@ -198,7 +227,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho KHÔNG được sửa điều chỉnh tồn kho (403 Forbidden)")
     void warehouseStaffCannotAdjustInventory() throws Exception {
         mockMvc.perform(post("/api/warehouse/adjust")
@@ -208,7 +237,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho ĐƯỢC PHÉP tạo phiếu nhập kho (200 OK)")
     void warehouseStaffCanImportGoods() throws Exception {
         mockMvc.perform(post("/api/warehouse/import")
@@ -226,7 +255,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho KHÔNG ĐƯỢC PHÉP lập phiếu điều chỉnh cho phiếu kho đã xác nhận (403 Forbidden)")
     void warehouseStaffCannotAdjustVoucher() throws Exception {
         mockMvc.perform(post("/api/warehouse/vouchers/1/adjust")
@@ -236,15 +265,15 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho ĐƯỢC PHÉP xác nhận phiếu nhập kho (200 OK)")
-    void warehouseStaffCanConfirmVoucher() throws Exception {
+    void warehouseStaffWithoutApprovePermissionCannotConfirmVoucher() throws Exception {
         mockMvc.perform(post("/api/warehouse/vouchers/1/confirm"))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = {"WAREHOUSE_STAFF"})
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("[ROLE_WAREHOUSE_STAFF] Thủ kho ĐƯỢC PHÉP xem tồn kho theo lô (200 OK)")
     void warehouseStaffCanViewLotInventory() throws Exception {
         mockMvc.perform(get("/api/warehouse/inventory/lots"))
@@ -256,7 +285,7 @@ class RoleBasedAccessControlTest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = {"SALES_MANAGER"})
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("[ROLE_SALES_MANAGER] Quản lý kinh doanh ĐƯỢC XEM giá vốn (200 OK)")
     void salesManagerCanViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
@@ -264,7 +293,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = {"SALES_MANAGER"})
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("[ROLE_SALES_MANAGER] Quản lý kinh doanh ĐƯỢC XEM biên lợi nhuận (200 OK)")
     void salesManagerCanViewProfitMargin() throws Exception {
         mockMvc.perform(get("/api/finance/profit-margin"))
@@ -272,7 +301,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = {"SALES_MANAGER"})
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("[ROLE_SALES_MANAGER] Quản lý kinh doanh KHÔNG được sửa tồn kho (403 Forbidden)")
     void salesManagerCannotAdjustInventory() throws Exception {
         mockMvc.perform(post("/api/warehouse/adjust")
@@ -282,7 +311,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", roles = {"SALES_MANAGER"})
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("[ROLE_SALES_MANAGER] Quản lý kinh doanh được cập nhật hạn mức công nợ (S3-05)")
     void salesManagerCanUpdateDebtLimit() throws Exception {
         com.quanlybanhang.model.Dealer dealer = com.quanlybanhang.model.Dealer.builder()
@@ -301,7 +330,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "accountant", roles = {"ACCOUNTANT"})
+    @WithMockUser(username = "accountant", authorities = {"ROLE_ACCOUNTANT", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("[ROLE_ACCOUNTANT] Kế toán công nợ được cập nhật hạn mức công nợ (S3-05)")
     void accountantCanUpdateDebtLimit() throws Exception {
         com.quanlybanhang.model.Dealer dealer = com.quanlybanhang.model.Dealer.builder()
@@ -320,7 +349,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("[ROLE_SALES] Nhân viên kinh doanh KHÔNG được sửa hạn mức công nợ (403 Forbidden)")
     void salesCannotUpdateDebtLimit() throws Exception {
         mockMvc.perform(put("/api/finance/debt/1/limit")
@@ -330,7 +359,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "accountant", roles = {"ACCOUNTANT"})
+    @WithMockUser(username = "accountant", authorities = {"ROLE_ACCOUNTANT", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("[S3-05] Cập nhật hạn mức công nợ bắt buộc nhập lý do (400 Bad Request)")
     void updateDebtLimitRequiresReasonValidation() throws Exception {
         mockMvc.perform(put("/api/finance/debt/1/limit")
@@ -344,7 +373,7 @@ class RoleBasedAccessControlTest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
-    @WithMockUser(username = "admin_user", roles = {"ADMIN"})
+    @WithMockUser(username = "admin_user", authorities = {"ROLE_ADMIN"})
     @DisplayName("[ROLE_ADMIN] Quản trị viên truy cập được API phân quyền (200 OK)")
     void adminCanAccessPermissionManagement() throws Exception {
         mockMvc.perform(get("/api/admin/permissions"))
@@ -352,11 +381,11 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "admin_user", roles = {"ADMIN"})
-    @DisplayName("[ROLE_ADMIN] Giá vốn chỉ dành cho Quản lý kinh doanh (403 Forbidden)")
-    void adminCannotViewCostPrice() throws Exception {
+    @WithMockUser(username = "admin_user", authorities = {"ROLE_ADMIN"})
+    @DisplayName("[ROLE_ADMIN] Quản trị viên luôn được xem giá vốn")
+    void adminCanViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -364,7 +393,7 @@ class RoleBasedAccessControlTest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
-    @WithMockUser(username = "warehouse_manager", roles = {"WAREHOUSE_MANAGER"})
+    @WithMockUser(username = "warehouse_manager", authorities = {"ROLE_WAREHOUSE_MANAGER", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_MANAGE", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_ADJUST", "WAREHOUSE_APPROVE", "WAREHOUSE_TRANSFER", "REPORT_INVENTORY"})
     @DisplayName("[ROLE_WAREHOUSE_MANAGER] Quản lý kho ĐƯỢC PHÉP điều chỉnh tồn kho (200 OK)")
     void warehouseManagerCanAdjustInventory() throws Exception {
         mockMvc.perform(post("/api/warehouse/adjust")
@@ -374,7 +403,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_manager", roles = {"WAREHOUSE_MANAGER"})
+    @WithMockUser(username = "warehouse_manager", authorities = {"ROLE_WAREHOUSE_MANAGER", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_MANAGE", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_ADJUST", "WAREHOUSE_APPROVE", "WAREHOUSE_TRANSFER", "REPORT_INVENTORY"})
     @DisplayName("[ROLE_WAREHOUSE_MANAGER] Quản lý kho ĐƯỢC PHÉP lập phiếu điều chỉnh cho phiếu kho đã xác nhận (200 OK)")
     void warehouseManagerCanAdjustVoucher() throws Exception {
         mockMvc.perform(post("/api/warehouse/vouchers/1/adjust")
@@ -384,7 +413,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_manager", roles = {"WAREHOUSE_MANAGER"})
+    @WithMockUser(username = "warehouse_manager", authorities = {"ROLE_WAREHOUSE_MANAGER", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_MANAGE", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_ADJUST", "WAREHOUSE_APPROVE", "WAREHOUSE_TRANSFER", "REPORT_INVENTORY"})
     @DisplayName("[ROLE_WAREHOUSE_MANAGER] Quản lý kho KHÔNG xem được giá vốn (403 Forbidden)")
     void warehouseManagerCannotViewCostPrice() throws Exception {
         mockMvc.perform(get("/api/finance/cost-price"))
@@ -392,7 +421,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = {"SALES"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("[HỒ SƠ] Người dùng đã đăng nhập truy cập được hồ sơ cá nhân")
     void authenticatedUserCanAccessOwnProfile() throws Exception {
         org.mockito.Mockito.when(userService.getUserProfile("sales_user"))
@@ -422,7 +451,7 @@ class RoleBasedAccessControlTest {
     }
 
     @Test
-    @WithMockUser(username = "random_user", roles = {"VIEWER"})
+    @WithMockUser(username = "random_user", authorities = {"ROLE_VIEWER", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "CUSTOMER_VIEW", "REPORT_SALES", "REPORT_INVENTORY"})
     @DisplayName("[MẶC ĐỊNH TỪ CHỐI] Mọi endpoint chưa khai báo đều bị từ chối ở tầng server (403 Forbidden)")
     void unmappedEndpointsAreDeniedByDefault() throws Exception {
         mockMvc.perform(get("/api/undeclared/endpoint"))

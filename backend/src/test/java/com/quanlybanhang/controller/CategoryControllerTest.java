@@ -83,7 +83,7 @@ class CategoryControllerTest {
     class ReadEndpointsTests {
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("GET /api/categories/tree thành công với Quản lý kinh doanh")
         void getCategoryTree_Authenticated_Returns200() throws Exception {
             CategoryResponse response = CategoryResponse.builder()
@@ -105,7 +105,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.emp", roles = "SALES")
+        @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
         @DisplayName("GET /api/categories/tree thành công với Nhân viên kinh doanh")
         void getCategoryTree_SalesRole_Returns200() throws Exception {
             when(categoryService.getCategoryTree()).thenReturn(List.of());
@@ -115,7 +115,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("GET /api/categories/{id}/revenue xem doanh số ngành hàng")
         void getCategoryRevenue_Returns200() throws Exception {
             CategoryResponse response = CategoryResponse.builder()
@@ -145,7 +145,7 @@ class CategoryControllerTest {
     class ManageEndpointsTests {
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("Quản lý kinh doanh tạo nhóm hàng mới -> 201 Created")
         void createCategory_SalesManager_Returns201() throws Exception {
             CategoryRequest request = CategoryRequest.builder()
@@ -171,7 +171,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "admin", roles = "ADMIN")
+        @WithMockUser(username = "admin", authorities = {"ROLE_ADMIN"})
         @DisplayName("Quản trị viên tạo nhóm hàng mới -> 201 Created")
         void createCategory_Admin_Returns201() throws Exception {
             CategoryRequest request = CategoryRequest.builder().code("NG-TEST").name("Test").build();
@@ -184,7 +184,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.emp", roles = "SALES")
+        @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
         @DisplayName("Nhân viên kinh doanh (ROLE_SALES) không được tạo nhóm hàng -> 403 Forbidden")
         void createCategory_SalesRole_Returns403() throws Exception {
             CategoryRequest request = CategoryRequest.builder().code("NG-TEST").name("Test").build();
@@ -196,7 +196,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "warehouse.staff", roles = "WAREHOUSE_STAFF")
+        @WithMockUser(username = "warehouse.staff", authorities = {"ROLE_WAREHOUSE_STAFF", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
         @DisplayName("Thủ kho (ROLE_WAREHOUSE_STAFF) không được tạo nhóm hàng -> 403 Forbidden")
         void createCategory_WarehouseStaff_Returns403() throws Exception {
             CategoryRequest request = CategoryRequest.builder().code("NG-TEST").name("Test").build();
@@ -208,7 +208,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("Cập nhật nhóm hàng thành công với ROLE_SALES_MANAGER -> 200 OK")
         void updateCategory_SalesManager_Returns200() throws Exception {
             CategoryRequest request = CategoryRequest.builder().code("NG-UPDATE").name("Đã sửa").build();
@@ -227,7 +227,7 @@ class CategoryControllerTest {
     class DeleteEndpointsTests {
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("Xoá nhóm hàng khi còn sản phẩm -> Trả về 400 Bad Request và thông báo lỗi")
         void deleteCategory_WhenNotEmpty_Returns400() throws Exception {
             doThrow(new CategoryNotEmptyException("Nhóm còn 3 sản phẩm thì không xoá được. Vui lòng chuyển hoặc xoá sản phẩm trước."))
@@ -240,7 +240,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("Xoá nhóm hàng khi trống -> Trả về 200 OK")
         void deleteCategory_WhenEmpty_Returns200() throws Exception {
             doNothing().when(categoryService).delete(1L);
@@ -251,7 +251,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.emp", roles = "SALES")
+        @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
         @DisplayName("Nhân viên bán hàng không có quyền xoá nhóm hàng -> 403 Forbidden")
         void deleteCategory_SalesRole_Returns403() throws Exception {
             mockMvc.perform(delete("/api/categories/1"))
@@ -264,7 +264,7 @@ class CategoryControllerTest {
     class MoveProductsEndpointsTests {
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("Chuyển danh sách sản phẩm sang nhóm mới -> 200 OK")
         void moveProducts_SalesManager_Returns200() throws Exception {
             MoveProductsRequest request = MoveProductsRequest.builder()
@@ -282,7 +282,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.emp", roles = "SALES")
+        @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
         @DisplayName("Nhân viên bán hàng không được chuyển sản phẩm -> 403 Forbidden")
         void moveProducts_SalesRole_Returns403() throws Exception {
             MoveProductsRequest request = MoveProductsRequest.builder()
@@ -297,7 +297,7 @@ class CategoryControllerTest {
         }
 
         @Test
-        @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+        @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
         @DisplayName("Chuyển 1 sản phẩm sang nhóm mới qua PUT -> 200 OK")
         void moveSingleProduct_Returns200() throws Exception {
             doNothing().when(categoryService).moveSingleProduct(1L, 5L);

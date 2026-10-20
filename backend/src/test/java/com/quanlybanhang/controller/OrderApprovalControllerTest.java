@@ -91,7 +91,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE"})
+    @WithMockUser(username = "sales_manager", authorities = {"ROLE_SALES_MANAGER", "ORDER_APPROVE", "ORDER_VIEW"})
     @DisplayName("GET /api/orders có phân trang và bộ lọc trả về dữ liệu chuẩn S4-05")
     void getOrders_PaginationAndFilter_ReturnsPage() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -217,7 +217,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("Vai trò SALES không có quyền ORDER_APPROVE -> gọi duyệt đơn bị 403 Forbidden")
     void approveOrder_SalesUser_Returns403() throws Exception {
         when(orderService.approveOrder(1L, "sales_user"))
@@ -227,7 +227,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("Vai trò SALES gọi PATCH status đơn hàng bị 403 Forbidden")
     void updateOrderStatus_SalesUser_Returns403() throws Exception {
         OrderStatusUpdateRequest req = new OrderStatusUpdateRequest();
@@ -240,7 +240,7 @@ class OrderApprovalControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "admin_user", roles = "ADMIN")
+    @WithMockUser(username = "admin_user", authorities = {"ROLE_ADMIN", "ORDER_APPROVE"})
     @DisplayName("GET /api/orders/{id}/approval-history - Trả về danh sách lịch sử duyệt")
     void getOrderApprovalHistory_Returns200() throws Exception {
         OrderApprovalHistoryResponse item = OrderApprovalHistoryResponse.builder()

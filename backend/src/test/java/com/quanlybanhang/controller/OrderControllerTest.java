@@ -54,6 +54,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("OrderController - API Quản lý Đơn hàng (S2-07)")
 class OrderControllerTest {
 
+    @Test
+    @WithMockUser(authorities = {"ROLE_SALES_MANAGER", "ORDER_CREATE"})
+    void legacyCopyLastOrderAlsoRequiresViewPermission() throws Exception {
+        mockMvc.perform(post("/api/orders/dealer/1/last-order-to-draft"))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verify(orderService, org.mockito.Mockito.never()).copyLastOrderToDraft(any(), any());
+    }
+
+    @Test
+    @WithMockUser(authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_IMPORT"})
+    void importPermissionDoesNotAllowExportingAnOrder() throws Exception {
+        mockMvc.perform(put("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"EXPORTED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     @Autowired
     private WebApplicationContext context;
 
@@ -99,7 +116,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL"})
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CANCEL", "ORDER_VIEW"})
     @DisplayName("GET /api/orders trả về danh sách đơn hàng")
     void getAllOrders_Authenticated_Returns200() throws Exception {
         OrderResponse resp = OrderResponse.builder()
@@ -301,6 +318,34 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "warehouse_user", authorities = {"ROLE_WAREHOUSE_STAFF"})
+    @DisplayName("Cập nhật giao hàng không có WAREHOUSE_EXPORT bị chặn 403 theo ma trận (S4-06)")
+    void updateOrderDelivery_WithoutExportPermission_Returns403() throws Exception {
+        mockMvc.perform(put("/api/orders/1/delivery")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DELIVERED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "warehouse_user", authorities = {"WAREHOUSE_EXPORT"})
+    @DisplayName("Cập nhật giao hàng có WAREHOUSE_EXPORT được phép (S4-06)")
+    void updateOrderDelivery_WithExportPermission_Returns200() throws Exception {
+        OrderResponse response = OrderResponse.builder()
+                .id(1L)
+                .orderCode("DH-001")
+                .status("DELIVERED")
+                .build();
+        when(orderService.updateOrderDelivery(eq(1L), any(), any())).thenReturn(response);
+
+        mockMvc.perform(put("/api/orders/1/delivery")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DELIVERED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+    }
+
+    @Test
     @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "ORDER_CREATE"})
     @DisplayName("POST /api/orders/line-item/pricing thành công -> 200 OK")
     void calculateLineItemPricing_Success_Returns200() throws Exception {
@@ -432,7 +477,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-02] POST /api/orders/check-debt - Kiểm tra công nợ khi tạo đơn")
     void checkDebt_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderDebtCheckResponse checkResponse = com.quanlybanhang.dto.response.OrderDebtCheckResponse.builder()
@@ -477,7 +522,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-03] POST /api/orders/check-inventory - Kiểm tra nhanh tồn khả dụng và gợi ý số lượng tối đa")
     void checkInventory_Post_Success() throws Exception {
         com.quanlybanhang.dto.response.OrderInventoryCheckResponse checkResp = com.quanlybanhang.dto.response.OrderInventoryCheckResponse.builder()
@@ -564,7 +609,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-09] POST /api/orders/{id}/copy - Sao chép đơn hàng thành đơn mới ở trạng thái DRAFT")
     void copyOrder_Returns201Created() throws Exception {
         OrderResponse copyResp = OrderResponse.builder()
@@ -586,7 +631,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE"})
+    @WithMockUser(username = "sales01", authorities = {"ROLE_SALES", "ORDER_CREATE", "ORDER_VIEW"})
     @DisplayName("[S4-09] POST /api/orders/{id}/copy-to-draft - Sao chép các dòng hàng sang draft của người dùng")
     void copyOrderToDraft_Returns200Ok() throws Exception {
         com.fasterxml.jackson.databind.node.ObjectNode draftNode = objectMapper.createObjectNode();

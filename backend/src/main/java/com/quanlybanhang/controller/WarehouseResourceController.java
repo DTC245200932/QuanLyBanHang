@@ -26,7 +26,7 @@ public class WarehouseResourceController {
     // ── /api/warehouses ──
 
     @GetMapping("/api/warehouses")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getAllWarehouses(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Boolean active) {
@@ -35,14 +35,14 @@ public class WarehouseResourceController {
     }
 
     @GetMapping("/api/warehouses/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getWarehouseById(@PathVariable Long id) {
         WarehouseResponse warehouse = warehouseService.getWarehouseById(id);
         return ApiResponse.success("Lấy chi tiết kho thành công", warehouse);
     }
 
     @PostMapping("/api/warehouses")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse createWarehouse(
             @Valid @RequestBody WarehouseRequest request,
             Principal principal) {
@@ -52,7 +52,7 @@ public class WarehouseResourceController {
     }
 
     @PutMapping("/api/warehouses/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse updateWarehouse(
             @PathVariable Long id,
             @Valid @RequestBody WarehouseRequest request,
@@ -63,7 +63,7 @@ public class WarehouseResourceController {
     }
 
     @DeleteMapping("/api/warehouses/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse deleteWarehouse(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         warehouseService.deleteWarehouse(id, username);
@@ -71,7 +71,7 @@ public class WarehouseResourceController {
     }
 
     @GetMapping("/api/warehouses/{warehouseId}/locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLocationsByWarehouse(
             @PathVariable Long warehouseId,
             @RequestParam(required = false) LocationType type,
@@ -83,7 +83,7 @@ public class WarehouseResourceController {
     }
 
     @PostMapping("/api/warehouses/{warehouseId}/locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse createLocationForWarehouse(
             @PathVariable Long warehouseId,
             @Valid @RequestBody WarehouseLocationRequest request,
@@ -96,7 +96,7 @@ public class WarehouseResourceController {
     // ── /api/warehouse-locations ──
 
     @GetMapping("/api/warehouse-locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLocations(
             @RequestParam(required = false) Long warehouseId,
             @RequestParam(required = false) LocationType type,
@@ -108,14 +108,14 @@ public class WarehouseResourceController {
     }
 
     @GetMapping("/api/warehouse-locations/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_VIEW') or hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'SALES', 'ADMIN', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLocationById(@PathVariable Long id) {
         WarehouseLocationResponse location = warehouseService.getLocationById(id);
         return ApiResponse.success("Lấy chi tiết vị trí lưu kho thành công", location);
     }
 
     @PostMapping("/api/warehouse-locations")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse createLocation(
             @Valid @RequestBody WarehouseLocationRequest request,
             Principal principal) {
@@ -125,7 +125,7 @@ public class WarehouseResourceController {
     }
 
     @PutMapping("/api/warehouse-locations/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse updateLocation(
             @PathVariable Long id,
             @Valid @RequestBody WarehouseLocationRequest request,
@@ -136,7 +136,7 @@ public class WarehouseResourceController {
     }
 
     @DeleteMapping("/api/warehouse-locations/{id}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse deleteLocation(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         warehouseService.deleteLocation(id, username);
@@ -144,7 +144,7 @@ public class WarehouseResourceController {
     }
 
     @PostMapping("/api/warehouse-locations/{locationId}/products")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse assignProductToLocation(
             @PathVariable Long locationId,
             @Valid @RequestBody ProductLocationRequest request,
@@ -155,7 +155,7 @@ public class WarehouseResourceController {
     }
 
     @DeleteMapping("/api/warehouse-locations/{locationId}/products/{productId}")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAnyRole('WAREHOUSE_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse removeProductFromLocation(
             @PathVariable Long locationId,
             @PathVariable Long productId,

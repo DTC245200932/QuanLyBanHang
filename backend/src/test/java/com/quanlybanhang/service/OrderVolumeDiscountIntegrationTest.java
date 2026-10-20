@@ -77,6 +77,7 @@ class OrderVolumeDiscountIntegrationTest {
                 .id(1L)
                 .name("Đại lý Cấp 1 Minh Phát")
                 .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .warehouse(com.quanlybanhang.model.Warehouse.builder().id(1L).code("TEST-WH").name("Kho kiểm thử").build())
                 .build();
     }
 

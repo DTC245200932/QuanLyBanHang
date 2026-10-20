@@ -102,8 +102,8 @@ class DealerDebtServiceTest {
     @DisplayName("Tính toán công nợ hiện tại và hạn mức còn lại chính xác khi đại lý chưa có nợ")
     void getDealerDebtInfo_noOrders_returnsZeroDebt() {
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
-        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(BigDecimal.ZERO);
-        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses())).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses())).thenReturn(List.of());
 
         DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
 
@@ -120,7 +120,7 @@ class DealerDebtServiceTest {
     @DisplayName("Tính toán công nợ hiện tại và hạn mức còn lại chính xác khi đại lý có đơn hàng ghi sổ")
     void getDealerDebtInfo_withRecordedOrders_calculatesRemaining() {
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
-        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("35000000"));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses())).thenReturn(new BigDecimal("35000000"));
 
         Order order = Order.builder()
                 .id(10L)
@@ -130,7 +130,7 @@ class DealerDebtServiceTest {
                 .status("RECORDED")
                 .build();
 
-        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of(order));
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses())).thenReturn(List.of(order));
 
         DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
 
@@ -144,7 +144,7 @@ class DealerDebtServiceTest {
     @DisplayName("Phát hiện khoản nợ quá hạn khi đơn hàng ghi sổ đã vượt quá số ngày nợ cho phép (maxDebtDays)")
     void getDealerDebtInfo_withOverdueOrder_flagsOverdueAndBlocked() {
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
-        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("20000000"));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses())).thenReturn(new BigDecimal("20000000"));
 
         // maxDebtDays = 30, đơn phát sinh từ 45 ngày trước -> quá hạn 15 ngày
         Order overdueOrder = Order.builder()
@@ -155,7 +155,7 @@ class DealerDebtServiceTest {
                 .status("RECORDED")
                 .build();
 
-        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of(overdueOrder));
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses())).thenReturn(List.of(overdueOrder));
 
         DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
 
@@ -170,7 +170,7 @@ class DealerDebtServiceTest {
     @Test
     @DisplayName("Chặn tạo đơn hoàn toàn khi đại lý có khoản nợ quá hạn quá số ngày cho phép")
     void validateDealerCanCreateOrder_throwsExceptionWhenOverdue() {
-        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("10000000"));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses())).thenReturn(new BigDecimal("10000000"));
 
         Order overdueOrder = Order.builder()
                 .id(11L)
@@ -180,7 +180,7 @@ class DealerDebtServiceTest {
                 .status("RECORDED")
                 .build();
 
-        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of(overdueOrder));
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses())).thenReturn(List.of(overdueOrder));
 
         assertThatThrownBy(() -> dealerDebtService.validateDealerCanCreateOrder(dealer))
                 .isInstanceOf(DealerDebtOverdueException.class)
@@ -203,8 +203,8 @@ class DealerDebtServiceTest {
     @DisplayName("Kiểm tra sơ bộ vượt hạn mức công nợ: trả về cảnh báo và đánh dấu cần duyệt")
     void checkOrderDebt_exceedsLimit_requiresApproval() {
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
-        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("40000000"));
-        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses())).thenReturn(new BigDecimal("40000000"));
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses())).thenReturn(List.of());
 
         // Hạn mức 50tr, nợ hiện tại 40tr, đơn mới 15tr -> tổng 55tr > 50tr
         OrderDebtCheckRequest request = OrderDebtCheckRequest.builder()
@@ -224,8 +224,8 @@ class DealerDebtServiceTest {
     @DisplayName("Kiểm tra sơ bộ không vượt hạn mức công nợ: không yêu cầu duyệt")
     void checkOrderDebt_withinLimit_notRequiresApproval() {
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
-        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(new BigDecimal("20000000"));
-        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses())).thenReturn(new BigDecimal("20000000"));
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses())).thenReturn(List.of());
 
         // Hạn mức 50tr, nợ hiện tại 20tr, đơn mới 10tr -> tổng 30tr <= 50tr
         OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(1L, new BigDecimal("10000000"));
@@ -241,8 +241,8 @@ class DealerDebtServiceTest {
         authenticate("sales1", "ROLE_SALES");
         when(userRepository.findByUsername("sales1")).thenReturn(Optional.of(salesUser1));
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
-        when(orderRepository.sumTotalAmountByDealerIdAndStatus(1L, "RECORDED")).thenReturn(BigDecimal.ZERO);
-        when(orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(1L, "RECORDED")).thenReturn(List.of());
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses())).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses())).thenReturn(List.of());
 
         // Sales1 phụ trách đại lý 1 -> xem được bình thường
         DealerDebtResponse res = dealerDebtService.getDealerDebtInfo(1L);

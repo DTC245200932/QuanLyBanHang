@@ -78,9 +78,9 @@ class DealerControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"ACCOUNTANT", "SALES_MANAGER", "ADMIN", "SALES"})
-    @DisplayName("Các vai trò hợp lệ được phép xem danh sách đại lý (200 OK)")
-    void allowedRolesCanReadDealers(String role) throws Exception {
+    @ValueSource(strings = {"CUSTOMER_VIEW", "ORDER_VIEW"})
+    @DisplayName("Quyền CUSTOMER_VIEW hoặc ORDER_VIEW được phép xem danh sách đại lý (200 OK)")
+    void allowedPermissionsCanReadDealers(String permission) throws Exception {
         when(dealerService.getAllDealers(any(), any(), any(), any(), any(), any(), any())).thenReturn(
                 new PageImpl<>(List.of(DealerResponse.builder()
                         .id(1L)
@@ -92,7 +92,8 @@ class DealerControllerTest {
                         .build()))
         );
 
-        mvc.perform(get("/api/dealers").with(user("reader").roles(role)))
+        mvc.perform(get("/api/dealers").with(user("reader")
+                        .authorities(new SimpleGrantedAuthority(permission))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].code").value("DL001"))
                 .andExpect(jsonPath("$.data.content[0].name").value("Đại lý Cấp 1 Minh Phát"))
@@ -115,7 +116,7 @@ class DealerControllerTest {
 
         when(dealerService.createDealer(any(), any())).thenReturn(created);
 
-        mvc.perform(post("/api/dealers").with(user("staff").roles(role))
+        mvc.perform(post("/api/dealers").with(user("staff").roles(role).authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_CREATE")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {
@@ -185,7 +186,7 @@ class DealerControllerTest {
         doThrow(new DealerHasTransactionsException("DL001", "Đại lý Minh Phát"))
                 .when(dealerService).deleteDealer(eq(1L), any());
 
-        mvc.perform(delete("/api/dealers/1").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(delete("/api/dealers/1").with(user("accountant").roles("ACCOUNTANT").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value(
@@ -195,7 +196,7 @@ class DealerControllerTest {
     @Test
     @DisplayName("Dữ liệu khai báo thiếu mã hoặc tên đại lý bị từ chối (400 Bad Request)")
     void invalidDataRejected() throws Exception {
-        mvc.perform(post("/api/dealers").with(user("accountant").roles("ACCOUNTANT"))
+        mvc.perform(post("/api/dealers").with(user("accountant").roles("ACCOUNTANT").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_CREATE")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {
@@ -213,7 +214,8 @@ class DealerControllerTest {
     @Test
     @DisplayName("Khai báo số dòng mỗi trang vượt quá 200 bị từ chối")
     void excessivePageSizeRejected() throws Exception {
-        mvc.perform(get("/api/dealers?size=250").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(get("/api/dealers?size=250").with(user("accountant")
+                        .authorities(new SimpleGrantedAuthority("CUSTOMER_VIEW"))))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(dealerService);
@@ -229,7 +231,8 @@ class DealerControllerTest {
                         .assignedUsers(List.of())
                         .build());
 
-        mvc.perform(get("/api/dealers/options").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(get("/api/dealers/options").with(user("accountant")
+                        .authorities(new SimpleGrantedAuthority("CUSTOMER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.customerGroups[0].value").value("DAI_LY_CAP_1"));
     }
@@ -237,7 +240,7 @@ class DealerControllerTest {
     @Test
     @DisplayName("Khai báo số ngày nợ tối đa âm bị từ chối (400 Bad Request)")
     void negativeMaxDebtDaysRejected() throws Exception {
-        mvc.perform(post("/api/dealers").with(user("accountant").roles("ACCOUNTANT"))
+        mvc.perform(post("/api/dealers").with(user("accountant").roles("ACCOUNTANT").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_CREATE")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {
@@ -268,7 +271,7 @@ class DealerControllerTest {
 
         when(dealerService.lockDealer(eq(1L), eq("Mất khả năng thanh toán"), any())).thenReturn(lockedDealer);
 
-        mvc.perform(post("/api/dealers/1/lock").with(user("accountant").roles(role))
+        mvc.perform(post("/api/dealers/1/lock").with(user("accountant").roles(role).authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {
@@ -286,7 +289,7 @@ class DealerControllerTest {
     @Test
     @DisplayName("Khoá giao dịch đại lý bắt buộc phải nhập lý do (S3-07)")
     void lockDealerRequiresReason() throws Exception {
-        mvc.perform(post("/api/dealers/1/lock").with(user("accountant").roles("ACCOUNTANT"))
+        mvc.perform(post("/api/dealers/1/lock").with(user("accountant").roles("ACCOUNTANT").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {
@@ -333,7 +336,7 @@ class DealerControllerTest {
 
         when(dealerService.unlockDealer(eq(1L), any())).thenReturn(unlockedDealer);
 
-        mvc.perform(post("/api/dealers/1/unlock").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(post("/api/dealers/1/unlock").with(user("accountant").roles("ACCOUNTANT").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.locked").value(false))
@@ -353,7 +356,9 @@ class DealerControllerTest {
                         .build()
         ));
 
-        mvc.perform(get("/api/dealers/1/in-progress-orders").with(user("accountant").roles("ACCOUNTANT")))
+        mvc.perform(get("/api/dealers/1/in-progress-orders")
+                        .with(user("accountant").roles("ACCOUNTANT")
+                                .authorities(new SimpleGrantedAuthority("ORDER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].orderCode").value("DH-100"))
@@ -371,7 +376,7 @@ class DealerControllerTest {
         when(dealerService.assignDealer(eq(1L), any(), any())).thenReturn(res);
 
         mvc.perform(post("/api/dealers/1/assign")
-                        .with(user("sales_mgr").roles("SALES_MANAGER"))
+                        .with(user("sales_mgr").roles("SALES_MANAGER").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {
@@ -398,7 +403,7 @@ class DealerControllerTest {
         when(dealerService.bulkHandover(any(), any())).thenReturn(res);
 
         mvc.perform(post("/api/dealers/handover/bulk")
-                        .with(user("sales_mgr").roles("SALES_MANAGER"))
+                        .with(user("sales_mgr").roles("SALES_MANAGER").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {
@@ -439,7 +444,7 @@ class DealerControllerTest {
                 List.of(DealerResponse.builder().id(1L).code("DL01").handoverRequired(true).build())
         );
 
-        mvc.perform(get("/api/dealers/handover/pending").with(user("sales_mgr").roles("SALES_MANAGER")))
+        mvc.perform(get("/api/dealers/handover/pending").with(user("sales_mgr").roles("SALES_MANAGER").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].code").value("DL01"))
                 .andExpect(jsonPath("$.data[0].handoverRequired").value(true));
@@ -459,7 +464,7 @@ class DealerControllerTest {
                         .build()))
         );
 
-        mvc.perform(get("/api/dealers/handover/history").with(user("reader").roles(role)))
+        mvc.perform(get("/api/dealers/handover/history").with(user("reader").roles(role).authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].dealerCode").value("DL01"))
                 .andExpect(jsonPath("$.data.content[0].fromUsername").value("sales_old"));
@@ -532,7 +537,9 @@ class DealerControllerTest {
         var history = com.quanlybanhang.dto.response.DealerPurchaseHistoryResponse.builder()
                 .productId(10L).name("Sản phẩm đã mua").avgQty(new java.math.BigDecimal("5")).build();
         when(dealerService.getDealerPurchaseHistory(1L, 3, false)).thenReturn(List.of(history));
-        mvc.perform(get("/api/dealers/1/purchase-history?months=3").with(user("sales01").roles("SALES")))
+        mvc.perform(get("/api/dealers/1/purchase-history?months=3").with(user("sales01")
+                        .authorities(new SimpleGrantedAuthority("ROLE_SALES"),
+                                new SimpleGrantedAuthority("ORDER_VIEW"))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].productId").value(10))
                 .andExpect(jsonPath("$.data[0].avgQty").value(5));
     }

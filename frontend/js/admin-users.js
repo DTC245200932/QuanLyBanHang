@@ -1,6 +1,7 @@
-(() => {
+(async () => {
   if (!Auth.requireLogin()) return;
-  if (!Auth.hasRole("ROLE_ADMIN")) { location.href = "/error?status=403"; return; }
+  await Auth.ready;
+  if (!Auth.hasPermission("USER_VIEW")) { location.href = "/error?status=403"; return; }
   const roleLabels = {ROLE_ADMIN:"Quản trị hệ thống",ROLE_SALES_MANAGER:"Quản lý kinh doanh",ROLE_WAREHOUSE_MANAGER:"Quản lý kho",ROLE_SALES:"Nhân viên kinh doanh",ROLE_WAREHOUSE_STAFF:"Thủ kho",ROLE_ACCOUNTANT:"Kế toán",ROLE_VIEWER:"Chỉ xem",ROLE_DEALER:"Đại lý"};
   const state = { page:0, totalPages:1, users:[], options:{roles:[],warehouses:[],territories:[],dealers:[]} };
   const $ = (id) => document.getElementById(id);
@@ -54,11 +55,49 @@
   $("create-user").addEventListener("click",()=>openModal());document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",closeModal));$("filters").addEventListener("submit",e=>{e.preventDefault();state.page=0;loadUsers()});$("prev-page").addEventListener("click",()=>{if(state.page>0){state.page--;loadUsers()}});$("next-page").addEventListener("click",()=>{if(state.page<state.totalPages-1){state.page++;loadUsers()}});
   const permissionsModal=$("permissions-modal");let permissionMatrix={};
   async function loadPermissions(){const response=await Auth.apiFetch("/admin/permissions");const result=await response.json();if(!response.ok||!result.success)throw new Error(result.message||"Không tải được ma trận quyền");const data=result.data||{};permissionMatrix=data.matrix||{};const catalog=(data.permissions||[]).slice().sort((a,b)=>a.code.localeCompare(b.code));$("permissions-grid").innerHTML=Object.entries(permissionMatrix).map(([role,selected])=>{const isAdmin=role==="ROLE_ADMIN";return `<section class="permission-role" data-permission-role="${escapeHtml(role)}"><h3>${escapeHtml(roleLabels[role]||role)}</h3>${isAdmin?'<p class="user-meta">Quản trị viên luôn có toàn bộ quyền hệ thống.</p>':''}<div class="permission-options">${catalog.map(permission=>`<label class="permission-option"><input type="checkbox" value="${escapeHtml(permission.code)}" ${selected.includes(permission.code)?"checked":""} ${isAdmin?"disabled":""}><span>${escapeHtml(permission.label||permission.code)}</span></label>`).join("")}</div></section>`}).join("")}
-  function showPermissionMessage(message){$("permissions-message").textContent=message;$("permissions-message").hidden=!message}
+  function showPermissionMessage(message, type = "error") {
+    const box = $("permissions-message");
+    box.textContent = message;
+    box.hidden = !message;
+    box.classList.toggle("form-message--success", type === "success");
+    box.classList.toggle("form-message--info", type === "info");
+    box.setAttribute("role", type === "error" ? "alert" : "status");
+  }
   $("manage-permissions").addEventListener("click",async()=>{permissionsModal.hidden=false;showPermissionMessage("");try{await loadPermissions()}catch(error){showPermissionMessage(error.message)}});
   document.querySelectorAll("[data-close-permissions]").forEach(button=>button.addEventListener("click",()=>{permissionsModal.hidden=true}));
-   $("save-permissions").addEventListener("click",async()=>{const button=$("save-permissions");button.disabled=true;showPermissionMessage("");try{for(const section of document.querySelectorAll("[data-permission-role]")){const role=section.dataset.permissionRole;if(role==="ROLE_ADMIN")continue;const permissions=[...section.querySelectorAll("input:checked")].map(input=>input.value);const response=await Auth.apiFetch(`/admin/permissions/${role}`,{method:"PUT",body:JSON.stringify(permissions)});const result=await response.json();if(!response.ok||!result.success)throw new Error(result.message||`Không lưu được ${role}`)}showPermissionMessage("Đã lưu ma trận quyền.")}catch(error){showPermissionMessage(error.message)}finally{button.disabled=false}});
-  $("reset-permissions").addEventListener("click",async()=>{if(!confirm("Khôi phục toàn bộ quyền về mặc định?"))return;const response=await Auth.apiFetch("/admin/permissions/reset",{method:"POST"});const result=await response.json();if(!response.ok||!result.success){showPermissionMessage(result.message||"Không thể khôi phục");return}await loadPermissions();showPermissionMessage("Đã khôi phục quyền mặc định.")});
+  $("save-permissions").addEventListener("click", async () => {
+    const button = $("save-permissions");
+    button.disabled = true;
+    showPermissionMessage("");
+    try {
+      const changes = {};
+      document.querySelectorAll("[data-permission-role]").forEach(section => {
+        const role = section.dataset.permissionRole;
+        if (role === "ROLE_ADMIN") return;
+        const selected = [...section.querySelectorAll("input:checked")].map(input => input.value).sort();
+        if (JSON.stringify(selected) !== JSON.stringify([...(permissionMatrix[role] || [])].sort())) changes[role] = selected;
+      });
+      if (!Object.keys(changes).length) { showPermissionMessage("Không có quyền nào thay đổi.", "info"); return; }
+      const response = await Auth.apiFetch("/admin/permissions", { method: "PUT", body: JSON.stringify(changes) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Không lưu được ma trận quyền");
+      permissionMatrix = result.data?.matrix || { ...permissionMatrix, ...changes };
+      await Auth.syncPermissions();
+      showPermissionMessage("Đã lưu ma trận quyền.", "success");
+    } catch (error) {
+      showPermissionMessage(error.message);
+    } finally { button.disabled = false; }
+  });
+  $("manage-permissions").hidden = !Auth.hasRole("ROLE_ADMIN");
+  function syncUserActions() {
+    const mayCreate = Auth.hasPermission("USER_CREATE") && Auth.hasPermission("USER_ASSIGN_ROLE");
+    $("create-user").hidden = !mayCreate;
+    $("import-users").hidden = !mayCreate;
+    document.querySelectorAll('#role-options input').forEach(input => { input.disabled = !Auth.hasPermission("USER_ASSIGN_ROLE"); });
+    renderUsers();
+  }
+  window.addEventListener("auth:permissions-changed", syncUserActions);
+  $("reset-permissions").addEventListener("click",async()=>{if(!confirm("Khôi phục toàn bộ quyền về mặc định?"))return;const response=await Auth.apiFetch("/admin/permissions/reset",{method:"POST"});const result=await response.json();if(!response.ok||!result.success){showPermissionMessage(result.message||"Không thể khôi phục");return}await loadPermissions();showPermissionMessage("Đã khôi phục quyền mặc định.", "success")});
   const importModal=$("import-modal");let importRows=[];
   const splitList=value=>String(value||"").split(/[;,|]/).map(item=>item.trim()).filter(Boolean);
   const splitIds=value=>splitList(value).map(Number).filter(Number.isFinite);
@@ -69,5 +108,5 @@
   $("download-user-template").addEventListener("click",()=>{const rows=[{HoTen:"Nguyễn Văn A",TaiKhoan:"nv.a",Email:"nva@congty.vn",DienThoai:"0901234567",VaiTro:"ROLE_SALES",KhoIds:"",DiaBanIds:"1"}];const sheet=XLSX.utils.json_to_sheet(rows);const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,"NguoiDung");XLSX.writeFile(book,"mau-nhap-nguoi-dung.xlsx")});
   $("user-import-file").addEventListener("change",async event=>{const file=event.target.files?.[0];if(!file)return;showImportMessage("");try{const workbook=XLSX.read(await file.arrayBuffer(),{type:"array"});const sheet=workbook.Sheets[workbook.SheetNames[0]];importRows=XLSX.utils.sheet_to_json(sheet,{defval:""}).map(normalizeImportRow);const response=await Auth.apiFetch("/admin/users/import/preview",{method:"POST",body:JSON.stringify(importRows)});const result=await response.json();if(!response.ok||!result.success)throw new Error(result.message||"Không xem trước được tệp");renderImportPreview(result.data)}catch(error){importRows=[];$("confirm-user-import").disabled=true;showImportMessage(error.message)}});
   $("confirm-user-import").addEventListener("click",async()=>{const button=$("confirm-user-import");button.disabled=true;showImportMessage("");try{const response=await Auth.apiFetch("/admin/users/import",{method:"POST",body:JSON.stringify(importRows)});const result=await response.json();if(!response.ok||!result.success)throw new Error(result.message||"Không nhập được dữ liệu");renderImportPreview(result.data);showImportMessage(result.message);await loadUsers()}catch(error){showImportMessage(error.message)}finally{button.disabled=false}});
-  loadOptions().then(loadUsers).catch(e=>{$("users-body").innerHTML=`<tr><td colspan="5" class="empty">${escapeHtml(e.message)}</td></tr>`});
+  loadOptions().then(loadUsers).then(syncUserActions).catch(e=>{$("users-body").innerHTML=`<tr><td colspan="5" class="empty">${escapeHtml(e.message)}</td></tr>`});
 })();

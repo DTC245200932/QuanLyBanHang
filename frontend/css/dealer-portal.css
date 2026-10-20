@@ -8,9 +8,16 @@
   background-color: var(--surface);
   color: var(--ink-900);
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 80px; /* Space for sticky bottom bar on mobile */
+}
+
+/* The shared shell owns outer width/gutters; reserve room for the mobile cart
+   inside that shell, so it also becomes inert while the mobile menu is open. */
+.portal-shell { padding-bottom: 80px; }
+.portal-shell .topbar .dp-dealer-chip { background: var(--teal-soft); max-width: 200px; }
+.portal-shell .topbar .dp-dealer-chip__name { color: var(--ink-900); }
+.portal-shell .topbar .dp-cart-badge { border-color: var(--surface); }
+@media (max-width: 768px) {
+  .portal-shell #dp-topbar-dealer-summary { display: none; }
 }
 
 /* ── Topbar ──────────────────────────────────────────────── */
@@ -184,10 +191,6 @@
 /* ── Main Container ──────────────────────────────────────── */
 
 .dp-main {
-  max-width: 1080px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -736,9 +739,7 @@
   .dp-mobile-bottom-bar {
     display: none;
   }
-  .dealer-portal-body {
-    padding-bottom: 32px;
-  }
+  .portal-shell { padding-bottom: 0; }
 }
 
 /* ── Cart Drawer / Modal ─────────────────────────────────── */
@@ -1166,7 +1167,6 @@
     padding: 8px 12px;
   }
   .dp-main {
-    padding: 12px;
     gap: 12px;
   }
   .dp-products-grid {

@@ -53,6 +53,7 @@ class SprintMergeIntegrationTest {
     @Autowired SupplierRepository suppliers;
     @Autowired PasswordEncoder passwords;
     @Autowired RolePermissionConfig matrix;
+    @Autowired OrderRepository orders;
 
     Warehouse warehouse, destination;
     Product product;
@@ -94,6 +95,182 @@ class SprintMergeIntegrationTest {
     }
 
     @Test
+    void debtAndOverdueDoNotDisappearWhenFulfillmentStatusChanges() throws Exception {
+        String admin = login("admin");
+        long id = call(post("/api/orders"), managerToken, orderBody(1, false), 201).at("/data/id").asLong();
+        for (String status : List.of("PICKING", "EXPORTED", "DELIVERED", "CLOSED")) {
+            call(put("/api/orders/" + id + "/status"), admin, Map.of("status", status), 200);
+            assertThat(call(get("/api/dealers/" + dealer.getId() + "/debt"), managerToken, null, 200)
+                    .at("/data/currentDebt").decimalValue()).isEqualByComparingTo("480000");
+        }
+        Order closed = orders.findById(id).orElseThrow();
+        closed.setRecordedAt(java.time.LocalDateTime.now().minusDays(5));
+        orders.save(closed);
+        dealer.setMaxDebtDays(1);
+        dealers.save(dealer);
+        assertThat(call(get("/api/dealers/" + dealer.getId() + "/debt"), managerToken, null, 200)
+                .at("/data/hasOverdueDebt").asBoolean()).isTrue();
+        call(post("/api/orders"), managerToken, orderBody(1, false), 400);
+    }
+
+    @Test
+    void dealerWarehouseCannotBeOverriddenOrReplacedWithAnArbitraryDefault() throws Exception {
+        var body = new HashMap<>(orderBody(1, false));
+        body.put("warehouseId", destination.getId());
+        call(post("/api/orders"), managerToken, body, 403);
+        call(post("/api/orders/calculate"), managerToken, body, 403);
+        call(post("/api/orders/check-inventory"), managerToken, Map.of("dealerId", dealer.getId(),
+                "warehouseId", destination.getId(), "productId", product.getId(), "quantity", 1, "unit", "lon"), 403);
+        dealer.setWarehouse(null);
+        dealers.save(dealer);
+        call(post("/api/orders"), managerToken, orderBody(1, false), 400);
+        assertThat(stock().getReservedQuantity()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void portalPreviewMatchesCreationAndIgnoresForgedPrices() throws Exception {
+        String key = UUID.randomUUID().toString().substring(0, 8);
+        call(post("/api/volume-discounts"), managerToken, Map.of("code", "DISC-" + key, "name", "Chiết khấu kiểm thử",
+                "targetType", "PRODUCT", "productId", product.getId(), "customerGroup", "DAI_LY_CAP_1",
+                "tiers", List.of(Map.of("minQuantity", 1, "discountType", "PERCENTAGE", "discountValue", 10))), 201);
+        JsonNode preview = call(post("/api/portal/orders/preview"), dealerToken, orderBody(2, true), 200).get("data");
+        assertThat(preview.at("/pricing/subtotalAmount").decimalValue()).isEqualByComparingTo("960000");
+        assertThat(preview.at("/pricing/discountAmount").decimalValue()).isEqualByComparingTo("96000");
+        JsonNode created = call(post("/api/portal/orders"), dealerToken, orderBody(2, true), 201).get("data");
+        assertThat(created.get("totalAmount").decimalValue()).isEqualByComparingTo(preview.at("/pricing/totalAmount").decimalValue());
+        assertThat(created.get("status").asText()).isEqualTo("PENDING_APPROVAL");
+        assertThat(stock().getReservedQuantity()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void confirmationUsesItsOwnMatrixPermissionAndAssignedDealerScope() throws Exception {
+        long id = call(post("/api/portal/orders"), dealerToken, orderBody(1, false), 201).at("/data/id").asLong();
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_SALES);
+        try {
+            call(put("/api/orders/" + id + "/approve"), salesToken, null, 403);
+            call(put("/api/orders/" + id + "/confirm"), strangerToken, null, 403);
+            assertThat(call(get("/api/orders/" + id), salesToken, null, 200).at("/data/canConfirmPortalOrder").asBoolean()).isTrue();
+            Set<Permission> revoked = EnumSet.copyOf(original);
+            revoked.remove(Permission.ORDER_CONFIRM);
+            matrix.updateRolePermissions(ERole.ROLE_SALES, revoked);
+            call(put("/api/orders/" + id + "/confirm"), salesToken, null, 403);
+            assertThat(call(get("/api/orders/" + id), salesToken, null, 200).at("/data/canConfirmPortalOrder").asBoolean()).isFalse();
+            matrix.updateRolePermissions(ERole.ROLE_SALES, original);
+            call(put("/api/orders/" + id + "/confirm"), salesToken, null, 200);
+            assertThat(stock().getReservedQuantity()).isEqualByComparingTo("24");
+        } finally { matrix.updateRolePermissions(ERole.ROLE_SALES, original); }
+    }
+
+    @Test
+    void confirmationCannotReplaceApprovalOfDebtViolations() throws Exception {
+        dealer.setDebtLimit(BigDecimal.ONE);
+        dealers.save(dealer);
+        long id = call(post("/api/portal/orders"), dealerToken, orderBody(1, false), 201).at("/data/id").asLong();
+        call(put("/api/orders/" + id + "/confirm"), salesToken, null, 400);
+        assertThat(stock().getReservedQuantity()).isEqualByComparingTo("0");
+        call(put("/api/orders/" + id + "/approve"), managerToken, null, 200);
+    }
+
+    @Test
+    void newCapabilitiesCanBeGrantedToAnotherRoleAndRevokedOnTheExistingToken() throws Exception {
+        User representative = createUser("confirm-" + UUID.randomUUID(), ERole.ROLE_VIEWER, null);
+        dealer.setAssignedUser(representative);
+        dealers.save(dealer);
+        String token = login(representative.getUsername());
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_VIEWER);
+        Set<Permission> dealerRights = matrix.getPermissions(ERole.ROLE_DEALER);
+        long id = call(post("/api/portal/orders"), dealerToken, orderBody(1, false), 201).at("/data/id").asLong();
+        try {
+            call(put("/api/orders/" + id + "/confirm"), token, null, 403);
+            Set<Permission> grant = EnumSet.copyOf(original);
+            grant.add(Permission.ORDER_CONFIRM);
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, grant);
+            assertThat(call(get("/api/orders/" + id), token, null, 200).at("/data/canConfirmPortalOrder").asBoolean()).isTrue();
+            call(put("/api/orders/" + id + "/confirm"), token, null, 200);
+            Set<Permission> revoke = EnumSet.copyOf(dealerRights);
+            revoke.remove(Permission.PRODUCT_VIEW);
+            matrix.updateRolePermissions(ERole.ROLE_DEALER, revoke);
+            call(post("/api/portal/orders/preview"), dealerToken, orderBody(1, false), 403);
+            matrix.updateRolePermissions(ERole.ROLE_DEALER, dealerRights);
+            call(post("/api/portal/orders/preview"), dealerToken, orderBody(1, false), 200);
+        } finally {
+            matrix.updateRolePermissions(ERole.ROLE_VIEWER, original);
+            matrix.updateRolePermissions(ERole.ROLE_DEALER, dealerRights);
+        }
+    }
+
+    @Test
+    void futureShippingDateDoesNotChangeTheCurrentOrderPrice() throws Exception {
+        var body = new HashMap<>(orderBody(1, false));
+        body.put("expectedDeliveryDate", LocalDate.now().plusDays(90).toString());
+        assertThat(call(post("/api/orders"), managerToken, body, 201).at("/data/totalAmount").decimalValue())
+                .isEqualByComparingTo("480000");
+    }
+
+    @Test
+    void pricingRespectsAssignedDealerAndInactiveProductsCannotBeOrdered() throws Exception {
+        Map<String, Object> line = Map.of("dealerId", dealer.getId(), "productId", product.getId(), "quantity", 1, "unit", "lon");
+        call(post("/api/orders/line-item/pricing"), strangerToken, line, 403);
+        product.setActive(false);
+        products.save(product);
+        call(post("/api/orders/line-item/pricing"), managerToken, line, 400);
+        call(post("/api/orders/calculate"), managerToken, orderBody(1, false), 400);
+        call(post("/api/orders"), managerToken, orderBody(1, false), 400);
+        call(post("/api/portal/orders/preview"), dealerToken, orderBody(1, false), 400);
+        call(post("/api/portal/orders"), dealerToken, orderBody(1, false), 400);
+        assertThat(stock().getReservedQuantity()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void warehouseNextStepRespectsRevocationAndAssignedWarehouse() throws Exception {
+        User worker = createUser("worker-" + UUID.randomUUID(), ERole.ROLE_WAREHOUSE_STAFF, null);
+        String token = login(worker.getUsername());
+        long id = call(post("/api/orders"), managerToken, orderBody(1, false), 201).at("/data/id").asLong();
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_WAREHOUSE_STAFF);
+        try {
+            assertThat(call(get("/api/orders/" + id), token, null, 200).at("/data/nextLifecycleStatus").asText()).isEqualTo("PICKING");
+            Set<Permission> revoked = EnumSet.copyOf(original);
+            revoked.remove(Permission.WAREHOUSE_EXPORT);
+            matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, revoked);
+            assertThat(call(get("/api/orders/" + id), token, null, 200).at("/data/nextLifecycleStatus").isNull()).isTrue();
+            call(put("/api/orders/" + id + "/status"), token, Map.of("status", "PICKING"), 403);
+            matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, original);
+            worker.setWarehouses(Set.of(destination));
+            users.save(worker);
+            assertThat(call(get("/api/orders/" + id), token, null, 200).at("/data/nextLifecycleStatus").isNull()).isTrue();
+            call(put("/api/orders/" + id + "/status"), token, Map.of("status", "PICKING"), 403);
+            worker.setWarehouses(Set.of(warehouse));
+            users.save(worker);
+            assertThat(call(get("/api/orders/" + id), token, null, 200).at("/data/nextLifecycleStatus").asText()).isEqualTo("PICKING");
+            call(put("/api/orders/" + id + "/status"), token, Map.of("status", "PICKING"), 200);
+        } finally { matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, original); }
+    }
+
+    @Test
+    void savedMatrixRevokesAndRestoresAccessOnTheSameLoginToken() throws Exception {
+        String admin = login("admin");
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_SALES_MANAGER);
+        Set<Permission> revoked = EnumSet.copyOf(original);
+        revoked.remove(Permission.FINANCE_VIEW_COST_PRICE);
+        try {
+            call(get("/api/finance/cost-price"), managerToken, null, 200);
+            call(put("/api/admin/permissions"), admin,
+                    Map.of("ROLE_SALES_MANAGER", revoked), 200);
+            call(get("/api/finance/cost-price"), managerToken, null, 403);
+            assertThat(call(get("/api/auth/permissions"), managerToken, null, 200)
+                    .at("/data/permissions").toString()).doesNotContain("FINANCE_VIEW_COST_PRICE");
+            call(get("/api/finance/cost-price"), admin, null, 200);
+            call(put("/api/admin/permissions"), admin,
+                    Map.of("ROLE_SALES_MANAGER", original), 200);
+            call(get("/api/finance/cost-price"), managerToken, null, 200);
+            call(put("/api/admin/permissions"), managerToken,
+                    Map.of("ROLE_SALES_MANAGER", original), 403);
+        } finally {
+            matrix.updateRolePermissions(ERole.ROLE_SALES_MANAGER, original);
+        }
+    }
+
+    @Test
     void portalOrderApprovalCancellationAndPdfUseTheSameDatabase() throws Exception {
         assertThat(call(get("/api/portal/profile"), dealerToken, null, 200).at("/data/id").asLong())
                 .isEqualTo(dealer.getId());
@@ -112,7 +289,8 @@ class SprintMergeIntegrationTest {
         assertThat(stock().getReservedQuantity()).isEqualByComparingTo("0");
         call(get("/api/portal/orders/" + id), dealerToken, null, 200);
         call(put("/api/orders/" + id + "/approve"), strangerToken, null, 403);
-        call(put("/api/orders/" + id + "/approve"), salesToken, null, 200);
+        call(put("/api/orders/" + id + "/approve"), salesToken, null, 403);
+        call(put("/api/orders/" + id + "/approve"), managerToken, null, 200);
         assertThat(stock().getReservedQuantity()).isEqualByComparingTo("48");
         JsonNode filtered = call(get("/api/orders").param("dealerId", dealer.getId().toString())
                 .param("status", "RECORDED").param("page", "0").param("size", "1"), managerToken, null, 200);

@@ -362,6 +362,82 @@ class OrderLifecycleServiceTest {
     }
 
     @Test
+    @DisplayName("Theo dõi đơn bị huỷ: Có nhánh Huỷ và giữ đúng bước dừng trước khi huỷ")
+    void getOrderTracking_CancelledOrder_ReturnsCancellationBranch() {
+        Order order = Order.builder()
+                .id(11L)
+                .orderCode("DH-TRACK-CANCELLED")
+                .status("CANCELLED")
+                .dealer(dealer)
+                .warehouse(warehouse)
+                .inventoryReserved(false)
+                .requiresApproval(false)
+                .createdBy("sales01")
+                .createdAt(LocalDateTime.of(2026, 10, 10, 8, 0))
+                .cancelReason("Khách đổi kế hoạch")
+                .cancelledBy("sales01")
+                .cancelledAt(LocalDateTime.of(2026, 10, 10, 8, 40))
+                .build();
+
+        OrderStatusHistory approved = OrderStatusHistory.builder()
+                .id(11L)
+                .order(order)
+                .previousStatus("PENDING_APPROVAL")
+                .newStatus("RECORDED")
+                .statusDisplayName("Đã duyệt")
+                .changedBy("sales01")
+                .changedAt(LocalDateTime.of(2026, 10, 10, 8, 30))
+                .build();
+        OrderStatusHistory cancelled = OrderStatusHistory.builder()
+                .id(12L)
+                .order(order)
+                .previousStatus("RECORDED")
+                .newStatus("CANCELLED")
+                .statusDisplayName("Huỷ")
+                .note("Huỷ đơn hàng. Lý do: Khách đổi kế hoạch")
+                .changedBy("sales01")
+                .changedAt(order.getCancelledAt())
+                .build();
+
+        when(orderRepository.findById(11L)).thenReturn(Optional.of(order));
+        when(orderStatusHistoryRepository.findByOrderIdOrderByChangedAtAsc(11L))
+                .thenReturn(List.of(approved, cancelled));
+
+        OrderTrackingResponse tracking = orderService.getOrderTracking(11L, "sales01");
+
+        assertThat(tracking.getCurrentStep()).isEqualTo(8);
+        assertThat(tracking.getSteps()).hasSize(8);
+        assertThat(tracking.getSteps().get(2).getState()).isEqualTo("COMPLETED");
+        assertThat(tracking.getSteps().get(3).getState()).isEqualTo("SKIPPED");
+        assertThat(tracking.getSteps().get(7).getStatus()).isEqualTo("CANCELLED");
+        assertThat(tracking.getSteps().get(7).getState()).isEqualTo("CANCELLED");
+        assertThat(tracking.getSteps().get(7).getNote()).contains("Khách đổi kế hoạch");
+    }
+
+    @Test
+    @DisplayName("Cập nhật giao hàng không được bỏ qua bước Đang soạn và Đã xuất")
+    void updateOrderDelivery_FromRecordedOrder_ThrowsLifecycleError() {
+        Order order = Order.builder()
+                .id(12L)
+                .orderCode("DH-DELIVERY-SKIP")
+                .status("RECORDED")
+                .warehouse(warehouse)
+                .build();
+        when(orderRepository.findById(12L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> orderService.updateOrderDelivery(
+                        12L,
+                        com.quanlybanhang.dto.request.OrderDeliveryUpdateRequest.builder()
+                                .status("DELIVERED")
+                                .build(),
+                        "warehouse01"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("bước kế tiếp");
+
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("Bảo mật RLS: SALES không được xem hoặc huỷ đơn thuộc đại lý không phụ trách và không do mình tạo")
     void salesUser_CannotAccessOtherSalesOrder_ThrowsAccessDeniedException() {
         // Thiết lập SecurityContext giả lập ROLE_SALES cho sales02

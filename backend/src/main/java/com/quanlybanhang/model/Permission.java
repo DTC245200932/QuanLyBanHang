@@ -33,6 +33,7 @@ public enum Permission {
     ORDER_EDIT("Sửa đơn hàng"),
     ORDER_CANCEL("Hủy đơn hàng"),
     ORDER_APPROVE("Duyệt đơn hàng"),
+    ORDER_CONFIRM("Xác nhận đơn đại lý"),
 
     // ── Kho & tồn kho ──
     WAREHOUSE_VIEW("Xem tồn kho"),

@@ -286,8 +286,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // 2. Tự động tìm và xác thực bảng giá hiệu lực phù hợp (S2-10, S4-01)
-        LocalDate queryDate = request.getExpectedDeliveryDate() != null
-                ? request.getExpectedDeliveryDate() : LocalDate.now();
+        // Match catalog and pricing preview: shipping date does not change order-day pricing.
+        LocalDate queryDate = LocalDate.now();
         PriceList priceList = resolveOrderPriceList(request.getPriceListId(), customerGroup, queryDate);
         if (customerGroup == null && priceList != null) {
             customerGroup = priceList.getCustomerGroup();
@@ -310,21 +310,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // 2c. Xác định kho phục vụ đại lý / xuất hàng (S4-03)
-        Warehouse warehouse = null;
-        if (request.getWarehouseId() != null && warehouseRepository != null) {
-            warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + request.getWarehouseId()));
-            if (!Boolean.TRUE.equals(warehouse.getActive())) {
-                throw new IllegalArgumentException("Kho đã ngừng hoạt động: " + warehouse.getName());
-            }
-        } else if (dealer != null && dealer.getWarehouse() != null) {
-            warehouse = dealer.getWarehouse();
-        } else if (warehouseRepository != null) {
-            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
-            if (!activeWarehouses.isEmpty()) {
-                warehouse = activeWarehouses.get(0);
-            }
-        }
+        Warehouse warehouse = resolveServingWarehouse(dealer, request.getWarehouseId(), true);
 
         // Nếu bảng giá được sử dụng, đánh dấu đã phát sinh đơn (hasOrders = true)
         if (priceList != null) {
@@ -844,10 +830,19 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
+        checkWarehouseAuthorizationForOrder(order, "cập nhật giao hàng");
+
         String oldStatus = order.getStatus();
-        if (request.getStatus() != null && !request.getStatus().isBlank()) {
-            order.setStatus(request.getStatus().trim());
-        } else if ("RECORDED".equalsIgnoreCase(order.getStatus())) {
+        String requestedStatus = request.getStatus() != null && !request.getStatus().isBlank()
+                ? normalizeLifecycleStatus(request.getStatus()) : null;
+        if (requestedStatus != null && !"DELIVERED".equals(requestedStatus)) {
+            throw new IllegalArgumentException("Cập nhật giao hàng chỉ được chuyển đơn sang trạng thái Đã giao");
+        }
+
+        boolean statusChanged = !"DELIVERED".equalsIgnoreCase(oldStatus);
+        if (statusChanged) {
+            // Không cho cập nhật giao hàng bỏ qua các bước Đang soạn và Đã xuất.
+            validateLifecycleTransition(oldStatus, "DELIVERED");
             order.setStatus("DELIVERED");
         }
 
@@ -879,6 +874,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
+        if (statusChanged) {
+            recordStatusHistory(saved, oldStatus, "DELIVERED", request.getDeliveryNote(), username);
+        }
         auditLogService.logAction("ORDER", saved.getOrderCode(), "DELIVERY_UPDATE",
                 oldStatus, saved.getStatus(),
                 "Cập nhật giao hàng: ngày " + saved.getActualDeliveryDate() + ", ghi chú: " + (saved.getDeliveryNote() != null ? saved.getDeliveryNote() : "Không"),
@@ -950,7 +948,7 @@ public class OrderServiceImpl implements OrderService {
         checkWarehouseAuthorizationForOrder(order, "cập nhật trạng thái");
 
         String oldStatus = order.getStatus();
-        String targetStatus = status.trim().toUpperCase();
+        String targetStatus = normalizeLifecycleStatus(status);
 
         if ("CANCELLED".equalsIgnoreCase(oldStatus)) {
             throw new IllegalArgumentException("Không thể cập nhật trạng thái của đơn hàng đã bị huỷ");
@@ -959,12 +957,9 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Vui lòng sử dụng chức năng huỷ đơn hàng kèm lý do huỷ");
         }
 
-        try {
-            OrderStatus.valueOf(targetStatus);
-        } catch (IllegalArgumentException e) {
-            if (!"PROCESSING".equals(targetStatus) && !"SHIPPED".equals(targetStatus) && !"COMPLETED".equals(targetStatus)) {
-                throw new IllegalArgumentException("Trạng thái đơn hàng không hợp lệ: " + status);
-            }
+        if (!Set.of("PICKING", "EXPORTED", "DELIVERED", "CLOSED").contains(targetStatus)) {
+            throw new IllegalArgumentException("Trạng thái vòng đời không hợp lệ: " + status
+                    + ". Duyệt, từ chối và trả lại phải dùng luồng phê duyệt riêng");
         }
 
         validateLifecycleTransition(oldStatus, targetStatus);
@@ -1025,51 +1020,68 @@ public class OrderServiceImpl implements OrderService {
         }
 
         List<OrderLifecycleStepResponse> steps = new ArrayList<>();
-        int currentStepOrder = resolveStepOrder(currentStatus);
+        OrderStatusHistory cancelledHistory = historyByStatus.get("CANCELLED");
+        int cancelledAtStep = cancelledHistory != null ? resolveStepOrder(cancelledHistory.getPreviousStatus()) : 0;
+        if (cancelledAtStep <= 0) {
+            cancelledAtStep = 1;
+        }
+        int currentStepOrder = isCancelled ? 8 : resolveStepOrder(currentStatus);
 
         // Step 1: DRAFT
         steps.add(buildStep(1, "DRAFT", "Nháp", "Đơn hàng đang ở trạng thái nháp",
-                resolveStepState(1, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(1, cancelledAtStep)
+                        : resolveStepState(1, currentStepOrder, false, isRejected, false),
                 historyByStatus.get("DRAFT"), order.getCreatedAt(), order.getCreatedBy()));
 
         // Step 2: PENDING_APPROVAL
         boolean skippedApproval = !wasApprovalRequired && !historyByStatus.containsKey("PENDING_APPROVAL");
         steps.add(buildStep(2, "PENDING_APPROVAL", "Chờ duyệt", "Chờ Quản lý kinh doanh duyệt (giá sàn / công nợ)",
-                skippedApproval ? "SKIPPED" : resolveStepState(2, currentStepOrder, isCancelled, isRejected, false),
+                skippedApproval ? "SKIPPED" : (isCancelled ? resolveCancelledStepState(2, cancelledAtStep)
+                        : resolveStepState(2, currentStepOrder, false, isRejected, false)),
                 historyByStatus.get("PENDING_APPROVAL"), null, null));
 
         // Step 3: APPROVED
         OrderStatusHistory approvedHist = historyByStatus.get("RECORDED");
         if (approvedHist == null) approvedHist = historyByStatus.get("APPROVED");
         steps.add(buildStep(3, "APPROVED", "Đã duyệt", "Đơn hàng đã được duyệt, sẵn sàng soạn hàng",
-                resolveStepState(3, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(3, cancelledAtStep)
+                        : resolveStepState(3, currentStepOrder, false, isRejected, false),
                 approvedHist, order.getRecordedAt(), order.getApprovedBy() != null ? order.getApprovedBy() : order.getCreatedBy()));
 
         // Step 4: PICKING
         OrderStatusHistory pickingHist = historyByStatus.get("PICKING");
         if (pickingHist == null) pickingHist = historyByStatus.get("PROCESSING");
         steps.add(buildStep(4, "PICKING", "Đang soạn hàng", "Kho đang thực hiện soạn hàng và đóng gói",
-                resolveStepState(4, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(4, cancelledAtStep)
+                        : resolveStepState(4, currentStepOrder, false, isRejected, false),
                 pickingHist, null, null));
 
         // Step 5: EXPORTED
         OrderStatusHistory exportedHist = historyByStatus.get("EXPORTED");
         if (exportedHist == null) exportedHist = historyByStatus.get("SHIPPED");
         steps.add(buildStep(5, "EXPORTED", "Đã xuất", "Đã xuất kho, đang vận chuyển đến đại lý",
-                resolveStepState(5, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(5, cancelledAtStep)
+                        : resolveStepState(5, currentStepOrder, false, isRejected, false),
                 exportedHist, null, null));
 
         // Step 6: DELIVERED
         steps.add(buildStep(6, "DELIVERED", "Đã giao", "Đã giao hàng thành công đến đại lý",
-                resolveStepState(6, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(6, cancelledAtStep)
+                        : resolveStepState(6, currentStepOrder, false, isRejected, false),
                 historyByStatus.get("DELIVERED"), null, null));
 
         // Step 7: CLOSED
         OrderStatusHistory closedHist = historyByStatus.get("CLOSED");
         if (closedHist == null) closedHist = historyByStatus.get("COMPLETED");
         steps.add(buildStep(7, "CLOSED", "Đóng", "Đơn hàng hoàn tất toàn bộ chu trình và đóng",
-                resolveStepState(7, currentStepOrder, isCancelled, isRejected, false),
+                isCancelled ? resolveCancelledStepState(7, cancelledAtStep)
+                        : resolveStepState(7, currentStepOrder, false, isRejected, false),
                 closedHist, null, null));
+
+        if (isCancelled) {
+            steps.add(buildStep(8, "CANCELLED", "Huỷ", "Đơn hàng bị huỷ trước khi xuất kho; tồn giữ chỗ đã được nhả",
+                    "CANCELLED", cancelledHistory, order.getCancelledAt(), order.getCancelledBy()));
+        }
 
         return OrderTrackingResponse.builder()
                 .orderId(order.getId())
@@ -1105,8 +1117,19 @@ public class OrderServiceImpl implements OrderService {
         return approveOrderInternal(id, null, username, null);
     }
 
+    @Override
+    @Transactional
+    public OrderResponse confirmPortalOrder(Long id, String username) {
+        return approveOrderInternal(id, null, username, null, true);
+    }
+
     @Transactional
     private OrderResponse approveOrderInternal(Long id, Integer reservationHours, String username, String historyComment) {
+        return approveOrderInternal(id, reservationHours, username, historyComment, false);
+    }
+
+    private OrderResponse approveOrderInternal(Long id, Integer reservationHours, String username, String historyComment,
+                                               boolean confirmation) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
@@ -1115,7 +1138,13 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean isElevated = validateApprovalActor(order, username, auth, true);
+        boolean isElevated;
+        if (confirmation) {
+            validatePortalConfirmation(order, username, auth);
+            isElevated = false;
+        } else {
+            isElevated = validateApprovalActor(order, username, auth, true);
+        }
 
         // S5-06: Chỉ giữ chỗ tồn sau khi đã xác thực quyền và phạm vi thao tác.
         reserveInventoryForOrder(order, reservationHours, null);
@@ -1128,7 +1157,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
-        recordStatusHistory(saved, "PENDING_APPROVAL", "RECORDED", "Quản lý kinh doanh phê duyệt đơn hàng, đã giữ chỗ tồn kho", username);
+        recordStatusHistory(saved, "PENDING_APPROVAL", "RECORDED", confirmation
+                ? "Nhân viên phụ trách xác nhận đơn đại lý, đã giữ chỗ tồn kho"
+                : "Phê duyệt đơn hàng, đã giữ chỗ tồn kho", username);
 
         String approvalComment = historyComment == null || historyComment.isBlank()
                 ? saved.getApprovalReason()
@@ -1361,15 +1392,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private Product resolveProduct(OrderItemRequest itemReq) {
+        Product product;
         if (itemReq.getProductId() != null) {
-            return productRepository.findById(itemReq.getProductId())
+            product = productRepository.findById(itemReq.getProductId())
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + itemReq.getProductId()));
-        }
-        if (itemReq.getProductCode() != null && !itemReq.getProductCode().isBlank()) {
-            return productRepository.findByCode(itemReq.getProductCode().trim().toUpperCase())
+        } else if (itemReq.getProductCode() != null && !itemReq.getProductCode().isBlank()) {
+            product = productRepository.findByCode(itemReq.getProductCode().trim().toUpperCase())
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với mã: " + itemReq.getProductCode()));
+        } else {
+            throw new IllegalArgumentException("Cần cung cấp productId hoặc productCode");
         }
-        throw new IllegalArgumentException("Cần cung cấp productId hoặc productCode");
+        if (Boolean.FALSE.equals(product.getActive())) throw new IllegalArgumentException("Sản phẩm đã ngừng kinh doanh: " + product.getCode());
+        return product;
     }
 
     private OrderResponse mapToResponse(Order order) {
@@ -1523,6 +1557,8 @@ public class OrderServiceImpl implements OrderService {
 
         return OrderResponse.builder()
                 .id(order.getId())
+                .canConfirmPortalOrder(canConfirmPortalOrder(order))
+                .nextLifecycleStatus(nextLifecycleStatus(order))
                 .orderCode(order.getOrderCode())
                 .customerName(order.getCustomerName())
                 .customerGroup(order.getCustomerGroup())
@@ -1694,27 +1730,9 @@ public class OrderServiceImpl implements OrderService {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + request.getProductId()));
 
-        Warehouse warehouse = null;
-        if (request.getWarehouseId() != null) {
-            warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho hàng với ID: " + request.getWarehouseId()));
-        } else if (request.getDealerId() != null) {
-            Dealer dealer = dealerRepository.findById(request.getDealerId()).orElse(null);
-            if (dealer != null && dealer.getWarehouse() != null) {
-                warehouse = dealer.getWarehouse();
-            }
-        }
-
-        if (warehouse == null && warehouseRepository != null) {
-            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
-            if (!activeWarehouses.isEmpty()) {
-                warehouse = activeWarehouses.get(0);
-            }
-        }
-
-        if (warehouse == null) {
-            throw new IllegalArgumentException("Hệ thống chưa có kho hàng nào đang hoạt động");
-        }
+        Dealer dealer = request.getDealerId() == null ? null : dealerRepository.findById(request.getDealerId())
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + request.getDealerId()));
+        Warehouse warehouse = resolveServingWarehouse(dealer, request.getWarehouseId(), true);
 
         String inputUnit = request.getUnit();
         if (inputUnit == null || inputUnit.isBlank()) {
@@ -1801,6 +1819,8 @@ public class OrderServiceImpl implements OrderService {
                         dealer.getName(), dealer.getCode()));
             }
             customerGroup = dealer.getCustomerGroup();
+            Authentication actor = SecurityContextHolder.getContext().getAuthentication();
+            validateSalesAccessForDealer(dealer, actor != null ? actor.getName() : null);
         }
 
         if (customerGroup == null) {
@@ -1825,6 +1845,10 @@ public class OrderServiceImpl implements OrderService {
         } else {
             product = productRepository.findByCode(request.getProductCode().trim().toUpperCase())
                     .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với mã: " + request.getProductCode()));
+        }
+
+        if (Boolean.FALSE.equals(product.getActive())) {
+            throw new IllegalArgumentException("Sản phẩm đã ngừng kinh doanh: " + product.getName());
         }
 
         // 3. Kiểm tra SKU có trong bảng giá hiệu lực hay không - nếu không có thì chặn thêm dòng hàng kèm thông báo rõ lý do
@@ -2064,18 +2088,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Tra cứu tồn kho phục vụ nếu có
-        Warehouse warehouse = null;
-        if (request.getWarehouseId() != null) {
-            warehouse = warehouseRepository.findById(request.getWarehouseId()).orElse(null);
-        } else if (dealer != null && dealer.getWarehouse() != null) {
-            warehouse = dealer.getWarehouse();
-        }
-        if (warehouse == null && warehouseRepository != null) {
-            List<Warehouse> activeWarehouses = warehouseRepository.findAllByActiveTrueOrderByNameAsc();
-            if (!activeWarehouses.isEmpty()) {
-                warehouse = activeWarehouses.get(0);
-            }
-        }
+        Warehouse warehouse = resolveServingWarehouse(dealer, request.getWarehouseId(), false);
 
         Map<Long, WarehouseInventory> inventoryMap = new HashMap<>();
         if (warehouse != null && inventoryRepository != null) {
@@ -2203,7 +2216,7 @@ public class OrderServiceImpl implements OrderService {
         Order sourceOrder = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
-        validateSalesAccess(sourceOrder, username);
+        validateOrderViewAccess(sourceOrder, username);
 
         if (sourceOrder.getItems() == null || sourceOrder.getItems().isEmpty()) {
             throw new IllegalArgumentException("Đơn hàng không có dòng hàng nào để sao chép");
@@ -2411,7 +2424,7 @@ public class OrderServiceImpl implements OrderService {
         Order sourceOrder = orderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + id));
 
-        validateSalesAccess(sourceOrder, username);
+        validateOrderViewAccess(sourceOrder, username);
 
         if (sourceOrder.getItems() == null || sourceOrder.getItems().isEmpty()) {
             throw new IllegalArgumentException("Đơn hàng không có dòng hàng để sao chép.");
@@ -2714,8 +2727,7 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
 
-        boolean hasWarehousePermission = hasAuthority(auth, "WAREHOUSE_IMPORT")
-                || hasAuthority(auth, "WAREHOUSE_EXPORT");
+        boolean hasWarehousePermission = hasAuthority(auth, "WAREHOUSE_EXPORT");
         if (!hasWarehousePermission) {
             throw new AccessDeniedException("Bạn không có quyền " + action + " theo ma trận phân quyền");
         }
@@ -2744,6 +2756,35 @@ public class OrderServiceImpl implements OrderService {
         if (targetStep != oldStep + 1) {
             throw new IllegalArgumentException("Chỉ được chuyển đơn sang bước kế tiếp của vòng đời");
         }
+    }
+
+    private Warehouse resolveServingWarehouse(Dealer dealer, Long requestedId, boolean required) {
+        Warehouse warehouse = null;
+        if (dealer != null) {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated()) validateSalesAccessForDealer(dealer, auth.getName());
+            warehouse = dealer.getWarehouse();
+            if (warehouse == null || warehouse.getId() == null) {
+                throw new IllegalArgumentException("Đại lý chưa được cấu hình kho phục vụ. Vui lòng liên hệ quản trị viên.");
+            }
+            if (requestedId != null && !requestedId.equals(warehouse.getId())) {
+                throw new AccessDeniedException("Kho yêu cầu không phải kho phục vụ đại lý này");
+            }
+            if (requestedId != null && warehouseRepository != null) {
+                warehouse = warehouseRepository.findById(requestedId)
+                        .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho phục vụ với ID: " + requestedId));
+            }
+        } else if (requestedId != null && warehouseRepository != null) {
+            warehouse = warehouseRepository.findById(requestedId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho với ID: " + requestedId));
+        } else if (warehouseRepository != null) {
+            warehouse = warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream().findFirst().orElse(null);
+        }
+        if (warehouse == null && required) throw new IllegalArgumentException("Chưa có kho hàng đang hoạt động để xử lý đơn");
+        if (warehouse != null && !Boolean.TRUE.equals(warehouse.getActive())) {
+            throw new IllegalArgumentException("Kho phục vụ đã ngừng hoạt động: " + warehouse.getName());
+        }
+        return warehouse;
     }
 
     private Warehouse resolveDefaultWarehouse(Long warehouseId) {
@@ -2869,6 +2910,20 @@ public class OrderServiceImpl implements OrderService {
         return "UPCOMING";
     }
 
+    private String resolveCancelledStepState(int stepOrder, int cancelledAtStep) {
+        return stepOrder <= cancelledAtStep ? "COMPLETED" : "SKIPPED";
+    }
+
+    private String normalizeLifecycleStatus(String status) {
+        String normalized = status == null ? "" : status.trim().toUpperCase();
+        return switch (normalized) {
+            case "PROCESSING" -> "PICKING";
+            case "SHIPPED" -> "EXPORTED";
+            case "COMPLETED" -> "CLOSED";
+            default -> normalized;
+        };
+    }
+
     private OrderLifecycleStepResponse buildStep(
             int stepOrder, String status, String displayName, String description,
             String state, OrderStatusHistory history, LocalDateTime fallbackTime, String fallbackOperator) {
@@ -2921,13 +2976,62 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * Kiểm tra phạm vi thao tác duyệt theo quyền trong ma trận.
-     * ORDER_APPROVE cho phép xử lý đầy đủ; ORDER_CREATE chỉ cho phép nhân viên
-     * kinh doanh xác nhận đơn do đại lý tự đặt, đúng đại lý được phân công và
-     * không có vi phạm cần quản lý phê duyệt.
+     * ORDER_APPROVE xử lý ngoại lệ; ORDER_CONFIRM là quyền riêng cho xác nhận
+     * đơn cổng không vi phạm, trong đúng phạm vi đại lý được phân công.
      */
+    private boolean canConfirmPortalOrder(Order order) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()
+                || !(hasAuthority(auth, "ROLE_ADMIN") || hasAuthority(auth, "ORDER_CONFIRM"))) return false;
+        boolean assigned = order.getDealer() != null && order.getDealer().getAssignedUser() != null
+                && auth.getName().equalsIgnoreCase(order.getDealer().getAssignedUser().getUsername());
+        return (assigned || hasAuthority(auth, "ROLE_ADMIN")) && isPortalOrder(order)
+                && "PENDING_APPROVAL".equalsIgnoreCase(order.getStatus())
+                && !hasApprovalViolation(order.getApprovalReason())
+                && (order.getItems() == null || order.getItems().stream().noneMatch(item -> Boolean.TRUE.equals(item.getBelowFloorPrice())));
+    }
+
+    private void validatePortalConfirmation(Order order, String username, Authentication auth) {
+        if (auth == null || !auth.isAuthenticated()
+                || !(hasAuthority(auth, "ROLE_ADMIN") || hasAuthority(auth, "ORDER_CONFIRM"))) {
+            throw new AccessDeniedException("Bạn không có quyền xác nhận đơn đại lý theo ma trận phân quyền");
+        }
+        if (!isPortalOrder(order)) throw new IllegalArgumentException("Chức năng này chỉ xác nhận đơn gửi từ cổng đại lý");
+        boolean assigned = order.getDealer() != null && order.getDealer().getAssignedUser() != null
+                && username.equalsIgnoreCase(order.getDealer().getAssignedUser().getUsername());
+        if (!assigned && !hasAuthority(auth, "ROLE_ADMIN")) {
+            throw new AccessDeniedException("Bạn chỉ được xác nhận đơn của đại lý mình phụ trách");
+        }
+        if (hasApprovalViolation(order.getApprovalReason())
+                || order.getItems() != null && order.getItems().stream().anyMatch(item -> Boolean.TRUE.equals(item.getBelowFloorPrice()))) {
+            throw new IllegalArgumentException("Đơn có vi phạm, cần người có quyền Duyệt đơn hàng xử lý");
+        }
+        if (dealerDebtService != null && order.getDealer() != null) {
+            dealerDebtService.validateDealerCanCreateOrder(order.getDealer());
+            DealerDebtResponse debt = dealerDebtService.getDealerDebtInfo(order.getDealer());
+            if (debt != null && dealerDebtService.checkProjectedDebtExceedsLimit(order.getDealer(), order.getTotalAmount(), debt.getCurrentDebt())) {
+                throw new IllegalArgumentException("Công nợ hiện tại đã vượt hạn mức, cần người có quyền Duyệt đơn hàng xử lý");
+            }
+        }
+    }
+
+    private String nextLifecycleStatus(Order order) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || order.getStatus() == null) return null;
+        try { checkWarehouseAuthorizationForOrder(order, "chuyển vòng đời đơn"); }
+        catch (AccessDeniedException denied) { return null; }
+        return switch (normalizeLifecycleStatus(order.getStatus())) {
+            case "RECORDED", "APPROVED" -> "PICKING";
+            case "PICKING" -> "EXPORTED";
+            case "EXPORTED" -> "DELIVERED";
+            case "DELIVERED" -> "CLOSED";
+            default -> null;
+        };
+    }
+
     private boolean validateApprovalActor(Order order, String username, Authentication auth, boolean approving) {
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            return true;
+            throw new AccessDeniedException("Yêu cầu đăng nhập để xử lý đơn hàng");
         }
 
         boolean isAdmin = hasAuthority(auth, "ROLE_ADMIN");
@@ -2936,26 +3040,7 @@ public class OrderServiceImpl implements OrderService {
             return true;
         }
 
-        boolean isSales = hasAuthority(auth, "ROLE_SALES");
-        // API controller đã kiểm tra ORDER_CREATE cho luồng cổng đại lý. Ở tầng
-        // service vẫn kiểm tra vai trò/phạm vi để các lời gọi nội bộ không vượt
-        // quá đại lý được phân công.
-        if (!isSales || !isPortalOrder(order)) {
-            throw new AccessDeniedException("Bạn không có quyền xử lý đơn hàng này theo ma trận phân quyền");
-        }
-
-        boolean isAssignedSales = order.getDealer() != null
-                && order.getDealer().getAssignedUser() != null
-                && order.getDealer().getAssignedUser().getUsername() != null
-                && order.getDealer().getAssignedUser().getUsername().equalsIgnoreCase(username);
-        if (!isAssignedSales) {
-            throw new AccessDeniedException("Chỉ nhân viên phụ trách đại lý hoặc Quản lý kinh doanh mới có quyền xác nhận đơn hàng này");
-        }
-
-        if (approving && hasApprovalViolation(order.getApprovalReason())) {
-            throw new AccessDeniedException("Đơn hàng có vi phạm cần Quản lý kinh doanh phê duyệt");
-        }
-        return false;
+        throw new AccessDeniedException("Bạn không có quyền xử lý đơn hàng này theo ma trận phân quyền");
     }
 
     private boolean hasAuthority(Authentication auth, String authority) {

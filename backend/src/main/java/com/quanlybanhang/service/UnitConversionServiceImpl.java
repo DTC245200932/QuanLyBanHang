@@ -215,7 +215,6 @@ public class UnitConversionServiceImpl implements UnitConversionService {
         }
         return authentication.getAuthorities().stream().anyMatch(authority ->
                 "ROLE_ADMIN".equals(authority.getAuthority()) ||
-                "ROLE_SALES_MANAGER".equals(authority.getAuthority()) ||
                         Permission.FINANCE_VIEW_COST_PRICE.name().equals(authority.getAuthority()));
     }
 }

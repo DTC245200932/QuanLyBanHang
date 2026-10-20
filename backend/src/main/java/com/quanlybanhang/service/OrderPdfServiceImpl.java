@@ -547,6 +547,20 @@ public class OrderPdfServiceImpl implements OrderPdfService {
         if (auth == null) {
             return;
         }
+
+        boolean canViewOrders = auth.getAuthorities().stream()
+                .anyMatch(a -> "ORDER_VIEW".equals(a.getAuthority()));
+        if (!canViewOrders) {
+            boolean canCreateOrders = auth.getAuthorities().stream()
+                    .anyMatch(a -> "ORDER_CREATE".equals(a.getAuthority()));
+            if (canCreateOrders && order.getCreatedBy() != null
+                    && order.getCreatedBy().equalsIgnoreCase(username)) {
+                return;
+            }
+            throw new AccessDeniedException(
+                    "Bạn chỉ được in hoặc xuất mã vạch cho đơn hàng do chính mình tạo");
+        }
+
         boolean isElevated = auth.getAuthorities().stream()
                 .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
                         || "ROLE_SALES_MANAGER".equals(a.getAuthority())

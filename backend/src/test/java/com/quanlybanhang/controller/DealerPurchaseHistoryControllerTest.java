@@ -21,6 +21,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -89,7 +90,9 @@ class DealerPurchaseHistoryControllerTest {
                 .thenReturn(List.of(item));
 
         mvc.perform(get("/api/dealers/1/purchase-history?months=3")
-                        .with(user("sales01").roles("SALES")))
+                        .with(user("sales01").authorities(
+                                new SimpleGrantedAuthority("ROLE_SALES"),
+                                new SimpleGrantedAuthority("ORDER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].productId").value(10))
@@ -107,7 +110,9 @@ class DealerPurchaseHistoryControllerTest {
                 .thenThrow(new AccessDeniedException("Bạn chỉ có quyền xem đại lý do mình phụ trách"));
 
         mvc.perform(get("/api/dealers/2/purchase-history")
-                        .with(user("sales01").roles("SALES")))
+                        .with(user("sales01").authorities(
+                                new SimpleGrantedAuthority("ROLE_SALES"),
+                                new SimpleGrantedAuthority("ORDER_VIEW"))))
                 .andExpect(status().isForbidden());
     }
 
@@ -133,7 +138,9 @@ class DealerPurchaseHistoryControllerTest {
         when(dealerService.getDealerLastOrderItems(1L)).thenReturn(List.of(item));
 
         mvc.perform(get("/api/dealers/1/last-order-items")
-                        .with(user("sales01").roles("SALES")))
+                        .with(user("sales01").authorities(
+                                new SimpleGrantedAuthority("ROLE_SALES"),
+                                new SimpleGrantedAuthority("ORDER_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].productId").value(20))
@@ -151,7 +158,10 @@ class DealerPurchaseHistoryControllerTest {
         when(orderService.copyLastOrderToDraft(eq(1L), anyString())).thenReturn(draftNode);
 
         mvc.perform(post("/api/dealers/1/last-order-to-draft")
-                        .with(user("sales01").roles("SALES"))
+                        .with(user("sales01").authorities(
+                                new SimpleGrantedAuthority("ROLE_SALES"),
+                                new SimpleGrantedAuthority("ORDER_CREATE"),
+                                new SimpleGrantedAuthority("ORDER_VIEW")))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))

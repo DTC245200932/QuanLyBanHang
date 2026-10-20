@@ -1,6 +1,114 @@
 # Trạng thái sprint 1–5
 
-Cập nhật **19/10/2026**, theo backlog nhóm gửi, bản tích hợp vào `develop` và bản sửa lỗi truy cập cổng của admin.
+Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
+
+## Màu thông báo ma trận quyền — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Phản hồi lưu/khôi phục quyền | Không đổi | Thành công nền xanh nhạt/chữ xanh; không có thay đổi dùng màu trung tính; lỗi thật vẫn đỏ. Reset trạng thái màu theo từng thông báo, dùng role status/alert tương ứng | Giữ nguyên API, payload, kiểm quyền ADMIN và đồng bộ phiên; chỉ đổi hiển thị |
+
+Chrome/API mock: `tests/permission-feedback.browser.cjs` kiểm lưu xanh, không thay đổi không gọi PUT, lỗi sau thành công đổi về đỏ, khôi phục mặc định xanh; đã xem ảnh. **84 test JS hiện có qua**. Không sửa hoặc lưu ma trận DB thật, giữ nguyên các thay đổi khác đang có.
+
+## Rút gọn giá trị dài trong Nhật ký thao tác — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Giá trị trước/sau trong danh sách | Không đổi | Giới hạn nhãn 240px, hiển thị ellipsis khi dài; bỏ giới hạn % gây vòng lặp kích thước trong table auto-layout | Chỉ cách hiển thị; không cắt dữ liệu API hoặc đổi quyền truy cập nhật ký |
+| Đọc đầy đủ | Không đổi | Tooltip chứa nguyên văn; nút Xem giữ toàn bộ trước/sau; bảng trong modal tự xuống dòng kể cả chuỗi không có dấu cách | Giữ escape HTML cả nội dung lẫn thuộc tính title; không đổi dữ liệu xuất Excel |
+
+Kiểm chứng: `tests/audit-values.browser.cjs` chạy Chrome/API mock ở **1920/1440/390/320px**, chuỗi hàng nghìn ký tự có/không có khoảng trắng, giá trị ngắn và null: ellipsis hoạt động, bảng không bị kéo rộng hàng nghìn pixel, toàn trang không tràn ngang, popup còn nguyên dữ liệu và không chèn được HTML. Đã xem ảnh desktop/mobile; **84 test JS hiện có qua**. Không sửa backend/DB, giữ nguyên các thay đổi Cổng đại lý đang có trong worktree.
+
+## Cổng đại lý dùng menu và khung nội dung chung — 20/10/2026
+
+Phần này thay thế mô tả cổng đại lý “standalone” ở các mốc trước bên dưới.
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Menu trên Cổng đại lý | Không đổi | Dùng `app-shell.js` và `app-navigation.js`; có sidebar, breadcrumb, profile/logout như các trang khác; khung `.content` dùng lề/chiều rộng chung | Menu và guard dùng ma trận hiện tại; ADMIN thấy chức năng quản trị, DEALER không nhận thêm quyền |
+| Giỏ hàng và ngữ cảnh đại lý | Không đổi | Chuyển các node điều khiển vào slot thanh trên, không clone/trùng ID; giữ chọn đại lý ADMIN, catalog, giỏ và preview | Giữ toàn bộ endpoint `/portal/*`, không gọi API thiếu ngữ cảnh và không đổi phạm vi dữ liệu |
+| Điện thoại | Không đổi | Nút mở/đóng menu chung; thanh giỏ dưới thuộc vùng nội dung, trở thành inert khi menu mở; drawer/modal ở ngoài shell để không bị khóa theo menu | Thu hồi ORDER_CREATE khi đang mở cổng vẫn chuyển 403, không chỉ ẩn một nút |
+
+Kiểm chứng: **84 test JS qua**. Chrome thật/API mock kiểm ADMIN chọn đại lý rồi tải catalog, DEALER có menu đúng quyền, giỏ mở từ thanh trên và thanh dưới, mobile menu mở/đóng, thu hồi quyền và các luồng S4 hiện có; không pageerror. Đã xem ảnh desktop và mobile. Bài căn lề mở rộng thành **20 trang/tab × 6 kích thước = 120 ca qua**, gồm Cổng đại lý tại 1920/1440/1024/768/390/320px; hồi quy điều hướng, giữ cuộn và transition chờ quyền qua. Không thay đổi backend, không chạy/sửa DB thật.
+
+## Menu đứng yên, chỉ chuyển cảnh nội dung — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Giữ menu khi đổi chức năng | Không đổi | Giữ snapshot menu cũ đứng yên, không fade; chỉ nhả sau khi menu trang mới khôi phục cuộn và đồng bộ quyền xong | Giữ `Auth.ready`, menu inert khi chờ; không cấp quyền bằng snapshot |
+| Chỉ chuyển cảnh phần trắng | Không đổi | Đặt tên transition trên khung nội dung thực, không chụp cả `.main-area`; fade 100–160ms, không trượt; topbar nằm trong nền tĩnh để tránh blur chữ | Không sửa DOM form, replay script, gom trang thành SPA hay cache dữ liệu nghiệp vụ |
+| Mạng chậm / chuyển nhanh | Không đổi | Watchdog 1 giây chỉ kết thúc giữ ảnh, không mở khóa quyền; xử lý transition bị hủy và trang đang parse; callback cũ không phá transition mới | Backend vẫn kiểm ma trận ở từng request; frontend vẫn chặn 403 khi bị thu hồi quyền |
+| Reload / Back / Forward / mobile | Không đổi | Giữ điều hướng HTML gốc, history và vị trí menu; giảm chuyển động tắt transition; browser không hỗ trợ dùng tải trang bình thường | Không can thiệp liên kết, submit, tải file hay API; không sửa DB |
+
+**Lưu ý chính xác về kiến trúc:** đây là giữ nguyên menu **về hiển thị**, không phải chỉ fetch một mảnh HTML. Trình duyệt vẫn nạp tài liệu đích và các script khởi tạo riêng như cũ, nên không phải di trú vòng đời của từng trang sang SPA/PJAX. Dùng [cross-document view transitions của trình duyệt](https://developer.chrome.com/docs/web-platform/view-transitions/cross-document); không cam kết hiệu ứng này trên browser không hỗ trợ.
+
+Kiểm chứng: **84 test JS qua**. Chrome thật/API mock: `tests/menu-transition.browser.cjs` xác nhận menu cũ opacity 1 và đứng yên khi chờ quyền, menu mới opacity 0, chỉ khung nội dung có tên transition, cuộn 312px → 312px; form tạo tài khoản mở được, watchdog không mở menu khi quyền chưa đồng bộ, chuyển trang liên tiếp và thu hồi quyền của VIEWER đều qua, không pageerror. Đã xem ảnh giữa/sau chuyển cảnh và sửa lỗi topbar bị blur trong snapshot. `tests/navigation.browser.cjs` qua Back/Forward/Reload/mobile/reduced-motion; `tests/s4-workflows.browser.cjs` qua giỏ/xác nhận/vòng đời/thu hồi quyền; `tests/content-layout.browser.cjs` qua **114 ca căn lề**. Không thử MySQL thật, không thay đổi logic backend, không merge/chuyển nhánh.
+
+## Đồng bộ căn lề các trang trong menu — 20/10/2026
+
+| Hạng mục | Backend | Frontend | Kết nối / phân quyền |
+|---|---|---|---|
+| Khung nội dung chung | Không thay đổi | Căn giữa cùng khung tối đa 1.240px như Chiết khấu sản lượng; lề tối thiểu 28px desktop, 16px mobile; đồng nhất khoảng cách trên/dưới | Chỉ CSS, giữ nguyên API, page guard và nội dung; không đổi sidebar/topbar |
+| Các trang đang lệch trái | Không thay đổi | Áp dụng cho Tổng quan/Hạn mức công nợ, hồ sơ, sản phẩm/nhóm hàng, đơn hàng/tạo/duyệt/đơn đại lý, bảng giá/chiết khấu, đại lý/NCC, bốn tab kho, tài khoản và nhật ký | Không thêm quyền, không đổi điều kiện hiển thị menu/action; các bảng rộng vẫn cuộn trong bảng, không che cột bằng CSS |
+| Bộ lọc Đơn hàng trên điện thoại | Không thay đổi | Cho hai trường ngày tự xuống dòng; bỏ flex-basis dạng hàng khi toolbar chuyển thành cột để không tạo chiều cao trống lớn | Giữ đủ trường lọc và sự kiện, không đổi logic tìm/lọc |
+
+Kiểm chứng: `tests/content-layout.browser.cjs` chạy Chrome thật với API mock, **19 trang/tab × 6 chiều rộng (1920/1440/1024/768/390/320) = 114 ca qua**: lề trái/phải bằng nhau, đủ gutter, khung không vượt 1.240px, không tràn ngang toàn trang; sidebar giữ 260px, không pageerror. Đã xem ảnh desktop và mobile. Cổng đại lý độc lập, trang auth/in và modal không bị áp khung này.
+
+Hồi quy: **79 test JS qua**, bài browser giữ cuộn menu **312px → 312px**, Back/Forward/Reload/mobile/reduced-motion qua; bài browser S4 (giỏ, xác nhận, vòng đời, thu hồi quyền đang mở trang) qua. Không thay đổi backend/DB; chưa kiểm mọi browser hoặc dữ liệu thật.
+
+## Sửa các phát hiện còn lại Sprint 4 — 20/10/2026
+
+Phần này cập nhật kết quả sau audit bên dưới; các nhận xét “chưa sửa” trong audit là mốc trước lần sửa này.
+
+| Story | Backend | Frontend | BE ↔ FE / ma trận quyền |
+|---|---|---|---|
+| S4-01 | Đồng nhất giá ngày đặt với preview/catalog, không đổi giá theo ngày giao; chặn sản phẩm ngừng bán và pricing ngoài đại lý được giao | Dùng lại API tính giá | ORDER_CREATE và phạm vi dữ liệu hiện hành; API không tin giá client |
+| S4-02 | Công nợ/quá hạn không biến mất khi soạn/xuất/giao/đóng đơn; summary đại lý dùng cùng tập trạng thái | Hiển thị dữ liệu nợ server | Giữ FINANCE_VIEW_DEBT và ORDER_CREATE cho các luồng tương ứng |
+| S4-03 | Tạo/tính đơn/kiểm tồn dùng đúng kho phục vụ; chặn đổi kho, kho thiếu hoặc ngừng hoạt động; giữ cơ chế khóa tồn hiện có | Nhận lỗi có lý do từ API, không chọn kho thay đại lý | Quyền không thay thế ràng buộc kho; có kiểm thử HTTP sai kho và đồng thời |
+| S4-04 | Không phát hiện thêm lỗi cần sửa trong lần rà này | Giữ lịch sử mua hàng | Giữ CUSTOMER_VIEW, giới hạn đại lý |
+| S4-05 | Bỏ fallback duyệt từ ROLE_SALES/ORDER_CREATE và lời gọi không xác thực; xác nhận thường tách endpoint riêng | Luồng duyệt/từ chối/trả lại giữ nguyên | ORDER_APPROVE; quyền xác nhận không được xử lý vi phạm |
+| S4-06 | Trả bước vòng đời tiếp theo theo quyền và kho của người gọi | Thêm nút chuyển bước trong Đơn hàng → Chi tiết; tải lại tracking sau thao tác | WAREHOUSE_EXPORT + kho được giao; bỏ quyền 403 và ẩn nút |
+| S4-07 | Giữ danh sách, bộ lọc, tổng tập lọc | Tải lại khả năng thao tác khi quyền đổi | ORDER_VIEW, không dùng role để cấp quyền |
+| S4-08 | Giữ in/PDF/barcode và giới hạn dữ liệu | Không đổi | ORDER_VIEW; không phát hiện thêm lỗi trong các ca hồi quy |
+| S4-09 | Giữ copy nháp và tính lại giá/chiết khấu | Không đổi | ORDER_CREATE + ORDER_VIEW; các ca hồi quy hiện có qua |
+| S4-10 | Thêm preview server; ORDER_CONFIRM riêng, đúng đại lý phụ trách; kiểm công nợ/tồn trước xác nhận | Giỏ hiển thị chiết khấu/tổng/nợ từ server; chặn preview lỗi; chống phản hồi trễ; giá đổi cần xác nhận lại | Preview dùng ORDER_CREATE + PRODUCT_VIEW + ORDER_VIEW; xác nhận ORDER_CONFIRM, không cấp quyền duyệt ngoại lệ |
+
+**Triển khai:** Với ma trận đã lưu trong DB, Admin phải tích **Xác nhận đơn đại lý** (`ORDER_CONFIRM`) cho vai trò cần xác nhận rồi lưu. Không tự thêm quyền vào cấu hình cũ, không sửa DB thật, không merge/chuyển nhánh.
+
+Kiểm chứng: **538 test backend, 79 test JS, 5 test định tuyến qua**, không failure/error/skip; hai bài Chrome hồi quy điều hướng và luồng S4 đều qua. Chi tiết và giới hạn trong [báo cáo sửa Sprint 4](docs/SPRINT_4_FIXES_20261020.md). Chưa tuyên bố nghiệm thu dữ liệu MySQL thật hoặc tích hợp thu tiền; đóng đơn không tự coi là thanh toán.
+
+## Đối chiếu Excel Sprint 4 và sửa chuyển trang — 20/10/2026
+
+Đã đọc sheet `4. Product Backlog`, `A42:F51`, đối chiếu AC với BE/FE trên nhánh hiện tại (không lấy cột trạng thái Excel làm trạng thái code).
+**Chưa thể nghiệm thu toàn Sprint 4**: S4-01/04/05/06/07/08/09 cơ bản có luồng chính; S4-02 còn tính nợ chỉ từ RECORDED, S4-03 chưa ràng buộc kho client với kho phục vụ đại lý, S4-10 còn lệch xác nhận của sales và tổng giỏ khi có chiết khấu. Đây là phát hiện audit, chưa sửa nghiệp vụ trong đợt sửa chuyển trang.
+
+| Hạng mục | Backend | Frontend | BE ↔ FE / quyền |
+|---|---|---|---|
+| Menu tự nhảy lên đầu | Không đổi | Đã sửa giữ tọa độ cuộn khi bấm/chuyển trang, Back/Forward/Reload; không dựng lại menu nếu không đổi | Giữ Auth.ready, menu inert trong lúc đồng bộ, guard theo ma trận; có test thu hồi quyền |
+| Giật/chớp chuyển trang | Không đổi | Đã thêm transition gốc của browser chỉ cho nội dung trắng, ổn định scrollbar, xử lý transition hủy; giảm chuyển động tắt animation | Không đổi API, form và logic nghiệp vụ; vẫn load trang HTML, không giả chuyển thành SPA |
+| Audit S4-01–10 theo Excel | Đã đọc code/test | Đã đọc luồng gọi API/UI | 7 story cơ bản đạt luồng chính, 3 story còn vấn đề; xem báo cáo để phân biệt AC, quyền và phạm vi dữ liệu |
+
+Kiểm chứng đợt này: **529 test backend, 74 test JS, 5 test định tuyến đều qua**. Chrome thật với API mock: 1440×800 và 390×844, menu giữ **312px → 312px**, Back/Forward/Reload, nội dung trang, menu mobile và reduced-motion qua, không pageerror. Không sửa DB thật.
+Chi tiết và bằng chứng: [báo cáo đối chiếu Sprint 4](docs/SPRINT_4_AUDIT_20261020.md).
+
+## Sửa ma trận quyền — 20/10/2026
+
+Phần này thay thế các nhận xét **phân quyền** cũ ngày 19/10 bên dưới cho những đường truy cập được liệt kê; không thay thế nghiệm thu nghiệp vụ từng story.
+
+| Phạm vi | Backend | Frontend | BE ↔ FE / ma trận quyền |
+|---|---|---|---|
+| Lưu ma trận | Đã sửa: lưu nhiều vai trò trong một transaction, flush DELETE trước INSERT; chỉ đổi cache sau khi lưu thành công; giữ trạng thái vai trò không có quyền | Đã sửa: gửi một yêu cầu, chỉ gồm các vai trò thay đổi | Đã nối `PUT /admin/permissions`; chỉ ADMIN được lưu; ADMIN luôn toàn quyền |
+| Phiên đang đăng nhập | JWT nạp quyền hiện tại từ ma trận cho từng request; thêm endpoint đọc quyền của chính phiên | Đồng bộ khi mở trang, focus và mỗi 15 giây; cập nhật menu, guard và các nút liên quan; không reload trang chỉ vì quyền không thay đổi | Đã nối `GET /auth/permissions`; đã test cùng token: cấp → bỏ quyền/403 → cấp lại |
+| S4-01–03: tạo đơn, giá, công nợ, tồn | Các API đặt hàng và tham chiếu kiểm quyền; không dùng role để bù quyền thiếu; sửa hồ sơ đại lý không được đổi hạn mức/ngày nợ nếu thiếu FINANCE_MANAGE | Đọc sản phẩm tham chiếu theo ORDER_CREATE thay vì buộc PRODUCT_VIEW; quản lý công nợ theo FINANCE_MANAGE | Đã nối; giữ phạm vi đại lý/kho theo dữ liệu |
+| S4-04, S4-07–09: lịch sử, danh sách, in, sao chép | ORDER_VIEW để xem/in; mọi đường sao chép đơn gần nhất cần cả ORDER_CREATE và ORDER_VIEW | Menu theo quyền, không chặn Thủ kho bằng role; tạo đơn không tự gọi lịch sử khi thiếu ORDER_VIEW | Đã nối cả API sao chép cũ `/orders/dealer/{id}/last-order-to-draft` |
+| S4-05–06: duyệt, hủy, vòng đời | ORDER_APPROVE / ORDER_CANCEL / ORDER_VIEW; chuyển vòng đời và cập nhật giao hàng dùng WAREHOUSE_EXPORT, WAREHOUSE_IMPORT không thay thế quyền xuất | Nút duyệt/hủy theo quyền hiện tại; guard trang kiểm cả quyền xem lẫn thao tác | Đã nối; tiếp tục kiểm phạm vi đơn/kho và điều kiện trạng thái |
+| S4-10 và cổng theo dõi | Giữ quyền ORDER_CREATE / ORDER_VIEW / PRODUCT_VIEW và phạm vi đại lý liên kết; tài khoản nhiều vai trò không bị filter cổng chặn toàn bộ API nội bộ | Đại lý chỉ có một vai trò chỉ thấy menu cổng; tài khoản nội bộ được cấp quyền không bị menu role cứng chặn | Đã nối; đây là sửa quyền, chưa bổ sung các AC nghiệp vụ còn thiếu của S4-10 |
+| Danh mục hỗ trợ | CRUD sản phẩm/nhóm theo PRODUCT_CREATE/EDIT/DELETE; bảng giá/chiết khấu theo PRODUCT_EDIT; nhà cung cấp/đơn vị theo WAREHOUSE_MANAGE; nhập/xuất/duyệt phiếu theo quyền riêng | Thay role cứng bằng quyền thao tác; ẩn/đóng các nút và hộp sửa liên quan khi thu hồi quyền | Đã nối; dữ liệu lookup không trả giá vốn/doanh thu; giá vốn không còn tự cấp theo role quản lý |
+| Tài khoản | USER_VIEW/CREATE/EDIT/LOCK và USER_ASSIGN_ROLE; sửa tài khoản không được đổi vai trò nếu thiếu USER_ASSIGN_ROLE | Danh sách theo USER_VIEW; tạo/import cần USER_CREATE + USER_ASSIGN_ROLE; checkbox vai trò bị khóa nếu không được gán | Đã nối; quản lý ma trận và nhật ký hệ thống vẫn dành riêng ADMIN |
+
+Quyền đọc và quyền sửa là độc lập: muốn thao tác qua trang danh sách cần quyền xem trang đó cùng quyền thao tác. Người có nhiều vai trò nhận hợp quyền, nên bỏ quyền ở một vai trò không thu hồi quyền vẫn được cấp bởi vai trò khác. Đại lý một vai trò vẫn bị giới hạn trong cổng riêng; tick quyền không mở dữ liệu nội bộ ngoài phạm vi này.
+
+Kiểm chứng: `mvn -q test` **529/529**, `node --test tests/*.test.cjs` **68/68**; kiểm cú pháp JavaScript và `git diff --check` đều qua. Có kiểm thử HTTP + Spring Security + database H2 thật cho lưu ma trận, giữ token cũ, thu hồi/cấp lại quyền; kiểm thử vai trò rỗng qua nạp lại cấu hình, hợp quyền nhiều vai trò, lưu thất bại không đổi cache, và phiên frontend tự ẩn/hiện nút. Các fixture bảo mật cũ được sửa để cấp authority rõ ràng; không dùng role mặc định làm bằng chứng được cấp quyền. Chưa thao tác thay đổi ma trận/database thật của người dùng, chưa kiểm thử trực tiếp toàn bộ màn hình trên trình duyệt.
 
 **Chưa thể nghiệm thu toàn bộ sprint 1–5.** Có backend hoặc giao diện chưa đồng nghĩa với đủ tính năng, nối đúng và kiểm quyền đầy đủ.
 
@@ -82,16 +190,16 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 
 | Task | Tính năng | Backend | Frontend | BE ↔ FE | Quyền BE / FE | Nghiệm thu / còn thiếu |
 |---|---|---|---|---|---|---|
-| S4-01 | Áp giá và chiết khấu | Có | Có | Đã nối `/orders/calculate` và `/orders/line-item/pricing` | Đã nối ma trận `ORDER_CREATE`; Admin luôn được phép | Tự động áp bảng giá/chiết khấu, kiểm giá sàn; `priceListId` bắt buộc đúng nhóm, `active` và hiệu lực theo ngày. |
+| S4-01 | Áp giá và chiết khấu | Có | Có | Đã nối `/orders/calculate`, `/orders/line-item/pricing` và `/price-lists/effective` | Toàn bộ luồng đặt hàng dùng `ORDER_CREATE` từ ma trận; Admin luôn được phép; không còn role fallback ở API bảng giá hiệu lực | Tự động áp bảng giá/chiết khấu, kiểm giá sàn; `priceListId` bắt buộc đúng nhóm, `active` và hiệu lực theo ngày. |
 | S4-02 | Kiểm hạn mức công nợ | Có | Có | Đã nối `GET /dealers/{id}/debt` và `POST /orders/check-debt`; frontend hiển thị hiện tại/hạn mức/còn lại, cảnh báo vượt hạn mức và chặn nợ quá hạn | Đã nối `ORDER_CREATE`/`FINANCE_VIEW_DEBT` theo ma trận; `ROLE_ADMIN` luôn được phép | Vượt hạn mức chuyển đơn sang chờ duyệt; nợ quá hạn chặn tạo đơn. Chưa có sổ thu tiền riêng nên số dư hiện tính từ đơn `RECORDED`. |
 | S4-03 | Tồn khả dụng, chống bán vượt tồn | Có | Có | Frontend gọi `/orders/check-inventory`, hiển thị tồn thực tế/giữ chỗ/khả dụng và chặn gửi đơn khi vượt tồn; backend giữ chỗ bằng khóa và cập nhật nguyên tử | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW`; frontend kiểm tra `ORDER_CREATE`; `ROLE_ADMIN` luôn được phép | Đã bổ sung kiểm tra quyền theo ma trận và hàng rào cập nhật nguyên tử để hai đơn đồng thời không cùng giữ chỗ vượt tồn. Đơn chờ duyệt vẫn giữ chỗ khi được duyệt theo luồng S5-06. |
-| S4-04 | Lịch sử 3 tháng, thêm đơn gần nhất | Có | Có | **Đã sửa nối luồng chính** | Có RLS lịch sử | FE đọc đúng DTO; thêm tất cả chỉ lấy đơn gần nhất qua áp giá/tồn. Loại DRAFT/RETURNED/EXPIRED khỏi lịch sử mua. |
-| S4-05 | Duyệt/Từ chối/Trả lại sửa | Có | Có | Đã nối PATCH, danh sách phân trang và lịch sử duyệt | `ORDER_APPROVE` từ ma trận; `ORDER_CREATE` chỉ cho NVKD xác nhận đơn cổng đúng phạm vi; ADMIN luôn được phép | Bắt buộc lý do từ chối/trả lại, lưu lịch sử `APPROVED/REJECTED/RETURNED` bất biến, chỉ giữ chỗ sau khi kiểm quyền; đã bỏ role fallback và chặn sales duyệt đơn cổng có vi phạm. |
-| S4-06 | Vòng đời và hủy đơn | Có | Có | Đã nối hủy, tracking và lịch sử trạng thái; frontend hiển thị 7 bước và lịch sử từ `/orders/{id}/tracking` | `ORDER_CANCEL`/`ORDER_VIEW` và quyền kho từ ma trận; ADMIN luôn được phép; giới hạn thao tác theo kho được gán | Bắt buộc lý do hủy, tự nhả giữ chỗ và chặn sau xuất kho; chỉ cho chuyển từng bước kế tiếp, không nhảy/lùi; đã bỏ role fallback ở các API S4-06. |
-| S4-07 | Danh sách, lọc, tổng tiền | Có | Có | **Đã nối, thống nhất phân trang/DTO** | RLS sales danh sách; quyền một phần | GET `/orders` trả tổng toàn tập lọc, số phần tử, phân trang tùy chọn; trang `/orders` cũng lọc phía FE. |
-| S4-08 | In/PDF và barcode | Có | Có | **Đã nối PDF backend sau tạo đơn** | ORDER_VIEW/vai trò và RLS PDF | Test tạo PDF thật qua. Đã bỏ gọi hàm in chưa có; lỗi PDF không báo lại lỗi tạo đơn. Cần thử in trình duyệt. |
-| S4-09 | Sao chép đơn, áp lại giá | Có | Có | Đã nối nháp DB/nạp giá mới | FE ORDER_CREATE; BE còn fallback role | Không giữ giá cũ; đã sửa URL chuyển trang. Còn xử lý RLS/thu hồi quyền chung. |
-| S4-10 | Cổng đại lý tự đặt | Một phần | Có | **Đã sửa dùng `/portal/**`** | **Role + quyền + đại lý của tài khoản** | Đã nối gán đại lý cho tài khoản; chặn API nội bộ/giả giá, luôn PENDING_APPROVAL. Thiếu preview chiết khấu server và UI sales xác nhận đơn cổng. |
+| S4-04 | Lịch sử 3 tháng, thêm đơn gần nhất | Có | Có | **Đã sửa nối luồng chính** | `ORDER_CREATE`/`ORDER_VIEW`/`CUSTOMER_VIEW` theo ma trận; menu và API chi tiết không còn role fallback | FE chờ đồng bộ quyền trước khi guard; màn Đại lý hiển thị theo `CUSTOMER_VIEW` hoặc `ORDER_VIEW`, các nút lịch sử/đơn đang dở chỉ hiện khi có `ORDER_VIEW`; thêm tất cả chỉ lấy đơn gần nhất qua áp giá/tồn. |
+| S4-05 | Duyệt/Từ chối/Trả lại sửa | Có | Có | Đã nối PATCH, danh sách phân trang và lịch sử duyệt | Frontend yêu cầu cả `ORDER_VIEW` và `ORDER_APPROVE`; backend dùng `ORDER_VIEW` cho danh sách/chi tiết và `ORDER_APPROVE` cho thao tác; ADMIN luôn được phép | Bắt buộc lý do từ chối/trả lại, lưu lịch sử `APPROVED/REJECTED/RETURNED` bất biến, chỉ giữ chỗ sau khi kiểm quyền; đã bỏ role fallback và chặn sales duyệt đơn cổng có vi phạm. |
+| S4-06 | Vòng đời và hủy đơn | Có | Có | Đã nối hủy, tracking và lịch sử trạng thái; frontend hiển thị 7 bước chính và nhánh `Huỷ` từ `/orders/{id}/tracking` | `ORDER_CANCEL`/`ORDER_VIEW` và `WAREHOUSE_IMPORT`/`WAREHOUSE_EXPORT` từ ma trận; cập nhật giao hàng dùng `WAREHOUSE_EXPORT`; ADMIN luôn được phép; giới hạn thao tác theo kho được gán | Bắt buộc lý do hủy, tự nhả giữ chỗ, nhánh hủy hiển thị đúng bước dừng và chặn sau xuất kho; chỉ cho chuyển từng bước kế tiếp, không nhảy/lùi; không còn role fallback trên luồng giao hàng. |
+| S4-07 | Danh sách, lọc, tổng tiền | Có | Có | **Đã nối, thống nhất phân trang/DTO** | `ORDER_VIEW` theo ma trận; API dữ liệu phụ dùng `ORDER_VIEW`/`CUSTOMER_VIEW`, không còn role fallback | GET `/orders` trả tổng toàn tập lọc, số phần tử, phân trang tùy chọn; trang `/orders` cũng lọc phía FE. |
+| S4-08 | In/PDF và barcode | Có | Có | **Đã nối PDF backend sau tạo đơn** | `ORDER_VIEW` theo ma trận; endpoint HTML/PDF/barcode đều kiểm tra quyền xem và RLS | Đã đồng bộ quyền giữa nút frontend và cả endpoint cũ `/print`; nhân viên kinh doanh/đại lý không thể in đơn ngoài phạm vi. |
+| S4-09 | Sao chép đơn, áp lại giá | Có | Có | Đã nối nháp DB/nạp giá mới | API copy yêu cầu đồng thời `ORDER_CREATE` + `ORDER_VIEW`; kiểm tra phạm vi theo dữ liệu đơn | Nút và API thống nhất; dùng kiểm tra phạm vi xem đơn thay vì fallback role khi sao chép. |
+| S4-10 | Cổng đại lý tự đặt | Một phần | Có | **Đã sửa dùng `/portal/**`** | `ORDER_VIEW`/`ORDER_CREATE`/`PRODUCT_VIEW` theo ma trận; `DEALER`/`ADMIN` chỉ là phạm vi cổng; ADMIN luôn được phép | Đã nối gán đại lý cho tài khoản; chặn API nội bộ/giả giá, luôn PENDING_APPROVAL. Thiếu preview chiết khấu server và UI sales xác nhận đơn cổng. |
 
 ## Sprint 5 — Theo dõi đơn và tồn kho
 

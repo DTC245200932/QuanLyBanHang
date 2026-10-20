@@ -66,6 +66,9 @@ class OrderPriceListTest {
     @Mock
     private DealerDebtService dealerDebtService;
 
+    @Mock
+    private com.quanlybanhang.repository.WarehouseRepository warehouseRepository;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 
@@ -75,8 +78,16 @@ class OrderPriceListTest {
     private PriceList priceListDl1;
     private PriceList priceListDl2;
 
+    @org.junit.jupiter.api.AfterEach
+    void clearAuthentication() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+
     @BeforeEach
     void setUp() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("manager01", "",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ORDER_APPROVE"))));
+        var warehouse = Warehouse.builder().id(1L).code("TEST-WH").name("Kho kiểm thử").build();
+        org.mockito.Mockito.lenient().when(warehouseRepository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of(warehouse));
         biaHeineken = Product.builder()
                 .id(10L)
                 .code("SP-KEN330")
@@ -89,12 +100,14 @@ class OrderPriceListTest {
                 .id(1L)
                 .name("Đại lý Cấp 1 Minh Phát")
                 .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .warehouse(warehouse)
                 .build();
 
         dealerCap2 = Dealer.builder()
                 .id(2L)
                 .name("Đại lý Cấp 2 Tân Bình")
                 .customerGroup(CustomerGroup.DAI_LY_CAP_2)
+                .warehouse(warehouse)
                 .build();
 
         // Bảng giá Đại lý cấp 1: Giá bán 16,500 / lon, Giá sàn 15,500 / lon

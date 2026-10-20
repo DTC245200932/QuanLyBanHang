@@ -11,27 +11,24 @@
  * - Khai báo nhiều điểm giao hàng, chọn mặc định và gắn vào đơn hàng (S3-04)
  * - Phân trang phía client, tải danh mục tham chiếu từ /dealers/options
  */
-(() => {
+ (async () => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
-  if (!Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_SALES', 'ROLE_VIEWER')) {
+  if (!Auth.hasAnyPermission('CUSTOMER_VIEW', 'ORDER_VIEW')) {
     location.href = '/error?status=403';
     return;
   }
-  if (!Auth.hasPermission('CUSTOMER_VIEW')) {
-    location.href = '/error?status=403';
-    return;
-  }
-  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT');
-  const CAN_ASSIGN = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
-  const CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyRole(
-    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_VIEWER',
-  );
-  const CAN_MANAGE_DELIVERY_POINTS = Auth.hasAnyRole(
-    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_SALES',
-  );
-  const CAN_COPY_ORDER = Auth.hasPermission('ORDER_CREATE');
+  let CAN_MANAGE = Auth.hasPermission('CUSTOMER_EDIT');
+  let CAN_ASSIGN = Auth.hasPermission('CUSTOMER_EDIT');
+  let CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyPermission('CUSTOMER_VIEW', 'ORDER_VIEW');
+  let CAN_MANAGE_DELIVERY_POINTS = Auth.hasPermission('CUSTOMER_EDIT');
+  let CAN_VIEW_DEALER_ORDERS = Auth.hasPermission('ORDER_VIEW');
+  // Sao chép cần đọc đơn nguồn trước khi tạo bản nháp.
+  // Không hiện nút nếu thiếu ORDER_VIEW, tránh hiện nút rồi nhận 403 từ /orders/{id}.
+  let CAN_COPY_ORDER = Auth.hasPermission('ORDER_CREATE')
+    && Auth.hasPermission('ORDER_VIEW');
 
   /* ── DOM helpers ────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
@@ -439,12 +436,12 @@
         : `<span class="status-badge status-badge--inactive"><span class="status-badge__dot"></span>Ngừng giao dịch</span>`;
 
       const actions = `<div class="dlr-actions">
-            <button class="dlr-action-btn" data-action="orders" data-id="${dlr.id}" title="Đơn đang dở" aria-label="Đơn đang dở của ${escHtml(dlr.name)}">
+            ${CAN_VIEW_DEALER_ORDERS ? `<button class="dlr-action-btn" data-action="orders" data-id="${dlr.id}" title="Đơn đang dở" aria-label="Đơn đang dở của ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><path d="M9 5H5v16h14V5h-4M9 3h6v4H9zM8 12h8M8 16h5"/></svg>
             </button>
             <button class="dlr-action-btn" data-action="order-history" data-id="${dlr.id}" title="Lịch sử đơn hàng" aria-label="Lịch sử đơn hàng của ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/><path d="M7 3v4M17 3v4"/></svg>
-            </button>
+            </button>` : ''}
             ${CAN_ASSIGN ? `
             <button class="dlr-action-btn dlr-action-btn--assign" data-action="assign" data-id="${dlr.id}" title="Phân công người phụ trách" aria-label="Phân công người phụ trách cho ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M19 8v6M22 11h-6"/></svg>
@@ -902,7 +899,7 @@
 
   /* ── Dealer modal (Add / Edit) ──────────────────────────── */
   function openDealerModal(dlr = null) {
-    if (!CAN_MANAGE) {
+    if (!Auth.hasPermission(dlr ? 'CUSTOMER_EDIT' : 'CUSTOMER_CREATE')) {
       showToast('Bạn không có quyền quản lý đại lý.', 'error');
       return;
     }
@@ -943,6 +940,10 @@
   $('dealer-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = $('dlr-id').value;
+    if (!Auth.hasPermission(id ? 'CUSTOMER_EDIT' : 'CUSTOMER_CREATE')) {
+      showFormError('dealer-form-message', 'Quyền thao tác đã bị thu hồi.');
+      return;
+    }
 
     const payload = {
       code:          $('dlr-code').value.trim().toUpperCase(),
@@ -1658,7 +1659,7 @@
   }
 
   /* ── Manage privileges UI ────────────────────────────────── */
-  if (CAN_MANAGE) {
+  if (Auth.hasPermission('CUSTOMER_CREATE')) {
     const addBtn = $('btn-add-dealer');
     if (addBtn) addBtn.hidden = false;
   }
@@ -1854,4 +1855,21 @@
   /* ── Init ───────────────────────────────────────────────── */
   loadOptions();
   loadDealers();
+  window.addEventListener("auth:permissions-changed", () => {
+    CAN_MANAGE = Auth.hasPermission('CUSTOMER_EDIT');
+    CAN_ASSIGN = CAN_MANAGE;
+    CAN_MANAGE_DELIVERY_POINTS = CAN_MANAGE;
+    CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyPermission('CUSTOMER_VIEW', 'ORDER_VIEW');
+    CAN_VIEW_DEALER_ORDERS = Auth.hasPermission('ORDER_VIEW');
+    CAN_COPY_ORDER = Auth.hasPermission('ORDER_CREATE') && CAN_VIEW_DEALER_ORDERS;
+    $('btn-add-dealer').hidden = !Auth.hasPermission('CUSTOMER_CREATE');
+    $('dealer-assignment-panel').hidden = !CAN_ASSIGN;
+    renderTable();
+    if (!CAN_MANAGE && !Auth.hasPermission('CUSTOMER_CREATE')) closeDealerModal();
+    if (!CAN_MANAGE) {
+      closeStatusModal();
+      closeAssignmentModal();
+      closeBulkHandoverModal();
+    }
+  });
 })();

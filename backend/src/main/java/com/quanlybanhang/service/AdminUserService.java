@@ -157,6 +157,17 @@ public class AdminUserService {
     @Transactional
     public UserResponse update(Long id, AdminUserRequest request, String actingUsername) {
         User user = findUser(id);
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()) {
+            boolean mayAssign = authentication.getAuthorities().stream().anyMatch(authority ->
+                    "ROLE_ADMIN".equals(authority.getAuthority()) || "USER_ASSIGN_ROLE".equals(authority.getAuthority()));
+            Set<String> currentRoles = user.getRoles().stream().map(role -> role.getName().name())
+                    .collect(java.util.stream.Collectors.toSet());
+            Set<String> requestedRoles = new HashSet<>(request.getRoles());
+            if (!mayAssign && !currentRoles.equals(requestedRoles)) {
+                throw new org.springframework.security.access.AccessDeniedException("Bạn không có quyền gán vai trò");
+            }
+        }
         validateDuplicates(request.getUsername(), request.getEmail(), id);
         Set<Role> roles = resolveRoles(request.getRoles());
         validateDealerAssignment(roles, request.getDealerId());

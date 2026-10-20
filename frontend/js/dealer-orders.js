@@ -3,8 +3,9 @@
  * S5-02: Đặt lại một đơn đã mua trước đây theo bảng giá hiện hành,
  * loại bỏ mặt hàng đã ngừng kinh doanh kèm thông báo, cho phép chọn toàn bộ hoặc một phần dòng hàng.
  */
-(() => {
+(async () => {
   if (typeof Auth !== "undefined" && !Auth.requireLogin()) return;
+  if (typeof Auth !== "undefined") await Auth.ready;
 
   const user = typeof Auth !== "undefined" ? Auth.getUser() : null;
   if (typeof Auth !== "undefined" && (!Auth.hasAnyRole("ROLE_ADMIN", "ROLE_DEALER") || !Auth.hasPermission("ORDER_VIEW"))) {

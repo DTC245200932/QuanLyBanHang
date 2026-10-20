@@ -1,5 +1,6 @@
-(() => {
+(async () => {
   if (!Auth.requireLogin()) return;
+  await Auth.ready;
 
   const user = Auth.getUser();
   const sidebar = document.getElementById("sidebar");
@@ -62,7 +63,8 @@
   };
   const workOrder = ["orders", "order-approval", "users", "audit-logs", "debt-limits", "price-lists", "discount-policies", "products", "product-groups",
     "import-export", "warehouse", "product-units", "suppliers", "profile"];
-  const availableWork = MenuConfig.getMenuForUser(user);
+  function renderWork() {
+  const availableWork = MenuConfig.getMenuForUser(Auth.getUser());
   const work = workOrder.map((id) => availableWork.find((item) => item.id === id))
     .filter(Boolean).slice(0, 5);
   document.getElementById("work-list").innerHTML = work.map((item) => `
@@ -72,6 +74,9 @@
         <span class="work-link__description">${escapeHtml(workDescriptions[item.id] || "")}</span></span>
       <span class="work-link__open">Mở</span>
     </a>`).join("");
+  }
+  renderWork();
+  window.addEventListener("auth:permissions-changed", renderWork);
 
   function showToast(message, type = "error") {
     let container = document.getElementById("toast-container");

@@ -646,7 +646,6 @@ public class ProductServiceImpl implements ProductService {
         }
         return auth.getAuthorities().stream().anyMatch(a ->
                 "ROLE_ADMIN".equals(a.getAuthority()) ||
-                "ROLE_SALES_MANAGER".equals(a.getAuthority()) ||
                 Permission.FINANCE_VIEW_COST_PRICE.name().equals(a.getAuthority())
         );
     }

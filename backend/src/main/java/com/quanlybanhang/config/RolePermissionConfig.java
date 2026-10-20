@@ -26,6 +26,8 @@ public class RolePermissionConfig {
     private final Map<ERole, Set<Permission>> rolePermissions = new EnumMap<>(ERole.class);
     private RolePermissionRepository rolePermissionRepository;
     private RolePermissionStateRepository rolePermissionStateRepository;
+    @Autowired(required = false)
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     /** Giữ constructor không tham số để các unit test thuần Java vẫn dùng được. */
     public RolePermissionConfig() {
@@ -131,9 +133,15 @@ public class RolePermissionConfig {
 
     private void persistAll(Map<ERole, Set<Permission>> matrix) {
         if (rolePermissionRepository == null) return;
-        for (ERole role : ERole.values()) {
-            replaceStoredPermissions(role, matrix.getOrDefault(role, Set.of()));
+        Runnable write = () -> matrix.forEach((role, permissions) -> {
+            replaceStoredPermissions(role, permissions);
             markRoleConfigured(role);
+        });
+        if (transactionManager == null) {
+            write.run();
+        } else {
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                    .executeWithoutResult(status -> write.run());
         }
     }
 
@@ -146,6 +154,8 @@ public class RolePermissionConfig {
     private void replaceStoredPermissions(ERole role, Set<Permission> permissions) {
         if (rolePermissionRepository == null) return;
         rolePermissionRepository.deleteByRole(role);
+        // Hibernate phải thực hiện DELETE trước INSERT để không trùng unique(role, permission).
+        rolePermissionRepository.flush();
         List<RolePermission> rows = permissions.stream()
                 .map(permission -> RolePermission.builder().role(role).permission(permission).build())
                 .toList();
@@ -163,47 +173,31 @@ public class RolePermissionConfig {
         return copy;
     }
 
-    /** Cập nhật quyền; ADMIN luôn được chuẩn hoá thành toàn bộ quyền. */
-    public synchronized void updateRolePermissions(ERole role, Set<Permission> newPermissions) {
+    /** Chỉ công bố quyền mới sau khi toàn bộ thay đổi đã được lưu thành công. */
+    public synchronized void updateRolePermissions(ERole role, Set<Permission> permissions) {
         if (role == null) throw new IllegalArgumentException("Vai trò không được để trống");
-        if (role == ERole.ROLE_ADMIN) {
-            rolePermissions.put(role, EnumSet.allOf(Permission.class));
-            replaceStoredPermissions(role, rolePermissions.get(role));
-            markRoleConfigured(role);
-            return;
+        Map<ERole, Set<Permission>> changes = new EnumMap<>(ERole.class);
+        changes.put(role, permissions == null ? Set.of() : permissions);
+        updatePermissions(changes);
+    }
+
+    public synchronized void updatePermissions(Map<ERole, Set<Permission>> changes) {
+        if (changes == null || changes.isEmpty() || changes.containsKey(null)) {
+            throw new IllegalArgumentException("Ma trận quyền không hợp lệ");
         }
-        if (newPermissions == null) newPermissions = Collections.emptySet();
-        if (newPermissions.contains(FINANCE_VIEW_COST_PRICE)
-                || newPermissions.contains(FINANCE_VIEW_PROFIT_MARGIN)) {
-            if (role != ERole.ROLE_SALES_MANAGER) {
-                throw new IllegalArgumentException(
-                        "Giá vốn và biên lợi nhuận chỉ được phép cấp cho vai trò Quản lý kinh doanh");
-            }
-        }
-        if (role == ERole.ROLE_SALES && newPermissions.contains(WAREHOUSE_ADJUST)) {
-            throw new IllegalArgumentException("Nhân viên kinh doanh không được phép sửa tồn kho");
-        }
-        if (role == ERole.ROLE_DEALER && (newPermissions.contains(WAREHOUSE_ADJUST)
-                || newPermissions.contains(WAREHOUSE_IMPORT)
-                || newPermissions.contains(WAREHOUSE_EXPORT)
-                || newPermissions.contains(WAREHOUSE_APPROVE))) {
-            throw new IllegalArgumentException("Đại lý không được phép thao tác kho");
-        }
-        if (role == ERole.ROLE_SALES && newPermissions.contains(WAREHOUSE_TRANSFER)) {
-            throw new IllegalArgumentException("Nhân viên kinh doanh không được phép thực hiện chuyển kho");
-        }
-        Set<Permission> permissions = newPermissions.isEmpty()
-                ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(newPermissions);
-        rolePermissions.put(role, permissions);
-        replaceStoredPermissions(role, permissions);
-        markRoleConfigured(role);
+        Map<ERole, Set<Permission>> normalized = new EnumMap<>(ERole.class);
+        changes.forEach((role, permissions) -> normalized.put(role, permissions == null || permissions.isEmpty()
+                ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(permissions)));
+        normalized.put(ERole.ROLE_ADMIN, EnumSet.allOf(Permission.class));
+        persistAll(normalized);
+        rolePermissions.putAll(normalized);
     }
 
     public synchronized void resetToDefault() {
+        Map<ERole, Set<Permission>> defaults = defaultPermissions();
+        persistAll(defaults);
         rolePermissions.clear();
-        rolePermissions.putAll(defaultPermissions());
-        enforceAdminPermissions();
-        persistAll(rolePermissions);
+        rolePermissions.putAll(defaults);
     }
 
     public synchronized Set<Permission> getPermissions(ERole role) {

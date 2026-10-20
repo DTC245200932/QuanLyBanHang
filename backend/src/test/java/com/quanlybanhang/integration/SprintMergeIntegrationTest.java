@@ -94,6 +94,30 @@ class SprintMergeIntegrationTest {
     }
 
     @Test
+    void savedMatrixRevokesAndRestoresAccessOnTheSameLoginToken() throws Exception {
+        String admin = login("admin");
+        Set<Permission> original = matrix.getPermissions(ERole.ROLE_SALES_MANAGER);
+        Set<Permission> revoked = EnumSet.copyOf(original);
+        revoked.remove(Permission.FINANCE_VIEW_COST_PRICE);
+        try {
+            call(get("/api/finance/cost-price"), managerToken, null, 200);
+            call(put("/api/admin/permissions"), admin,
+                    Map.of("ROLE_SALES_MANAGER", revoked), 200);
+            call(get("/api/finance/cost-price"), managerToken, null, 403);
+            assertThat(call(get("/api/auth/permissions"), managerToken, null, 200)
+                    .at("/data/permissions").toString()).doesNotContain("FINANCE_VIEW_COST_PRICE");
+            call(get("/api/finance/cost-price"), admin, null, 200);
+            call(put("/api/admin/permissions"), admin,
+                    Map.of("ROLE_SALES_MANAGER", original), 200);
+            call(get("/api/finance/cost-price"), managerToken, null, 200);
+            call(put("/api/admin/permissions"), managerToken,
+                    Map.of("ROLE_SALES_MANAGER", original), 403);
+        } finally {
+            matrix.updateRolePermissions(ERole.ROLE_SALES_MANAGER, original);
+        }
+    }
+
+    @Test
     void portalOrderApprovalCancellationAndPdfUseTheSameDatabase() throws Exception {
         assertThat(call(get("/api/portal/profile"), dealerToken, null, 200).at("/data/id").asLong())
                 .isEqualTo(dealer.getId());
@@ -112,7 +136,8 @@ class SprintMergeIntegrationTest {
         assertThat(stock().getReservedQuantity()).isEqualByComparingTo("0");
         call(get("/api/portal/orders/" + id), dealerToken, null, 200);
         call(put("/api/orders/" + id + "/approve"), strangerToken, null, 403);
-        call(put("/api/orders/" + id + "/approve"), salesToken, null, 200);
+        call(put("/api/orders/" + id + "/approve"), salesToken, null, 403);
+        call(put("/api/orders/" + id + "/approve"), managerToken, null, 200);
         assertThat(stock().getReservedQuantity()).isEqualByComparingTo("48");
         JsonNode filtered = call(get("/api/orders").param("dealerId", dealer.getId().toString())
                 .param("status", "RECORDED").param("page", "0").param("size", "1"), managerToken, null, 200);

@@ -29,12 +29,21 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CategoryController {
 
+    @GetMapping("/options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCT_VIEW', 'PRODUCT_CREATE', 'PRODUCT_EDIT')")
+    public ApiResponse categoryOptions() {
+        return ApiResponse.success("Danh mục tham chiếu nhóm hàng", categoryService.getAllFlat().stream()
+                .map(category -> java.util.Map.of("id", category.getId(), "code", category.getCode(), "name", category.getName()))
+                .toList());
+    }
+
     private final CategoryService categoryService;
 
     /**
      * Lấy cây nhóm hàng nhiều cấp (hỗ trợ tối thiểu 3 cấp và hiển thị doanh số ngành hàng).
      */
     @GetMapping("/tree")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_VIEW'))")
     public ApiResponse getCategoryTree() {
         List<CategoryResponse> tree = categoryService.getCategoryTree();
         return ApiResponse.success("Cây nhóm hàng nhiều cấp", tree);
@@ -44,6 +53,7 @@ public class CategoryController {
      * Lấy danh sách nhóm hàng dạng phẳng.
      */
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_VIEW'))")
     public ApiResponse getAllCategories() {
         return ApiResponse.success("Danh sách nhóm hàng", categoryService.getAllFlat());
     }
@@ -52,6 +62,7 @@ public class CategoryController {
      * Lấy chi tiết nhóm hàng theo ID.
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_VIEW'))")
     public ApiResponse getCategoryById(@PathVariable Long id) {
         return ApiResponse.success("Chi tiết nhóm hàng", categoryService.getById(id));
     }
@@ -60,6 +71,7 @@ public class CategoryController {
      * Xem doanh số theo ngành hàng / nhóm hàng (tổng hợp doanh số của toàn bộ cây con).
      */
     @GetMapping("/{id}/revenue")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('REPORT_SALES'))")
     public ApiResponse getCategoryRevenue(@PathVariable Long id) {
         return ApiResponse.success("Doanh số theo ngành hàng", categoryService.getCategoryRevenue(id));
     }
@@ -69,7 +81,7 @@ public class CategoryController {
      * Chỉ Quản lý kinh doanh (ROLE_SALES_MANAGER) và Quản trị viên (ROLE_ADMIN).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_CREATE'))")
     public ResponseEntity<ApiResponse> createCategory(@Valid @RequestBody CategoryRequest request) {
         CategoryResponse response = categoryService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -81,7 +93,7 @@ public class CategoryController {
      * Chỉ Quản lý kinh doanh (ROLE_SALES_MANAGER) và Quản trị viên (ROLE_ADMIN).
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse updateCategory(@PathVariable Long id, @Valid @RequestBody CategoryRequest request) {
         CategoryResponse response = categoryService.update(id, request);
         return ApiResponse.success("Cập nhật nhóm hàng thành công", response);
@@ -93,7 +105,7 @@ public class CategoryController {
      * Chỉ Quản lý kinh doanh (ROLE_SALES_MANAGER) và Quản trị viên (ROLE_ADMIN).
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_DELETE'))")
     public ApiResponse deleteCategory(@PathVariable Long id) {
         categoryService.delete(id);
         return ApiResponse.success("Xóa nhóm hàng thành công", null);
@@ -105,7 +117,7 @@ public class CategoryController {
      * Chỉ Quản lý kinh doanh (ROLE_SALES_MANAGER) và Quản trị viên (ROLE_ADMIN).
      */
     @PostMapping("/move-products")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse moveProducts(@Valid @RequestBody MoveProductsRequest request) {
         categoryService.moveProducts(request);
         return ApiResponse.success("Chuyển sản phẩm giữa các nhóm thành công", null);
@@ -115,7 +127,7 @@ public class CategoryController {
      * Chuyển 1 sản phẩm sang nhóm hàng đích.
      */
     @PutMapping("/products/{productId}/move")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse moveSingleProduct(@PathVariable Long productId, @RequestParam Long targetCategoryId) {
         categoryService.moveSingleProduct(productId, targetCategoryId);
         return ApiResponse.success("Chuyển sản phẩm sang nhóm mới thành công", null);

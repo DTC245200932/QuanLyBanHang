@@ -304,7 +304,7 @@ public class OrderController {
      * S4-06: Cập nhật trạng thái vòng đời của đơn hàng (Soạn hàng, Xuất kho, Giao hàng, Đóng).
      */
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyAuthority('WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('WAREHOUSE_EXPORT')")
     public ApiResponse updateOrderStatus(
             @PathVariable Long id,
             @Valid @RequestBody OrderStatusUpdateRequest request,
@@ -362,7 +362,7 @@ public class OrderController {
      * S5-06: Tự động hoặc kích hoạt thủ công nhả tồn giữ chỗ cho các đơn hàng đã quá hạn.
      */
     @PostMapping("/release-expired-reservations")
-    @PreAuthorize("hasAuthority('ORDER_APPROVE') or hasAuthority('ORDER_CANCEL') or hasAuthority('WAREHOUSE_APPROVE') or hasAnyRole('ADMIN', 'SALES_MANAGER', 'WAREHOUSE_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ORDER_APPROVE', 'ORDER_CANCEL', 'WAREHOUSE_APPROVE')")
     public ApiResponse releaseExpiredReservations() {
         int count = orderService.releaseExpiredReservations();
         return ApiResponse.success("Đã nhả tồn giữ chỗ cho " + count + " đơn hàng quá hạn", count);
@@ -463,7 +463,7 @@ public class OrderController {
      * S4-04: Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới.
      */
     @PostMapping("/dealer/{dealerId}/last-order-to-draft")
-    @PreAuthorize("hasAuthority('ORDER_CREATE')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_CREATE') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse copyLastOrderToDraft(@PathVariable Long dealerId, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         JsonNode draftNode = orderService.copyLastOrderToDraft(dealerId, username);

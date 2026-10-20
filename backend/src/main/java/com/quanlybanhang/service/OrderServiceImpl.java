@@ -2740,8 +2740,7 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
 
-        boolean hasWarehousePermission = hasAuthority(auth, "WAREHOUSE_IMPORT")
-                || hasAuthority(auth, "WAREHOUSE_EXPORT");
+        boolean hasWarehousePermission = hasAuthority(auth, "WAREHOUSE_EXPORT");
         if (!hasWarehousePermission) {
             throw new AccessDeniedException("Bạn không có quyền " + action + " theo ma trận phân quyền");
         }
@@ -2980,7 +2979,7 @@ public class OrderServiceImpl implements OrderService {
         // API controller đã kiểm tra ORDER_CREATE cho luồng cổng đại lý. Ở tầng
         // service vẫn kiểm tra vai trò/phạm vi để các lời gọi nội bộ không vượt
         // quá đại lý được phân công.
-        if (!isSales || !isPortalOrder(order)) {
+        if (!isSales || !hasAuthority(auth, "ORDER_CREATE") || !isPortalOrder(order)) {
             throw new AccessDeniedException("Bạn không có quyền xử lý đơn hàng này theo ma trận phân quyền");
         }
 

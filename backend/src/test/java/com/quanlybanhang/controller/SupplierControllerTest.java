@@ -52,7 +52,7 @@ class SupplierControllerTest {
         when(supplierService.getAllSuppliers(eq(""), any())).thenReturn(new PageImpl<>(List.of(
                 SupplierResponse.builder().id(1L).code("NCC001").name("Supplier")
                         .contactPerson("Contact").active(true).build())));
-        mvc.perform(get("/api/suppliers").with(user("reader").roles(role)))
+        mvc.perform(get("/api/suppliers").with(user("reader").roles(role).authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("WAREHOUSE_VIEW"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].contactPerson").value("Contact"))
                 .andExpect(jsonPath("$.data.content[0].active").value(true));
@@ -64,7 +64,7 @@ class SupplierControllerTest {
         when(supplierService.updateStatus(1L, false)).thenReturn(
                 SupplierResponse.builder().id(1L).active(false).build());
         mvc.perform(patch("/api/suppliers/1/status").param("active", "false")
-                        .with(user("warehouse").roles(role)))
+                        .with(user("warehouse").roles(role).authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("WAREHOUSE_MANAGE"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.active").value(false));
     }
@@ -92,7 +92,7 @@ class SupplierControllerTest {
                     .email(request.getEmail()).address(request.getAddress()).notes(request.getNotes())
                     .active(true).build();
         });
-        mvc.perform(post("/api/suppliers").with(user("warehouse").roles("WAREHOUSE_STAFF"))
+        mvc.perform(post("/api/suppliers").with(user("warehouse").roles("WAREHOUSE_STAFF").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("WAREHOUSE_MANAGE")))
                         .contentType(MediaType.APPLICATION_JSON).content("""
                         {"code":"NCC001","name":"Supplier","contactPerson":"Contact",
                          "contactPhone":"0901234567","email":"contact@example.test",
@@ -108,7 +108,7 @@ class SupplierControllerTest {
 
     @Test
     void invalidContactDetailsAreRejected() throws Exception {
-        mvc.perform(post("/api/suppliers").with(user("warehouse").roles("WAREHOUSE_STAFF"))
+        mvc.perform(post("/api/suppliers").with(user("warehouse").roles("WAREHOUSE_STAFF").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("WAREHOUSE_MANAGE")))
                         .contentType(MediaType.APPLICATION_JSON).content("""
                         {"code":"NCC001","name":"Supplier","contactPhone":"123","email":"invalid"}
                         """))
@@ -118,7 +118,7 @@ class SupplierControllerTest {
 
     @Test
     void excessivePageSizeIsRejected() throws Exception {
-        mvc.perform(get("/api/suppliers?size=201").with(user("warehouse").roles("WAREHOUSE_STAFF")))
+        mvc.perform(get("/api/suppliers?size=201").with(user("warehouse").roles("WAREHOUSE_STAFF").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("WAREHOUSE_VIEW"))))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(supplierService);
     }

@@ -14,7 +14,7 @@
  *   GET  /dealers/{id}/purchase-history?months=3  → lịch sử mua 3 tháng
  *   GET  /dealers/active                       → đại lý đang hoạt động
  *   GET  /dealers/{id}/delivery-points         → điểm giao hàng của đại lý
- *   GET  /products?search={q}&active=true      → tìm sản phẩm
+ *   GET  /products/lookup?search={q}&active=true → tìm sản phẩm tham chiếu
  *   GET  /products/{id}/unit-conversions       → đơn vị tính quy đổi
  *   GET  /price-lists/effective                → bảng giá hiệu lực theo nhóm đại lý
  *   POST /orders/calculate                     → áp giá và tính chiết khấu toàn bộ đơn
@@ -466,6 +466,13 @@
     const body = $('co-history-body');
     const addAllBtn = $('btn-add-all-history');
 
+    if (!Auth.hasPermission('ORDER_VIEW')) {
+      section.hidden = true;
+      body.innerHTML = '';
+      addAllBtn.hidden = true;
+      historyItems = [];
+      return;
+    }
     section.hidden = false;
     addAllBtn.hidden = true;
     historyItems = [];
@@ -474,7 +481,7 @@
     try {
       const res = await Auth.apiFetch(`/dealers/${dealerId}/purchase-history?months=3`);
       // Guard: dealer changed while fetching
-      if (state.selectedDealer?.id !== dealerId) return;
+      if (state.selectedDealer?.id !== dealerId || !Auth.hasPermission('ORDER_VIEW')) return;
 
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Không tải được lịch sử mua hàng');
@@ -542,7 +549,7 @@
    */
   async function addHistoryProduct(hItem) {
     try {
-      const res = await Auth.apiFetch(`/products/${hItem.productId}`);
+      const res = await Auth.apiFetch(`/products/lookup/${hItem.productId}`);
       const result = await res.json();
       if (!res.ok || !result.success || result.data.active === false) {
         throw new Error(result.message || 'Sản phẩm đã ngừng kinh doanh');
@@ -622,7 +629,7 @@
     dropdown.hidden = false;
     dropdown.innerHTML = '<div class="co-dropdown-loading">Đang tìm…</div>';
     try {
-      const res = await Auth.apiFetch(`/products?search=${encodeURIComponent(q)}&active=true&size=30`);
+      const res = await Auth.apiFetch(`/products/lookup?search=${encodeURIComponent(q)}&active=true&size=30`);
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Lỗi tìm kiếm');
       const products = Array.isArray(result.data)
@@ -1261,7 +1268,7 @@
       itemSeq = draft._seq || 0;
       state.items = await Promise.all((draft.items || []).map(async (it) => {
         const [productResponse, unitsResponse] = await Promise.all([
-          Auth.apiFetch(`/products/${it.productId}`),
+          Auth.apiFetch(`/products/lookup/${it.productId}`),
           Auth.apiFetch(`/products/${it.productId}/unit-conversions`),
         ]);
         const [productResult, unitsResult] = await Promise.all([
@@ -1605,5 +1612,8 @@
     }
   }
 
+  globalThis.addEventListener?.('auth:permissions-changed', () => {
+    if (state.selectedDealer) loadPurchaseHistory(state.selectedDealer.id);
+  });
   init();
 })();

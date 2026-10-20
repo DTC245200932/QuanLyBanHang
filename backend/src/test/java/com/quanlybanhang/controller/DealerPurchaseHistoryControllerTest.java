@@ -160,7 +160,8 @@ class DealerPurchaseHistoryControllerTest {
         mvc.perform(post("/api/dealers/1/last-order-to-draft")
                         .with(user("sales01").authorities(
                                 new SimpleGrantedAuthority("ROLE_SALES"),
-                                new SimpleGrantedAuthority("ORDER_CREATE")))
+                                new SimpleGrantedAuthority("ORDER_CREATE"),
+                                new SimpleGrantedAuthority("ORDER_VIEW")))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))

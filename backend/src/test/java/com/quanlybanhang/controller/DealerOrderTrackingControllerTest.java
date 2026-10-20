@@ -223,7 +223,7 @@ class DealerOrderTrackingControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("GET /api/portal/orders - Nhân viên SALES không có vai trò DEALER bị chặn 403")
     void getMyOrders_SalesRole_Returns403() throws Exception {
         mockMvc.perform(get("/api/portal/orders"))

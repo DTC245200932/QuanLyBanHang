@@ -54,6 +54,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("OrderController - API Quản lý Đơn hàng (S2-07)")
 class OrderControllerTest {
 
+    @Test
+    @WithMockUser(authorities = {"ROLE_SALES_MANAGER", "ORDER_CREATE"})
+    void legacyCopyLastOrderAlsoRequiresViewPermission() throws Exception {
+        mockMvc.perform(post("/api/orders/dealer/1/last-order-to-draft"))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verify(orderService, org.mockito.Mockito.never()).copyLastOrderToDraft(any(), any());
+    }
+
+    @Test
+    @WithMockUser(authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_IMPORT"})
+    void importPermissionDoesNotAllowExportingAnOrder() throws Exception {
+        mockMvc.perform(put("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"EXPORTED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     @Autowired
     private WebApplicationContext context;
 

@@ -15,16 +15,17 @@
  *   GET    /products?categoryId=:id
  *   PUT    /categories/products/:id/move?targetCategoryId=:categoryId
  */
-(() => {
+(async () => {
   /* ── Auth guard ────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.ready;
 
-  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER')
-    && Auth.hasAnyPermission('PRODUCT_CREATE', 'PRODUCT_EDIT', 'PRODUCT_DELETE');
+  if (!Auth.hasPermission('PRODUCT_VIEW')) { location.href = '/error?status=403'; return; }
+  let CAN_MANAGE = Auth.hasAnyPermission('PRODUCT_CREATE', 'PRODUCT_EDIT', 'PRODUCT_DELETE');
 
   /* ── Helpers ───────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
-  $('add-root-group').hidden = !CAN_MANAGE;
+  $('add-root-group').hidden = !Auth.hasPermission('PRODUCT_CREATE');
   const escapeHtml = (v) =>
     String(v ?? '').replace(/[&<>'"]/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c],
@@ -576,7 +577,7 @@
    * @param {number|null} presetParentId – pre-select parent when adding child
    */
   function openGroupModal(group = null, presetParentId = null) {
-    if (!CAN_MANAGE) { showToast('Bạn không có quyền quản lý nhóm hàng.', 'error'); return; }
+    if (!Auth.hasPermission(group ? 'PRODUCT_EDIT' : 'PRODUCT_CREATE')) { showToast('Bạn không có quyền quản lý nhóm hàng.', 'error'); return; }
 
     $('group-form').reset();
     $('group-form-message').hidden = true;
@@ -610,6 +611,10 @@
   $('group-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id       = $('group-id').value;
+    if (!Auth.hasPermission(id ? 'PRODUCT_EDIT' : 'PRODUCT_CREATE')) {
+      showFormError('group-form-message', 'Quyền thao tác đã bị thu hồi.');
+      return;
+    }
     const parentId = $('group-parent').value ? Number($('group-parent').value) : null;
     const payload  = {
       code:        $('group-code').value.trim().toUpperCase(),
@@ -654,7 +659,7 @@
 
   /* ── Delete group ──────────────────────────────────────── */
   async function deleteGroup(id) {
-    if (!CAN_MANAGE) { showToast('Bạn không có quyền quản lý nhóm hàng.', 'error'); return; }
+    if (!Auth.hasPermission('PRODUCT_DELETE')) { showToast('Bạn không có quyền xoá nhóm hàng.', 'error'); return; }
 
     const node = state.nodeMap[id];
     if (!node) return;
@@ -685,7 +690,7 @@
 
   /* ── Move product modal ────────────────────────────────── */
   function openMoveModal(productId, productName, currentGroupId) {
-    if (!CAN_MANAGE) { showToast('Bạn không có quyền chuyển sản phẩm.', 'error'); return; }
+    if (!Auth.hasPermission('PRODUCT_EDIT')) { showToast('Bạn không có quyền chuyển sản phẩm.', 'error'); return; }
 
     $('move-product-id').value          = productId;
     $('move-product-name').textContent  = productName;
@@ -772,4 +777,15 @@
 
   /* ── Init ──────────────────────────────────────────────── */
   loadTree();
+  Auth.bindPermissions?.('#add-root-group, [data-action="add-child"], #detail-add-child-btn', 'PRODUCT_CREATE');
+  Auth.bindPermissions?.('[data-action="edit"], #detail-edit-btn, [data-move]', 'PRODUCT_EDIT');
+  Auth.bindPermissions?.('[data-action="delete"]', 'PRODUCT_DELETE');
+  window.addEventListener("auth:permissions-changed", () => {
+    CAN_MANAGE = Auth.hasAnyPermission('PRODUCT_CREATE', 'PRODUCT_EDIT', 'PRODUCT_DELETE');
+    $('add-root-group').hidden = !Auth.hasPermission('PRODUCT_CREATE');
+    if (!Auth.hasPermission($('group-id').value ? 'PRODUCT_EDIT' : 'PRODUCT_CREATE')) closeGroupModal();
+    if (!Auth.hasPermission('PRODUCT_EDIT')) closeMoveModal();
+    renderTree();
+    if (state.selectedId) renderDetail(state.selectedId);
+  });
 })();

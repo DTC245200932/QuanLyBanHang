@@ -13,7 +13,7 @@
   }
 
   // Quản trị viên có toàn quyền theo ma trận quyền và backend FinanceController.
-  const canDeclare = Auth.hasPermission("FINANCE_MANAGE");
+  let canDeclare = Auth.hasPermission("FINANCE_MANAGE");
   const $ = id => document.getElementById(id);
   const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -290,4 +290,10 @@
     }
   });
   loadLimits();
+window.addEventListener("auth:permissions-changed", () => {
+    canDeclare = Auth.hasPermission("FINANCE_MANAGE");
+    $("debt-limits-readonly").hidden = canDeclare;
+    if (!canDeclare) closeDeclaration();
+    render();
+  });
 })();

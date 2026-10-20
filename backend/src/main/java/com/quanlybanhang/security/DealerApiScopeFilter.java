@@ -25,10 +25,15 @@ public class DealerApiScopeFilter extends OncePerRequestFilter {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         boolean dealer = auth != null && auth.getAuthorities().stream()
                 .anyMatch(authority -> "ROLE_DEALER".equals(authority.getAuthority()));
+        boolean admin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
+        boolean internalRole = auth != null && auth.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().startsWith("ROLE_")
+                        && !"ROLE_DEALER".equals(authority.getAuthority()));
         String path = request.getRequestURI().substring(request.getContextPath().length());
         boolean ownApi = path.startsWith("/api/portal/") || path.startsWith("/api/auth/")
                 || path.startsWith("/api/users/") || path.startsWith("/api/products/images/");
-        if (dealer && path.startsWith("/api/") && !ownApi) {
+        if (dealer && !admin && !internalRole && path.startsWith("/api/") && !ownApi) {
             accessDeniedHandler.handle(request, response,
                     new AccessDeniedException("Vui lòng sử dụng cổng đại lý để truy cập dữ liệu của mình"));
             return;

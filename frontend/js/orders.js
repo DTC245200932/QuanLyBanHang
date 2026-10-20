@@ -21,8 +21,8 @@
     return;
   }
 
-  const CAN_APPROVE = Auth.hasPermission('ORDER_APPROVE');
-  const CAN_CANCEL = Auth.hasPermission('ORDER_CANCEL');
+  let CAN_APPROVE = Auth.hasPermission('ORDER_APPROVE');
+  let CAN_CANCEL = Auth.hasPermission('ORDER_CANCEL');
   const CANCELLABLE_STATUSES = new Set([
     'DRAFT', 'PENDING_APPROVAL', 'RECORDED', 'APPROVED', 'PICKING', 'PROCESSING',
   ]);
@@ -1179,4 +1179,15 @@
   /* ── 15. Bootstrap ─────────────────────────────────────────── */
   setupEventListeners();
   loadInitialData();
+window.addEventListener("auth:permissions-changed", () => {
+    CAN_APPROVE = Auth.hasPermission("ORDER_APPROVE");
+    CAN_CANCEL = Auth.hasPermission("ORDER_CANCEL");
+    renderTable();
+    if (!CAN_CANCEL) { closeCancelModal(); $("btn-detail-cancel").hidden = true; }
+    if (!CAN_APPROVE) {
+      closeRejectModal();
+      $("btn-detail-approve").hidden = true;
+      $("btn-detail-reject").hidden = true;
+    }
+  });
 })();

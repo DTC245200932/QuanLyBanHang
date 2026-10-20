@@ -4,6 +4,32 @@ Base URL: `http://localhost:8080/api`
 
 Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
 
+## Ma trận quyền — cập nhật 20/10/2026
+
+**Quyền DB, không phải role mặc định, quyết định truy cập nghiệp vụ.** Các bảng role cũ bên dưới chỉ mô tả cấu hình mặc định; hợp đồng quyền ở mục này được ưu tiên. ROLE_ADMIN luôn được phép. Vai trò vẫn có thể giới hạn phạm vi đơn/kho/đại lý; không bỏ kiểm tra phạm vi khi cấp thêm quyền.
+
+| Method / endpoint | Quyền / hợp đồng |
+|---|---|
+| GET `/auth/permissions` | Đã đăng nhập; trả `{roles: [...], permissions: [...]}` từ Authentication hiện tại, không tin danh sách quyền do client gửi |
+| GET `/admin/permissions` | ADMIN; giữ nguyên catalog quyền và matrix |
+| PUT `/admin/permissions` | ADMIN; body là object `{ "ROLE_SALES": ["ORDER_VIEW", "ORDER_CREATE"], "ROLE_VIEWER": [] }`; chỉ thay vai trò có trong body, lưu toàn bộ thay đổi trong một transaction; trả matrix/catalog mới. Body rỗng không hợp lệ |
+| PUT `/admin/permissions/{role}` | ADMIN; array quyền, vẫn tương thích API cũ; `[]` là thu hồi hết quyền và được lưu qua restart |
+| GET `/products/lookup`, `/products/lookup/{id}` | Một trong PRODUCT_VIEW/CREATE/EDIT, ORDER_CREATE, WAREHOUSE_VIEW/MANAGE/IMPORT/EXPORT; danh mục tham chiếu tối thiểu, không trả giá vốn hoặc doanh thu; list hỗ trợ `search`, `active` |
+| GET `/categories/options` | PRODUCT_VIEW/CREATE/EDIT; chỉ id/code/name cho bộ chọn, không trả doanh thu |
+| Sản phẩm / nhóm hàng | GET chi tiết/danh sách: PRODUCT_VIEW; POST: PRODUCT_CREATE; PUT/PATCH/chuyển nhóm: PRODUCT_EDIT; DELETE: PRODUCT_DELETE. Lịch sử giá: FINANCE_VIEW_COST_PRICE |
+| Nhập sản phẩm Excel | Preview/import cần cả PRODUCT_CREATE + PRODUCT_EDIT vì file có thể chứa SKU tạo mới và cập nhật; template cần một trong hai |
+| Bảng giá / chiết khấu | Đọc: một trong PRODUCT_VIEW/PRODUCT_EDIT/ORDER_CREATE; ghi: PRODUCT_EDIT; lấy bảng hiệu lực/tính chiết khấu để đặt đơn: ORDER_CREATE |
+| Nhà cung cấp / đơn vị quy đổi | Nhà cung cấp đọc: WAREHOUSE_VIEW/MANAGE, ghi: WAREHOUSE_MANAGE. Đơn vị đọc hỗ trợ quyền tham chiếu của sản phẩm/đặt đơn/kho; ghi: WAREHOUSE_MANAGE |
+| Kho | Nhập: WAREHOUSE_IMPORT; xuất: WAREHOUSE_EXPORT; xác nhận phiếu: WAREHOUSE_APPROVE; điều chỉnh: WAREHOUSE_ADJUST; chuyển: WAREHOUSE_TRANSFER; danh mục kho/vị trí ghi: WAREHOUSE_MANAGE |
+| Vòng đời đơn / giao hàng | WAREHOUSE_EXPORT; chỉ WAREHOUSE_IMPORT không cho phép xuất/chuyển vòng đời đơn. Giữ các kiểm tra phạm vi kho, thứ tự trạng thái và điều kiện hủy |
+| Sao chép đơn / đơn gần nhất | Cả ORDER_CREATE + ORDER_VIEW, áp dụng cho `/orders/{id}/copy`, `/copy-to-draft`, `/orders/dealer/{dealerId}/last-order-to-draft` và đường tương ứng dưới `/dealers` |
+| Giá vốn / lợi nhuận / công nợ | FINANCE_VIEW_COST_PRICE / FINANCE_VIEW_PROFIT_MARGIN / FINANCE_VIEW_DEBT; thay đổi hạn mức hoặc ngày nợ cần FINANCE_MANAGE, kể cả gửi trường này qua POST/PUT hồ sơ đại lý |
+| Tài khoản | Đọc USER_VIEW; tạo/import USER_CREATE + USER_ASSIGN_ROLE; sửa USER_EDIT, đổi vai trò còn cần USER_ASSIGN_ROLE; khóa/mở USER_LOCK. Chỉ quản lý ma trận và audit log yêu cầu riêng ADMIN |
+
+Sau khi lưu thành công, request tiếp theo của token đang đăng nhập dùng quyền mới; không phải đăng nhập lại. Frontend đồng bộ qua `/auth/permissions` khi mở trang, focus và mỗi 15 giây khi trang hoạt động; browser có thể trì hoãn timer của tab nền. API vẫn chặn ngay ở server kể cả giao diện chưa kịp cập nhật. Người dùng nhiều vai trò nhận hợp quyền của mọi vai trò được gán.
+
+Tài khoản chỉ có ROLE_DEALER dùng API `/portal/**` và hồ sơ cá nhân, không truy cập API nghiệp vụ nội bộ. Menu tuân theo cùng phạm vi; tài khoản có thêm vai trò nội bộ vẫn phải có permission và qua kiểm tra phạm vi tương ứng.
+
 ## Hợp đồng đã đồng bộ ngày 19/10/2026
 
 Phần này cập nhật hợp đồng của bản ghép sprint 1–5. Các giới hạn nghiệm thu được ghi ở

@@ -303,7 +303,7 @@ class DealerOrderTrackingServiceTest {
     @Test
     @DisplayName("S5-01: Thủ kho / Quản lý cập nhật tiến trình giao hàng và số lượng thực giao")
     void updateOrderDelivery_UpdatesDeliveredQuantitiesAndStatus() {
-        Order order = createTestOrder(5L, "DH-005", dealerMinhPhat, "RECORDED",
+        Order order = createTestOrder(5L, "DH-005", dealerMinhPhat, "EXPORTED",
                 new BigDecimal("20"), null, new BigDecimal("10"), null);
 
         when(orderRepository.findById(5L)).thenReturn(Optional.of(order));
@@ -341,7 +341,7 @@ class DealerOrderTrackingServiceTest {
         assertThat(item1.getDeliveryNote()).isEqualTo("Kho tạm xuất 15 thùng");
 
         verify(auditLogService).logAction(eq("ORDER"), eq("DH-005"), eq("DELIVERY_UPDATE"),
-                eq("RECORDED"), eq("DELIVERED"), anyString(), eq("warehouse.staff"));
+                eq("EXPORTED"), eq("DELIVERED"), anyString(), eq("warehouse.staff"));
     }
 
     @Test
@@ -354,9 +354,7 @@ class DealerOrderTrackingServiceTest {
         assertThat(config.hasPermission(ERole.ROLE_DEALER, Permission.ORDER_VIEW)).isTrue();
         assertThat(config.hasPermission(ERole.ROLE_DEALER, Permission.ORDER_CREATE)).isTrue();
 
-        // Đảm bảo ROLE_DEALER không được phép thao tác kho (tuân thủ bảo mật tốt nhất)
-        assertThatThrownBy(() -> config.updateRolePermissions(ERole.ROLE_DEALER, Set.of(Permission.WAREHOUSE_ADJUST)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Đại lý không được phép thao tác kho");
+        config.updateRolePermissions(ERole.ROLE_DEALER, Set.of());
+        assertThat(config.getPermissions(ERole.ROLE_DEALER)).isEmpty();
     }
 }

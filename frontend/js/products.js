@@ -1,14 +1,15 @@
-(() => {
+(async () => {
   if (!Auth.requireLogin()) return;
+  await Auth.ready;
 
-  const canManageRole = Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN");
-  const canCreate = canManageRole && Auth.hasPermission("PRODUCT_CREATE");
-  const canEdit = canManageRole && Auth.hasPermission("PRODUCT_EDIT");
-  const canDelete = canManageRole && Auth.hasPermission("PRODUCT_DELETE");
-  const canManage = canCreate || canEdit || canDelete;
-  const canImport = canManageRole && Auth.hasPermission("PRODUCT_CREATE");
-  const canViewCost = Auth.hasPermission("FINANCE_VIEW_COST_PRICE");
-  const canViewPriceHistory = canManageRole && Auth.hasPermission("PRODUCT_VIEW");
+  if (!Auth.hasPermission("PRODUCT_VIEW")) { location.href = "/error?status=403"; return; }
+  let canCreate = Auth.hasPermission("PRODUCT_CREATE");
+  let canEdit = Auth.hasPermission("PRODUCT_EDIT");
+  let canDelete = Auth.hasPermission("PRODUCT_DELETE");
+  let canManage = canCreate || canEdit || canDelete;
+  let canImport = Auth.hasPermission("PRODUCT_CREATE") && Auth.hasPermission("PRODUCT_EDIT");
+  let canViewCost = Auth.hasPermission("FINANCE_VIEW_COST_PRICE");
+  let canViewPriceHistory = canViewCost;
   const state = {
     products: [],
     categories: [],
@@ -209,12 +210,13 @@
     $("product-packing").value = product?.packingSpecification || "";
     $("product-price").value = Number(product?.price || 0);
     $("product-cost").value = product?.costPrice ?? "";
+    $("product-cost").disabled = !canViewCost;
     $("product-description").value = product?.description || "";
     $("product-active").value = String(product?.active !== false);
     $("product-image-url").value = product?.imageUrl || "";
-    costHelp.textContent = product && product.costPrice == null
-      ? "Nhập giá vốn hiện tại để lưu sản phẩm."
-      : "Chỉ Quản lý kinh doanh được xem và cập nhật.";
+    costHelp.textContent = canViewCost
+      ? "Bạn được xem và cập nhật giá vốn theo ma trận quyền."
+      : "Bạn không có quyền xem hoặc thay đổi giá vốn.";
     modal.hidden = false;
     $("product-code").focus();
   }
@@ -228,7 +230,7 @@
     clearInvalidFields();
     const requiredIds = [
       "product-code", "product-name", "product-category",
-      "product-unit", "product-price", "product-cost",
+      "product-unit", "product-price", ...(canViewCost ? ["product-cost"] : []),
     ];
     const missing = requiredIds.map($).filter((field) => !String(field.value).trim());
     missing.forEach((field) => field.setAttribute("aria-invalid", "true"));
@@ -262,7 +264,7 @@
       description: $("product-description").value.trim(),
       categoryId: Number($("product-category").value),
       price: Number($("product-price").value),
-      costPrice: Number($("product-cost").value),
+      ...(canViewCost ? { costPrice: Number($("product-cost").value) } : {}),
       unit: $("product-unit").value.trim(),
       packingSpecification: $("product-packing").value.trim(),
       imageUrl: $("product-image-url").value,
@@ -515,4 +517,21 @@
 
   window.__reloadProductsCatalog = loadCatalog;
   loadCatalog();
+window.addEventListener("auth:permissions-changed", () => {
+    canCreate = Auth.hasPermission("PRODUCT_CREATE");
+    canEdit = Auth.hasPermission("PRODUCT_EDIT");
+    canDelete = Auth.hasPermission("PRODUCT_DELETE");
+    canManage = canCreate || canEdit || canDelete;
+    canImport = Auth.hasPermission("PRODUCT_CREATE") && canEdit;
+    canViewCost = Auth.hasPermission("FINANCE_VIEW_COST_PRICE");
+    canViewPriceHistory = canViewCost;
+    $("create-product").hidden = !canCreate;
+    $("btn-import-excel").hidden = !canImport;
+    $("catalog-access-note").hidden = canManage;
+    document.querySelectorAll(".cost-column").forEach(column => { column.hidden = !canViewCost; });
+    $("product-cost").disabled = !canViewCost;
+    if (!canViewCost) { closePriceHistory(); $("product-cost").value = ""; }
+    if (!(state.editingProduct ? canEdit : canCreate)) closeProductModal();
+    if (Auth.hasPermission("PRODUCT_VIEW")) loadCatalog();
+  });
 })();

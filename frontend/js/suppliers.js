@@ -14,15 +14,16 @@
  *   PUT    /suppliers/:id            → update
  *   PATCH  /suppliers/:id/status?active=true|false
  */
-(() => {
+(async () => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.ready;
 
-  if (!Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF', 'ROLE_VIEWER')) {
+  if (!Auth.hasAnyPermission('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE')) {
     location.href = Auth.getErrorPageUrl ? Auth.getErrorPageUrl(403) : '/error?status=403';
     return;
   }
-  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF');
+  let CAN_MANAGE = Auth.hasPermission('WAREHOUSE_MANAGE');
 
   /* ── DOM helpers ────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
@@ -489,4 +490,10 @@
 
   /* ── Init ───────────────────────────────────────────────── */
   loadSuppliers();
+  window.addEventListener("auth:permissions-changed", () => {
+    CAN_MANAGE = Auth.hasPermission("WAREHOUSE_MANAGE");
+    $("btn-add-supplier").hidden = !CAN_MANAGE;
+    if (!CAN_MANAGE) { closeSupplierModal(); closeStatusModal(); }
+    renderTable();
+  });
 })();

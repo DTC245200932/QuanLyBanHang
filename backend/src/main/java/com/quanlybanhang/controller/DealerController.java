@@ -44,7 +44,7 @@ public class DealerController {
     private final com.quanlybanhang.service.OrderService orderService;
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW'))")
     public ApiResponse getAllDealers(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) CustomerGroup customerGroup,
@@ -72,21 +72,21 @@ public class DealerController {
     }
 
     @GetMapping("/active")
-    @PreAuthorize("hasAuthority('ORDER_CREATE')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_CREATE'))")
     public ApiResponse getActiveDealers() {
         List<DealerResponse> dealers = dealerService.getActiveDealers();
         return ApiResponse.success("Lấy danh sách đại lý đang hoạt động thành công", dealers);
     }
 
     @GetMapping("/options")
-    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW'))")
     public ApiResponse getDealerOptions() {
         DealerOptionsResponse options = dealerService.getDealerOptions();
         return ApiResponse.success("Lấy danh mục tham chiếu đại lý thành công", options);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW'))")
     public ApiResponse getDealerById(@PathVariable Long id) {
         DealerResponse dealer = dealerService.getDealerById(id);
         return ApiResponse.success("Lấy chi tiết đại lý thành công", dealer);
@@ -97,7 +97,7 @@ public class DealerController {
      * Cho phép Quản lý kho (ROLE_WAREHOUSE_MANAGER), Quản lý kinh doanh (ROLE_SALES_MANAGER), Quản trị viên (ROLE_ADMIN).
      */
     @PutMapping("/{id}/default-warehouse")
-    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE') or hasAuthority('CUSTOMER_EDIT') or hasAnyRole('WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse assignDefaultWarehouse(
             @PathVariable Long id,
             @Valid @RequestBody com.quanlybanhang.dto.request.DealerWarehouseAssignRequest request,
@@ -108,7 +108,7 @@ public class DealerController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_CREATE'))")
     public ApiResponse createDealer(
             @Valid @RequestBody DealerRequest request,
             Principal principal) {
@@ -118,7 +118,7 @@ public class DealerController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse updateDealer(
             @PathVariable Long id,
             @Valid @RequestBody DealerRequest request,
@@ -129,7 +129,7 @@ public class DealerController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse updateStatus(
             @PathVariable Long id,
             @RequestParam boolean active,
@@ -142,7 +142,7 @@ public class DealerController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse deleteDealer(
             @PathVariable Long id,
             Principal principal) {
@@ -156,7 +156,7 @@ public class DealerController {
      * Bắt buộc có lý do khoá. Cảnh báo nếu có đơn hàng đang dở dang.
      */
     @RequestMapping(value = "/{id}/lock", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse lockDealer(
             @PathVariable Long id,
             @Valid @RequestBody LockDealerRequest request,
@@ -174,7 +174,7 @@ public class DealerController {
      * Mở khoá giao dịch với một đại lý (S3-07).
      */
     @RequestMapping(value = "/{id}/unlock", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse unlockDealer(
             @PathVariable Long id,
             Principal principal) {
@@ -187,7 +187,7 @@ public class DealerController {
      * Xem danh sách các đơn hàng đang dở dang của một đại lý (S3-07).
      */
     @GetMapping("/{id}/in-progress-orders")
-    @PreAuthorize("hasAuthority('ORDER_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_VIEW'))")
     public ApiResponse getInProgressOrders(@PathVariable Long id) {
         List<com.quanlybanhang.dto.response.OrderResponse> orders = dealerService.getInProgressOrders(id);
         return ApiResponse.success("Lấy danh sách đơn hàng đang dở dang của đại lý thành công", orders);
@@ -199,7 +199,7 @@ public class DealerController {
      * Gán hoặc thay đổi một nhân viên phụ trách chính cho một đại lý (S3-06).
      */
     @PostMapping("/{id}/assign")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse assignDealer(
             @PathVariable Long id,
             @Valid @RequestBody AssignDealerRequest request,
@@ -213,7 +213,7 @@ public class DealerController {
      * Chuyển giao địa bàn / đại lý hàng loạt khi nhân viên nghỉ việc hoặc điều chuyển (S3-06).
      */
     @PostMapping("/handover/bulk")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('CUSTOMER_EDIT'))")
     public ApiResponse bulkHandover(
             @Valid @RequestBody BulkHandoverRequest request,
             Principal principal) {
@@ -226,7 +226,7 @@ public class DealerController {
      * Lấy danh sách các đại lý đang cần bàn giao (nhân viên bị khoá hoặc có cờ handoverRequired) (S3-06).
      */
     @GetMapping("/handover/pending")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW'))")
     public ApiResponse getPendingHandoverDealers() {
         List<DealerResponse> pendingDealers = dealerService.getPendingHandoverDealers();
         return ApiResponse.success("Lấy danh sách đại lý cần bàn giao thành công", pendingDealers);
@@ -236,7 +236,7 @@ public class DealerController {
      * Tra cứu lịch sử chuyển giao địa bàn và đại lý (S3-06).
      */
     @GetMapping("/handover/history")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW'))")
     public ApiResponse getHandoverHistory(
             @RequestParam(required = false) Long fromUserId,
             @RequestParam(required = false) Long toUserId,
@@ -267,7 +267,7 @@ public class DealerController {
      * Lấy lịch sử phân công/chuyển giao của riêng một đại lý cụ thể (S3-06).
      */
     @GetMapping("/{id}/assignment-history")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'ACCOUNTANT', 'SALES', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('CUSTOMER_VIEW', 'ORDER_VIEW'))")
     public ApiResponse getDealerAssignmentHistory(@PathVariable Long id) {
         List<DealerAssignmentHistoryResponse> history = dealerService.getDealerAssignmentHistory(id);
         return ApiResponse.success("Lấy lịch sử phân công của đại lý thành công", history);
@@ -278,7 +278,7 @@ public class DealerController {
      * Phục vụ hiển thị trên màn hình tạo đơn và kiểm soát rủi ro bán hàng.
      */
     @GetMapping({"/{id}/debt", "/{id}/credit-info"})
-    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'FINANCE_VIEW_DEBT')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('ORDER_CREATE', 'FINANCE_VIEW_DEBT'))")
     public ApiResponse getDealerDebtInfo(@PathVariable Long id) {
         DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(id);
         return ApiResponse.success("Lấy thông tin công nợ đại lý thành công", response);
@@ -290,7 +290,7 @@ public class DealerController {
      * Chỉ nhân viên được phân công phụ trách đại lý (hoặc cấp quản lý) mới được xem.
      */
     @GetMapping("/{id}/purchase-history")
-    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'ORDER_VIEW', 'CUSTOMER_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_VIEW'))")
     public ApiResponse getDealerPurchaseHistory(
             @PathVariable Long id,
             @RequestParam(required = false, defaultValue = "3") int months,
@@ -303,7 +303,7 @@ public class DealerController {
      * S4-04: Lấy nhóm hàng đã mua trong đơn hàng gần nhất của đại lý để thêm nhanh vào đơn mới.
      */
     @GetMapping("/{id}/last-order-items")
-    @PreAuthorize("hasAnyAuthority('ORDER_CREATE', 'ORDER_VIEW', 'CUSTOMER_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_VIEW'))")
     public ApiResponse getDealerLastOrderItems(@PathVariable Long id) {
         List<DealerPurchaseHistoryResponse> items = dealerService.getDealerLastOrderItems(id);
         return ApiResponse.success("Lấy nhóm hàng mua lần trước của đại lý thành công", items);
@@ -313,7 +313,7 @@ public class DealerController {
      * S4-04: Thêm nhanh cả nhóm hàng đã mua lần trước của đại lý vào bản nháp tạo đơn mới.
      */
     @PostMapping("/{id}/last-order-to-draft")
-    @PreAuthorize("hasAuthority('ORDER_CREATE')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_CREATE') and hasAuthority('ORDER_VIEW'))")
     public ApiResponse copyDealerLastOrderToDraft(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         com.fasterxml.jackson.databind.JsonNode draftNode = orderService.copyLastOrderToDraft(id, username);

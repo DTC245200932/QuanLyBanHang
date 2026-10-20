@@ -126,6 +126,7 @@ public class DealerServiceImpl implements DealerService {
     @Override
     @Transactional
     public DealerResponse createDealer(DealerRequest request, String currentUsername) {
+        validateDebtPermission(request, null);
         String code = request.getCode().trim().toUpperCase();
         if (dealerRepository.existsByCodeIgnoreCase(code)) {
             throw new IllegalArgumentException("Mã đại lý '" + code + "' đã tồn tại");
@@ -190,6 +191,7 @@ public class DealerServiceImpl implements DealerService {
     public DealerResponse updateDealer(Long id, DealerRequest request, String currentUsername) {
         Dealer dealer = dealerRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + id));
+        validateDebtPermission(request, dealer);
 
         String newCode = request.getCode().trim().toUpperCase();
         if (dealerRepository.existsByCodeIgnoreCaseAndIdNot(newCode, id)) {
@@ -968,6 +970,21 @@ public class DealerServiceImpl implements DealerService {
                 .totalAmount(item.getTotalAmount())
                 .note(item.getNote())
                 .build();
+    }
+
+    private void validateDebtPermission(DealerRequest request, Dealer existing) {
+        BigDecimal previousLimit = existing != null && existing.getDebtLimit() != null
+                ? existing.getDebtLimit() : BigDecimal.ZERO;
+        int previousDays = existing != null && existing.getMaxDebtDays() != null ? existing.getMaxDebtDays() : 0;
+        boolean changed = request.getDebtLimit() != null && request.getDebtLimit().compareTo(previousLimit) != 0
+                || request.getMaxDebtDays() != null && request.getMaxDebtDays() != previousDays;
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean allowed = auth != null && auth.isAuthenticated() && auth.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority())
+                        || "FINANCE_MANAGE".equals(authority.getAuthority()));
+        if (changed && !allowed) {
+            throw new AccessDeniedException("Bạn không có quyền thay đổi hạn mức hoặc số ngày công nợ");
+        }
     }
 
     private DealerAssignmentHistoryResponse mapToHistoryResponse(DealerAssignmentHistory history) {

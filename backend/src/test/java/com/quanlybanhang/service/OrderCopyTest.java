@@ -260,7 +260,7 @@ class OrderCopyTest {
 
         assertThatThrownBy(() -> orderService.copyOrder(1L, "sales02"))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("Bạn không có quyền sao chép đơn hàng này");
+                .hasMessageContaining("Bạn chỉ có quyền xem đơn hàng của đại lý do mình phụ trách");
     }
 
     @Test

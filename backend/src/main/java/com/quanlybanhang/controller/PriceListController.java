@@ -32,7 +32,7 @@ public class PriceListController {
     private final com.quanlybanhang.repository.UserRepository userRepository;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES', 'ACCOUNTANT', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('PRODUCT_VIEW', 'PRODUCT_EDIT', 'ORDER_CREATE'))")
     public ApiResponse getAllPriceLists(
             @RequestParam(required = false) CustomerGroup customerGroup,
             @RequestParam(required = false) Boolean active,
@@ -42,14 +42,14 @@ public class PriceListController {
     }
 
     @GetMapping("/customer-groups")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES', 'ACCOUNTANT', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('PRODUCT_VIEW', 'PRODUCT_EDIT', 'ORDER_CREATE'))")
     public ApiResponse getCustomerGroups() {
         List<CustomerGroupResponse> groups = priceListService.getCustomerGroups();
         return ApiResponse.success("Danh sách nhóm khách hàng", groups);
     }
 
     @GetMapping("/effective")
-    @PreAuthorize("hasAuthority('ORDER_CREATE')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_CREATE'))")
     public ApiResponse getEffectivePriceList(
             @RequestParam CustomerGroup customerGroup,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -75,14 +75,14 @@ public class PriceListController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN', 'SALES', 'ACCOUNTANT', 'VIEWER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('PRODUCT_VIEW', 'PRODUCT_EDIT', 'ORDER_CREATE'))")
     public ApiResponse getPriceListById(@PathVariable Long id) {
         PriceListResponse priceList = priceListService.getPriceListById(id);
         return ApiResponse.success("Chi tiết bảng giá", priceList);
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ResponseEntity<ApiResponse> createPriceList(
             @Valid @RequestBody PriceListRequest request,
             Principal principal) {
@@ -93,7 +93,7 @@ public class PriceListController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse updatePriceList(
             @PathVariable Long id,
             @Valid @RequestBody PriceListRequest request,
@@ -104,7 +104,7 @@ public class PriceListController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse deletePriceList(@PathVariable Long id, Principal principal) {
         String username = principal != null ? principal.getName() : "system";
         priceListService.deletePriceList(id, username);
@@ -112,7 +112,7 @@ public class PriceListController {
     }
 
     @PostMapping("/{id}/new-version")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ResponseEntity<ApiResponse> createNewVersion(
             @PathVariable Long id,
             @RequestBody(required = false) PriceListNewVersionRequest request,

@@ -64,14 +64,55 @@ const AppNavigation = (() => {
 
   async function initialize() {
     if (!Auth.isLoggedIn()) return;
-    // Nạp lại permissions từ refresh endpoint trước khi dựng menu để thay đổi
+    // Nạp lại permissions từ DB trước khi dựng menu để thay đổi
     // ma trận không tạo ra tình trạng menu hiện nhưng API trả 403 (hoặc ngược lại).
-    await Auth.refreshPermissions();
+    await Auth.ready;
     renderSidebar(Auth.getUser());
     refresh();
+    enforcePageAccess();
   }
 
+  function enforcePageAccess() {
+    const page = MenuConfig.getPageForLocation(window.location);
+    if (page && !['dashboard', 'profile'].includes(page.id)
+        && !MenuConfig.getMenuForUser(Auth.getUser()).some(item => item.id === page.id)) {
+      window.location.href = '/error?status=403';
+    }
+  }
+
+  const actionPermissions = {
+    products: [
+      ['#create-product', 'PRODUCT_CREATE'],
+      ['#btn-import-excel', 'PRODUCT_CREATE', 'PRODUCT_EDIT'],
+    ],
+    'price-lists': [['[data-price-action], #save-price-list', 'PRODUCT_EDIT']],
+    'discount-policies': [['[data-action="edit"], [data-action="delete"], #save-disc-policy', 'PRODUCT_EDIT']],
+    dealers: [
+      ['#btn-add-dealer', 'CUSTOMER_CREATE'],
+      ['[data-action="edit"], [data-action="assign"], [data-action="lock"], [data-action="unlock"], [data-action="activate"], [data-action="deactivate"], #btn-add-delivery-point', 'CUSTOMER_EDIT'],
+      ['[data-action="orders"], [data-action="order-history"]', 'ORDER_VIEW'],
+    ],
+    users: [
+      ['#create-user, #import-users, #confirm-user-import', 'USER_CREATE', 'USER_ASSIGN_ROLE'],
+      ['[data-edit]', 'USER_EDIT'],
+      ['[data-toggle]', 'USER_LOCK'],
+    ],
+    'dealer-orders': [
+      ['#btn-reorder-from-detail, #btn-submit-reorder, [data-action="reorder"]', 'ORDER_CREATE', 'PRODUCT_VIEW'],
+    ],
+  };
+  const pageId = MenuConfig.getPageForLocation(window.location)?.id;
+  (actionPermissions[pageId] || []).forEach(binding => Auth.bindPermissions(...binding));
+
   initialize();
+  window.addEventListener('auth:permissions-changed', () => {
+    const container = document.getElementById('sidebar-nav');
+    const scrollTop = container?.scrollTop || 0;
+    renderSidebar(Auth.getUser());
+    if (container) container.scrollTop = scrollTop;
+    refresh();
+    enforcePageAccess();
+  });
   window.addEventListener('pageshow', refresh);
   window.addEventListener('popstate', refresh);
   return { refresh };

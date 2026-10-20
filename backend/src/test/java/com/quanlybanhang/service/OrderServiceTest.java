@@ -461,7 +461,7 @@ class OrderServiceTest {
         // NVKD phụ trách xác nhận
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("sales.assigned", null,
-                        List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+                        List.of(new SimpleGrantedAuthority("ROLE_SALES"), new SimpleGrantedAuthority("ORDER_CREATE")))
         );
 
         OrderResponse response = orderService.approveOrder(1001L, "sales.assigned");
@@ -500,7 +500,7 @@ class OrderServiceTest {
         // NVKD khác cố tình xác nhận
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("sales.other", null,
-                        List.of(new SimpleGrantedAuthority("ROLE_SALES")))
+                        List.of(new SimpleGrantedAuthority("ROLE_SALES"), new SimpleGrantedAuthority("ORDER_CREATE")))
         );
 
         assertThatThrownBy(() -> orderService.approveOrder(1001L, "sales.other"))

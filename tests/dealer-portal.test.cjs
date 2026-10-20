@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-function createMockEnvironment(apiResponses = {}, options = {}) {
+async function createMockEnvironment(apiResponses = {}, options = {}) {
   const currentUser = options.currentUser || { id: 99, username: 'dealer.test', roles: ['ROLE_DEALER'],
     permissions: ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'], dealerId: 10 };
   const elements = new Map();
@@ -69,6 +69,7 @@ function createMockEnvironment(apiResponses = {}, options = {}) {
     encodeURIComponent,
     console: { log() {}, warn() {}, error() {} },
     Auth: {
+      refreshPermissions: async () => true,
       requireLogin: () => true,
       hasAnyRole: (...roles) => roles.some(role => currentUser.roles.includes(role)),
       hasPermission: permission => currentUser.roles.includes('ROLE_ADMIN') || currentUser.permissions.includes(permission),
@@ -152,12 +153,13 @@ function createMockEnvironment(apiResponses = {}, options = {}) {
   const script = fs.readFileSync(path.join(__dirname, '../frontend/js/dealer-portal.js'), 'utf8');
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../frontend/js/dealer-portal-context.js'), 'utf8'), context);
   vm.runInContext(script, context);
+  await new Promise(setImmediate);
 
-  return { context, elements, calls, portal: windowObj.DealerPortal };
+  return { context, elements, calls, get portal() { return windowObj.DealerPortal; } };
 }
 
 test('S4-10: Cổng đại lý chỉ hiển thị sản phẩm và giá thuộc bảng giá nhóm khách hàng của mình', async () => {
-  const { elements, calls } = createMockEnvironment();
+  const { elements, calls } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   assert.ok(calls.some((call) => call.url === '/portal/catalog'));
@@ -172,7 +174,7 @@ test('S4-10: Cổng đại lý chỉ hiển thị sản phẩm và giá thuộc 
 });
 
 test('Admin chưa liên kết đại lý mở cổng và chọn đại lý, không gọi API thiếu ngữ cảnh', async () => {
-  const { context, elements, calls } = createMockEnvironment({}, {
+  const { context, elements, calls } = await createMockEnvironment({}, {
     currentUser: { roles: ['ROLE_ADMIN'], permissions: [] },
   });
   await new Promise(resolve => setTimeout(resolve, 20));
@@ -187,7 +189,7 @@ test('Admin chưa liên kết đại lý mở cổng và chọn đại lý, khô
 });
 
 test('Admin xem và gửi đơn qua cổng với đúng đại lý đã chọn', async () => {
-  const { elements, calls, portal } = createMockEnvironment({}, {
+  const { elements, calls, portal } = await createMockEnvironment({}, {
     currentUser: { roles: ['ROLE_ADMIN'], permissions: [] }, search: '?dealerId=10',
   });
   await new Promise(resolve => setTimeout(resolve, 20));
@@ -200,18 +202,19 @@ test('Admin xem và gửi đơn qua cổng với đúng đại lý đã chọn',
   assert.ok(calls.some(call => call.method === 'POST' && call.url === '/portal/orders?dealerId=10'));
 });
 
-test('Thu hồi quyền cần cho cổng chặn trang trước khi gọi API', () => {
+test('Thu hồi quyền cần cho cổng chặn trang trước khi gọi API', async () => {
   for (const revoked of ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW']) {
-    const { context, calls } = createMockEnvironment({}, { currentUser: {
+    const { context, calls } = await createMockEnvironment({}, { currentUser: {
       roles: ['ROLE_DEALER'], permissions: ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'].filter(p => p !== revoked),
     } });
+    await new Promise(setImmediate);
     assert.equal(context.window.location.href, '/error?status=403', revoked);
     assert.equal(calls.length, 0);
   }
 });
 
 test('S4-10: Thêm sản phẩm vào giỏ, xem tổng tiền và tính toán công nợ còn lại trước khi gửi đơn', async () => {
-  const { elements, portal } = createMockEnvironment();
+  const { elements, portal } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   // Verify debt metric values
@@ -233,7 +236,7 @@ test('S4-10: Thêm sản phẩm vào giỏ, xem tổng tiền và tính toán c�
 });
 
 test('S4-10: Cảnh báo khi đơn hàng làm vượt hạn mức công nợ còn lại của đại lý', async () => {
-  const { elements, portal } = createMockEnvironment();
+  const { elements, portal } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   // Add huge quantity exceeding available credit (200 thùng = 72,000,000đ > 70,000,000đ)
@@ -244,7 +247,7 @@ test('S4-10: Cảnh báo khi đơn hàng làm vượt hạn mức công nợ cò
 });
 
 test('S4-10: Đơn gửi lên luôn ở trạng thái Chờ duyệt (PENDING_APPROVAL), gửi đúng payload và reset giỏ hàng', async () => {
-  const { context, elements, calls, portal } = createMockEnvironment();
+  const { context, elements, calls, portal } = await createMockEnvironment();
   await new Promise((r) => setTimeout(r, 60));
 
   const pointEl = context.document.getElementById('dp-delivery-point-select');

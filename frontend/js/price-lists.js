@@ -1,6 +1,7 @@
-(() => {
+(async () => {
   if (!Auth.requireLogin()) return;
-  if (!Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN")) {
+  await Auth.ready;
+  if (!Auth.hasPermission("PRODUCT_EDIT")) {
     window.location.href = "/error?status=403";
     return;
   }
@@ -133,7 +134,7 @@
 
   async function loadProducts() {
     try {
-      const response = await Auth.apiFetch("/products");
+      const response = await Auth.apiFetch("/products/lookup");
       const result = await parseApiResponse(response, "Không tải được danh mục sản phẩm.");
       state.products = Array.isArray(result.data) ? result.data : [];
       const activeProductCount = state.products.filter((product) => product.active !== false).length;

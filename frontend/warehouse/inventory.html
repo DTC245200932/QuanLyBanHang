@@ -15,7 +15,7 @@
 <body>
   <div data-app-content><main class="content stock-page">
     <header class="stock-heading"><div><h1>Tồn kho</h1><p>Tra cứu từng SKU tại từng kho, tách rõ hàng thực tế, hàng đang giữ chỗ và hàng còn bán được.</p></div>
-      <div class="stock-actions"><button id="stock-reload" class="btn btn--secondary" type="button">Tải lại</button><button id="stock-export" class="btn btn--primary" type="button" title="Xuất toàn bộ kết quả của bộ lọc đã áp dụng" disabled>Xuất Excel</button></div>
+      <div class="stock-actions"><a id="stock-minimum-settings" class="btn btn--secondary" href="/warehouse/minimums" hidden>Khai báo mức tối thiểu</a><button id="stock-reload" class="btn btn--secondary" type="button">Tải lại</button><button id="stock-export" class="btn btn--primary" type="button" title="Xuất toàn bộ kết quả của bộ lọc đã áp dụng" disabled>Xuất Excel</button></div>
     </header>
     <p class="stock-note">Tồn khả dụng là phần tồn thực tế còn lại sau khi trừ lượng đang giữ chỗ. Hàng đang chuyển chưa được tính vào tồn thực tế của kho nhận.</p>
     <p id="stock-error" class="stock-error" role="alert" hidden></p>
@@ -25,16 +25,18 @@
         <label>Kho<select id="stock-warehouse" disabled><option value="">Đang tải kho…</option></select></label>
         <label>Nhóm hàng<select id="stock-category" disabled><option value="">Đang tải nhóm hàng…</option></select></label>
         <label>Trạng thái tồn<select id="stock-status" disabled><option value="">Đang tải trạng thái…</option></select></label>
+        <label>Cảnh báo tối thiểu<select id="stock-below"><option value="">Tất cả mức tồn</option><option value="true">Chỉ dưới mức tối thiểu</option></select></label>
         <div class="stock-actions"><button class="btn btn--primary" id="stock-apply" type="submit" disabled>Lọc</button><button class="btn btn--secondary" id="stock-reset" type="button" disabled>Đặt lại</button></div>
       </form>
       <div class="stock-result-heading"><h2>Sổ tồn theo SKU và kho</h2><span id="stock-count" role="status" aria-live="polite">Đang tải dữ liệu…</span></div>
       <div id="stock-table-region" class="stock-table-scroll" tabindex="0" role="region" aria-label="Bảng tồn kho, cuộn ngang để xem đủ các cột" aria-busy="true">
-        <table class="stock-table"><thead><tr><th scope="col">Mã SKU / Sản phẩm</th><th scope="col">Nhóm hàng</th><th scope="col">Kho</th><th scope="col">Đơn vị</th><th scope="col" class="stock-number">Tồn thực tế</th><th scope="col" class="stock-number">Đang giữ chỗ</th><th scope="col" class="stock-number">Tồn khả dụng</th><th scope="col">Trạng thái tồn</th></tr></thead>
-          <tbody id="stock-rows"><tr><td colspan="8" class="stock-empty">Đang tải dữ liệu…</td></tr></tbody></table>
+        <table class="stock-table"><thead><tr><th scope="col">Mã SKU / Sản phẩm</th><th scope="col">Nhóm hàng</th><th scope="col">Kho</th><th scope="col">Đơn vị</th><th scope="col" class="stock-number">Tồn thực tế</th><th scope="col" class="stock-number">Đang giữ chỗ</th><th scope="col" class="stock-number">Tồn khả dụng</th><th scope="col" class="stock-number">Mức tối thiểu</th><th scope="col">Trạng thái tồn / Cảnh báo</th></tr></thead>
+          <tbody id="stock-rows"><tr><td colspan="9" class="stock-empty">Đang tải dữ liệu…</td></tr></tbody></table>
       </div>
       <footer class="stock-pagination"><label>Số dòng<select id="stock-size"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
         <span id="stock-page-label" aria-live="polite"></span><div class="stock-actions"><button id="stock-prev" class="btn btn--secondary" type="button" disabled>Trước</button><button id="stock-next" class="btn btn--secondary" type="button" disabled>Sau</button></div></footer>
     </section>
+    <p class="stock-minimum-note">Cảnh báo khi tồn khả dụng nhỏ hơn mức tối thiểu của đúng SKU và kho, theo đơn vị cơ sở. Bằng ngưỡng không cảnh báo; chưa khai báo hoặc mức 0 không phát cảnh báo.</p>
   </main></div>
   <script src="/js/auth.js"></script><script src="/js/menu-config.js"></script>
   <script src="/js/app-shell.js"></script><script src="/js/app-navigation.js"></script>

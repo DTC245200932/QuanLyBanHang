@@ -201,6 +201,15 @@ const MenuConfig = (() => {
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_VIEWER"],
     },
     {
+      id: "stock-minimums",
+      section: "Kho hàng",
+      label: "Ngưỡng tồn tối thiểu",
+      icon: '<path d="M4 20V10m5 10V4m6 16v-7m5 7V7M2 13h20"/>',
+      href: "/warehouse/minimums",
+      permission: "WAREHOUSE_MANAGE",
+      roles: ALL_ROLES,
+    },
+    {
       id: "warehouse-transfers",
       section: "Kho hàng",
       label: "Chuyển kho nội bộ",

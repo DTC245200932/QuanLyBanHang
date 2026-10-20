@@ -10,6 +10,7 @@
     <title>Tổng quan | SaleStock</title>
     <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/dashboard.css" />
+    <link rel="stylesheet" href="/css/stock-alerts.css" />
     <link rel="stylesheet" href="/css/debt-limits.css" />
   <link rel="stylesheet" href="/css/app-navigation.css">
 <script src="/js/app-transition.js"></script>
@@ -124,6 +125,10 @@
             </div>
           </div>
 
+          <section id="dashboard-stock-alerts" class="dashboard-stock-alerts" aria-labelledby="dashboard-stock-alert-title" hidden>
+            <header class="dashboard-stock-alert-heading"><div><h2 id="dashboard-stock-alert-title">Cảnh báo tồn dưới mức tối thiểu</h2><p>So với tồn khả dụng, theo ngưỡng riêng của từng SKU và kho.</p></div><div class="dashboard-stock-alert-actions"><button id="dashboard-stock-alert-reload" type="button" class="btn btn--secondary">Tải lại</button><a class="btn btn--secondary" href="/warehouse/inventory?belowMinimum=true">Xem sổ tồn</a></div></header>
+            <p id="dashboard-stock-alert-state" role="status">Đang kiểm tra tồn kho…</p><p id="dashboard-stock-alert-error" role="alert" hidden></p><div id="dashboard-stock-alert-rows"></div>
+          </section>
           <section class="dashboard-work" aria-labelledby="work-title">
             <div class="dashboard-work__heading">
               <div>
@@ -332,6 +337,7 @@
     <script src="/js/menu-config.js"></script>
 <script src="/js/app-navigation.js"></script>
     <script src="/js/dashboard.js"></script>
+    <script src="/js/stock-alerts.js"></script>
     <script src="/js/debt-limits.js"></script>
   </body>
 </html>

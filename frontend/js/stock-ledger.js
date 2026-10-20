@@ -7,10 +7,11 @@
   const state = { rows: [], filters: {}, page: 0, size: 20, total: 0, pages: 0, loading: false,
     optionsReady: false, version: 0, initVersion: 0, controller: null, initController: null, exportController: null };
   const allowed = () => Auth.hasPermission('WAREHOUSE_VIEW');
-  const filterIds = { warehouseId: 'stock-warehouse', categoryId: 'stock-category', stockStatus: 'stock-status' };
+  const filterIds = { warehouseId: 'stock-warehouse', categoryId: 'stock-category', stockStatus: 'stock-status', belowMinimum: 'stock-below' };
   function error(text = '') { $('stock-error').textContent = text; $('stock-error').hidden = !text; }
-  function empty(text) { $('stock-rows').innerHTML = `<tr><td colspan="8" class="stock-empty">${esc(text)}</td></tr>`; }
+  function empty(text) { $('stock-rows').innerHTML = `<tr><td colspan="9" class="stock-empty">${esc(text)}</td></tr>`; }
   function controls() {
+    $('stock-minimum-settings').hidden = !Auth.hasPermission('WAREHOUSE_MANAGE');
     $('stock-apply').disabled = $('stock-reset').disabled = !state.optionsReady || !allowed();
     $('stock-prev').disabled = state.loading || state.page <= 0 || !state.rows.length || !allowed();
     $('stock-next').disabled = state.loading || state.page + 1 >= state.pages || !state.rows.length || !allowed();
@@ -49,12 +50,13 @@
     history.replaceState(history.state, '', url);
   }
   function render() {
-    $('stock-rows').innerHTML = state.rows.map(row => `<tr>
+    $('stock-rows').innerHTML = state.rows.map(row => `<tr class="${row.belowMinimum === true ? 'stock-row--below-minimum' : ''}">
       <td><strong>${esc(row.productName)}</strong><small>${esc(row.productCode)}</small></td>
       <td>${esc(row.categoryName || 'Chưa phân nhóm')}</td><td><strong>${esc(row.warehouseName)}</strong><small>${esc(row.warehouseCode)}</small></td>
       <td>${esc(row.baseUnit || '—')}</td><td class="stock-number">${quantity(row.physicalQuantity)}</td>
       <td class="stock-number">${quantity(row.reservedQuantity)}</td><td class="stock-number stock-available">${quantity(row.availableQuantity)}</td>
-      <td><span class="stock-badge stock-badge--${esc(row.stockStatus)}">${esc(row.stockStatusLabel || row.stockStatus)}</span></td></tr>`).join('');
+      <td class="stock-number">${row.minimumQuantity == null ? '<small>Chưa khai báo</small>' : `${quantity(row.minimumQuantity)}${row.minimumUnitMatches === false ? '<small class="stock-minimum-warning">Đơn vị ngưỡng không khớp; cần khai báo lại</small>' : ''}`}</td>
+      <td>${row.belowMinimum === true ? '<strong class="stock-minimum-warning">Dưới mức tối thiểu</strong>' : ''}<span class="stock-badge stock-badge--${esc(row.stockStatus)}">${esc(row.stockStatusLabel || row.stockStatus)}</span></td></tr>`).join('');
     if (!state.rows.length) empty('Không có sản phẩm phù hợp với bộ lọc.');
     const start = state.rows.length ? state.page * state.size + 1 : 0;
     $('stock-count').textContent = `${start}–${start ? start + state.rows.length - 1 : 0} / ${state.total} dòng SKU–kho`;
@@ -148,7 +150,9 @@
       const sheet = XLSX.utils.json_to_sheet(rows.map(r => ({ 'Mã SKU': r.productCode, 'Sản phẩm': r.productName,
         'Nhóm hàng': r.categoryName || '', 'Mã kho': r.warehouseCode, 'Kho': r.warehouseName, 'Đơn vị': r.baseUnit,
         'Tồn thực tế': Number(r.physicalQuantity), 'Đang giữ chỗ': Number(r.reservedQuantity),
-        'Tồn khả dụng': Number(r.availableQuantity), 'Trạng thái tồn': r.stockStatusLabel })));
+        'Tồn khả dụng': Number(r.availableQuantity), 'Trạng thái tồn': r.stockStatusLabel,
+        'Mức tối thiểu': r.minimumQuantity == null ? '' : Number(r.minimumQuantity),
+        'Cảnh báo tối thiểu': r.minimumUnitMatches === false ? 'Đơn vị ngưỡng không khớp' : r.belowMinimum === true ? 'Dưới mức tối thiểu' : '' })));
       const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Sổ tồn kho');
       XLSX.writeFile(book, 'So-ton-kho.xlsx'); Toast.show('Đã xuất sổ tồn theo bộ lọc đã áp dụng.', 'success');
     } catch (e) { if (e.name !== 'AbortError' && !controller.signal.aborted) error(e.message); }
@@ -162,6 +166,7 @@
   $('stock-reload').addEventListener('click', () => void initialize());
   $('stock-export').addEventListener('click', () => void exportExcel());
   window.addEventListener('auth:permissions-changed', () => {
+    controls();
     if (!allowed()) {
       ++state.version; ++state.initVersion; state.controller?.abort(); state.initController?.abort(); cancelExport();
       state.rows = []; state.optionsReady = false; state.loading = false; controls(); empty('Bạn không còn quyền xem tồn kho.');

@@ -2356,6 +2356,38 @@ Content-Type: image/png
 ```
 Response Body: Binary data PNG (ảnh mã vạch Code 128)
 
+### S5-09 — Ngưỡng tồn tối thiểu và cảnh báo — 20/10/2026
+
+Nguồn AC: `4. Product Backlog!A62:F62`. Menu **Kho hàng → Ngưỡng tồn tối thiểu**, URL `/warehouse/minimums`; cảnh báo hiển thị trong **Tồn kho** và **Tổng quan**. Các endpoint dưới đây có prefix `/api`.
+
+| Method | Endpoint | Quyền ma trận | Dữ liệu / hành vi |
+|---|---|---|---|
+| GET | `/warehouse/stock-minimums/options` | `WAREHOUSE_MANAGE` hoặc ADMIN | Kho được phép khai báo và danh mục nhóm hàng tối thiểu `{id,code,name}` |
+| GET | `/warehouse/stock-minimums` | `WAREHOUSE_MANAGE` hoặc ADMIN | Page khai báo theo SKU–kho; không trả tồn thực tế/giữ chỗ/khả dụng, giá bán hoặc giá vốn |
+| PUT | `/warehouse/stock-minimums/{warehouseId}/{productId}` | `WAREHOUSE_MANAGE` hoặc ADMIN | Tạo/cập nhật mức tối thiểu; body `{"minimumQuantity":7.2501,"baseUnit":"lon"}`; trả projection khai báo |
+| DELETE | `/warehouse/stock-minimums/{warehouseId}/{productId}` | `WAREHOUSE_MANAGE` hoặc ADMIN | Bỏ khai báo, idempotent; không đổi lượng tồn hoặc giữ chỗ |
+| GET | `/warehouse/stock-alerts` | `WAREHOUSE_VIEW` hoặc ADMIN | Page dòng dưới ngưỡng với cùng DTO sổ tồn; mặc định `page=0&size=5` |
+| GET | `/warehouse/stock-ledger?belowMinimum=true` | `WAREHOUSE_VIEW` hoặc ADMIN | Bổ sung bộ lọc dưới ngưỡng vào sổ tồn; kết hợp các bộ lọc S5-05 hiện có |
+
+Hai API danh sách khai báo/cảnh báo nhận `warehouseId`, `categoryId`, `keyword` (mã/tên, tối đa 150 ký tự, `%/_/!` được escape), `page >= 0`, `size` 1–200. Khai báo mặc định 20 dòng; thứ tự mã kho/mã SKU/ID ổn định. ID kho/nhóm/sản phẩm phải dương. Kho ngoài phạm vi trả 403; dữ liệu không hợp lệ hoặc SKU không tồn tại khi lưu trả 400.
+
+Projection khai báo gồm `warehouseId/Code/Name`, `productId/Code/Name`, `categoryName`, `baseUnit`, `minimumQuantity`, `minimumUnit`, `minimumUnitMatches`, `warehouseActive`, `productActive`, `updatedBy`, `updatedAt`. Người chỉ có MANAGE không phải xin thêm VIEW/PRODUCT_VIEW để cấu hình và cũng không đọc được số tồn qua API này.
+
+Sổ tồn/cảnh báo bổ sung `minimumQuantity` (null nếu chưa khai báo), `minimumUnit` (đơn vị lúc lưu), `minimumUnitMatches`, `belowMinimum`. Ba trạng thái tồn S5-05 không thay đổi; cờ dưới ngưỡng là điều kiện độc lập do backend tính, frontend không tự suy cảnh báo.
+
+Quy tắc:
+
+- Ngưỡng riêng cho mỗi `(warehouse_id, product_id)`, đơn vị cơ sở tại kho. Mức tối thiểu không âm, tối đa 11 chữ số nguyên và 4 số thập phân; bắt buộc gửi lại `baseUnit` hiện tại. Kho/SKU ngừng hoạt động không được khai báo mới hoặc sửa.
+- Cảnh báo khi **`max(tồn thực tế − giữ chỗ, 0) < mức tối thiểu`**; không cộng hàng đang chuyển. Bằng ngưỡng không cảnh báo. Mức 0 khác chưa khai báo nhưng cả hai không phát cảnh báo. SKU chưa có dòng tồn được xem khả dụng 0; cấu hình không tự tạo dòng tồn vật lý.
+- Chỉ cảnh báo kho/SKU đang hoạt động và đơn vị ngưỡng còn khớp. Nếu đơn vị sổ tồn đổi, giữ snapshot cũ, hiển thị yêu cầu khai báo lại, không tự đổi số hay diễn giải ngưỡng theo đơn vị mới.
+- Cảnh báo truy vấn lại số tồn hiện tại, không lưu cờ cảnh báo lỗi thời. Dashboard nạp khi mở/quay lại cửa sổ và mỗi 30 giây khi trang hiển thị; có Tải lại. Lỗi đọc hiển thị chưa xác định, không coi là không có hàng thiếu.
+- Token hiện tại kiểm lại ma trận trên mỗi API; MANAGE không thay VIEW hoặc ngược lại. Thu hồi MANAGE chặn toàn bộ cấu hình bằng 403 và ẩn menu/đóng form; thu hồi VIEW chặn ledger/alerts và xóa khối cảnh báo. Không fallback theo role. ADMIN luôn được phép; vai trò chỉ giới hạn phạm vi.
+- Phạm vi thống nhất S5-05: tài khoản đã gán kho chỉ thao tác tập kho đó; vai trò kho thiếu phân công nhận tập rỗng, không được xem/cấu hình toàn hệ thống. Vai trò nội bộ khác không gán kho giữ quy ước toàn hệ thống nhưng vẫn cần đúng quyền. Đại lý vẫn chịu DealerApiScopeFilter hiện có.
+
+Lưu trữ mới: bảng **`warehouse_stock_minimums`**, unique `(warehouse_id, product_id)`, `minimum_quantity DECIMAL(15,4)`, `base_unit`, `updated_by`, `updated_at`. Ghi trong transaction, khóa kho chống upsert trùng đồng thời, audit `INVENTORY / SET_MINIMUM` và `CLEAR_MINIMUM`. FK xóa cấu hình phụ thuộc khi SKU/kho chưa phát sinh giao dịch được xóa hợp lệ; không thay quy tắc chặn xóa dữ liệu có giao dịch hiện có.
+
+Cần khởi động lại backend để Hibernate tạo bảng theo cấu hình `ddl-auto=update` hiện hành; tài khoản DB phải có quyền CREATE/ALTER. Nếu môi trường dùng `validate` hoặc migration riêng, phải triển khai bảng tương ứng trước khi sử dụng API sổ tồn mới. Không thay quyền đã lưu, seed dữ liệu hay đổi schema DB thật trong đợt triển khai mã này. Kiểm thử dùng H2/MySQL-mode, chưa nghiệm thu MySQL thật. Khởi động lại server frontend để nhận route mới.
+
 ### S5-05 — Sổ tồn theo SKU và kho — 20/10/2026
 
 Menu **Kho hàng → Tồn kho**, URL `/warehouse/inventory`. Link cũ `/warehouse/units?tab=inventory` được chuyển sang trang mới và giữ các bộ lọc còn lại. Các phân hệ đơn vị tính/chứng từ/sổ cái kho và API tồn cũ phục vụ S4 vẫn giữ nguyên.

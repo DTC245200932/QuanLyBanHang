@@ -538,26 +538,36 @@ Hỗ trợ Nhân viên kho lập phiếu chuyển kho nội bộ để điều h
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| POST | `/warehouse/transfers` (hoặc `/warehouse/transfer`) | `WAREHOUSE_TRANSFER`, `WAREHOUSE_EXPORT`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu chuyển kho nội bộ. Trừ tồn kho tại kho xuất, ghi nhận hàng đang trên đường (`inTransitQuantity`), CHƯA cộng vào kho nhập |
-| GET | `/warehouse/transfers` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_VIEW`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách phiếu chuyển kho (hỗ trợ lọc `fromWarehouseId`, `toWarehouseId`, `status`) |
-| GET | `/warehouse/transfers/{id}` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_VIEW`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Chi tiết phiếu chuyển kho |
-| POST | `/warehouse/transfers/{id}/receive` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_IMPORT`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Kho đến xác nhận nhận hàng. Nhận đủ hoặc thực nhận; tồn kho đến mới được cộng; chênh lệch bắt buộc nhập lý do |
-| POST | `/warehouse/transfers/{id}/cancel` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_APPROVE`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Hủy phiếu chuyển kho khi đang trên đường (`IN_TRANSIT`); hoàn tồn cho kho xuất và xóa hàng trên đường |
+| POST | `/warehouse/transfers` (hoặc `/warehouse/transfer`) | `WAREHOUSE_TRANSFER` hoặc ADMIN | Kho đi thuộc phạm vi được giao; trừ tồn khả dụng ở kho đi, ghi hàng đang trên đường tại kho đến; không cộng tồn thực tế kho đến |
+| GET | `/warehouse/transfers` | `WAREHOUSE_TRANSFER` hoặc `WAREHOUSE_VIEW` hoặc ADMIN | Giữ DTO danh sách cũ; chỉ phiếu có kho đi hoặc kho đến thuộc phạm vi; lọc `fromWarehouseId`, `toWarehouseId`, `status` |
+| GET | `/warehouse/transfers/search` | Như API danh sách | Trả `data.content`, `totalElements`, `totalPages`, `number`, `last`; thêm `keyword` theo mã phiếu, `page` mặc định 0, `size` mặc định 20 (1–200) |
+| GET | `/warehouse/transfers/options` | Như API danh sách | `sourceWarehouses`: kho hoạt động trong phạm vi; `destinationWarehouses`: danh mục kho đến hoạt động; `statuses`: value/label từ server; `canCreate`: quyền thao tác hiện tại |
+| GET | `/warehouse/transfers/products?warehouseId=1&keyword=SKU&page=0&size=20` | Như API danh sách | Kho đi phải trong phạm vi; sản phẩm đang hoạt động có sổ tồn tại kho; DTO hẹp `productId/productCode/productName/unit/physicalQuantity/reservedQuantity/availableQuantity`, phân trang; không cần thêm quyền sản phẩm/đơn hàng, không trả giá vốn/giá bán |
+| GET | `/warehouse/transfers/{id}` | Như API danh sách | Chi tiết trong phạm vi, kèm `canReceive`, `canCancel` do server kiểm quyền và kho tương ứng |
+| POST | `/warehouse/transfers/{id}/receive` | `WAREHOUSE_TRANSFER` hoặc ADMIN | Chỉ kho đến trong phạm vi; khóa phiếu và tồn; nhận đủ/thực nhận; chênh lệch bắt buộc lý do |
+| POST | `/warehouse/transfers/{id}/cancel` | `WAREHOUSE_TRANSFER` hoặc ADMIN | Chỉ kho đi trong phạm vi; bắt buộc `reason` 1–500 ký tự; chỉ IN_TRANSIT; hoàn tồn kho đi, xóa phần đang chuyển của phiếu |
+
+Quyền lấy từ ma trận DB ở mỗi request, không có fallback role. Bỏ `WAREHOUSE_TRANSFER` vẫn có thể xem nếu còn `WAREHOUSE_VIEW`, nhưng cả ba API POST đều trả 403. Bỏ cả hai thì không được xem/menu bị ẩn. ADMIN luôn toàn quyền. Kho được gán giới hạn mọi vai trò; riêng vai trò kho không được gán kho thì phạm vi rỗng, không tự mở toàn hệ thống. Không yêu cầu quyền IMPORT/EXPORT/PRODUCT_VIEW làm điều kiện phụ.
+
+Frontend: **Kho hàng → Chuyển kho nội bộ**, URL `/warehouse/transfers`, dùng app shell và khung nội dung chung. UI lập phiếu chọn sản phẩm theo **đơn vị cơ sở của tồn kho**; API vẫn hỗ trợ đơn vị quy đổi và đóng băng hệ số tại thời điểm tạo phiếu.
 
 #### Quy tắc nghiệp vụ chuyển kho (S5-07):
 1. **Lập phiếu chuyển**:
    - Chọn kho xuất (`fromWarehouseId`), kho nhập (`toWarehouseId`), danh sách sản phẩm, số lượng và đơn vị tính (thùng, lốc, lon...).
    - Kho xuất và kho nhập không được trùng nhau. Cả hai kho phải đang hoạt động (`active = true`).
-   - Kiểm tra tồn kho cơ sở tại kho xuất: nếu tồn kho không đủ để chuyển, hệ thống chặn với lỗi `400 Bad Request` ("Kho xuất không đủ tồn kho...").
+   - Kiểm tra **tồn khả dụng = tồn thực tế − tồn giữ chỗ**; không lấy hàng đã giữ chỗ để chuyển. Khóa ghi kho/phiếu/tồn theo thứ tự ổn định để bảo vệ nhận/hủy lặp, hai phiếu chuyển đồng thời hoặc chuyển cạnh tranh với đơn đặt hàng.
+   - Từ 1–200 dòng, không trùng SKU; số lượng dương tối đa 4 số thập phân. Mã phiếu để trống/null thì tự sinh ở backend, nhập riêng thì dùng mã đó (tối đa 50 ký tự, duy nhất).
    - Khi tạo thành công: tồn kho tại kho xuất bị trừ ngay lập tức; hàng được ghi nhận là đang trên đường chuyển (`status = IN_TRANSIT`, `inTransitQuantity` tại kho nhập tăng lên tương ứng); tồn kho khả dụng (`baseQuantity`) tại kho nhập **CHƯA ĐƯỢC CỘNG**.
 2. **Xác nhận nhận hàng tại kho đến**:
    - Chỉ được xác nhận khi phiếu ở trạng thái `IN_TRANSIT`.
    - Nếu nhận đủ: `receivedQuantity` bằng số lượng xuất, tồn kho đến được cộng đủ, `inTransitQuantity` trừ về 0, trạng thái thành `COMPLETED`.
-   - Nếu có chênh lệch (`receivedQuantity != quantity`): **BẮT BUỘC** phải nhập lý do (`discrepancyReason`). Nếu không nhập lý do, hệ thống trả về lỗi `400 Bad Request` ("Chênh lệch khi nhận hàng bắt buộc phải nhập lý do").
+   - Nếu có chênh lệch (`receivedQuantity != quantity`), kể cả nhận thừa hoặc 0: **BẮT BUỘC** lý do `discrepancyReason` 1–500 ký tự; không nhập trả 400. Lưu số chuyển, thực nhận, chênh lệch và lý do theo dòng để đối chiếu.
+   - Body vắng/null, `items` vắng hoặc `[]` giữ tương thích nhận đủ. Nếu truyền danh sách thực nhận thì phải có đủ tất cả dòng; dùng `itemId` (ưu tiên) hoặc `productId` duy nhất thuộc phiếu; từ chối dòng lạ/trùng/mâu thuẫn ID, thiếu/âm số lượng. Toàn bộ cập nhật nằm trong một transaction, lỗi ở dòng sau không làm cộng tồn dòng trước.
    - Tồn kho tại kho nhập chỉ được cộng đúng số lượng thực nhận (`receivedBaseQuantity`).
 3. **Hủy phiếu chuyển kho**:
    - Chỉ áp dụng cho phiếu đang ở trạng thái `IN_TRANSIT`.
    - Hoàn lại tồn kho cho kho xuất và xóa lượng đang trên đường tại kho nhập. Trạng thái phiếu thành `CANCELLED`.
+   - Gửi `{ "reason": "Lý do hủy phiếu" }`. Phiếu đã nhận hoặc đã hủy không thể nhận/hủy lần nữa. Lịch sử xuất/nhận/hủy được ghi audit; không thay đổi schema hoặc seed trong S5-07.
 
 #### Ví dụ Request tạo phiếu chuyển kho (`POST /api/warehouse/transfers`):
 ```json

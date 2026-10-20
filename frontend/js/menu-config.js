@@ -201,6 +201,15 @@ const MenuConfig = (() => {
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_VIEWER"],
     },
     {
+      id: "warehouse-transfers",
+      section: "Kho hàng",
+      label: "Chuyển kho nội bộ",
+      icon: '<path d="M3 7h16m-4-4 4 4-4 4M21 17H5m4-4-4 4 4 4"/>',
+      href: "/warehouse/transfers",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_TRANSFER"],
+      roles: ALL_ROLES,
+    },
+    {
       id: "debt-limits",
       section: "Tài chính",
       label: "Hạn mức công nợ",

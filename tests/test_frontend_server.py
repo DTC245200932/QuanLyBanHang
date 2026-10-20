@@ -101,6 +101,11 @@ class FrontendRoutingTest(unittest.TestCase):
         self.assertEqual(308, status)
         self.assertEqual("/warehouses?warehouseId=1", headers["Location"])
 
+    def test_s507_transfer_route(self):
+        status, _, body = self.get('/warehouse/transfers')
+        self.assertEqual(status, 200)
+        self.assertIn('warehouse-transfers.js', body.decode('utf-8'))
+
     def test_s505_stock_ledger_route_and_old_inventory_tab(self):
         status, _, body = self.get("/warehouse/inventory")
         self.assertEqual(200, status)

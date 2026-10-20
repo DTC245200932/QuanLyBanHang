@@ -92,4 +92,9 @@ public interface WarehouseService {
             Long fromWarehouseId, Long toWarehouseId, com.quanlybanhang.model.WarehouseTransferStatus status);
 
     com.quanlybanhang.dto.response.WarehouseTransferResponse getTransferById(Long id);
+
+    WarehouseTransferOptionsResponse getTransferOptions();
+    org.springframework.data.domain.Page<WarehouseTransferStockResponse> getTransferStock(Long warehouseId, String keyword, int page, int size);
+    org.springframework.data.domain.Page<WarehouseTransferResponse> searchTransfers(Long from, Long to,
+            com.quanlybanhang.model.WarehouseTransferStatus status, String keyword, int page, int size);
 }

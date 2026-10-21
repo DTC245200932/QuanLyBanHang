@@ -54,7 +54,7 @@ class FrontendRoutingTest(unittest.TestCase):
             "/orders": "Đơn hàng",
             "/create-order": "Tạo đơn hàng",
             "/dealer-orders": "Đơn hàng của tôi",
-            "/dealer-portal": "Cổng đại lý",
+            "/dealer-portal": "Cổng đặt hàng đại lý | SaleStock",
             "/order-approval": "Duyệt đơn",
             "/suppliers": "Nhà cung cấp",
             "/profile": "Hồ sơ cá nhân",

@@ -1,6 +1,21 @@
 # Trạng thái sprint 1–5
 
-Cập nhật **21/10/2026**, bổ sung tính năng S5-02 đặt lại đơn hàng cũ trên Cổng đại lý (backend); không merge hoặc lấy code từ nhánh khác.
+Cập nhật **21/10/2026**, chuẩn bị tích hợp `develop` vào `main`, giữ mã ứng dụng hiện hành trên `develop` và kiểm chứng kết nối backend/frontend cùng ma trận quyền.
+
+## Sửa xung đột khi tích hợp develop vào main — 21/10/2026
+
+`main` tại `2eabd86` có ba commit chưa nằm trong `develop`: merge S4-03 (#84), revert S4-03 (`d6c69dc`) và merge bản revert (#85). Cây nội dung của `main` giống hệt `c786478` trước #84. Trong khi đó, `develop` tại `314d253` đã tích hợp lại và cải tiến chức năng tồn khả dụng, giữ chỗ, đơn hàng và các sprint tiếp theo. Merge trực tiếp gặp **18 tệp xung đột**, gồm `SecurityConfig`, order/inventory service, test và `status.md` (bị xóa trên `main`).
+
+Nhánh `codex/fix-develop-main-merge` ghi nhận cả hai đầu lịch sử bằng merge strategy `ours`, giữ nguyên toàn bộ mã ứng dụng của `develop` tại `314d253`. Đây là quyết định riêng cho bản revert cũ đã kiểm tra; không chọn lại các đoạn mã cũ trong xung đột. Ngoài lịch sử merge, chỉ cập nhật báo cáo này và sửa assertion tiêu đề Cổng đại lý trong test định tuyến cho đúng HTML hiện có.
+
+| Hạng mục kiểm chứng tích hợp | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Đơn hàng, tồn khả dụng, giữ chỗ và các thay đổi sprint hiện hành | Giữ nguyên mã từ `develop`; toàn bộ 626 test qua | Giữ nguyên mã từ `develop`; toàn bộ 88 test JS và 9 test định tuyến qua | Browser hồi quy qua tính chiết khấu server, lỗi preview, xác nhận và vòng đời đơn hàng |
+| Cấp / thu hồi quyền trên phiên đang mở | Test HTTP/JWT/JPA/H2 lưu ma trận, kiểm API chuyển 200 → 403 → 200 với cùng token; tài khoản kiểm chỉ có vai trò đang bị thu hồi | Test đồng bộ quyền ẩn/hiện lại action; browser kiểm trang đang mở chuyển 403 sau thu hồi | Giữ nguyên nguồn quyền DB, hợp quyền nhiều vai trò và ngoại lệ `ROLE_ADMIN`; không thêm fallback theo vai trò |
+| Kết nối và bố cục trong luồng đơn hàng | Không đổi hợp đồng API hoặc dữ liệu nghiệp vụ | Browser kiểm desktop/mobile, giỏ, xác nhận và bước xử lý đơn hàng qua | Browser dùng API mock; kiểm DB dùng H2 tạm thời, chưa nghiệm thu MySQL thật |
+| Lịch sử Git cho lần tích hợp này | Đã ghi nhận đầu `main` cũ trong merge commit | Giữ nguyên toàn bộ giao diện trên `develop` | Dùng **Create a merge commit** khi merge PR để giữ quan hệ tổ tiên; không squash/rebase bản sửa lịch sử này |
+
+Kiểm chứng: `backend/mvnw.cmd test` — **626 qua, 0 lỗi/failure/skip**; `node --test tests/*.test.cjs` — **88 qua**; `python -m unittest discover -s tests -p test_frontend_server.py` — **9 qua**; `tests/s4-workflows.browser.cjs` — **qua**, gồm thu hồi quyền trên trang đang mở. Không sửa mã backend/frontend hoặc DB thật. Các mục trạng thái tính năng bên dưới là báo cáo theo từng đợt trước đó, không phải tuyên bố nghiệm thu toàn bộ backlog trong lần sửa merge này.
 
 ## S5-02 — Đặt lại đơn hàng cũ trên Cổng đại lý (backend) — 21/10/2026
 

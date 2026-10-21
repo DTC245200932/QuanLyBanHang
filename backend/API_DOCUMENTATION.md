@@ -14,7 +14,7 @@ Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message":
 | GET `/admin/permissions` | ADMIN; giữ nguyên catalog quyền và matrix |
 | PUT `/admin/permissions` | ADMIN; body là object `{ "ROLE_SALES": ["ORDER_VIEW", "ORDER_CREATE"], "ROLE_VIEWER": [] }`; chỉ thay vai trò có trong body, lưu toàn bộ thay đổi trong một transaction; trả matrix/catalog mới. Body rỗng không hợp lệ |
 | PUT `/admin/permissions/{role}` | ADMIN; array quyền, vẫn tương thích API cũ; `[]` là thu hồi hết quyền và được lưu qua restart |
-| GET `/products/lookup`, `/products/lookup/{id}` | Một trong PRODUCT_VIEW/CREATE/EDIT, ORDER_CREATE, WAREHOUSE_VIEW/MANAGE/IMPORT/EXPORT; danh mục tham chiếu tối thiểu, không trả giá vốn hoặc doanh thu; list hỗ trợ `search`, `active` |
+| GET `/products/lookup`, `/products/lookup/{id}` | Một trong PRODUCT_VIEW/CREATE/EDIT, ORDER_CREATE, WAREHOUSE_VIEW/MANAGE/IMPORT/EXPORT/APPROVE/ADJUST; danh mục tham chiếu tối thiểu, gồm `manageLot`, không trả giá vốn hoặc doanh thu; list hỗ trợ `search`, `active` |
 | GET `/categories/options` | PRODUCT_VIEW/CREATE/EDIT; chỉ id/code/name cho bộ chọn, không trả doanh thu |
 | Sản phẩm / nhóm hàng | GET chi tiết/danh sách: PRODUCT_VIEW; POST: PRODUCT_CREATE; PUT/PATCH/chuyển nhóm: PRODUCT_EDIT; DELETE: PRODUCT_DELETE. Lịch sử giá: FINANCE_VIEW_COST_PRICE |
 | Nhập sản phẩm Excel | Preview/import cần cả PRODUCT_CREATE + PRODUCT_EDIT vì file có thể chứa SKU tạo mới và cập nhật; template cần một trong hai |
@@ -599,12 +599,14 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| POST | `/warehouse/import` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu nhập kho từ nhà cung cấp (S5-04: hỗ trợ nhập theo thùng/lốc tự động quy về đơn vị cơ sở; khai báo NCC, số chứng từ, ngày nhập, kho nhập; ghi nhận số lô & HSD cho hàng có quản lý lô; `status="DRAFT"` hoặc `draft=true` để lưu nháp) |
-| POST | `/warehouse/import/draft` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Tạo nhanh phiếu nhập kho ở trạng thái Nháp (DRAFT) — phiếu nháp không ảnh hưởng tồn kho |
-| POST | `/warehouse/vouchers/{id}/confirm` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xác nhận phiếu nhập kho nháp — lúc này hệ thống mới thực hiện cộng tồn kho và cập nhật sổ tồn kho theo lô |
-| PUT | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Sửa phiếu nhập kho nháp (Phiếu đã xác nhận BỊ CHẶN sửa, trả lỗi yêu cầu lập phiếu điều chỉnh) |
-| DELETE | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Xóa phiếu nhập kho nháp (Phiếu đã xác nhận BỊ CHẶN xóa) |
-| POST | `/warehouse/vouchers/{id}/adjust` | `WAREHOUSE_ADJUST` hoặc `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu điều chỉnh cho phiếu kho đã xác nhận (chỉ Quản lý kho và Quản trị viên) |
+| GET | `/warehouse/import/options` | Một trong `WAREHOUSE_IMPORT`, `WAREHOUSE_APPROVE`, `WAREHOUSE_ADJUST`; hoặc ADMIN | `{warehouses, suppliers}`: kho trong phạm vi, NCC hoạt động, chỉ id/code/name; không đòi quyền quản lý NCC |
+| GET | `/warehouse/imports?warehouseId=1` | Như options | Phiếu nhập và phiếu điều chỉnh có tham chiếu trong phạm vi kho; dùng cho sổ phiếu khi không có WAREHOUSE_VIEW |
+| POST | `/warehouse/import` | `WAREHOUSE_IMPORT`; ghi sổ ngay còn cần `WAREHOUSE_APPROVE`; hoặc ADMIN | Tương thích nhập trực tiếp; `draft=true`/`status=DRAFT` không cộng tồn |
+| POST | `/warehouse/import/draft` | `WAREHOUSE_IMPORT` hoặc ADMIN | Lưu nháp DB, không thay tồn tổng/lô |
+| POST | `/warehouse/vouchers/{id}/confirm` | `WAREHOUSE_APPROVE` hoặc ADMIN | Khóa phiếu/kho/tồn, chốt quy đổi hiện hành, cộng tồn đúng một lần |
+| PUT | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc ADMIN | Chỉ sửa phiếu nhập DRAFT, gửi `version` từ lần đọc gần nhất để chặn ghi đè phiên khác |
+| DELETE | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc ADMIN | Chỉ xóa phiếu nhập DRAFT |
+| POST | `/warehouse/vouchers/{id}/adjust` | `WAREHOUSE_ADJUST` hoặc ADMIN | Cùng kho phiếu gốc; bắt buộc lý do; không âm tồn/lô hoặc giảm dưới tồn giữ chỗ; giữ nguyên dòng phiếu gốc |
 | POST | `/warehouse/export` | `WAREHOUSE_EXPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu xuất kho (quy về đơn vị cơ sở và kiểm tra tồn kho theo đơn vị cơ sở) |
 | POST | `/warehouse/adjust` | `WAREHOUSE_ADJUST` hoặc `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho trực tiếp |
 | GET | `/warehouse/inventory` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Xem tồn kho sổ sách theo đơn vị cơ sở kèm bảng quy đổi tương đương theo thùng, lốc |
@@ -662,17 +664,17 @@ Dùng quyền từ ma trận phân quyền, không dùng tên vai trò để c�
 
 ### Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (S5-04)
 
-Dành cho vai trò **Nhân viên kho (`ROLE_WAREHOUSE_STAFF`)** và Quản lý kho (`ROLE_WAREHOUSE_MANAGER`):
+Dành cho người dùng được cấp quyền trong **ma trận DB**, không khóa cứng theo vai trò. Mọi thao tác tuân thủ kho được giao; vai trò kho không được giao kho thì phạm vi rỗng. ADMIN luôn được phép.
 1. **Khai báo thông tin chứng từ khi xe dỡ hàng**:
    - `supplierId` hoặc `supplierCode`: Nhà cung cấp giao hàng (phải tồn tại và đang hoạt động `active = true`).
    - `documentNumber`: Số chứng từ đi kèm (số hóa đơn đỏ, biên bản giao nhận hàng).
-   - `voucherDate`: Ngày nhập kho thực tế (mặc định là thời điểm lập phiếu nếu không cung cấp).
+   - `voucherDate`: Ngày nhập kho thực tế, dạng `2026-10-21T00:00:00`; bắt buộc khi nhập trực tiếp, được lưu riêng ở DB.
    - `warehouseId`: Kho nhập hàng (phải tồn tại và đang hoạt động).
-   - `voucherCode`: Mã phiếu nhập kho (nếu không cung cấp, hệ thống tự động sinh dạng `PNK-yyyyMMddHHmmssSSS`).
+   - `voucherCode`: Bỏ trống để server sinh mã `PNK-<UUID>`; không lấy số thứ tự từ số phiếu đang hiển thị trên trình duyệt.
 2. **Nhập theo đơn vị tính bất kỳ, quy về đơn vị cơ sở khi ghi sổ**:
    - Dòng hàng có thể chọn bất kỳ đơn vị tính nào đã được cấu hình trong bảng quy đổi của SKU (vd: thùng, lốc, bao, chai, lon...).
    - Hệ thống tự động nhân với hệ số quy đổi đóng băng `conversionFactor` để tính `baseQuantity = quantity * factor`.
-   - Toàn bộ thông tin đơn vị, hệ số và số lượng cơ sở được đóng băng vĩnh viễn trên dòng phiếu kho.
+   - Nháp chỉ chứa quy đổi dự kiến; khi xác nhận server tính lại hệ số hiện hành và đóng băng đơn vị/hệ số/số lượng cơ sở. Đổi quy đổi sau xác nhận không thay phiếu cũ.
 3. **Quản lý Số lô và Hạn sử dụng**:
    - Trên sản phẩm (`Product`), cờ `manageLot = true` xác định mặt hàng được quản lý theo lô (vd: bia, nước giải khát, thực phẩm...).
    - Khi lập phiếu nhập kho:
@@ -690,10 +692,18 @@ Dành cho vai trò **Nhân viên kho (`ROLE_WAREHOUSE_STAFF`)** và Quản lý k
      - Trạng thái phiếu chuyển thành `CONFIRMED`.
 5. **Phiếu đã xác nhận không sửa được, chỉ lập phiếu điều chỉnh**:
    - Mọi hành vi cố tình gọi `PUT` hoặc `DELETE` trên phiếu đã ở trạng thái `CONFIRMED` / `RECORDED` đều bị hệ thống chặn với ngoại lệ `IllegalStateException` ("Phiếu đã xác nhận không sửa được, chỉ lập phiếu điều chỉnh").
-   - Khi có sai sót (hàng vỡ, hàng trả lại...): Quản lý kho (`ROLE_WAREHOUSE_MANAGER`) hoặc Admin (`ROLE_ADMIN`) sử dụng API `POST /api/warehouse/vouchers/{id}/adjust` để lập phiếu điều chỉnh:
+   - Khi có sai sót, người có `WAREHOUSE_ADJUST` hoặc ADMIN dùng `POST /api/warehouse/vouchers/{id}/adjust`:
      - Phiếu điều chỉnh tự động liên kết đến `referenceVoucherId` và `referenceVoucherCode`.
      - Ghi nhận `adjustmentReason` (lý do điều chỉnh).
      - Điều chỉnh lại số lượng tồn kho theo chênh lệch và cập nhật trạng thái phiếu gốc sang `ADJUSTED`.
+
+Frontend dùng luồng `POST /warehouse/import/draft` → `PUT /warehouse/vouchers/{id}` nếu sửa → `POST /warehouse/vouchers/{id}/confirm`. Người chỉ có IMPORT lưu/sửa/xóa nháp nhưng không được xác nhận. Người chỉ có APPROVE mở sổ phiếu và xác nhận nhưng không sửa nháp. Thu hồi quyền trên token đang dùng có hiệu lực từ request tiếp theo; FE ẩn/khóa thao tác khi nhận thay đổi quyền.
+
+Các trường header gửi riêng: `supplierId`, `documentNumber` (tối đa 100 ký tự), `voucherDate`, `warehouseId`, `note` (500). Mỗi dòng gửi `productId`, `unit`, `quantity` (dương, tối đa 4 số lẻ), `lotNumber` (50), `expiryDate`, tùy chọn `manufacturingDate`, `note` (255). Không nhét NCC/lô/HSD vào note. Cùng SKU/kho/số lô phải cùng HSD; không ghi đè ngày lô cũ.
+
+Điều chỉnh từ UI dùng một dòng và `delta` có dấu theo đơn vị dòng, `quantity=abs(delta)` trong request, `adjustmentReason` 1–500 ký tự. Response phiếu điều chỉnh ghi lượng thay đổi có dấu và tham chiếu phiếu gốc. API cũng hỗ trợ số đích khi không gửi delta: nếu chọn lô, tổng kho chỉ thay đổi theo chênh lệch của lô đó, không ghi đè tổng bằng số của một lô.
+
+Schema bổ sung `warehouse_vouchers.version BIGINT NOT NULL DEFAULT 0` cho kiểm soát phiên sửa. Cấu hình phát triển hiện tại `ddl-auto=update` tự bổ sung khi khởi động; môi trường dùng migration thủ công cần thêm cột tương đương trước khi chạy. Không xóa hoặc khởi tạo lại DB.
 
 ### Danh sách API Chuyển kho nội bộ (S5-07)
 

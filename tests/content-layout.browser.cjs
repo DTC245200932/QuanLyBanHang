@@ -52,6 +52,7 @@ const dealers = ['Minh Phát', 'Tân Bình', 'Hà Nội', 'Khách lẻ', 'Hoàng
       else if (['/dealers', '/dealers/active', '/finance/debt', '/portal/dealers'].includes(endpoint)) data = dealers;
       else if (endpoint === '/orders/draft') data = null;
       else if (endpoint === '/warehouse/options') data = [{ id: 1, code: 'KHO-HN', name: 'Kho Hà Nội' }];
+        else if (endpoint === '/warehouse/import/options') data = {warehouses: [{id: 1, code: 'KHO-HN', name: 'Kho Hà Nội'}], suppliers: []};
       else if (endpoint === '/warehouse/stock-counts/options') data = {warehouses: [{id: 1, code: 'KHO-HN', name: 'Kho Hà Nội'}], categories: [], statuses: [], canAdjust: true};
       else if (endpoint === '/warehouse/stock-counts') data = {content: [], totalElements: 0, totalPages: 0, number: 0, first: true, last: true};
       await route.fulfill({ status: 200, contentType: 'application/json',

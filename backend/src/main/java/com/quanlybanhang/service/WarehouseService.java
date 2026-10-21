@@ -15,6 +15,10 @@ public interface WarehouseService {
     // ── Danh sách options nhanh (cho dropdown) ──
     List<NamedResourceResponse> getWarehouseOptions();
 
+    java.util.Map<String, Object> getImportOptions();
+
+    List<WarehouseVoucherResponse> getImports(Long warehouseId);
+
     // ── Quản lý Kho hàng (S5-03) ──
     List<WarehouseResponse> getAllWarehouses(String keyword, Boolean active);
 

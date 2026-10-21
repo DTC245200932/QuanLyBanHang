@@ -1,4 +1,78 @@
-# Trạng thái sprint 1–5
+# Trạng thái phát triển — QuanLyBanHang
+
+## S5-04 — Hoàn thiện frontend và backend — 22/10/2026
+
+Nhánh: `feature/S5-04-chuc-nang-lap-phieu-nhap-kho(frontend)`. Đối chiếu 5 tiêu chí trong ảnh backlog do người dùng cung cấp; phần này thay thế các ghi chú S5-04 chưa đầy đủ bên dưới.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| NCC, số chứng từ, ngày nhập, kho nhập | Lưu các trường riêng; kiểm tra NCC/kho hoạt động và phạm vi kho | Chọn NCC từ danh mục thật, nhập chứng từ/ngày/kho, xem lại chi tiết | `/warehouse/import/options` trả danh mục hẹp, không cần quyền quản lý NCC; không nhét dữ liệu vào note |
+| Nhập đơn vị bất kỳ đã cấu hình | Quy đổi số lượng lẻ bằng BigDecimal; xác nhận mới chốt hệ số hiện hành; phiếu đã ghi sổ giữ snapshot | Chọn đơn vị, xem số cơ sở dự kiến, không làm tròn mất số lẻ; sửa lỗi blur số lượng làm mất nội dung ô số lô | Payload gửi `unit/quantity`, server quyết định quy đổi và tồn |
+| Số lô, hạn sử dụng | Bắt buộc với `manageLot`; lưu riêng từng dòng, cộng tồn lô; chặn cùng lô khác HSD | Trường lô/HSD, thông báo thiếu lô, khôi phục khi sửa nháp và hiện trong chi tiết | Product lookup trả `manageLot`; gửi `lotNumber/expiryDate`, giữ ngày sản xuất cũ nếu mở lại |
+| Nháp không ảnh hưởng tồn; xác nhận mới cộng tồn | Nháp lưu DB; khóa phiếu/kho/tồn khi xác nhận; chặn xác nhận lặp; lỗi rollback cả tồn/lô/phiếu/nhật ký | Lưu/mở lại/sửa/xóa nháp theo ID server; tải lại trang không mất nháp; khóa nút khi đang gửi | IMPORT lưu/sửa/xóa nháp; APPROVE xác nhận. Nhập trực tiếp cũng cần APPROVE, không có đường tắt cộng tồn |
+| Phiếu xác nhận bất biến, sai sót lập điều chỉnh | Chặn sửa/xóa phiếu xác nhận; phiếu điều chỉnh riêng cùng kho, tham chiếu phiếu gốc, lý do bắt buộc; không âm tồn/lô hoặc giảm dưới tồn giữ chỗ | Chi tiết chỉ đọc; người có quyền được nhập lượng tăng/giảm và lý do để lập phiếu điều chỉnh | ADJUST điều chỉnh; số lượng có dấu ghi trên phiếu điều chỉnh, giữ nguyên dòng phiếu gốc |
+| Ma trận, phạm vi và đồng bộ nhiều phiên | Quyền DB trên request hiện tại, ADMIN luôn được phép; kho được giao giới hạn dữ liệu; version chặn sửa đè nháp cũ | Menu/tab/nút cùng quyền; IMPORT-only/APPROVE-only dùng được mà không cần VIEW; không khôi phục dữ liệu từ phản hồi trễ sau thu hồi quyền | Không fallback vai trò; dữ liệu nghiệp vụ không lưu local/session storage |
+| Bố cục và hồi quy | Giữ nghiệp vụ kiểm kê/chuyển kho đang có; cập nhật demo bootstrap theo hợp đồng mới | Giữ app shell, sidebar/topbar và khung nội dung chung; bảng dòng hàng cuộn riêng, không bóp nhỏ ô nhập trên mobile | Hồi quy S5-08, điều hướng và bố cục dùng chung |
+
+Kiểm chứng: **663 test backend qua** trên bản sao cách ly, H2 in-memory, gồm **14 test tích hợp S5-04 HTTP/JWT/ma trận/JPA**: đồng thời, rollback, phạm vi kho, cấp/thu hồi quyền trên token cũ, không lộ phiếu xuất qua danh mục nhập. **120 test JavaScript**, **10 test định tuyến** qua. Chrome S5-04 qua lưu nháp/tải lại/sửa/xác nhận/lỗi/điều chỉnh/quyền/XSS/desktop–tablet–mobile; Chrome S5-08 qua toàn bộ luồng và 6 kích thước. Bố cục **150 trường hợp (25 trang × 6 kích thước)** qua; điều hướng click/Back/Forward/Reload/mobile/reduced-motion qua, sidebar **472 → 472**.
+
+Triển khai: bổ sung `warehouse_vouchers.version BIGINT NOT NULL DEFAULT 0`; cấu hình hiện tại `ddl-auto=update` tự thêm khi backend khởi động, môi trường dùng migration riêng cần thêm cột tương ứng. **Không xóa/reset DB**. Chưa chạy hay ghi dữ liệu nghiệp vụ vào MySQL thật; chỉ H2 và HTTP fixture. Không tự commit/push/merge develop. Nhánh đã chứa develop `c04ace5`, không còn file unmerged tại lần kiểm tra này. Cần commit/push toàn bộ thay đổi mới rồi tạo/cập nhật PR.
+
+## Lịch sử — S5-04 đồng bộ develop và xử lý xung đột — 21/10/2026
+
+Phạm vi: đưa `origin/develop` tại `c04ace5` vào nhánh `feature/S5-04-chuc-nang-lap-phieu-nhap-kho(frontend)`; giữ thay đổi nhập kho của nhánh và các sửa ma trận/khởi tạo theo tab/kiểm kê mới từ develop. Không tự commit, push hoặc merge vào develop.
+
+| Hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Xung đột `warehouse-units.js` | Nhận nguyên backend develop | Giữ NCC, số chứng từ, lô/HSD của S5-04 và toàn bộ client kiểm kê S5-08; giữ COMPLETED và khởi tạo lười theo tab | Giữ `/products/lookup`; chỉ nạp đơn khi có ORDER_VIEW; chỉ nạp NCC khi có quyền API tương ứng |
+| Ghi sổ / lưu nháp phiếu nhập-xuất | Giữ nguyên API và kiểm tra quyền của develop | Cả nút và hàm lưu nháp kiểm đúng quyền IMPORT/EXPORT/ORDER_CREATE hiện tại, không dùng role fallback | Giữ scope kho, thu hồi quyền và ADMIN từ hệ thống hiện tại |
+| Phạm vi nghiệm thu | Chưa thay nghiệp vụ backend nhập kho | Nháp S5-04 của nhánh vẫn chỉ ở bộ nhớ; dữ liệu NCC/chứng từ/lô/HSD còn gửi theo note | Hết conflict không đồng nghĩa S5-04 đã hoàn chỉnh: cần đợt nối API nháp DB và trường nghiệp vụ riêng; không xác nhận lại các dấu hoàn tất trong ghi chú cũ bên dưới |
+
+Kiểm chứng tích hợp: **118 test JavaScript qua**, bao gồm 5 test nhập kho đã cập nhật harness theo Auth API/khởi tạo theo tab và kiểm cấp/thu hồi quyền; **10 test định tuyến qua**. Chrome hồi quy S5-08 qua snapshot, lưu/mở lại/chốt/hủy, lỗi giữ input, đổi kho, grant/revoke, phản hồi trễ và 6 kích thước; kiểm bố cục **150 trường hợp = 25 trang × 6 kích thước** qua. Backend không khác `origin/develop`, không sửa/chạy dữ liệu MySQL thật. Đã đánh dấu hai file conflict là resolved; merge đồng bộ cần được người dùng hoàn tất bằng Continue merge/commit trước khi push. Phần dưới giữ lịch sử của cả hai nhánh.
+
+## Ghi chú S5-04 cũ của nhánh — 20/10/2026 (lịch sử, chưa phải nghiệm thu hiện tại)
+
+## S5-04: Phiếu nhập kho (Warehouse Import Voucher)
+
+### Tổng quan tính năng
+
+| # | Tính năng | Backend | Frontend | Kết nối đúng? |
+|---|-----------|:-------:|:--------:|:-------------:|
+| 1 | Dropdown nhà cung cấp (`/suppliers?size=100`) | ✅ | ✅ | ✅ |
+| 2 | Lưu bản nháp phiếu kho (DRAFT, không gọi API ghi sổ) | — (local) | ✅ | ✅ |
+| 3 | Xác nhận ghi sổ phiếu nhập kho (`POST /warehouse/import`) | ✅ | ✅ | ✅ |
+| 4 | Ghi số chứng từ gốc (`docNumber`) vào ghi chú phiếu | ✅ | ✅ | ✅ |
+| 5 | Ghi tên nhà cung cấp (`supplierName`) vào ghi chú phiếu | ✅ | ✅ | ✅ |
+| 6 | Ghi số lô & hạn sử dụng vào note từng item | ✅ | ✅ | ✅ |
+| 7 | Status label mở rộng: DRAFT, ADJUSTED | — | ✅ | ✅ |
+| 8 | Hiển thị nháp trên sổ cái + nút "Sửa nháp" | — (local) | ✅ | ✅ |
+| 9 | Modal chi tiết phiếu: hiện lô/HSD + thông báo bất biến RECORDED | ✅ | ✅ | ✅ |
+| 10 | Snapshot hệ số quy đổi tại thời điểm ghi sổ | ✅ | ✅ | ✅ |
+
+### Ma trận phân quyền (Permission Matrix)
+
+| Hành động | Permission | Roles cho phép | FE kiểm tra | BE kiểm tra |
+|-----------|-----------|----------------|:-----------:|:-----------:|
+| Xem tồn kho / sổ cái | `WAREHOUSE_VIEW` | ADMIN, SALES_MANAGER, WAREHOUSE_MANAGER, WAREHOUSE_STAFF, WAREHOUSE_VIEWER | ✅ `canManageUnits` | ✅ |
+| Tạo phiếu nhập/xuất kho | `WAREHOUSE_IMPORT` | ADMIN, WAREHOUSE_MANAGER, WAREHOUSE_STAFF | ✅ `canRecordVouchers` | ✅ |
+| Lưu nháp phiếu | `WAREHOUSE_IMPORT` | ADMIN, WAREHOUSE_MANAGER, WAREHOUSE_STAFF | ✅ `canRecordVouchers` | — (local) |
+| Quản lý đơn vị quy đổi | `WAREHOUSE_VIEW` | ADMIN, WAREHOUSE_MANAGER, WAREHOUSE_STAFF, SALES_MANAGER | ✅ `canManageUnits` | ✅ |
+| Tab "Nhập / Xuất kho" | `WAREHOUSE_IMPORT` | ADMIN, WAREHOUSE_MANAGER, WAREHOUSE_STAFF | ✅ ẩn tab | ✅ menu-config |
+
+### Unit Tests
+
+| Test | Mô tả | Kết quả |
+|------|--------|:-------:|
+| `S5-04: Khởi tạo tải danh sách NCC` | Gọi `/suppliers?size=100`, populate dropdown | ✅ Pass |
+| `S5-04: Lưu nháp không gọi API` | Không POST `/warehouse/import`, hiện toast | ✅ Pass |
+| `S5-04: Xác nhận ghi sổ` | POST `/warehouse/import` với voucherCode, docNumber, supplierName | ✅ Pass |
+
+### File đã sửa
+
+- `frontend/js/warehouse-units.js` — Toàn bộ logic S5-04
+- `tests/warehouse-import-voucher.test.cjs` — 3 unit tests
+
+## Trạng thái sprint 1–5 từ develop đã đồng bộ
 
 Cập nhật **21/10/2026**: hoàn thiện S5-08 trên nhánh `feature/S5-08-chuc-nang-kiem-ke-chenh-lech(frontend)`, sau khi người dùng đồng bộ develop tại merge commit `5d9008c`. Các mục phía dưới giữ lịch sử những đợt triển khai trước; trạng thái S5-08 mới nhất nằm ở bảng ngay dưới đây. Đợt sửa này không tự commit, merge vào develop hoặc push.
 

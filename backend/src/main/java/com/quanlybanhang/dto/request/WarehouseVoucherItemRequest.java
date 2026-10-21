@@ -25,6 +25,7 @@ public class WarehouseVoucherItemRequest {
 
     @NotNull(message = "Số lượng không được để trống")
     @DecimalMin(value = "0.0001", message = "Số lượng phải lớn hơn 0")
+    @jakarta.validation.constraints.Digits(integer = 11, fraction = 4)
     private BigDecimal quantity;
 
     private BigDecimal price;
@@ -32,6 +33,7 @@ public class WarehouseVoucherItemRequest {
     /**
      * Số lô hàng (S5-04). Bắt buộc nếu sản phẩm có manageLot = true.
      */
+    @jakarta.validation.constraints.Size(max = 50)
     private String lotNumber;
 
     /**
@@ -44,5 +46,6 @@ public class WarehouseVoucherItemRequest {
      */
     private java.time.LocalDate manufacturingDate;
 
+    @jakarta.validation.constraints.Size(max = 255)
     private String note;
 }

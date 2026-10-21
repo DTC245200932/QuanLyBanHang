@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>Cổng đặt hàng đại lý | SaleStock</title>
+    <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+    <link rel="stylesheet" href="/css/toast.css" />
+    <link rel="stylesheet" href="/css/dealer-portal.css" />
+    <link rel="stylesheet" href="/css/app-shell.css" />
+    <link rel="stylesheet" href="/css/app-navigation.css" />
+<script src="/js/app-transition.js"></script>
+</head>
+  <body class="dealer-portal-body">
+    <div class="portal-shell" data-app-content>
+    <!-- Page controls move into the shared toolbar, without duplicate IDs. -->
+    <header data-standalone-header>
+      <div data-app-topbar-actions>
+        <div class="dp-topbar__dealer-summary" id="dp-topbar-dealer-summary">
+          <div class="dp-dealer-chip" id="dp-dealer-chip">
+            <span class="dp-dealer-chip__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            </span>
+            <div class="dp-dealer-chip__meta">
+              <strong class="dp-dealer-chip__name" id="topbar-dealer-name">Đang tải đại lý…</strong>
+              <span class="dp-dealer-chip__badge" id="topbar-group-badge">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="dp-topbar__actions">
+          <button class="dp-cart-btn" id="btn-open-cart" type="button" aria-label="Mở giỏ hàng">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <path d="M16 10a4 4 0 0 1-8 0"/>
+            </svg>
+            <span class="dp-cart-badge" id="cart-badge-count">0</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="content dp-main">
+      <!-- Dealer context & Debt card -->
+      <section class="dp-card dp-dealer-card" aria-label="Thông tin đại lý và công nợ">
+        <div class="dp-dealer-card__header">
+          <div>
+            <div class="dp-dealer-code-line">
+              <span class="dp-dealer-code" id="info-dealer-code">—</span>
+              <span class="dp-dealer-status-pill" id="info-dealer-status">Đang hoạt động</span>
+            </div>
+            <h1 class="dp-dealer-card__title" id="info-dealer-name">Cổng đặt hàng trực tuyến</h1>
+            <p class="dp-dealer-card__desc" id="info-dealer-assigned">Nhân viên phụ trách: Đang tải…</p>
+          </div>
+
+          <!-- Quản trị viên chọn đại lý cần hỗ trợ -->
+          <div class="dp-dealer-switcher" id="dp-dealer-switcher-wrap" hidden>
+            <label for="dp-dealer-select" class="dp-field-label">Chọn đại lý đặt hàng</label>
+            <select id="dp-dealer-select" class="dp-select">
+              <option value="">— Đang tải đại lý —</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Credit & Debt bar -->
+        <div class="dp-debt-metrics" id="dp-debt-metrics">
+          <div class="dp-metric">
+            <span class="dp-metric__label">Hạn mức công nợ</span>
+            <strong class="dp-metric__value" id="val-debt-limit">0 ₫</strong>
+          </div>
+          <div class="dp-metric">
+            <span class="dp-metric__label">Dư nợ hiện tại</span>
+            <strong class="dp-metric__value" id="val-current-debt">0 ₫</strong>
+          </div>
+          <div class="dp-metric dp-metric--highlight">
+            <span class="dp-metric__label">Hạn mức còn lại</span>
+            <strong class="dp-metric__value dp-metric__value--avail" id="val-avail-debt">0 ₫</strong>
+          </div>
+        </div>
+
+        <!-- Overdue debt alert -->
+        <div class="dp-debt-banner dp-debt-banner--danger" id="dp-debt-overdue-alert" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="dp-debt-overdue-msg">Đại lý có khoản nợ quá hạn chưa thanh toán. Vui lòng thanh toán để đặt đơn tiếp theo.</span>
+        </div>
+      </section>
+
+      <!-- Price Policy Notice -->
+      <div class="dp-policy-notice" id="dp-policy-notice">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span>Giá sản phẩm hiển thị theo <strong>Bảng giá hiệu lực của nhóm khách hàng</strong> của quý đại lý.</span>
+      </div>
+
+      <!-- Search & Category Filters -->
+      <section class="dp-filters-section" aria-label="Bộ lọc sản phẩm">
+        <div class="dp-search-wrap">
+          <svg viewBox="0 0 24 24" width="18" height="18" class="dp-search-icon">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="search"
+            id="dp-search-input"
+            class="dp-search-input"
+            placeholder="Tìm theo mã SKU hoặc tên sản phẩm…"
+            autocomplete="off"
+            autocorrect="off"
+          />
+          <button type="button" id="dp-search-clear" class="dp-search-clear" hidden aria-label="Xoá tìm kiếm">×</button>
+        </div>
+
+        <!-- Category pills (horizontal scroll on mobile) -->
+        <div class="dp-category-scroll" id="dp-category-list" role="tablist" aria-label="Nhóm hàng">
+          <button class="dp-cat-pill dp-cat-pill--active" data-cat="all" type="button" role="tab" aria-selected="true">
+            Tất cả sản phẩm
+          </button>
+        </div>
+      </section>
+
+      <!-- Products Grid -->
+      <section class="dp-catalog-section" aria-label="Danh mục sản phẩm">
+        <div class="dp-catalog-header">
+          <h2 class="dp-catalog-title" id="dp-catalog-heading">Sản phẩm có thể đặt</h2>
+          <span class="dp-catalog-count" id="dp-catalog-count">0 sản phẩm</span>
+        </div>
+
+        <div class="dp-products-grid" id="dp-products-grid">
+          <!-- Skeleton loader -->
+          <div class="dp-product-card dp-product-card--skeleton">
+            <div class="dp-card-sk-line dp-card-sk-line--title"></div>
+            <div class="dp-card-sk-line dp-card-sk-line--text"></div>
+            <div class="dp-card-sk-line dp-card-sk-line--price"></div>
+          </div>
+          <div class="dp-product-card dp-product-card--skeleton">
+            <div class="dp-card-sk-line dp-card-sk-line--title"></div>
+            <div class="dp-card-sk-line dp-card-sk-line--text"></div>
+            <div class="dp-card-sk-line dp-card-sk-line--price"></div>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div class="dp-empty-state" id="dp-empty-catalog" hidden>
+          <svg viewBox="0 0 24 24" width="48" height="48" stroke-width="1.2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <h3>Không tìm thấy sản phẩm phù hợp</h3>
+          <p>Không có sản phẩm nào thuộc bảng giá đang áp dụng hoặc khớp với từ khoá tìm kiếm.</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Sticky Mobile Bottom Bar -->
+    <div class="dp-mobile-bottom-bar" id="dp-mobile-bottom-bar">
+      <div class="dp-mobile-bottom-bar__info">
+        <span class="dp-mobile-bottom-bar__count" id="mobile-cart-items-count">0 món</span>
+        <strong class="dp-mobile-bottom-bar__total" id="mobile-cart-grand-total">0 ₫</strong>
+      </div>
+      <button class="btn btn--primary dp-mobile-bottom-bar__btn" id="btn-mobile-view-cart" type="button">
+        <svg viewBox="0 0 24 24" width="18" height="18">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+        <span>Xem giỏ hàng</span>
+      </button>
+    </div>
+
+    </div><!-- Shared app content; dialogs remain outside the inert mobile shell. -->
+
+    <!-- Shopping Cart Drawer / Modal -->
+    <div class="dp-drawer-overlay" id="dp-cart-drawer" hidden>
+      <div class="dp-drawer" role="dialog" aria-modal="true" aria-labelledby="dp-cart-title">
+        <div class="dp-drawer__header">
+          <div>
+            <h2 id="dp-cart-title" class="dp-drawer__title">Giỏ hàng đặt hàng</h2>
+            <p class="dp-drawer__sub" id="dp-cart-sub">Đại lý tự đặt trực tuyến</p>
+          </div>
+          <button class="dp-drawer__close" id="btn-close-cart" type="button" aria-label="Đóng giỏ hàng">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="dp-drawer__body">
+          <!-- Cart items list -->
+          <div class="dp-cart-items-wrap">
+            <div class="dp-cart-items" id="dp-cart-items-list">
+              <!-- Rendered items -->
+            </div>
+
+            <!-- Empty cart state -->
+            <div class="dp-empty-cart" id="dp-empty-cart">
+              <svg viewBox="0 0 24 24" width="48" height="48" stroke-width="1.2">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
+              <p>Giỏ hàng đang trống. Chọn thêm sản phẩm từ danh mục để đặt hàng.</p>
+            </div>
+          </div>
+
+          <!-- Delivery point & date form -->
+          <div class="dp-cart-delivery-section" id="dp-cart-delivery-section">
+            <h3 class="dp-section-title">Thông tin giao nhận</h3>
+
+            <div class="dp-field-group">
+              <label for="dp-delivery-point-select" class="dp-field-label">Điểm giao hàng <span class="req">*</span></label>
+              <select id="dp-delivery-point-select" class="dp-select" required>
+                <option value="">— Chọn điểm giao hàng —</option>
+              </select>
+            </div>
+
+            <div class="dp-field-group">
+              <label for="dp-delivery-date-input" class="dp-field-label">Ngày giao mong muốn <span class="req">*</span></label>
+              <input type="date" id="dp-delivery-date-input" class="dp-input" required />
+            </div>
+
+            <div class="dp-field-group">
+              <label for="dp-order-note" class="dp-field-label">Ghi chú cho nhân viên</label>
+              <textarea id="dp-order-note" class="dp-textarea" rows="2" maxlength="500" placeholder="Yêu cầu giờ giao, lưu ý đường vào…"></textarea>
+            </div>
+          </div>
+
+          <!-- Financial & Debt review -->
+          <div class="dp-cart-summary" id="dp-cart-summary">
+            <h3 class="dp-section-title">Tổng kết &amp; Công nợ</h3>
+            <p id="dp-preview-message" role="status" hidden></p>
+            <button id="btn-refresh-cart-preview" type="button" class="btn btn--secondary" hidden>Tính lại tổng tiền</button>
+
+            <div class="dp-summary-row">
+              <span>Tổng tiền hàng</span>
+              <span id="dp-subtotal-val">0 ₫</span>
+            </div>
+            <div class="dp-summary-row">
+              <span>Chiết khấu sản lượng</span>
+              <span class="dp-discount-val" id="dp-discount-val">−0 ₫</span>
+            </div>
+            <div class="dp-summary-row dp-summary-row--total">
+              <span>Tổng thanh toán</span>
+              <strong id="dp-total-val">0 ₫</strong>
+            </div>
+
+            <!-- Debt checking before submission -->
+            <div class="dp-debt-check-box" id="dp-debt-check-box">
+              <div class="dp-debt-check-row">
+                <span>Hạn mức nợ còn lại hiện tại:</span>
+                <span id="dp-curr-available-debt">0 ₫</span>
+              </div>
+              <div class="dp-debt-check-row dp-debt-check-row--highlight">
+                <span>Hạn mức sau khi gửi đơn này:</span>
+                <strong id="dp-projected-remaining-debt">0 ₫</strong>
+              </div>
+              <div class="dp-debt-warning" id="dp-debt-warning-msg" hidden></div>
+            </div>
+
+            <!-- Approval status notice -->
+            <div class="dp-approval-badge-notice">
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span>Đơn hàng gửi lên sẽ luôn ở trạng thái <strong>Chờ duyệt</strong>. Nhân viên phụ trách sẽ liên hệ xác nhận trước khi điều hàng.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="dp-drawer__footer">
+          <button class="btn btn--secondary" id="btn-continue-shopping" type="button">
+            Chọn thêm hàng
+          </button>
+          <button class="btn btn--primary" id="btn-submit-order" type="button">
+            <svg viewBox="0 0 24 24" width="18" height="18">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Gửi đơn hàng</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm Submit Order Modal -->
+    <div class="modal-overlay" id="dp-confirm-modal" hidden>
+      <div class="modal dp-confirm-modal" role="dialog" aria-labelledby="dp-confirm-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="dp-confirm-modal-title">Xác nhận gửi đơn đặt hàng</h2>
+            <p class="modal-subtitle">Kiểm tra thông tin trước khi chuyển sang trạng thái Chờ duyệt</p>
+          </div>
+          <button class="modal__close" id="btn-close-confirm" aria-label="Đóng">×</button>
+        </div>
+        <div class="modal__body">
+          <div class="dp-confirm-content" id="dp-confirm-content">
+            <!-- Summary breakdown -->
+          </div>
+          <div class="dp-confirm-debt-notice" id="dp-confirm-debt-notice"></div>
+          <div class="dp-confirm-alert" id="dp-confirm-alert" hidden></div>
+          <div class="modal__actions">
+            <button class="btn btn--secondary" id="btn-cancel-confirm" type="button">Quay lại giỏ</button>
+            <button class="btn btn--primary" id="btn-confirm-send" type="button">Xác nhận gửi đơn</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Created Success Modal -->
+    <div class="modal-overlay" id="dp-success-modal" hidden>
+      <div class="modal dp-success-modal" role="dialog" aria-labelledby="dp-success-modal-title">
+        <div class="modal__header">
+          <div>
+            <h2 id="dp-success-modal-title">Gửi đơn hàng thành công!</h2>
+            <span class="order-status-badge order-status-badge--pending">
+              <span class="order-status-badge__dot"></span>Chờ duyệt
+            </span>
+          </div>
+          <button class="modal__close" id="btn-close-success" aria-label="Đóng">×</button>
+        </div>
+        <div class="modal__body">
+          <div class="dp-success-body">
+            <div class="dp-success-icon-wrap">
+              <svg viewBox="0 0 24 24" width="48" height="48" class="dp-success-icon">
+                <circle cx="12" cy="12" r="10" stroke="#2fb88a" stroke-width="2"/>
+                <polyline points="8 12 11 15 16 9" stroke="#2fb88a" stroke-width="2"/>
+              </svg>
+            </div>
+            <p class="dp-success-lead">
+              Đơn hàng <strong id="dp-success-code">—</strong> đã được gửi lên hệ thống.
+            </p>
+            <p class="dp-success-desc">
+              Nhân viên kinh doanh phụ trách đại lý sẽ nhận được thông báo để xác nhận đơn hàng sớm nhất.
+            </p>
+            <div class="dp-success-details" id="dp-success-details">
+              <!-- Created details -->
+            </div>
+          </div>
+          <div class="modal__actions">
+            <a class="btn btn--secondary" href="/dashboard" id="btn-success-dashboard">Về trang chủ</a>
+            <button class="btn btn--primary" id="btn-success-new-order" type="button">Đặt thêm đơn mới</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="/js/auth.js"></script>
+    <script src="/js/toast.js"></script>
+    <script src="/js/menu-config.js"></script>
+    <script src="/js/app-shell.js"></script>
+    <script src="/js/app-navigation.js"></script>
+    <script src="/js/dealer-portal-context.js"></script>
+    <script src="/js/dealer-portal.js"></script>
+  </body>
+</html>

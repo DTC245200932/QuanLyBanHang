@@ -77,7 +77,7 @@ class UnitConversionControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = "WAREHOUSE_STAFF")
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_MANAGE", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("GET /api/products/{productId}/unit-conversions trả về danh sách đơn vị quy đổi")
     void getUnitConversions_Authenticated_Returns200() throws Exception {
         UnitConversionResponse resp = UnitConversionResponse.builder()
@@ -98,7 +98,7 @@ class UnitConversionControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = "WAREHOUSE_STAFF")
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_MANAGE", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("POST /api/products/{productId}/unit-conversions: Nhân viên kho tạo đơn vị quy đổi thành công -> 201 Created")
     void addUnitConversion_WarehouseStaff_Returns201() throws Exception {
         UnitConversionRequest req = UnitConversionRequest.builder()
@@ -125,7 +125,7 @@ class UnitConversionControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "warehouse_staff", roles = "WAREHOUSE_STAFF")
+    @WithMockUser(username = "warehouse_staff", authorities = {"ROLE_WAREHOUSE_STAFF", "WAREHOUSE_MANAGE", "PRODUCT_VIEW", "ORDER_VIEW", "WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT", "WAREHOUSE_TRANSFER"})
     @DisplayName("DELETE /api/products/{productId}/unit-conversions/{id} xóa đơn vị quy đổi thành công")
     void deleteUnitConversion_Success() throws Exception {
         doNothing().when(unitConversionService).deleteConversion(10L, 1L);

@@ -37,6 +37,15 @@ public class DealerRequest {
 
     private Long territoryId;
 
+    private Long warehouseId;
+
+    /** Kho phục vụ mặc định (S5-03, alias của warehouseId) */
+    private Long defaultWarehouseId;
+
+    public Long getEffectiveWarehouseId() {
+        return defaultWarehouseId != null ? defaultWarehouseId : warehouseId;
+    }
+
     private Long assignedUserId;
 
     private Boolean active;
@@ -56,4 +65,3 @@ public class DealerRequest {
     @Size(max = 255, message = "Địa chỉ không được vượt quá 255 ký tự")
     private String address;
 }
-

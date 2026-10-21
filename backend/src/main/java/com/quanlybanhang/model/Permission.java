@@ -33,13 +33,16 @@ public enum Permission {
     ORDER_EDIT("Sửa đơn hàng"),
     ORDER_CANCEL("Hủy đơn hàng"),
     ORDER_APPROVE("Duyệt đơn hàng"),
+    ORDER_CONFIRM("Xác nhận đơn đại lý"),
 
     // ── Kho & tồn kho ──
     WAREHOUSE_VIEW("Xem tồn kho"),
+    WAREHOUSE_MANAGE("Quản lý danh mục kho và vị trí"),
     WAREHOUSE_IMPORT("Nhập kho"),
     WAREHOUSE_EXPORT("Xuất kho"),
     WAREHOUSE_ADJUST("Điều chỉnh tồn kho"),
     WAREHOUSE_APPROVE("Duyệt phiếu kho"),
+    WAREHOUSE_TRANSFER("Chuyển kho nội bộ"),
 
     // ── Khách hàng / Đại lý ──
     CUSTOMER_VIEW("Xem khách hàng"),

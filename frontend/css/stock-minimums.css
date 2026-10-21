@@ -1,0 +1,15 @@
+/* Only components inside the shared content frame. */
+.minimum-page { align-content: start; }
+.minimum-table { table-layout: auto; }
+.minimum-table th:nth-child(n) { width: auto; }
+.minimum-table td:first-child { min-width: 180px; }
+.minimum-table td:last-child { min-width: 140px; }
+.minimum-dialog { width: min(540px,calc(100vw - 32px)); margin: auto; max-height: calc(100dvh - 32px); overflow-y: auto; border: 1px solid var(--line); padding: 24px; border-radius: var(--radius); color: var(--ink-900); }
+.minimum-dialog::backdrop { background: #071a2c80; }
+.minimum-dialog h2 { font-size: 1.2rem; }
+.minimum-context,.minimum-hint { color: var(--ink-600); line-height: 1.6; margin: 16px 0; overflow-wrap: anywhere; }
+.minimum-hint { font-size: .875rem; }
+.minimum-dialog label { display: grid; gap: 8px; font-weight: 600; }
+.minimum-dialog input { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); font: inherit; }
+.minimum-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.minimum-dialog :is(input,button):focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }

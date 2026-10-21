@@ -29,6 +29,14 @@ public class DealerResponse {
     private String territoryCode;
     private String territoryName;
 
+    // Warehouse info (S4-03 & S5-03: kho phục vụ mặc định)
+    private Long warehouseId;
+    private String warehouseCode;
+    private String warehouseName;
+    private Long defaultWarehouseId;
+    private String defaultWarehouseCode;
+    private String defaultWarehouseName;
+
     // Assigned User info
     private Long assignedUserId;
     private String assignedUsername;
@@ -65,4 +73,3 @@ public class DealerResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

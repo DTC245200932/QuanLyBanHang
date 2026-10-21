@@ -53,6 +53,9 @@ class DealerServiceTest {
     private DealerAssignmentHistoryRepository dealerAssignmentHistoryRepository;
 
     @Mock
+    private WarehouseRepository warehouseRepository;
+
+    @Mock
     private AuditLogService auditLogService;
 
     @InjectMocks
@@ -61,6 +64,29 @@ class DealerServiceTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void customerPermissionDoesNotAllowChangingDebtLimits() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("manager", "",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_SALES_MANAGER"),
+                                new org.springframework.security.core.authority.SimpleGrantedAuthority("CUSTOMER_EDIT"))));
+        Dealer dealer = Dealer.builder().id(1L).code("DL1").debtLimit(new BigDecimal("1000")).maxDebtDays(10).build();
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        DealerRequest request = DealerRequest.builder().code("DL1").name("Đại lý").debtLimit(new BigDecimal("2000")).build();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> dealerService.updateDealer(1L, request, "manager"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(dealer.getDebtLimit()).isEqualByComparingTo("1000");
+        verify(dealerRepository, never()).save(any());
+    }
+
+    @Test
+    void customerCreatePermissionDoesNotAllowInitializingDebtWithoutFinancePermission() {
+        DealerRequest request = DealerRequest.builder().code("DL1").name("Đại lý").maxDebtDays(30).build();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> dealerService.createDealer(request, "manager"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verify(dealerRepository, never()).save(any());
     }
 
     private User buildSalesUser(Long id, String username, String fullName) {
@@ -77,6 +103,9 @@ class DealerServiceTest {
     @Test
     @DisplayName("Tạo đại lý thành công với đầy đủ các trường thông tin theo S3-03")
     void createDealer_persistsAllFields() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("accountant01", "",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("FINANCE_MANAGE"))));
         DealerRequest request = DealerRequest.builder()
                 .code("DL001")
                 .name("Đại lý Cấp 1 Minh Phát")
@@ -624,5 +653,56 @@ class DealerServiceTest {
         List<DealerResponse> pending = dealerService.getPendingHandoverDealers();
         assertThat(pending).hasSize(1);
         assertThat(pending.get(0).getCode()).isEqualTo("DL01");
+    }
+
+    @Test
+    @DisplayName("[S5-03] Gán kho phục vụ mặc định cho đại lý thành công")
+    void assignDefaultWarehouse_success() {
+        Dealer dealer = Dealer.builder().id(10L).code("DL10").name("Đại lý Alpha").build();
+        Warehouse warehouse = Warehouse.builder().id(2L).code("KHO-DN").name("Kho Đà Nẵng").active(true).build();
+
+        when(dealerRepository.findById(10L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(2L)).thenReturn(Optional.of(warehouse));
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DealerResponse res = dealerService.assignDefaultWarehouse(10L, 2L, "manager");
+
+        assertThat(res).isNotNull();
+        assertThat(res.getDefaultWarehouseId()).isEqualTo(2L);
+        assertThat(res.getDefaultWarehouseName()).isEqualTo("Kho Đà Nẵng");
+        assertThat(dealer.getWarehouse()).isEqualTo(warehouse);
+        verify(dealerRepository).save(dealer);
+        verify(auditLogService).logAction(eq("DEALER"), eq("10"), eq("ASSIGN_WAREHOUSE"), any(), any(), eq("manager"));
+    }
+
+    @Test
+    @DisplayName("[S5-03] Gán kho không hoạt động -> ném ngoại lệ")
+    void assignDefaultWarehouse_inactiveWarehouse_throwsException() {
+        Dealer dealer = Dealer.builder().id(10L).code("DL10").name("Đại lý Alpha").build();
+        Warehouse inactiveWarehouse = Warehouse.builder().id(2L).code("KHO-DN").name("Kho Đà Nẵng").active(false).build();
+
+        when(dealerRepository.findById(10L)).thenReturn(Optional.of(dealer));
+        when(warehouseRepository.findById(2L)).thenReturn(Optional.of(inactiveWarehouse));
+
+        assertThatThrownBy(() -> dealerService.assignDefaultWarehouse(10L, 2L, "manager"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("đã ngừng hoạt động");
+        verify(dealerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("[S5-03] Huỷ gán kho mặc định khi warehouseId = null")
+    void assignDefaultWarehouse_clearWarehouse_success() {
+        Warehouse oldWarehouse = Warehouse.builder().id(2L).code("KHO-DN").name("Kho Đà Nẵng").active(true).build();
+        Dealer dealer = Dealer.builder().id(10L).code("DL10").name("Đại lý Alpha").warehouse(oldWarehouse).build();
+
+        when(dealerRepository.findById(10L)).thenReturn(Optional.of(dealer));
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DealerResponse res = dealerService.assignDefaultWarehouse(10L, null, "manager");
+
+        assertThat(res.getDefaultWarehouseId()).isNull();
+        assertThat(dealer.getWarehouse()).isNull();
+        verify(dealerRepository).save(dealer);
     }
 }

@@ -7,12 +7,14 @@
  * 3. Đổi hệ số quy đổi không làm sai lệch các giao dịch đã ghi trước đó (Cơ chế Snapshot).
  */
 
-(() => {
+(async () => {
   if (!Auth.requireLogin()) return;
+  await Auth.ready;
 
   const user = Auth.getUser() || {};
-  const canManageUnits = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_SALES_MANAGER");
-  const canRecordVouchers = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF");
+  let canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
+  let canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
+  let canViewOrders = Auth.hasPermission("ORDER_VIEW");
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (v) => String(v ?? "").replace(/[&<>'"]/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -61,10 +63,12 @@
       }
       $("btn-export-inventory-excel").disabled = !this.warehouseId;
       const [products, inventory, vouchers, orders] = await Promise.all([
-        this.request("/products"),
-        this.warehouseId ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
-        this.warehouseId ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`) : [],
-        this.request("/orders"),
+        this.request("/products/lookup"),
+        this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
+        this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`) : [],
+        // Đơn vị tính/tồn kho không yêu cầu ORDER_VIEW. Chỉ tải lịch sử đơn
+        // khi ma trận quyền cho phép, tránh mở trang bị 403 dù menu đã hiện.
+        canViewOrders ? this.request("/orders") : [],
       ]);
 
       const conversions = await Promise.all((products || []).map((product) =>
@@ -364,6 +368,13 @@
   const panels = document.querySelectorAll(".tab-panel");
 
   function switchTab(tabId) {
+    const allowed = tabId === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
+      : tabId === "create-receipt" ? canRecordVouchers : Auth.hasPermission("WAREHOUSE_VIEW");
+    if (!allowed) return;
+    if (tabId === "inventory-report") {
+      window.location.href = "/warehouse/inventory";
+      return;
+    }
     tabs.forEach((tab) => {
       const active = tab.dataset.tab === tabId;
       tab.classList.toggle("nav-tab--active", active);
@@ -557,7 +568,8 @@
 
   function updateReceiptAvailability() {
     const needsWarehouse = receiptState.type !== "ORDER";
-    $("btn-save-receipt").disabled = !Store.loaded || !Store.products.length || (needsWarehouse && !Store.warehouseId);
+    const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptState.type];
+    $("btn-save-receipt").disabled = !Auth.hasPermission(permission) || !Store.loaded || !Store.products.length || (needsWarehouse && !Store.warehouseId);
     $("warehouse-configuration-message").hidden = !Store.loaded || !needsWarehouse || Boolean(Store.warehouseId);
     $("receipt-warehouse").closest(".form-field").hidden = !needsWarehouse;
   }
@@ -774,6 +786,8 @@
   // Submit Receipt and Record into Stock Ledger with Frozen Snapshot
   $("btn-save-receipt")?.addEventListener("click", async () => {
     try {
+      const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptState.type];
+      if (!permission || !Auth.hasPermission(permission)) throw new Error("Bạn không có quyền ghi loại phiếu này.");
       const code = $("receipt-code").value.trim() || Store.generateReceiptCode(receiptState.type);
       const date = $("receipt-date").value;
       const warehouseId = Number($("receipt-warehouse").value) || null;
@@ -962,7 +976,7 @@
         </tr>
       `;
     }).join("");
-    tbody.querySelectorAll("[data-action=quick-import]").forEach(button => { button.hidden = !canRecordVouchers; });
+    tbody.querySelectorAll("[data-action=quick-import]").forEach(button => { button.hidden = !Auth.hasPermission("WAREHOUSE_IMPORT"); });
   }
 
   $("inv-search-input")?.addEventListener("input", renderInventoryTable);
@@ -1262,4 +1276,30 @@
   }).catch((error) => {
     showToast(error.message || "Không tải được dữ liệu kho từ máy chủ.", "error");
   });
+  function syncWarehouseActions() {
+    canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
+    canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
+    canViewOrders = Auth.hasPermission("ORDER_VIEW");
+    tabs.forEach(tab => {
+      tab.hidden = !(tab.dataset.tab === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
+        : tab.dataset.tab === "create-receipt" ? canRecordVouchers : Auth.hasPermission("WAREHOUSE_VIEW"));
+    });
+    $("tab-create-receipt").hidden = !canRecordVouchers;
+    $("btn-open-create-unit-modal").hidden = !canManageUnits;
+    document.querySelectorAll("#receipt-type-radios input").forEach(radio => {
+      const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[radio.value];
+      radio.disabled = !Auth.hasPermission(permission);
+      radio.closest("label").hidden = radio.disabled;
+    });
+    const selected = document.querySelector('#receipt-type-radios input:checked');
+    if (!selected || selected.disabled) {
+      const first = document.querySelector('#receipt-type-radios input:not(:disabled)');
+      if (first) { first.checked = true; receiptState.type = first.value; }
+    }
+    renderSkuTable();
+    renderInventoryTable();
+    updateReceiptAvailability();
+  }
+  syncWarehouseActions();
+  window.addEventListener("auth:permissions-changed", syncWarehouseActions);
 })();

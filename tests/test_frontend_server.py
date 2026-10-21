@@ -45,12 +45,17 @@ class FrontendRoutingTest(unittest.TestCase):
             "/dashboard": "Tổng quan | SaleStock",
             "/admin/users": "Quản lý tài khoản",
             "/admin/audit-logs": "Nhật ký thao tác",
-            "/warehouse/units?tab=inventory": "Đơn vị tính",
+            "/warehouse/inventory": "Tồn kho theo SKU và kho",
+            "/warehouses": "Kho & vị trí lưu",
             "/products": "Sản phẩm",
             "/product-groups": "Nhóm hàng",
             "/price-lists": "Bảng giá",
             "/dealers": "Đại lý",
+            "/orders": "Đơn hàng",
             "/create-order": "Tạo đơn hàng",
+            "/dealer-orders": "Đơn hàng của tôi",
+            "/dealer-portal": "Cổng đặt hàng đại lý | SaleStock",
+            "/order-approval": "Duyệt đơn",
             "/suppliers": "Nhà cung cấp",
             "/profile": "Hồ sơ cá nhân",
             "/login": "Đăng nhập",
@@ -63,7 +68,7 @@ class FrontendRoutingTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertIn(title, body.decode("utf-8"))
                 self.assertEqual("no-store", headers["Cache-Control"])
-        for path in ["/js/auth.js", "/css/dashboard.css", "/assets/brand-mark.svg"]:
+        for path in ["/js/auth.js", "/js/order-pdf.js", "/css/dashboard.css", "/assets/brand-mark.svg"]:
             with self.subTest(asset=path):
                 self.assertEqual(200, self.get(path)[0])
 
@@ -76,6 +81,7 @@ class FrontendRoutingTest(unittest.TestCase):
             "/dealers.html": "/dealers",
             "/frontend/admin/users.html": "/admin/users",
             "/admin/users/": "/admin/users",
+            "/warehouse/units?tab=inventory&warehouseId=4": "/warehouse/inventory?warehouseId=4",
             "/frontend/warehouse/units.html?tab=ledger": "/warehouse/units?tab=ledger",
             "/frontend/reset-password.html?token=sample-token": "/reset-password?token=sample-token",
         }.items():
@@ -84,6 +90,39 @@ class FrontendRoutingTest(unittest.TestCase):
                 self.assertEqual(308, status)
                 self.assertEqual(clean, headers["Location"])
                 self.assertEqual(b"", body)
+
+    def test_s503_warehouse_page_and_legacy_url(self):
+        status, _, body = self.get("/warehouses")
+        self.assertEqual(200, status)
+        self.assertIn('id="wh-dealers"', body.decode("utf-8"))
+        self.assertIn('/js/warehouses.js', body.decode("utf-8"))
+        self.assertEqual(200, self.get("/warehouses", method="HEAD")[0])
+        status, headers, _ = self.get("/warehouses.html?warehouseId=1")
+        self.assertEqual(308, status)
+        self.assertEqual("/warehouses?warehouseId=1", headers["Location"])
+
+    def test_s507_transfer_route(self):
+        status, _, body = self.get('/warehouse/transfers')
+        self.assertEqual(status, 200)
+        self.assertIn('warehouse-transfers.js', body.decode('utf-8'))
+
+    def test_s509_minimum_route(self):
+        status, _, body = self.get('/warehouse/minimums')
+        self.assertEqual(status, 200)
+        self.assertIn('stock-minimums.js', body.decode('utf-8'))
+
+    def test_s505_stock_ledger_route_and_old_inventory_tab(self):
+        status, _, body = self.get("/warehouse/inventory")
+        self.assertEqual(200, status)
+        html = body.decode("utf-8")
+        for text in ['Tồn thực tế', 'Đang giữ chỗ', 'Tồn khả dụng', '/js/stock-ledger.js']:
+            self.assertIn(text, html)
+        self.assertNotIn('/js/warehouse-units.js', html)
+        self.assertEqual(200, self.get("/warehouse/inventory", method="HEAD")[0])
+        status, headers, _ = self.get("/warehouse/units?tab=inventory&warehouseId=5&keyword=SKU-01")
+        self.assertEqual(308, status)
+        self.assertEqual("/warehouse/inventory?warehouseId=5&keyword=SKU-01", headers["Location"])
+        self.assertEqual(200, self.get("/warehouse/units?tab=units")[0])
 
     def test_head_works_without_response_body(self):
         status, headers, body = self.get("/dashboard", method="HEAD")

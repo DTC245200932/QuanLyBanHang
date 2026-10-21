@@ -6,6 +6,9 @@
   const shell = document.createElement('div');
   shell.className = 'app-shell';
   content.before(shell);
+  // Optional page controls (for example the portal cart) retain their real DOM
+  // nodes/IDs when the standalone header is replaced by the shared toolbar.
+  const pageActions = content.querySelector('[data-app-topbar-actions]');
   content.querySelector('[data-standalone-header]')?.remove();
   content.classList.add('main-area', 'shared-main-area');
 
@@ -54,6 +57,10 @@
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg><span>Đăng xuất</span>
       </button>
     </div>`;
+  if (pageActions) {
+    topbar.querySelector('.topbar__actions').prepend(...pageActions.childNodes);
+    pageActions.remove();
+  }
   content.prepend(topbar);
   shell.append(sidebar, content);
 

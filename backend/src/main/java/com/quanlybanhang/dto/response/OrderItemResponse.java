@@ -69,4 +69,43 @@ public class OrderItemResponse {
 
     private BigDecimal totalAmount;
     private String note;
+
+    // Vị trí lưu kho để soạn đơn (S5-03)
+    private Long locationId;
+    private String locationCode;
+    private String locationName;
+    private String locationType;
+    private String zoneName;
+    private String shelfName;
+    private String locationDisplay;
+    /** Alias đơn giá cho frontend order-approval (S4-05). */
+    private BigDecimal unitPrice;
+
+    /** Alias thành tiền cho frontend order-approval (S4-05). */
+    private BigDecimal lineTotal;
+    /**
+     * Số lượng thực giao theo đơn vị đặt hàng (S5-01).
+     */
+    private BigDecimal deliveredQuantity;
+
+    /**
+     * Số lượng thực giao quy về đơn vị cơ sở (S5-01).
+     */
+    private BigDecimal deliveredBaseQuantity;
+
+    /**
+     * Số lượng giao thiếu theo đơn vị đặt hàng (quantity - deliveredQuantity) (S5-01).
+     * Null nếu chưa có số liệu giao; 0 nếu giao đủ; > 0 nếu giao thiếu.
+     */
+    private BigDecimal shortageQuantity;
+
+    /**
+     * Đánh dấu dòng hàng bị giao thiếu (deliveredQuantity < quantity) (S5-01).
+     */
+    private Boolean isShortage;
+
+    /**
+     * Ghi chú giao hàng / lý do giao thiếu (S5-01).
+     */
+    private String deliveryNote;
 }

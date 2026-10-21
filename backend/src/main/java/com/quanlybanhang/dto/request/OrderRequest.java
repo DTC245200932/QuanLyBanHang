@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
@@ -34,6 +35,11 @@ public class OrderRequest {
      */
     private Long deliveryPointId;
 
+    /**
+     * ID kho phục vụ đại lý / xuất hàng (S4-03).
+     */
+    private Long warehouseId;
+
     /** Ngày giao mong muốn do nhân viên kinh doanh chọn khi tạo đơn (S3-09). */
     private LocalDate expectedDeliveryDate;
 
@@ -41,6 +47,17 @@ public class OrderRequest {
      * Chỉ định rõ ID bảng giá (nếu không truyền, hệ thống tự động tìm bảng giá hiệu lực).
      */
     private Long priceListId;
+
+
+    /**
+     * Số giờ giữ chỗ tồn kho mong muốn (S5-06, mặc định 48h nếu không chỉ định).
+     */
+    private Integer reservationHours;
+
+    /**
+     * Thời điểm hết hạn giữ chỗ tuỳ chỉnh (S5-06).
+     */
+    private LocalDateTime reservationExpiresAt;
 
     private String note;
 

@@ -21,6 +21,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
@@ -75,6 +76,7 @@ class UnitConversionHistoricalIntegrityTest {
                 .build();
 
         when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        when(warehouseRepository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of(warehouse));
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
 
         // Tại thời điểm T1: Hệ số quy đổi "thùng" = 24
@@ -89,6 +91,7 @@ class UnitConversionHistoricalIntegrityTest {
                 .baseUnit("lon")
                 .build();
         when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByWarehouseIdAndProductIdInForUpdate(eq(1L), any())).thenReturn(List.of(inventory));
         when(voucherRepository.save(any(WarehouseVoucher.class))).thenAnswer(inv -> inv.getArgument(0));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 

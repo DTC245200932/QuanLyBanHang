@@ -66,6 +66,9 @@ class OrderPriceListTest {
     @Mock
     private DealerDebtService dealerDebtService;
 
+    @Mock
+    private com.quanlybanhang.repository.WarehouseRepository warehouseRepository;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 
@@ -75,8 +78,16 @@ class OrderPriceListTest {
     private PriceList priceListDl1;
     private PriceList priceListDl2;
 
+    @org.junit.jupiter.api.AfterEach
+    void clearAuthentication() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+
     @BeforeEach
     void setUp() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("manager01", "",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ORDER_APPROVE"))));
+        var warehouse = Warehouse.builder().id(1L).code("TEST-WH").name("Kho kiểm thử").build();
+        org.mockito.Mockito.lenient().when(warehouseRepository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of(warehouse));
         biaHeineken = Product.builder()
                 .id(10L)
                 .code("SP-KEN330")
@@ -89,12 +100,14 @@ class OrderPriceListTest {
                 .id(1L)
                 .name("Đại lý Cấp 1 Minh Phát")
                 .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .warehouse(warehouse)
                 .build();
 
         dealerCap2 = Dealer.builder()
                 .id(2L)
                 .name("Đại lý Cấp 2 Tân Bình")
                 .customerGroup(CustomerGroup.DAI_LY_CAP_2)
+                .warehouse(warehouse)
                 .build();
 
         // Bảng giá Đại lý cấp 1: Giá bán 16,500 / lon, Giá sàn 15,500 / lon
@@ -204,6 +217,50 @@ class OrderPriceListTest {
         assertThat(response.getItems().get(0).getPrice()).isEqualByComparingTo(new BigDecimal("17500"));
         assertThat(response.getItems().get(0).getFloorPrice()).isEqualByComparingTo(new BigDecimal("16500"));
         assertThat(response.getTotalAmount()).isEqualByComparingTo(new BigDecimal("1750000")); // 100 * 17,500
+    }
+
+    @Test
+    @DisplayName("S4-01: Không cho dùng bảng giá của nhóm đại lý khác khi tính đơn")
+    void calculateOrder_RejectsPriceListFromAnotherCustomerGroup() {
+        OrderCalculateRequest request = OrderCalculateRequest.builder()
+                .dealerId(1L)
+                .priceListId(priceListDl2.getId())
+                .orderDate(LocalDate.of(2026, 6, 1))
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(BigDecimal.ONE)
+                        .build()))
+                .build();
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
+        when(priceListRepository.findById(priceListDl2.getId())).thenReturn(Optional.of(priceListDl2));
+
+        assertThatThrownBy(() -> orderService.calculateOrder(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("không thuộc nhóm khách hàng");
+    }
+
+    @Test
+    @DisplayName("S4-01: Không cho dùng bảng giá đã hết hiệu lực khi tính đơn")
+    void calculateOrder_RejectsInactivePriceList() {
+        priceListDl1.setActive(false);
+        OrderCalculateRequest request = OrderCalculateRequest.builder()
+                .customerGroup(CustomerGroup.DAI_LY_CAP_1)
+                .priceListId(priceListDl1.getId())
+                .orderDate(LocalDate.of(2026, 6, 1))
+                .items(List.of(OrderItemRequest.builder()
+                        .productId(10L)
+                        .unit("lon")
+                        .quantity(BigDecimal.ONE)
+                        .build()))
+                .build();
+
+        when(priceListRepository.findById(priceListDl1.getId())).thenReturn(Optional.of(priceListDl1));
+
+        assertThatThrownBy(() -> orderService.calculateOrder(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("không có hiệu lực");
     }
 
     @Test
@@ -324,7 +381,6 @@ class OrderPriceListTest {
                 .build();
 
         when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealerCap1));
-        when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
         when(priceListRepository.findEffectivePriceLists(eq(CustomerGroup.DAI_LY_CAP_1), any(LocalDate.class)))
                 .thenReturn(List.of()); // Không có bảng giá nào hiệu lực
 

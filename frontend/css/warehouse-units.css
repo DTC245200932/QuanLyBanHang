@@ -1564,6 +1564,7 @@
 .stocktake-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -1614,4 +1615,92 @@
   font-size: 1rem;
   font-weight: 600;
   color: var(--ink-900);
+}
+
+/* Wide count/history tables scroll inside the shared content frame. */
+#panel-stocktake,
+.stocktake-card,
+.stocktake-history-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#panel-stocktake [hidden] {
+  display: none !important;
+}
+
+#panel-stocktake .table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  max-height: 65vh;
+}
+
+#stocktake-table,
+#stocktake-history-table {
+  min-width: 1000px;
+}
+
+#panel-stocktake input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.stocktake-number {
+  text-align: right;
+}
+
+.stocktake-diff-badge--uncounted {
+  color: var(--ink-500);
+  background: var(--line-subtle);
+}
+
+.stocktake-diff-badge--invalid {
+  color: var(--danger);
+}
+
+.stocktake-message {
+  padding: 12px 16px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.stocktake-message[data-type="success"] {
+  color: var(--teal-deep);
+}
+
+.stocktake-message[data-type="warning"] {
+  color: #92400e;
+}
+
+.stocktake-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .stocktake-card,
+  .stocktake-history-wrap {
+    padding: 12px;
+  }
+
+  .stocktake-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stocktake-toolbar .filter-group,
+  .stocktake-toolbar select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .stocktake-actions .btn {
+    width: 100%;
+  }
 }

@@ -616,36 +616,49 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | GET | `/warehouse/stock-counts/{id}` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Chi tiết phiếu kiểm kê kèm danh sách sản phẩm, tồn sổ, số thực đếm, chênh lệch |
 | POST | `/warehouse/stock-counts` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Tạo phiếu kiểm kê kho (theo kho hoặc theo nhóm hàng, chốt tồn sổ tại thời điểm tạo) |
 | PUT | `/warehouse/stock-counts/{id}/items` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Cập nhật số đếm thực tế cho các dòng sản phẩm, tự động tính chênh lệch từng dòng |
-| POST | `/warehouse/stock-counts/{id}/complete` | **`WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` (CHỈ Quản lý kho)** | Chốt kiểm kê, điều chỉnh tồn sổ về số thực đếm và bắt buộc nhập lý do |
+| POST | `/warehouse/stock-counts/{id}/complete` | `WAREHOUSE_ADJUST` từ ma trận hoặc `ROLE_ADMIN` | Chốt kiểm kê trong phạm vi kho, bắt buộc nhập lý do; không yêu cầu vai trò Quản lý kho |
 | POST | `/warehouse/stock-counts/{id}/cancel` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Hủy phiếu kiểm kê ở trạng thái mới tạo (DRAFT) |
 
 ### Kiểm kê kho và ghi nhận chênh lệch (S5-08)
 
-Dành cho vai trò **Quản lý kho (`ROLE_WAREHOUSE_MANAGER`)** và Thủ kho (`ROLE_WAREHOUSE_STAFF`):
+Dùng quyền từ ma trận phân quyền, không dùng tên vai trò để cấp quyền. Tất cả đường dẫn dưới đây có tiền tố `/api/warehouse/stock-counts`.
+
 1. **Tạo phiếu kiểm kê theo kho hoặc theo nhóm hàng**:
    - `warehouseId` (bắt buộc): Kho cần kiểm kê.
    - `categoryId` (tùy chọn): Nhóm hàng cần kiểm kê. Nếu để trống, hệ thống đưa toàn bộ sản phẩm đang hoạt động trong kho vào danh sách kiểm kê.
-   - `code` (tùy chọn): Mã phiếu kiểm kê (tự sinh `PKK-yyyyMMddHHmmssSSS` nếu để trống).
+   - `code` (tùy chọn, tối đa 50 ký tự): Mã phiếu kiểm kê (tự sinh `PKK-yyyyMMddHHmmssSSS-xxxxxxxx` nếu để trống).
    - `note` (tùy chọn): Ghi chú phiếu kiểm kê.
-   - **Chốt tồn sổ sách tại thời điểm tạo**: Hệ thống tự động snapshot số lượng tồn sổ sách hiện tại (`bookQuantity`) theo đơn vị cơ sở cho từng sản phẩm. Trạng thái ban đầu là `DRAFT`.
+   - **Chốt tồn sổ sách tại thời điểm tạo**: Hệ thống khóa kho và tồn theo thứ tự ID sản phẩm để snapshot số lượng hiện tại (`bookQuantity`), ID và phiên bản tồn kho. Đơn vị được đóng băng từ dòng tồn kho hiện có; nếu chưa có tồn thì dùng đơn vị cơ sở sản phẩm và số lượng 0. Trạng thái ban đầu là `DRAFT`; tạo phiếu chưa điều chỉnh tồn.
+   - `items` (tùy chọn): Nhập trước số đếm qua các dòng `{ "productId": 123, "actualQuantity": 0, "note": "Đã đếm" }`.
 2. **Nhập số đếm thực tế & Tự động tính chênh lệch từng dòng**:
-   - Nhân viên kiểm đếm nhập `actualQuantity` (số lượng thực tế theo đơn vị cơ sở, >= 0) cho từng sản phẩm.
+   - `PUT /{id}/items` nhận `{ "items": [{ "productId": 123, "actualQuantity": 0 }], "note": "Ghi chú phiếu" }`. Chỉ sửa phiếu `DRAFT`; các sản phẩm không được gửi lên giữ nguyên.
+   - `actualQuantity` theo đơn vị cơ sở đóng băng, >= 0, tối đa 11 chữ số nguyên và 4 chữ số thập phân. `0` nghĩa là đã đếm và không có hàng; `null`/bỏ trường nghĩa là chưa đếm (hoặc xóa số đã nhập). `differenceQuantity` bằng `null` khi chưa đếm.
    - Hệ thống tự động tính `differenceQuantity = actualQuantity - bookQuantity`:
      - Giá trị dương (> 0): Thừa thực tế so với sổ sách.
      - Giá trị âm (< 0): Thiếu thực tế so với sổ sách (hao hụt, mất mát...).
      - Bằng 0: Số thực tế khớp hoàn toàn với sổ sách.
-   - Cho phép nhập ghi chú riêng cho từng dòng sản phẩm để giải trình chênh lệch cục bộ.
+   - Cho phép ghi chú riêng cho từng dòng và ghi chú phiếu, đều tối đa 500 ký tự. Từ chối dòng null, thiếu `productId`, ID sản phẩm lặp hoặc không thuộc snapshot, số âm, số vượt độ chính xác, kể cả trong `items` gửi lúc tạo hoặc chốt.
 3. **Chốt kiểm kê và Điều chỉnh tồn kho về số thực đếm**:
-   - **Bắt buộc nhập lý do giải trình** (`reason` không được để trống).
+   - `POST /{id}/complete` nhận `{ "reason": "Kiểm kê định kỳ", "items": [...] }`; `items` tùy chọn để lưu và chốt trong cùng giao dịch. **Bắt buộc nhập lý do giải trình** (`reason` không được để trống, tối đa 500 ký tự).
    - Kiểm tra tất cả sản phẩm trong phiếu đã có số thực đếm.
-   - Hệ thống tự động cập nhật số lượng tồn kho `WarehouseInventory.baseQuantity = actualQuantity`.
+   - Khóa bi quan phiếu trước khi cập nhật/chốt/hủy; khi chốt tiếp tục khóa kho rồi từng dòng tồn theo ID sản phẩm tăng dần. Thứ tự khóa tồn thống nhất với đơn hàng và chuyển kho. Hai lần chốt đồng thời chỉ một lần thành công.
+   - Kiểm tra toàn bộ snapshot trước khi ghi tồn. Nếu ID/phiên bản/số lượng/đơn vị tồn thay đổi, từ chối với thông báo yêu cầu **hủy phiếu và tạo phiếu kiểm kê mới**. Bao gồm chuyển động xuất rồi nhập trả đúng lượng cũ, và dòng tồn mới được tạo sau snapshot số 0. Thay đổi tên đơn vị trên danh mục sản phẩm không thay đơn vị đã đóng băng trên phiếu.
+   - Nếu `actualQuantity < reservedQuantity` đang giữ chỗ, từ chối toàn bộ và yêu cầu xử lý đơn hàng giữ chỗ. Khi hợp lệ mới cập nhật `WarehouseInventory.baseQuantity = actualQuantity`; giữ nguyên reserved/in-transit và đơn vị đóng băng.
    - Ghi nhận nhật ký thao tác `AuditLog` cho từng sản phẩm bị điều chỉnh lệch tồn và cho toàn bộ phiếu kiểm kê.
-   - Chuyển trạng thái phiếu sang `COMPLETED`, lưu người chốt và thời điểm chốt.
+   - Chuyển trạng thái phiếu sang `COMPLETED`, lưu người chốt và thời điểm chốt. Số đếm gửi kèm, tồn, trạng thái và audit cùng giao dịch: lỗi bất kỳ dòng nào hoặc lỗi ghi audit đều rollback toàn bộ.
 4. **Phân quyền ma trận và Giới hạn quyền chốt kiểm kê**:
-   - **Chỉ Quản lý kho (`WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`)** mới được quyền chốt kiểm kê (`POST /api/warehouse/stock-counts/{id}/complete`).
-   - Thủ kho (`ROLE_WAREHOUSE_STAFF`) chỉ có quyền xem, tạo phiếu và nhập số đếm thực tế, nếu gọi API chốt kiểm kê sẽ bị từ chối `403 Forbidden`.
-   - Thu hồi quyền `WAREHOUSE_ADJUST` khỏi vai trò Quản lý kho trong ma trận phân quyền sẽ lập tức vô hiệu hóa khả năng chốt kiểm kê ở request kế tiếp (không fallback theo role cứng).
-   - Kiểm tra phạm vi kho: Người dùng chỉ được kiểm kê trên các kho được gán.
+   - Đọc danh sách/chi tiết/options, tạo, nhập số đếm và hủy cần `WAREHOUSE_VIEW` **hoặc** `WAREHOUSE_ADJUST`. Chốt chỉ cần `WAREHOUSE_ADJUST`. Bất kỳ vai trò nào (ví dụ VIEWER) được cấp ADJUST đều có thể chốt; vai trò Quản lý kho thiếu quyền không được phép. `ROLE_ADMIN` luôn được phép.
+   - JWT hiện tại được nạp lại quyền theo ma trận ở mỗi request; cấp/thu hồi quyền có hiệu lực ở request kế tiếp. Nhiều vai trò lấy hợp quyền.
+   - Phạm vi kho đã gán được áp dụng cho mọi vai trò; riêng vai trò kho không có kho được gán thì phạm vi rỗng. Vai trò khác không có kho được gán giữ phạm vi toàn cục như các chức năng kho hiện có. ADMIN có phạm vi toàn cục.
+   - `/options` trả `warehouses`, `categories`, `statuses`, `canAdjust` theo quyền. Chi tiết trả `items`; danh sách phân trang trả bản tóm tắt, gồm `totalItems`, `matchedItems`, `diffItems`, `uncountedItems`. `canEdit` chỉ true khi có VIEW hoặc ADJUST, đúng phạm vi và phiếu DRAFT; `canAdjust` trên phiếu chỉ true khi có ADJUST, đúng phạm vi và DRAFT. Không suy ra quyền từ tên vai trò.
+5. **Hủy và phản hồi lỗi**:
+   - `POST /{id}/cancel` nhận body tùy chọn `{ "reason": "Chọn nhầm kho" }` (lý do tối đa 500 ký tự). Chỉ hủy phiếu DRAFT; lưu người/thời điểm/lý do, không thay tồn. Phiếu COMPLETED/CANCELLED không sửa/chốt/hủy lại.
+   - Giữ envelope `{ "success": true, "message": "...", "data": ... }` và đường dẫn hiện có. Request hợp lệ thành công trả HTTP 200; dữ liệu không hợp lệ, snapshot cũ, thiếu số đếm, dưới tồn giữ chỗ hoặc trạng thái không hợp lệ trả 400 với `success: false` và thông báo; thiếu quyền hoặc sai phạm vi trả 403; chưa xác thực trả 401.
+6. **Triển khai schema và phiếu cũ**:
+   - Bổ sung `warehouse_inventories.version` (`BIGINT NOT NULL DEFAULT 0`, JPA `@Version`) và `warehouse_stock_count_items.snapshot_captured` (`BOOLEAN NOT NULL DEFAULT FALSE`), `snapshot_inventory_id`, `snapshot_inventory_version` (BIGINT nullable). Đây là metadata nội bộ, không thêm trường bắt buộc vào DTO.
+   - Mở rộng `warehouse_stock_count_items.note` lên `VARCHAR(500)` để thống nhất giới hạn ghi chú toàn tính năng.
+   - Các phiếu cũ có `snapshot_captured = false` vẫn xem/hủy được nhưng không chốt được: cần hủy và kiểm kê lại. Không backfill snapshot cũ bằng tồn hiện tại vì sẽ bỏ qua chuyển động sau khi lập phiếu.
+   - Phiên bản tăng cho thay đổi tồn qua JPA (kể cả giữ chỗ/đang chuyển được cập nhật qua JPA), nên có thể cần kiểm kê lại dù lượng vật lý bằng cũ. Câu cập nhật giữ chỗ có điều kiện `reserveIfAvailable` vẫn chỉ sửa reserved; completion đọc reserved mới dưới khóa để bảo vệ lượng giữ chỗ. Không dùng SQL ngoài ứng dụng để sửa tồn mà bỏ qua phiên bản.
 
 ### Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (S5-04)
 

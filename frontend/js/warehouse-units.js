@@ -15,7 +15,7 @@
   let canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
   let canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
   let canViewOrders = Auth.hasPermission("ORDER_VIEW");
-  let canAdjustInventory = Auth.hasRole("ROLE_ADMIN") || (Auth.hasRole("ROLE_WAREHOUSE_MANAGER") && (typeof Auth.hasPermission === "function" ? Auth.hasPermission("WAREHOUSE_ADJUST") : true));
+  const canReadStocktake = () => WarehouseStocktake.canUserReadStocktake(Auth.getUser());
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (v) => String(v ?? "").replace(/[&<>'"]/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -23,7 +23,7 @@
   const formatNumber = (num) => new Intl.NumberFormat("vi-VN").format(Number(num) || 0);
   const statusLabel = (status) => ({
     RECORDED: "Đã ghi sổ", PENDING_APPROVAL: "Chờ duyệt",
-    DRAFT: "Bản nháp", ADJUSTED: "Đã điều chỉnh",
+    DRAFT: "Bản nháp", COMPLETED: "Đã chốt", ADJUSTED: "Đã điều chỉnh",
     CANCELLED: "Đã hủy", REJECTED: "Đã từ chối",
   })[status] || status || "—";
 
@@ -33,8 +33,6 @@
   const Store = {
     products: [],
     receipts: [],
-    stocktakes: [],
-    currentStocktake: null,
     warehouses: [],
     loaded: false,
     warehouseId: null,
@@ -161,17 +159,6 @@
             `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
           if (values.includes(current)) select.value = current;
         }
-      }
-
-      this.stocktakes = voucherRows.filter(v => v.type === "ADJUSTMENT");
-
-      const stocktakeScopeSelect = $("stocktake-scope-filter");
-      if (stocktakeScopeSelect) {
-        const currentScope = stocktakeScopeSelect.value;
-        const categories = [...new Set(this.products.map(p => p.category).filter(Boolean))].sort();
-        stocktakeScopeSelect.innerHTML = `<option value="ALL">Toàn bộ mặt hàng trong kho</option>` +
-          categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-        if (categories.includes(currentScope)) stocktakeScopeSelect.value = currentScope;
       }
 
       this.loaded = true;
@@ -314,124 +301,25 @@
 
       return parts.join(" + ");
     },
-
-    /**
-     * S5-08: Tạo phiếu kiểm kê mới và chốt tồn sổ sách tại thời điểm tạo
-     */
-    createStocktake(scope = "ALL") {
-      const items = (typeof WarehouseStocktake !== "undefined")
-        ? WarehouseStocktake.freezeBookStock(this.products, scope)
-        : this.products
-            .filter(p => scope === "ALL" || !scope || p.category === scope)
-            .map(p => ({
-              productId: p.id,
-              productCode: p.sku,
-              productName: p.name,
-              category: p.category || "Chưa phân nhóm",
-              baseUnit: p.baseUnit,
-              bookQuantity: Number(p.inventoryBaseQty) || 0,
-              actualQuantity: Number(p.inventoryBaseQty) || 0,
-              difference: 0,
-              diffStatus: "MATCH",
-              notes: "",
-            }));
-
-      if (!items.length) {
-        throw new Error("Không có mặt hàng nào thuộc phạm vi đã chọn để kiểm kê.");
-      }
-
-      const activeWh = this.warehouses.find(w => String(w.id) === String(this.warehouseId));
-      const code = (typeof WarehouseStocktake !== "undefined")
-        ? WarehouseStocktake.generateStocktakeCode(this.stocktakes.length + 1)
-        : `PKK-${new Date().toISOString().slice(0, 7).replace("-", "")}-${String(this.stocktakes.length + 1).padStart(3, "0")}`;
-
-      this.currentStocktake = {
-        code,
-        warehouseId: this.warehouseId,
-        warehouseName: activeWh?.name || "Kho chính",
-        scope,
-        scopeName: scope === "ALL" ? "Toàn bộ kho" : scope,
-        frozenAt: new Date().toISOString(),
-        createdBy: user.fullName || user.username || "Thủ kho",
-        status: "DRAFT",
-        items,
-      };
-
-      return this.currentStocktake;
-    },
-
-    /**
-     * S5-08: Lưu nháp tiến độ kiểm kê
-     */
-    saveDraftStocktake() {
-      if (!this.currentStocktake) throw new Error("Chưa có phiếu kiểm kê nào đang mở.");
-      this.currentStocktake.updatedAt = new Date().toISOString();
-      return this.currentStocktake;
-    },
-
-    /**
-     * S5-08: Chốt phiếu kiểm kê và điều chỉnh tồn kho về số thực đếm
-     */
-    async confirmStocktake(reason) {
-      if (!this.currentStocktake) {
-        throw new Error("Không tìm thấy phiếu kiểm kê cần chốt.");
-      }
-
-      const currentUser = Auth.getUser() || user;
-      if (typeof WarehouseStocktake !== "undefined") {
-        const validation = WarehouseStocktake.validateStocktakeConfirmation({
-          stocktake: this.currentStocktake,
-          reason,
-          user: currentUser,
-        });
-        if (!validation.valid) {
-          throw new Error(validation.error);
-        }
-      } else {
-        if (!canAdjustInventory) {
-          throw new Error("Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu kiểm kê.");
-        }
-        if (!reason || !reason.trim()) {
-          throw new Error("Vui lòng nhập lý do kiểm kê & điều chỉnh tồn kho (bắt buộc).");
-        }
-      }
-
-      const payload = (typeof WarehouseStocktake !== "undefined")
-        ? WarehouseStocktake.buildAdjustmentPayload({
-            stocktake: this.currentStocktake,
-            reason,
-            warehouseId: this.warehouseId,
-          })
-        : {
-            voucherCode: this.currentStocktake.code,
-            warehouseId: this.warehouseId,
-            adjustmentReason: reason.trim(),
-            note: `Kiểm kê kho: ${this.currentStocktake.code} - ${reason.trim()}`,
-            items: this.currentStocktake.items.map(i => ({
-              productId: i.productId,
-              productCode: i.productCode,
-              productName: i.productName,
-              unit: i.baseUnit,
-              quantity: Number(i.actualQuantity) || 0,
-              note: i.notes || "",
-            })),
-          };
-
-      await this.request("/warehouse/adjust", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      this.currentStocktake.status = "RECORDED";
-      this.currentStocktake.adjustmentReason = reason.trim();
-      this.currentStocktake.completedAt = new Date().toISOString();
-      this.stocktakes.unshift({ ...this.currentStocktake });
-      this.currentStocktake = null;
-
-      // Làm mới tồn kho và sổ cái sau khi điều chỉnh
-      await this.init();
-    }
   };
+
+  const stocktake = WarehouseStocktake.createClient({
+    request: (path, options) => Store.request(path, options),
+    getUser: () => Auth.getUser(),
+    onChange: () => renderStocktakePanel(),
+  });
+  let legacyLoad = null;
+  function stocktakeIsActive() { return document.querySelector(".nav-tab--active")?.dataset.tab === "stocktake"; }
+  function ensureLegacyData() {
+    if (Store.loaded) return Promise.resolve();
+    if (legacyLoad) return legacyLoad;
+    legacyLoad = Store.init().then(() => {
+      renderSkuTable(); updateMetrics(); prepareReceiptForm(); renderLedgerTable(); renderInventoryTable();
+      if (stocktakeIsActive()) renderStocktakePanel();
+    }).catch(error => showToast(error.message || "Không tải được dữ liệu kho.", "error"))
+      .finally(() => { legacyLoad = null; });
+    return legacyLoad;
+  }
 
   // ══════════════════════════════════════════════════
   // 2. UI SHELL & NAVIGATION SETUP
@@ -505,9 +393,11 @@
   function switchTab(tabId) {
     const allowed = tabId === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
       : tabId === "create-receipt" ? canRecordVouchers
-      : tabId === "stocktake" ? Auth.hasPermission("WAREHOUSE_VIEW")
+      : tabId === "stocktake" ? canReadStocktake()
       : Auth.hasPermission("WAREHOUSE_VIEW");
     if (!allowed) return;
+    document.title = tabId === "stocktake" ? "Kiểm kê kho & Chênh lệch | SaleStock" : "Đơn vị tính & Nhập / Xuất kho | SaleStock";
+    document.querySelector(".units-main > h1").textContent = tabId === "stocktake" ? "Kiểm kê kho & Chênh lệch" : "Kho hàng";
     if (tabId === "inventory-report") {
       window.location.href = "/warehouse/inventory";
       return;
@@ -527,7 +417,14 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") renderLedgerTable();
     if (tabId === "inventory-report") renderInventoryTable();
-    if (tabId === "stocktake") renderStocktakePanel();
+    document.querySelector(".units-metrics-grid").hidden = tabId === "stocktake";
+    if (tabId === "stocktake") {
+      renderStocktakePanel();
+      if (!stocktake.state.ready && !stocktake.state.pending) loadStocktakes();
+    } else {
+      if (Store.loaded) renderWarehouseSelector(Store.warehouses, Store.warehouseId, !Store.warehouseId);
+      ensureLegacyData();
+    }
     const tabParam = {
       "sku-units": "units",
       "create-receipt": "receipts",
@@ -1394,311 +1291,224 @@
   // ══════════════════════════════════════════════════
   // 10. PANEL 5: KIỂM KÊ KHO VÀ GHI NHẬN CHÊNH LỆCH (S5-08)
   // ══════════════════════════════════════════════════
-  function updateStocktakeMetrics() {
-    if (!Store.currentStocktake) {
-      if ($("st-metric-total")) $("st-metric-total").textContent = "0";
-      if ($("st-metric-match")) $("st-metric-match").textContent = "0";
-      if ($("st-metric-surplus")) $("st-metric-surplus").textContent = "0";
-      if ($("st-metric-deficit")) $("st-metric-deficit").textContent = "0";
-      return;
-    }
-    const metrics = (typeof WarehouseStocktake !== "undefined")
-      ? WarehouseStocktake.calculateMetrics(Store.currentStocktake.items)
-      : {
-          total: Store.currentStocktake.items.length,
-          match: Store.currentStocktake.items.filter(i => (Number(i.actualQuantity) - Number(i.bookQuantity)) === 0).length,
-          surplus: Store.currentStocktake.items.filter(i => (Number(i.actualQuantity) - Number(i.bookQuantity)) > 0).length,
-          deficit: Store.currentStocktake.items.filter(i => (Number(i.actualQuantity) - Number(i.bookQuantity)) < 0).length,
-        };
-    if ($("st-metric-total")) $("st-metric-total").textContent = String(metrics.total);
-    if ($("st-metric-match")) $("st-metric-match").textContent = String(metrics.match);
-    if ($("st-metric-surplus")) $("st-metric-surplus").textContent = String(metrics.surplus);
-    if ($("st-metric-deficit")) $("st-metric-deficit").textContent = String(metrics.deficit);
+
+  function stocktakeMessage(message = "", type = "error") {
+    const element = $("stocktake-message");
+    element.textContent = message;
+    element.dataset.type = type;
+    element.hidden = !message;
+  }
+
+  function renderWarehouseSelector(warehouses, selected, disabled) {
+    const select = $("active-warehouse-select");
+    select.innerHTML = warehouses.length ? warehouses.map(w =>
+      `<option value="${escapeHtml(w.id)}">${escapeHtml(w.name)}</option>`).join("")
+      : '<option value="">Chưa cấu hình kho</option>';
+    select.value = selected == null ? "" : String(selected);
+    select.disabled = disabled;
   }
 
   function renderStocktakePanel() {
-    const activeCard = $("stocktake-active-card");
-    const emptyState = $("stocktake-empty-state");
-    const st = Store.currentStocktake;
-
-    if (!st) {
-      if (activeCard) activeCard.hidden = true;
-      if (emptyState) emptyState.hidden = false;
-      renderStocktakeHistory();
-      return;
+    const state = stocktake.state, st = state.current;
+    const allowed = stocktake.canRead(), editable = stocktake.canEdit(), completable = stocktake.canComplete();
+    $("panel-stocktake").setAttribute("aria-busy", String(state.pending));
+    if (stocktakeIsActive()) {
+      renderWarehouseSelector(state.options?.warehouses || [], state.warehouseId, state.pending || !allowed || !state.warehouseId);
     }
-
-    if (activeCard) activeCard.hidden = false;
-    if (emptyState) emptyState.hidden = true;
-
-    if ($("stocktake-voucher-code")) $("stocktake-voucher-code").textContent = st.code;
-    if ($("stocktake-scope-badge")) $("stocktake-scope-badge").textContent = st.scopeName || (st.scope === "ALL" ? "Toàn bộ kho" : st.scope);
-    if ($("stocktake-status-badge")) $("stocktake-status-badge").textContent = statusLabel(st.status);
-    if ($("stocktake-warehouse-name")) $("stocktake-warehouse-name").textContent = st.warehouseName || "—";
-    if ($("stocktake-frozen-date")) $("stocktake-frozen-date").textContent = st.frozenAt ? st.frozenAt.replace("T", " ").slice(0, 19) : "—";
-    if ($("stocktake-created-by")) $("stocktake-created-by").textContent = st.createdBy || "—";
-
+    const scope = $("stocktake-scope-filter"), previousScope = scope.value;
+    scope.innerHTML = '<option value="ALL">Toàn bộ mặt hàng trong kho</option>' +
+      (state.options?.categories || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("");
+    if ([...scope.options].some(option => option.value === previousScope)) scope.value = previousScope;
+    scope.disabled = state.pending || !allowed || !state.ready;
+    $("btn-start-stocktake").hidden = !allowed;
+    $("btn-start-stocktake").disabled = state.pending || !state.ready || !state.warehouseId;
+    $("btn-reload-stocktake").disabled = state.pending || !allowed;
+    $("btn-toggle-stocktake-history").disabled = state.pending || !allowed;
+    $("stocktake-active-card").hidden = !allowed || !st;
+    $("stocktake-empty-state").hidden = !allowed || Boolean(st);
+    $("stocktake-voucher-code").textContent = st?.code || "—";
+    $("stocktake-scope-badge").textContent = st ? (st.categoryName || "Toàn bộ kho") : "—";
+    $("stocktake-status-badge").textContent = st?.statusLabel || statusLabel(st?.status);
+    $("stocktake-warehouse-name").textContent = st?.warehouseName || "—";
+    $("stocktake-frozen-date").textContent = st?.createdAt?.replace("T", " ").slice(0, 19) || "—";
+    $("stocktake-created-by").textContent = st?.createdBy || "—";
+    $("stocktake-adjustment-reason").value = state.reason;
+    $("stocktake-adjustment-reason").disabled = state.pending || !completable;
+    $("stocktake-note").value = st?.note || "";
+    $("stocktake-note").disabled = state.pending || !editable;
+    $("stocktake-cancel-reason").value = state.cancelReason;
+    $("stocktake-cancel-reason").disabled = state.pending || !editable;
+    $("btn-save-draft-stocktake").hidden = !editable;
+    $("btn-save-draft-stocktake").disabled = state.pending || !editable;
+    $("btn-confirm-stocktake").hidden = !completable;
+    $("btn-confirm-stocktake").disabled = state.pending || !completable;
+    $("btn-cancel-stocktake").hidden = !editable;
+    $("btn-cancel-stocktake").disabled = state.pending || !editable;
+    $("stocktake-role-hint").hidden = !st || st.status !== "DRAFT" || completable;
     const tbody = $("stocktake-table-body");
-    if (tbody) {
-      tbody.innerHTML = st.items.map((item, idx) => {
-        const diffCalc = (typeof WarehouseStocktake !== "undefined")
-          ? WarehouseStocktake.calculateDifference(item.actualQuantity, item.bookQuantity)
-          : {
-              diff: Number(item.actualQuantity) - Number(item.bookQuantity),
-              status: (Number(item.actualQuantity) - Number(item.bookQuantity)) === 0 ? "MATCH" : (Number(item.actualQuantity) - Number(item.bookQuantity)) > 0 ? "SURPLUS" : "DEFICIT",
-              label: (Number(item.actualQuantity) - Number(item.bookQuantity)) === 0 ? "0" : (Number(item.actualQuantity) - Number(item.bookQuantity)) > 0 ? `+${Number(item.actualQuantity) - Number(item.bookQuantity)}` : `${Number(item.actualQuantity) - Number(item.bookQuantity)}`
-            };
-        const badgeClass = diffCalc.status === "MATCH" ? "stocktake-diff-badge--match"
-          : diffCalc.status === "SURPLUS" ? "stocktake-diff-badge--surplus"
-          : "stocktake-diff-badge--deficit";
-
-        return `
-          <tr data-idx="${idx}">
-            <td style="color:var(--color-text-muted)">${idx + 1}</td>
-            <td>
-              <div class="sku-identity">
-                <span class="sku-name">${escapeHtml(item.productName)}</span>
-                <span class="sku-code">${escapeHtml(item.productCode)}</span>
-              </div>
-            </td>
-            <td><span class="sku-category-tag">${escapeHtml(item.category)}</span></td>
-            <td><strong>${escapeHtml(item.baseUnit)}</strong></td>
-            <td style="text-align: right; font-weight: 600;">${formatNumber(item.bookQuantity)}</td>
-            <td style="text-align: right;">
-              <input type="number" step="any" min="0" class="form-control stocktake-actual-input"
-                data-idx="${idx}"
-                value="${item.actualQuantity}"
-                style="text-align: right; width: 110px; display: inline-block;" />
-            </td>
-            <td style="text-align: right;">
-              <span class="stocktake-diff-badge ${badgeClass}" id="diff-badge-${idx}">${diffCalc.label}</span>
-            </td>
-            <td>
-              <input type="text" class="form-control stocktake-note-input"
-                data-idx="${idx}"
-                placeholder="Nhập ghi chú chênh lệch..."
-                value="${escapeHtml(item.notes || "")}" />
-            </td>
-          </tr>
-        `;
-      }).join("");
-
-      // Lắng nghe sự kiện người dùng nhập số thực tế đếm
-      tbody.querySelectorAll(".stocktake-actual-input").forEach(input => {
-        input.addEventListener("input", (e) => {
-          const idx = Number(e.target.dataset.idx);
-          const item = st.items[idx];
-          if (!item) return;
-
-          const val = Number(e.target.value) || 0;
-          item.actualQuantity = val;
-
-          const diffCalc = (typeof WarehouseStocktake !== "undefined")
-            ? WarehouseStocktake.calculateDifference(val, item.bookQuantity)
-            : {
-                diff: val - Number(item.bookQuantity),
-                status: (val - Number(item.bookQuantity)) === 0 ? "MATCH" : (val - Number(item.bookQuantity)) > 0 ? "SURPLUS" : "DEFICIT",
-                label: (val - Number(item.bookQuantity)) === 0 ? "0" : (val - Number(item.bookQuantity)) > 0 ? `+${val - Number(item.bookQuantity)}` : `${val - Number(item.bookQuantity)}`
-              };
-          item.difference = diffCalc.diff;
-          item.diffStatus = diffCalc.status;
-
-          const badge = $(`diff-badge-${idx}`);
-          if (badge) {
-            badge.className = `stocktake-diff-badge ${diffCalc.status === "MATCH" ? "stocktake-diff-badge--match" : diffCalc.status === "SURPLUS" ? "stocktake-diff-badge--surplus" : "stocktake-diff-badge--deficit"}`;
-            badge.textContent = diffCalc.label;
-          }
-          updateStocktakeMetrics();
-        });
-      });
-
-      tbody.querySelectorAll(".stocktake-note-input").forEach(input => {
-        input.addEventListener("input", (e) => {
-          const idx = Number(e.target.dataset.idx);
-          const item = st.items[idx];
-          if (item) item.notes = e.target.value;
-        });
-      });
-    }
-
-    // Cập nhật trạng thái nút chốt kiểm kê
-    const btnConfirm = $("btn-confirm-stocktake");
-    const roleHint = $("stocktake-role-hint");
-    if (btnConfirm) {
-      btnConfirm.disabled = !canAdjustInventory;
-      btnConfirm.title = canAdjustInventory ? "Chốt kiểm kê & Cân bằng kho" : "Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu";
-    }
-    if (roleHint) {
-      roleHint.hidden = canAdjustInventory;
-    }
-
+    tbody.innerHTML = (allowed ? st?.items || [] : []).map((item, idx) => {
+      const diff = WarehouseStocktake.calculateDifference(item.actualQuantity, item.bookQuantity);
+      return `<tr data-idx="${idx}">
+        <td>${idx + 1}</td>
+        <td><div class="sku-identity"><span class="sku-name">${escapeHtml(item.productName)}</span><span class="sku-code">${escapeHtml(item.productCode)}</span></div></td>
+        <td>${escapeHtml(item.categoryName || "—")}</td><td>${escapeHtml(item.baseUnit)}</td>
+        <td class="stocktake-number">${formatNumber(item.bookQuantity)}</td>
+        <td><input type="number" step="any" min="0" class="form-control stocktake-actual-input" data-idx="${idx}"
+          aria-label="Thực tế đếm ${escapeHtml(item.productCode)}" value="${escapeHtml(item.actualQuantity ?? "")}" ${state.pending || !editable ? "disabled" : ""} /></td>
+        <td><span class="stocktake-diff-badge stocktake-diff-badge--${diff.status.toLowerCase()}" id="diff-badge-${idx}">${escapeHtml(diff.label)}</span></td>
+        <td><input type="text" maxlength="500" class="form-control stocktake-note-input" data-idx="${idx}"
+          aria-label="Ghi chú ${escapeHtml(item.productCode)}" placeholder="Ghi chú chênh lệch" value="${escapeHtml(item.note || "")}" ${state.pending || !editable ? "disabled" : ""} /></td>
+      </tr>`;
+    }).join("");
+    tbody.querySelectorAll(".stocktake-actual-input").forEach(input => input.addEventListener("input", event => {
+      if (!stocktake.canEdit() || state.pending) return;
+      const item = state.current.items[Number(event.target.dataset.idx)];
+      item.actualQuantity = event.target.validity.badInput ? NaN : event.target.value === "" ? null : event.target.value;
+      state.dirty = true;
+      const diff = WarehouseStocktake.calculateDifference(item.actualQuantity, item.bookQuantity);
+      const badge = $(`diff-badge-${event.target.dataset.idx}`);
+      badge.className = `stocktake-diff-badge stocktake-diff-badge--${diff.status.toLowerCase()}`;
+      badge.textContent = diff.label;
+      updateStocktakeMetrics();
+    }));
+    tbody.querySelectorAll(".stocktake-note-input").forEach(input => input.addEventListener("input", event => {
+      if (!stocktake.canEdit() || state.pending) return;
+      state.current.items[Number(event.target.dataset.idx)].note = event.target.value;
+      state.dirty = true;
+    }));
     updateStocktakeMetrics();
     renderStocktakeHistory();
   }
 
-  function renderStocktakeHistory() {
-    const tbody = $("stocktake-history-body");
-    if (!tbody) return;
-
-    const history = Store.stocktakes.length ? Store.stocktakes : Store.receipts.filter(r => r.type === "ADJUSTMENT");
-
-    if (!history.length) {
-      tbody.innerHTML = `<tr><td colspan="8" class="empty">Chưa có phiếu kiểm kê hoặc điều chỉnh nào được ghi nhận.</td></tr>`;
-      return;
+  function updateStocktakeMetrics() {
+    const metrics = WarehouseStocktake.calculateMetrics(stocktake.state.current?.items);
+    for (const key of ["total", "match", "surplus", "deficit", "uncounted"]) {
+      $(`st-metric-${key}`).textContent = String(metrics[key]);
     }
-
-    tbody.innerHTML = history.map((h) => `
-      <tr>
-        <td><strong class="receipt-code-pill">${escapeHtml(h.code || h.id)}</strong></td>
-        <td>${escapeHtml((h.completedAt || h.recordedAt || h.date || "").slice(0, 10))}</td>
-        <td>${escapeHtml(h.warehouseName || h.warehouse || "—")}</td>
-        <td><span class="stocktake-scope-badge">${escapeHtml(h.scopeName || h.scope || "Toàn kho")}</span></td>
-        <td>${escapeHtml(h.createdBy || "—")}</td>
-        <td class="text-truncate" style="max-width: 200px;" title="${escapeHtml(h.adjustmentReason || h.notes || "")}">
-          ${escapeHtml(h.adjustmentReason || h.notes || "Kiểm kê định kỳ")}
-        </td>
-        <td><span class="badge badge--pill badge--recorded">${escapeHtml(statusLabel(h.status || "RECORDED"))}</span></td>
-        <td>
-          <button type="button" class="btn btn--secondary btn--xs" data-view-stocktake="${escapeHtml(h.code || h.id)}">
-            Chi tiết
-          </button>
-        </td>
-      </tr>
-    `).join("");
-
-    tbody.querySelectorAll("[data-view-stocktake]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const code = btn.dataset.viewStocktake;
-        const item = history.find(h => (h.code || h.id) === code);
-        if (item) {
-          openReceiptModal(item.id || item.code);
-        }
-      });
-    });
   }
 
-  // ══════════════════════════════════════════════════
-  // Stocktake Toolbar & Action Event Listeners
-  // ══════════════════════════════════════════════════
-  $("btn-start-stocktake")?.addEventListener("click", () => {
-    try {
-      const scope = $("stocktake-scope-filter")?.value || "ALL";
-      Store.createStocktake(scope);
-      renderStocktakePanel();
-      showToast("Đã tạo phiếu kiểm kê và chốt số tồn sổ tại thời điểm tạo.", "success");
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
+  function renderStocktakeHistory() {
+    const state = stocktake.state;
+    $("stocktake-history-body").innerHTML = state.history.length ? state.history.map(h => `
+      <tr>
+        <td><strong class="receipt-code-pill">${escapeHtml(h.code)}</strong></td>
+        <td>${escapeHtml(h.createdAt?.replace("T", " ").slice(0, 19) || "—")}</td>
+        <td>${escapeHtml(h.warehouseName)}</td><td>${escapeHtml(h.categoryName || "Toàn bộ kho")}</td>
+        <td>${escapeHtml(h.createdBy)}</td><td>${escapeHtml(h.adjustmentReason || h.cancelReason || h.note || "—")}</td>
+        <td>${escapeHtml(h.statusLabel || state.options?.statuses?.find(s => s.code === h.status)?.label || statusLabel(h.status))}</td>
+        <td><button type="button" class="btn btn--secondary btn--xs" data-view-stocktake="${escapeHtml(h.id)}" ${state.pending ? "disabled" : ""}>Chi tiết</button></td>
+      </tr>`).join("") : '<tr><td colspan="8" class="empty">Chưa có phiếu kiểm kê trong kho này.</td></tr>';
+    $("stocktake-history-page").textContent = `Trang ${state.totalPages ? state.page + 1 : 0} / ${state.totalPages || 0} · ${state.totalElements || 0} phiếu`;
+    $("stocktake-history-prev").disabled = state.pending || state.page <= 0 || !stocktake.canRead();
+    $("stocktake-history-next").disabled = state.pending || state.page + 1 >= state.totalPages || !stocktake.canRead();
+  }
 
-  $("btn-toggle-stocktake-history")?.addEventListener("click", () => {
+  function mayLeaveStocktake() {
+    return !stocktake.state.dirty || window.confirm("Có thay đổi chưa lưu. Bỏ các thay đổi này? Phiếu đã lưu vẫn có trong lịch sử.");
+  }
+
+  async function performStocktake(action, success, refreshHistory = false) {
+    if (stocktake.state.pending || !stocktake.canRead()) return;
+    stocktakeMessage();
+    try {
+      await action();
+      if (!stocktake.canRead()) return;
+      stocktakeMessage(success, "success");
+      if (refreshHistory) {
+        // The write succeeded. A history failure must never offer a duplicate write.
+        try { await stocktake.history(); }
+        catch (error) {
+          if (error.code !== "STALE_STOCKTAKE" && stocktake.canRead()) stocktakeMessage(`${success} Tuy nhiên, chưa tải lại được lịch sử: ${error.message}`, "warning");
+        }
+      }
+    } catch (error) {
+      if (error.code !== "STALE_STOCKTAKE" && stocktake.canRead()) stocktakeMessage(error.message || "Không thể xử lý phiếu kiểm kê.");
+    }
+  }
+
+  function loadStocktakes() {
+    return performStocktake(() => stocktake.initialize($("active-warehouse-select").value), "Đã tải danh sách kiểm kê.", false);
+  }
+  $("btn-start-stocktake").addEventListener("click", () => {
+    if (!mayLeaveStocktake()) return;
+    const categoryId = $("stocktake-scope-filter").value;
+    performStocktake(() => stocktake.create(categoryId), "Đã tạo phiếu kiểm kê và chốt tồn sổ từ máy chủ.", true);
+  });
+  $("btn-save-draft-stocktake").addEventListener("click", () =>
+    performStocktake(() => stocktake.save(), "Đã lưu nháp tiến độ kiểm kê.", true));
+  $("btn-confirm-stocktake").addEventListener("click", () =>
+    performStocktake(async () => { await stocktake.complete(); Store.loaded = false; }, "Đã chốt kiểm kê và điều chỉnh tồn kho.", true));
+  $("btn-cancel-stocktake").addEventListener("click", () => {
+    if (!window.confirm("Hủy phiếu kiểm kê này? Tồn kho sẽ không thay đổi.")) return;
+    performStocktake(() => stocktake.cancel(), "Đã hủy phiếu kiểm kê.", true);
+  });
+  $("btn-reload-stocktake").addEventListener("click", () => {
+    if (!mayLeaveStocktake()) return;
+    performStocktake(async () => {
+      await stocktake.initialize(stocktake.state.warehouseId);
+      if (stocktake.state.current) await stocktake.open(stocktake.state.current.id);
+    }, "Đã tải lại dữ liệu kiểm kê.");
+  });
+  $("btn-toggle-stocktake-history").addEventListener("click", () => {
     const section = $("stocktake-history-section");
-    const textSpan = $("btn-stocktake-history-text");
-    if (!section) return;
-    const isHidden = section.hidden;
-    section.hidden = !isHidden;
-    if (textSpan) {
-      textSpan.textContent = isHidden ? "Ẩn lịch sử kiểm kê" : "Xem lịch sử kiểm kê";
-    }
-    if (isHidden) {
-      renderStocktakeHistory();
-    }
+    section.hidden = !section.hidden;
+    $("btn-stocktake-history-text").textContent = section.hidden ? "Xem lịch sử kiểm kê" : "Ẩn lịch sử kiểm kê";
   });
-
-  $("btn-save-draft-stocktake")?.addEventListener("click", () => {
-    try {
-      Store.saveDraftStocktake();
-      showToast("Đã lưu nháp tiến độ kiểm kê thành công.", "success");
-    } catch (err) {
-      showToast(err.message, "error");
-    }
+  $("stocktake-history-body").addEventListener("click", event => {
+    const button = event.target.closest("[data-view-stocktake]");
+    if (!button || !mayLeaveStocktake()) return;
+    performStocktake(() => stocktake.open(button.dataset.viewStocktake), "Đã mở phiếu kiểm kê.");
   });
-
-  $("btn-confirm-stocktake")?.addEventListener("click", async () => {
-    try {
-      const reasonInput = $("stocktake-adjustment-reason");
-      const reason = reasonInput ? reasonInput.value.trim() : "";
-
-      if (!reason) {
-        showToast("Vui lòng nhập lý do kiểm kê & điều chỉnh tồn kho (bắt buộc khi chốt phiếu).", "warning");
-        reasonInput?.focus();
-        return;
-      }
-
-      if (!canAdjustInventory) {
-        showToast("Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu kiểm kê và cập nhật tồn kho.", "error");
-        return;
-      }
-
-      await Store.confirmStocktake(reason);
-      showToast("Đã chốt kiểm kê và điều chỉnh tồn kho về số thực đếm thành công!", "success");
-      if (reasonInput) reasonInput.value = "";
-      renderStocktakePanel();
-      renderSkuTable();
-      renderLedgerTable();
-      renderInventoryTable();
-      updateMetrics();
-    } catch (err) {
-      showToast(err.message || "Không thể chốt phiếu kiểm kê.", "error");
-    }
+  $("stocktake-history-prev").addEventListener("click", () =>
+    performStocktake(() => stocktake.history(stocktake.state.page - 1), "Đã tải lịch sử kiểm kê."));
+  $("stocktake-history-next").addEventListener("click", () =>
+    performStocktake(() => stocktake.history(stocktake.state.page + 1), "Đã tải lịch sử kiểm kê."));
+  for (const [id, field] of [["stocktake-adjustment-reason", "reason"], ["stocktake-cancel-reason", "cancelReason"]]) {
+    $(id).addEventListener("input", event => {
+      if (!stocktake.canEdit() || stocktake.state.pending) return;
+      stocktake.state[field] = event.target.value;
+      stocktake.state.dirty = true;
+    });
+  }
+  $("stocktake-note").addEventListener("input", event => {
+    if (!stocktake.canEdit() || stocktake.state.pending) return;
+    stocktake.state.current.note = event.target.value;
+    stocktake.state.dirty = true;
+  });
+  window.addEventListener("beforeunload", event => {
+    if (stocktake.state.dirty) { event.preventDefault(); event.returnValue = ""; }
   });
 
   const requestedTab = {
     receipts: "create-receipt", ledger: "ledger-audit", inventory: "inventory-report", stocktake: "stocktake",
   }[initialTabParam] || "sku-units";
-  switchTab(requestedTab);
-
   $("active-warehouse-select").addEventListener("change", async () => {
+    if (stocktakeIsActive()) {
+      const selected = $("active-warehouse-select").value;
+      if (stocktake.state.pending || !mayLeaveStocktake()) { renderStocktakePanel(); return; }
+      await performStocktake(() => stocktake.selectWarehouse(selected), "Đã đổi kho kiểm kê.");
+      return;
+    }
     try {
       await Store.init();
       switchTab(document.querySelector(".nav-tab--active")?.dataset.tab || requestedTab);
-    } catch (error) {
-      showToast(error.message || "Không tải được dữ liệu kho.", "error");
-    }
-  });
-
-  // Initial render from backend APIs.
-  Store.init().then(() => {
-    renderSkuTable();
-    updateMetrics();
-    prepareReceiptForm();
-    renderLedgerTable();
-    renderInventoryTable();
-    renderStocktakePanel();
-  }).catch((error) => {
-    showToast(error.message || "Không tải được dữ liệu kho từ máy chủ.", "error");
+    } catch (error) { showToast(error.message || "Không tải được dữ liệu kho.", "error"); }
   });
 
   function syncWarehouseActions() {
     canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
     canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
     canViewOrders = Auth.hasPermission("ORDER_VIEW");
-    canAdjustInventory = (typeof WarehouseStocktake !== "undefined")
-      ? WarehouseStocktake.canUserConfirmStocktake(Auth.getUser() || user)
-      : (Auth.hasRole("ROLE_ADMIN") || (Auth.hasRole("ROLE_WAREHOUSE_MANAGER") && (typeof Auth.hasPermission === "function" ? Auth.hasPermission("WAREHOUSE_ADJUST") : true)));
-
     tabs.forEach(tab => {
       tab.hidden = !(tab.dataset.tab === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
         : tab.dataset.tab === "create-receipt" ? canRecordVouchers
-        : tab.dataset.tab === "stocktake" ? Auth.hasPermission("WAREHOUSE_VIEW")
+        : tab.dataset.tab === "stocktake" ? canReadStocktake()
         : Auth.hasPermission("WAREHOUSE_VIEW"));
     });
     $("tab-create-receipt").hidden = !canRecordVouchers;
-    $("tab-stocktake").hidden = !Auth.hasPermission("WAREHOUSE_VIEW");
+    $("tab-stocktake").hidden = !canReadStocktake();
+    if (!canReadStocktake()) $("panel-stocktake").hidden = true;
     $("btn-open-create-unit-modal").hidden = !canManageUnits;
-
-    // S5-08: Nút chốt kiểm kê và gợi ý phân quyền
-    const btnConfirm = $("btn-confirm-stocktake");
-    const roleHint = $("stocktake-role-hint");
-    if (btnConfirm) {
-      btnConfirm.disabled = !canAdjustInventory;
-      btnConfirm.title = canAdjustInventory
-        ? "Chốt kiểm kê & Cân bằng kho"
-        : "Chỉ Quản lý kho có quyền WAREHOUSE_ADJUST mới được chốt phiếu kiểm kê";
-    }
-    if (roleHint) {
-      roleHint.hidden = canAdjustInventory;
-    }
 
     document.querySelectorAll("#receipt-type-radios input").forEach(radio => {
       const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[radio.value];
@@ -1715,5 +1525,26 @@
     updateReceiptAvailability();
   }
   syncWarehouseActions();
-  window.addEventListener("auth:permissions-changed", syncWarehouseActions);
+  let permissionVersion = 0;
+  window.addEventListener("auth:permissions-changed", async () => {
+    const version = ++permissionVersion;
+    const previousId = stocktake.state.current?.id;
+    const previousWarehouse = stocktake.state.warehouseId;
+    stocktake.invalidate();
+    stocktakeMessage();
+    syncWarehouseActions();
+    // Wait for any old request; its response cannot repopulate the cleared draft.
+    await stocktake.idle();
+    if (version === permissionVersion && stocktakeIsActive() && canReadStocktake()) {
+      $("panel-stocktake").hidden = false;
+      await performStocktake(async () => {
+        await stocktake.initialize(previousWarehouse);
+        if (version === permissionVersion && previousId && stocktake.state.warehouseId === previousWarehouse) await stocktake.open(previousId);
+      }, "Đã cập nhật quyền và dữ liệu kiểm kê.");
+    }
+  });
+  const firstAllowedTab = [...tabs].find(tab => !tab.hidden)?.dataset.tab;
+  const requestedAllowed = [...tabs].some(tab => tab.dataset.tab === requestedTab && !tab.hidden);
+  if (requestedAllowed || firstAllowedTab) switchTab(requestedAllowed ? requestedTab : firstAllowedTab);
+  else panels.forEach(panel => { panel.hidden = true; });
 })();

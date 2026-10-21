@@ -1,6 +1,24 @@
 # Trạng thái sprint 1–5
 
-Cập nhật **21/10/2026**, bổ sung tính năng S5-02 đặt lại đơn hàng cũ trên Cổng đại lý (backend); không merge hoặc lấy code từ nhánh khác.
+Cập nhật **21/10/2026**: hoàn thiện S5-08 trên nhánh `feature/S5-08-chuc-nang-kiem-ke-chenh-lech(frontend)`, sau khi người dùng đồng bộ develop tại merge commit `5d9008c`. Các mục phía dưới giữ lịch sử những đợt triển khai trước; trạng thái S5-08 mới nhất nằm ở bảng ngay dưới đây. Đợt sửa này không tự commit, merge vào develop hoặc push.
+
+## S5-08 — Hoàn thiện frontend, backend và đối chiếu tiêu chí Jira — 21/10/2026
+
+Nguồn nghiệm thu: ảnh user story S5-08 người dùng cung cấp trong chat. Người dùng đã xác nhận tiêu chí chốt phiếu áp dụng **WAREHOUSE_ADJUST theo AGENTS.md**, không khóa cứng theo `ROLE_WAREHOUSE_MANAGER`; `ROLE_ADMIN` luôn có toàn quyền.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Tạo phiếu theo kho hoặc nhóm hàng, chốt tồn sổ tại thời điểm tạo | POST `/warehouse/stock-counts`; snapshot từ tồn DB, đơn vị cơ sở, ID và phiên bản tồn; sinh mã tại server | Chọn kho và nhóm hàng bằng ID từ options; nhận mã, người tạo, thời điểm và tồn sổ từ server, không sinh snapshot bằng JavaScript | VIEW hoặc ADJUST, ADMIN; giới hạn kho được giao tại API; chỉ nạp API kiểm kê khi mở tab, không đòi PRODUCT_VIEW/ORDER_VIEW hoặc các API phiếu kho cũ |
+| Nhập số đếm và tự tính chênh lệch từng dòng | Kiểm số >=0, tối đa 4 chữ số thập phân, chênh lệch = thực đếm - tồn sổ; từ chối dòng ngoài phiếu, trùng hoặc sai ID | Phân biệt trống/null với số 0, nhãn chưa đếm/khớp/thừa/thiếu, tính hiển thị theo cùng độ chính xác; ghi chú tối đa 500 ký tự | PUT `/{id}/items`; không thay tồn kho khi lưu nháp; backend luôn tính lại, không nhận chênh lệch do client tự gửi |
+| Lưu/mở lại phiếu và lịch sử | Phiếu, snapshot, số đếm, ghi chú và trạng thái lưu DB; danh sách phân trang, chi tiết theo ID | Tạo, lưu nháp, reload, mở lại từ lịch sử, hủy phiếu nháp; chuyển kho không dùng lại phiếu kho cũ; giữ input/lý do khi API lỗi | GET options/list/detail, POST create/cancel và PUT items đúng hợp đồng mới; không lưu nghiệp vụ trong browser storage, không dùng `/warehouse/adjust` cho kiểm kê |
+| Chốt về số thực đếm, bắt buộc lý do | POST `/{id}/complete`; tất cả dòng phải đã đếm, lý do không được trống; cập nhật tồn, trạng thái và audit trong cùng transaction | Chốt/nháp/hủy khóa trong lúc gửi; phiếu đã chốt/hủy chỉ đọc; báo riêng trường hợp ghi thành công nhưng tải lịch sử thất bại để tránh gửi lặp | WAREHOUSE_ADJUST hoặc ADMIN; backend kiểm lại quyền trên yêu cầu hiện tại, frontend đối chiếu quyền và canEdit/canAdjust từ server |
+| Chống chốt đồng thời, ghi đè chuyển động và mất tồn giữ chỗ | Khóa phiếu -> kho -> các dòng tồn theo SKU tăng dần; kiểm snapshot ID/version/đơn vị/số lượng trước mọi ghi; thực đếm không thấp hơn lượng đang giữ chỗ; lỗi rollback toàn phiếu và audit | Hiện lỗi và giữ số đếm/lý do; nếu tồn đã đổi, yêu cầu hủy và lập phiếu mới thay vì âm thầm ghi đè | Đã kiểm chốt cùng phiếu, sửa/hủy cạnh tranh chốt, đặt giữ chỗ đồng thời, nhiều dòng lỗi và lỗi audit, chuyển động về lại số lượng cũ |
+| Ma trận trên phiên đang mở | Grant/revoke trên JWT cũ có hiệu lực, không fallback role; nhiều role nhận hợp quyền, giới hạn kho được giao | Menu kiểm kê nhận VIEW hoặc ADJUST; chốt chỉ ADJUST/ADMIN; thu hồi quyền xóa dữ liệu nhạy cảm, vô hiệu phản hồi cũ; vai trò VIEWER được cấp ADJUST vẫn sử dụng được | Tiêu chí “Quản lý kho chốt” được diễn giải theo quyền chốt người dùng đã xác nhận, không kiểm vai trò cứng |
+| Bố cục và tương thích | Giữ API/luồng các sprint khác | Giữ shared shell, sidebar/topbar và lề chung; bảng cuộn nội bộ; thêm menu kiểm kê mà giữ menu tồn tối thiểu/chuyển kho | Kiểm desktop/tablet/mobile; không đổi layout chung của các trang khác |
+
+Kiểm chứng cuối: **649 test backend qua**, trong đó **51 test kiểm kê** (19 tích hợp HTTP/JWT/H2, 17 service, 9 controller, 6 security), chạy trên bản sao tạm, không sửa MySQL thật; **113 test JavaScript qua**; **10 test định tuyến/bảo vệ file qua**. Chrome với fixture HTTP qua tạo snapshot, lưu/mở lại nháp, zero/thập phân, lỗi giữ input, chốt/hủy, chống gửi lặp, lỗi tải lịch sử sau ghi, đổi kho, grant/revoke và phản hồi trễ, ADMIN, XSS, 6 kích thước. Đã xem ảnh desktop/mobile. Kiểm bố cục chung **150 kiểm tra = 25 trang × 6 kích thước**; hồi quy sổ tồn S5-05, chuyển kho S5-07 và điều hướng click/Back/Forward/Reload/mobile/reduced-motion qua, sidebar giữ scroll **472 -> 472**, không lỗi JavaScript.
+
+Triển khai: cần khởi động lại backend để nhận entity/service mới và cập nhật schema theo cấu hình `ddl-auto=update`. Bổ sung `warehouse_inventories.version` (mặc định 0), metadata snapshot trên `warehouse_stock_count_items` (`snapshot_captured`, `snapshot_inventory_id`, `snapshot_inventory_version`) và nới ghi chú dòng lên 500 ký tự. Phiếu nháp cũ chưa có marker snapshot vẫn xem/hủy được nhưng cần lập lại để chốt an toàn, không tự gán tồn hiện tại vào snapshot cũ. Chưa nghiệm thu MySQL thật; không chạy SQL hay thay dữ liệu/schema DB đang dùng trong đợt kiểm thử này.
 
 ## S5-02 — Đặt lại đơn hàng cũ trên Cổng đại lý (backend) — 21/10/2026
 
@@ -340,14 +358,14 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 | S5-05 | Sổ tồn thực tế/giữ chỗ/khả dụng | Có | **Một phần** | **Chưa đủ 3 cột** | Có API tồn; quyền/scope chưa đủ | API có ba số; FE chỉ nạp `inventoryBaseQty`. Cần hai cột còn lại và lọc trạng thái tồn. |
 | S5-06 | Giữ chỗ, hủy/quá hạn nhả tồn | Một phần | Có qua duyệt/hủy | Đã nối luồng chính | Quyền duyệt/hủy còn hạn chế chung | Có scheduler/transaction/khóa tồn. Cần xử lý đồng thời cùng đơn, đơn thiếu kho, bảo vệ tồn đã giữ trong xuất/chuyển. |
 | S5-07 | Chuyển kho, đang đi, nhận chênh lệch | Có | Có | Đã nối tạo/danh sách/chi tiết/nhận/hủy; xem phần cập nhật S5-07 đầu file | WAREHOUSE_TRANSFER để ghi, VIEW hoặc TRANSFER để đọc; kiểm scope kho và thu hồi quyền, ADMIN luôn được phép | Đã kiểm khóa đồng thời, bảo vệ tồn đã giữ, nhận/hủy lặp, lý do chênh lệch và rollback. Chưa nghiệm thu MySQL thật. |
-| S5-08 | Kiểm kê, chốt chênh lệch | **Chưa** | **Chưa** | **Chưa** | Chưa có quyền/luồng chốt riêng | Tab hiện tại không có phiếu snapshot, số đếm, lý do chốt và API duyệt QL kho. Điều chỉnh chung không đáp ứng story. |
+| S5-08 | Kiểm kê, chốt chênh lệch | Có | Có | Đã nối API `/warehouse/stock-counts`, phiếu/snapshot/số đếm lưu DB; xem cập nhật S5-08 đầu file | VIEW hoặc ADJUST để đọc/tạo/đếm, ADJUST để chốt; ADMIN luôn được phép; kiểm phạm vi kho và grant/revoke | Đã kiểm 4 tiêu chí ảnh backlog theo xác nhận quyền từ người dùng, khóa cạnh tranh, snapshot cũ, tồn giữ chỗ và rollback; chưa nghiệm thu MySQL thật. |
 | S5-09 | Tồn tối thiểu và cảnh báo | Có | Có | Đã nối cấu hình, cảnh báo sổ tồn và dashboard; xem cập nhật S5-09 đầu file | WAREHOUSE_MANAGE để khai báo, WAREHOUSE_VIEW để xem; ma trận DB ở cả BE/FE, thu hồi trên phiên cũ, kiểm phạm vi kho | Đã triển khai hai AC; cảnh báo dựa trên tồn khả dụng, bằng ngưỡng không cảnh báo. Có bảng DB mới; chưa nghiệm thu MySQL thật. |
 
 ## Việc cần làm tiếp
 
 1. Đồng bộ quyền với ma trận và giới hạn dữ liệu kho/đại lý ở mọi đường đọc/ghi, đặc biệt điểm giao, tạo đơn, sửa công nợ và phiếu kho.
 2. Sửa transaction import tài khoản; kiểm bảng giá chỉ định; thống nhất nguồn công nợ/vòng đời đơn/xuất hàng.
-3. Hoàn thiện UI S5-04 và triển khai BE/FE S5-08; nghiệm thu S5-03/S5-05/S5-07/S5-09 trên MySQL thật theo các cập nhật đầu file.
+3. Hoàn thiện UI S5-04; nghiệm thu S5-03/S5-05/S5-07/S5-08/S5-09 trên MySQL thật theo các cập nhật đầu file.
 4. Nối preview chiết khấu cho cổng/đặt lại, UI sales xác nhận đơn cổng; nghiệm thu MySQL/SMTP/360px theo AC.
 
 Chi tiết: [báo cáo rà soát](docs/SPRINT_1_5_AUDIT_20261018.md).

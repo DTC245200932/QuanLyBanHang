@@ -6,7 +6,7 @@ Cập nhật **21/10/2026**, chuẩn bị tích hợp `develop` vào `main`, gi�
 
 `main` tại `2eabd86` có ba commit chưa nằm trong `develop`: merge S4-03 (#84), revert S4-03 (`d6c69dc`) và merge bản revert (#85). Cây nội dung của `main` giống hệt `c786478` trước #84. Trong khi đó, `develop` tại `314d253` đã tích hợp lại và cải tiến chức năng tồn khả dụng, giữ chỗ, đơn hàng và các sprint tiếp theo. Merge trực tiếp gặp **18 tệp xung đột**, gồm `SecurityConfig`, order/inventory service, test và `status.md` (bị xóa trên `main`).
 
-Nhánh `codex/fix-develop-main-merge` ghi nhận cả hai đầu lịch sử bằng merge strategy `ours`, giữ nguyên toàn bộ mã ứng dụng của `develop` tại `314d253`. Đây là quyết định riêng cho bản revert cũ đã kiểm tra; không chọn lại các đoạn mã cũ trong xung đột. Ngoài lịch sử merge, chỉ cập nhật báo cáo này và sửa assertion tiêu đề Cổng đại lý trong test định tuyến cho đúng HTML hiện có.
+Nhánh `feature/sua-conflict-develop-main` ghi nhận cả hai đầu lịch sử bằng merge strategy `ours`, giữ nguyên toàn bộ mã ứng dụng của `develop` tại `314d253`. Đây là quyết định riêng cho bản revert cũ đã kiểm tra; không chọn lại các đoạn mã cũ trong xung đột. Ngoài lịch sử merge, chỉ cập nhật báo cáo này và sửa assertion tiêu đề Cổng đại lý trong test định tuyến cho đúng HTML hiện có.
 
 | Hạng mục kiểm chứng tích hợp | Backend | Frontend | Kết nối / ma trận quyền |
 |---|---|---|---|

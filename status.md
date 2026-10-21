@@ -1,6 +1,19 @@
 # Trạng thái sprint 1–5
 
-Cập nhật **20/10/2026**, bổ sung sửa lỗi ma trận quyền trên nhánh hiện tại; không merge hoặc lấy code từ nhánh khác.
+Cập nhật **21/10/2026**, bổ sung tính năng S5-02 đặt lại đơn hàng cũ trên Cổng đại lý (backend); không merge hoặc lấy code từ nhánh khác.
+
+## S5-02 — Đặt lại đơn hàng cũ trên Cổng đại lý (backend) — 21/10/2026
+
+Nguồn tiêu chí: User story S5-02 (*"Là Đại lý, tôi muốn đặt lại một đơn đã mua trước đây, để lấy hàng định kỳ mà không phải chọn lại từng mặt hàng"*). Thực hiện trên nhánh `feature/S5-02/dat-lai-don-da-mua`; phạm vi chỉ làm **backend** theo yêu cầu người dùng, tuân thủ AGENTS.md và ma trận phân quyền.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Chọn đơn cũ và đặt lại toàn bộ hoặc một phần dòng hàng | API xem trước `GET /api/portal/orders/{id}/reorder-preview` và tạo đơn `POST /api/portal/orders/{id}/reorder`. Hỗ trợ đặt lại toàn bộ (khi body `items` rỗng/null) hoặc đặt lại từng dòng đã chọn | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Preview yêu cầu `ORDER_VIEW` + `ORDER_CREATE` hoặc `ROLE_ADMIN`; Đặt lại yêu cầu `ORDER_CREATE` hoặc `ROLE_ADMIN`; tài khoản DEALER cách ly dữ liệu theo `dealerId`, đơn ngoài phạm vi trả 403 |
+| Mặt hàng ngừng kinh doanh / hết bảng giá bị loại bỏ kèm cảnh báo | Phân loại `availableItems` vs `discontinuedItems` (kiểm tra `product.active == false` hoặc không có trong bảng giá hiệu lực hiện hành của nhóm khách hàng). Loại bỏ khỏi đơn mới và trả danh sách cảnh báo `warnings`/`excludedItems`; nếu toàn bộ bị loại bỏ trả 400 | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Kiểm tra trực tiếp từ bảng giá và trạng thái sản phẩm hiện hành trong DB; không tin dữ liệu client gửi |
+| Áp lại giá theo bảng giá / chính sách hiện hành | Lấy bảng giá hiệu lực hiện hành theo nhóm khách hàng của đại lý tại thời điểm đặt lại; tính giá theo quy cách đơn vị quy đổi (`unitPrice = basePrice * factor`); không kế thừa giá cũ của đơn gốc | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Đơn giá được tính toán hoàn toàn phía server từ DB; preview hiển thị `originalUnitPrice` vs `currentUnitPrice` và cờ `priceChanged` |
+| Đơn mới ở trạng thái Chờ duyệt | Đơn mới tạo thành công có trạng thái `PENDING_APPROVAL`, ghi nhận audit action `REORDER_FROM` kèm mã đơn gốc | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Quyền tạo đơn `ORDER_CREATE` kiểm tra động qua DB matrix; thu hồi quyền trên phiên JWT hiện tại lập tức chặn 403 không fallback role |
+
+Kiểm chứng cuối: **24 test backend qua** (7 test service `OrderReorderServiceTest`, 14 test controller `DealerPortalControllerTest`, 3 test tích hợp `DealerPortalReorderIntegrationTest` trên HTTP/JWT/JPA/H2). Kiểm chứng đầy đủ: đặt lại toàn bộ/một phần, loại bỏ hàng ngừng kinh doanh / hết hiệu lực giá, tính lại giá theo bảng giá hiện hành, đơn mới tạo ở PENDING_APPROVAL, đại lý bị khóa/ngừng hoạt động trả lỗi, cách ly đa đại lý (đại lý khác truy cập trả 403), và thu hồi quyền `ORDER_CREATE` trên cùng token JWT lập tức trả 403 mà không fallback về role. Đã cập nhật hợp đồng tại `backend/API_DOCUMENTATION.md`.
 
 ## S5-09 — Tồn tối thiểu và cảnh báo (backend + frontend) — 20/10/2026
 

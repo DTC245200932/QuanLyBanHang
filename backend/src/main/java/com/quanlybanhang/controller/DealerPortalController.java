@@ -1,6 +1,7 @@
 package com.quanlybanhang.controller;
 
 import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
+import com.quanlybanhang.dto.request.DealerPortalReorderRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
 import com.quanlybanhang.dto.request.OrderFilterRequest;
@@ -313,5 +314,46 @@ public class DealerPortalController {
         Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
         List<DealerDeliveryPointResponse> points = deliveryPointService.getDeliveryPointsByDealer(dealer.getId());
         return ApiResponse.success("Danh sách điểm giao hàng", points);
+    }
+
+    /**
+     * S5-02: Xem trước đơn đặt lại từ đơn hàng cũ cho Đại lý.
+     * Tự động phân loại mặt hàng còn kinh doanh vs đã ngừng kinh doanh / không còn trong bảng giá,
+     * áp lại giá theo bảng giá hiệu lực hiện hành.
+     */
+    @GetMapping("/orders/{id}/reorder-preview")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('ORDER_VIEW') and hasAuthority('ORDER_CREATE'))")
+    public ApiResponse getReorderPreview(@PathVariable Long id, Principal principal,
+                                         @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
+        DealerPortalReorderPreviewResponse preview = orderService.getPortalReorderPreview(id, principal.getName());
+        if (!dealer.getId().equals(preview.getDealerId())) {
+            throw new AccessDeniedException("Đơn hàng không thuộc đại lý đang chọn");
+        }
+        return ApiResponse.success("Xem trước đơn đặt lại", preview);
+    }
+
+    /**
+     * S5-02: Đại lý đặt lại đơn hàng cũ (toàn bộ hoặc một phần dòng hàng).
+     * Loại bỏ sản phẩm ngừng kinh doanh kèm thông báo, áp lại giá hiện hành, đơn ở trạng thái Chờ duyệt.
+     */
+    @PostMapping("/orders/{id}/reorder")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ORDER_CREATE')")
+    public ResponseEntity<ApiResponse> reorder(
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) DealerPortalReorderRequest request,
+            Principal principal,
+            @RequestParam(required = false) Long dealerId) {
+        Dealer dealer = resolveAuthenticatedDealer(principal, dealerId);
+        DealerPortalReorderResponse response = orderService.createPortalReorder(id, request, principal.getName());
+        if (!dealer.getId().equals(response.getOrder().getDealerId())) {
+            throw new AccessDeniedException("Đơn hàng không thuộc đại lý đang chọn");
+        }
+        String msg = "Đặt lại đơn hàng thành công. Đơn hàng đang ở trạng thái Chờ duyệt.";
+        if (response.getWarnings() != null && !response.getWarnings().isEmpty()) {
+            msg += " Lưu ý: Một số mặt hàng ngừng kinh doanh hoặc không có trong bảng giá đã được loại bỏ.";
+        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(msg, response));
     }
 }

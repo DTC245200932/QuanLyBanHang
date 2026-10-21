@@ -1,5 +1,7 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.DealerPortalReorderItemRequest;
+import com.quanlybanhang.dto.request.DealerPortalReorderRequest;
 import com.quanlybanhang.dto.request.OrderCalculateRequest;
 import com.quanlybanhang.dto.request.OrderInventoryCheckRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
@@ -3423,5 +3425,364 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public byte[] generateOrderBarcode(Long id, String username) {
         return getPdfService().generateOrderBarcode(id, username);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DealerPortalReorderPreviewResponse getPortalReorderPreview(Long sourceOrderId, String username) {
+        Order sourceOrder = orderRepository.findById(sourceOrderId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + sourceOrderId));
+
+        validateOrderViewAccess(sourceOrder, username);
+
+        Dealer dealer = sourceOrder.getDealer();
+        if (dealer == null) {
+            throw new IllegalArgumentException("Đơn hàng không gắn với đại lý cụ thể, không thể thực hiện xem trước đặt lại.");
+        }
+        if (Boolean.TRUE.equals(dealer.getLocked())) {
+            throw new DealerLockedException(dealer.getCode(), dealer.getName(), dealer.getLockReason());
+        }
+        if (Boolean.FALSE.equals(dealer.getActive())) {
+            throw new IllegalArgumentException(String.format("Đại lý '%s' (%s) đã ngừng giao dịch, không thể đặt lại đơn hàng.",
+                    dealer.getName(), dealer.getCode()));
+        }
+
+        CustomerGroup customerGroup = sourceOrder.getCustomerGroup() != null
+                ? sourceOrder.getCustomerGroup()
+                : dealer.getCustomerGroup();
+
+        LocalDate today = LocalDate.now();
+        List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, today);
+        PriceList priceList = effectivePriceLists.isEmpty() ? null : effectivePriceLists.get(0);
+
+        Map<Long, PriceListItem> priceItemMap = new HashMap<>();
+        if (priceList != null && priceList.getItems() != null) {
+            for (PriceListItem pli : priceList.getItems()) {
+                if (pli.getProduct() != null) {
+                    priceItemMap.put(pli.getProduct().getId(), pli);
+                }
+            }
+        }
+
+        List<DealerPortalReorderItemResponse> availableItems = new ArrayList<>();
+        List<DealerPortalDiscontinuedItemResponse> discontinuedItems = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+
+        if (sourceOrder.getItems() != null) {
+            for (OrderItem item : sourceOrder.getItems()) {
+                Product product = item.getProduct();
+                if (product == null || Boolean.FALSE.equals(product.getActive())) {
+                    String pName = product != null ? product.getName() : "Sản phẩm ngừng kinh doanh";
+                    String pCode = product != null ? product.getCode() : "—";
+                    discontinuedItems.add(DealerPortalDiscontinuedItemResponse.builder()
+                            .sourceItemId(item.getId())
+                            .productId(product != null ? product.getId() : null)
+                            .productCode(pCode)
+                            .productName(pName)
+                            .unit(item.getUnit())
+                            .quantity(item.getQuantity())
+                            .reason("Mặt hàng đã ngừng kinh doanh")
+                            .build());
+                    warnings.add(String.format("Mặt hàng '%s' (mã: %s) đã ngừng kinh doanh và được loại khỏi đơn mới.", pName, pCode));
+                    continue;
+                }
+
+                if (priceList == null || !priceItemMap.containsKey(product.getId())) {
+                    discontinuedItems.add(DealerPortalDiscontinuedItemResponse.builder()
+                            .sourceItemId(item.getId())
+                            .productId(product.getId())
+                            .productCode(product.getCode())
+                            .productName(product.getName())
+                            .unit(item.getUnit())
+                            .quantity(item.getQuantity())
+                            .reason("Mặt hàng không có trong bảng giá hiệu lực hiện hành")
+                            .build());
+                    warnings.add(String.format("Mặt hàng '%s' (mã: %s) không có trong bảng giá hiệu lực hiện hành và được loại khỏi đơn mới.", product.getName(), product.getCode()));
+                    continue;
+                }
+
+                PriceListItem pli = priceItemMap.get(product.getId());
+                String unit = item.getUnit() != null && !item.getUnit().isBlank() ? item.getUnit().trim() : product.getUnit();
+                BigDecimal factor;
+                try {
+                    factor = unitConversionService.getConversionFactor(product, unit);
+                } catch (Exception e) {
+                    discontinuedItems.add(DealerPortalDiscontinuedItemResponse.builder()
+                            .sourceItemId(item.getId())
+                            .productId(product.getId())
+                            .productCode(product.getCode())
+                            .productName(product.getName())
+                            .unit(unit)
+                            .quantity(item.getQuantity())
+                            .reason("Đơn vị tính '" + unit + "' không còn khả dụng cho sản phẩm này")
+                            .build());
+                    warnings.add(String.format("Đơn vị tính '%s' của sản phẩm '%s' không còn khả dụng và dòng hàng đã được loại bỏ.", unit, product.getName()));
+                    continue;
+                }
+
+                BigDecimal currentUnitPrice = pli.getSellingPrice().multiply(factor);
+                BigDecimal currentFloorPrice = pli.getFloorPrice() != null ? pli.getFloorPrice().multiply(factor) : null;
+                BigDecimal subtotal = currentUnitPrice.multiply(item.getQuantity());
+
+                List<DealerPortalCatalogItemResponse.PackagingUnitInfo> units = new ArrayList<>();
+                units.add(DealerPortalCatalogItemResponse.PackagingUnitInfo.builder()
+                        .unitName(product.getUnit())
+                        .factor(BigDecimal.ONE)
+                        .price(pli.getSellingPrice())
+                        .build());
+                try {
+                    List<UnitConversionResponse> conversions = unitConversionService.getConversionsByProductId(product.getId());
+                    if (conversions != null) {
+                        for (UnitConversionResponse uc : conversions) {
+                            if (Boolean.TRUE.equals(uc.getIsBaseUnit()) || product.getUnit().equalsIgnoreCase(uc.getUnitName())) continue;
+                            units.add(DealerPortalCatalogItemResponse.PackagingUnitInfo.builder()
+                                    .unitName(uc.getUnitName())
+                                    .factor(uc.getConversionFactor())
+                                    .price(pli.getSellingPrice().multiply(uc.getConversionFactor()))
+                                    .build());
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+
+                availableItems.add(DealerPortalReorderItemResponse.builder()
+                        .sourceItemId(item.getId())
+                        .productId(product.getId())
+                        .productCode(product.getCode())
+                        .productName(product.getName())
+                        .unit(unit)
+                        .baseUnit(product.getUnit())
+                        .conversionFactor(factor)
+                        .quantity(item.getQuantity())
+                        .oldPrice(item.getPrice())
+                        .currentPrice(currentUnitPrice)
+                        .currentFloorPrice(currentFloorPrice)
+                        .subtotalAmount(subtotal)
+                        .units(units)
+                        .build());
+            }
+        }
+
+        boolean canReorder = !availableItems.isEmpty();
+        if (!canReorder) {
+            warnings.add("Không có mặt hàng nào trong đơn cũ có thể đặt lại.");
+        }
+
+        OrderCalculateResponse pricing = null;
+        if (canReorder) {
+            try {
+                List<OrderItemRequest> calcItems = availableItems.stream().map(it -> OrderItemRequest.builder()
+                        .productId(it.getProductId())
+                        .productCode(it.getProductCode())
+                        .unit(it.getUnit())
+                        .quantity(it.getQuantity())
+                        .build()).toList();
+                pricing = calculateOrder(OrderCalculateRequest.builder()
+                        .dealerId(dealer.getId())
+                        .orderDate(today)
+                        .items(calcItems)
+                        .build());
+            } catch (Exception ignored) {
+            }
+        }
+
+        DealerDebtResponse debt = null;
+        if (dealerDebtService != null) {
+            try {
+                debt = dealerDebtService.getDealerDebtInfo(dealer);
+            } catch (Exception ignored) {
+            }
+        }
+
+        return DealerPortalReorderPreviewResponse.builder()
+                .sourceOrderId(sourceOrder.getId())
+                .sourceOrderCode(sourceOrder.getOrderCode())
+                .dealerId(dealer.getId())
+                .dealerCode(dealer.getCode())
+                .dealerName(dealer.getName())
+                .deliveryPointId(sourceOrder.getDeliveryPoint() != null ? sourceOrder.getDeliveryPoint().getId() : null)
+                .deliveryPointName(sourceOrder.getDeliveryPoint() != null ? sourceOrder.getDeliveryPoint().getReceiverName() : null)
+                .deliveryAddress(sourceOrder.getDeliveryPoint() != null ? sourceOrder.getDeliveryPoint().getAddress() : dealer.getAddress())
+                .defaultExpectedDeliveryDate(today.plusDays(3))
+                .availableItems(availableItems)
+                .discontinuedItems(discontinuedItems)
+                .warnings(warnings)
+                .canReorder(canReorder)
+                .pricing(pricing)
+                .debt(debt)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public DealerPortalReorderResponse createPortalReorder(Long sourceOrderId, DealerPortalReorderRequest request, String username) {
+        Order sourceOrder = orderRepository.findById(sourceOrderId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng với ID: " + sourceOrderId));
+
+        validateOrderViewAccess(sourceOrder, username);
+
+        Dealer dealer = sourceOrder.getDealer();
+        if (dealer == null) {
+            throw new IllegalArgumentException("Đơn hàng không gắn với đại lý cụ thể, không thể thực hiện đặt lại.");
+        }
+        if (Boolean.TRUE.equals(dealer.getLocked())) {
+            throw new DealerLockedException(dealer.getCode(), dealer.getName(), dealer.getLockReason());
+        }
+        if (Boolean.FALSE.equals(dealer.getActive())) {
+            throw new IllegalArgumentException(String.format("Đại lý '%s' (%s) đã ngừng giao dịch, không thể đặt lại đơn hàng.",
+                    dealer.getName(), dealer.getCode()));
+        }
+
+        CustomerGroup customerGroup = sourceOrder.getCustomerGroup() != null
+                ? sourceOrder.getCustomerGroup()
+                : dealer.getCustomerGroup();
+
+        LocalDate today = LocalDate.now();
+        List<PriceList> effectivePriceLists = priceListRepository.findEffectivePriceLists(customerGroup, today);
+        PriceList priceList = effectivePriceLists.isEmpty() ? null : effectivePriceLists.get(0);
+
+        Map<Long, PriceListItem> priceItemMap = new HashMap<>();
+        if (priceList != null && priceList.getItems() != null) {
+            for (PriceListItem pli : priceList.getItems()) {
+                if (pli.getProduct() != null) {
+                    priceItemMap.put(pli.getProduct().getId(), pli);
+                }
+            }
+        }
+
+        List<DealerPortalDiscontinuedItemResponse> discontinuedItems = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<OrderItemRequest> validItems = new ArrayList<>();
+
+        boolean isPartialSelection = request != null && request.getItems() != null && !request.getItems().isEmpty();
+
+        if (isPartialSelection) {
+            for (DealerPortalReorderItemRequest itemReq : request.getItems()) {
+                Product product = null;
+                if (itemReq.getProductId() != null) {
+                    product = productRepository.findById(itemReq.getProductId()).orElse(null);
+                } else if (itemReq.getProductCode() != null && !itemReq.getProductCode().isBlank()) {
+                    product = productRepository.findByCode(itemReq.getProductCode().trim().toUpperCase()).orElse(null);
+                }
+
+                if (product == null || Boolean.FALSE.equals(product.getActive())) {
+                    String pName = product != null ? product.getName() : "Sản phẩm ngừng kinh doanh";
+                    String pCode = product != null ? product.getCode() : (itemReq.getProductCode() != null ? itemReq.getProductCode() : "—");
+                    discontinuedItems.add(DealerPortalDiscontinuedItemResponse.builder()
+                            .productId(product != null ? product.getId() : itemReq.getProductId())
+                            .productCode(pCode)
+                            .productName(pName)
+                            .unit(itemReq.getUnit())
+                            .quantity(itemReq.getQuantity())
+                            .reason("Mặt hàng đã ngừng kinh doanh")
+                            .build());
+                    warnings.add(String.format("Mặt hàng '%s' (mã: %s) đã ngừng kinh doanh và được loại khỏi đơn mới.", pName, pCode));
+                    continue;
+                }
+
+                if (priceList == null || !priceItemMap.containsKey(product.getId())) {
+                    discontinuedItems.add(DealerPortalDiscontinuedItemResponse.builder()
+                            .productId(product.getId())
+                            .productCode(product.getCode())
+                            .productName(product.getName())
+                            .unit(itemReq.getUnit())
+                            .quantity(itemReq.getQuantity())
+                            .reason("Mặt hàng không có trong bảng giá hiệu lực hiện hành")
+                            .build());
+                    warnings.add(String.format("Mặt hàng '%s' (mã: %s) không có trong bảng giá hiệu lực hiện hành và được loại khỏi đơn mới.", product.getName(), product.getCode()));
+                    continue;
+                }
+
+                String unit = itemReq.getUnit() != null && !itemReq.getUnit().isBlank() ? itemReq.getUnit().trim() : product.getUnit();
+                validItems.add(OrderItemRequest.builder()
+                        .productId(product.getId())
+                        .productCode(product.getCode())
+                        .unit(unit)
+                        .quantity(itemReq.getQuantity())
+                        .note(itemReq.getNote())
+                        .build());
+            }
+        } else {
+            if (sourceOrder.getItems() != null) {
+                for (OrderItem item : sourceOrder.getItems()) {
+                    Product product = item.getProduct();
+                    if (product == null || Boolean.FALSE.equals(product.getActive())) {
+                        String pName = product != null ? product.getName() : "Sản phẩm ngừng kinh doanh";
+                        String pCode = product != null ? product.getCode() : "—";
+                        discontinuedItems.add(DealerPortalDiscontinuedItemResponse.builder()
+                                .sourceItemId(item.getId())
+                                .productId(product != null ? product.getId() : null)
+                                .productCode(pCode)
+                                .productName(pName)
+                                .unit(item.getUnit())
+                                .quantity(item.getQuantity())
+                                .reason("Mặt hàng đã ngừng kinh doanh")
+                                .build());
+                        warnings.add(String.format("Mặt hàng '%s' (mã: %s) đã ngừng kinh doanh và được loại khỏi đơn mới.", pName, pCode));
+                        continue;
+                    }
+
+                    if (priceList == null || !priceItemMap.containsKey(product.getId())) {
+                        discontinuedItems.add(DealerPortalDiscontinuedItemResponse.builder()
+                                .sourceItemId(item.getId())
+                                .productId(product.getId())
+                                .productCode(product.getCode())
+                                .productName(product.getName())
+                                .unit(item.getUnit())
+                                .quantity(item.getQuantity())
+                                .reason("Mặt hàng không có trong bảng giá hiệu lực hiện hành")
+                                .build());
+                        warnings.add(String.format("Mặt hàng '%s' (mã: %s) không có trong bảng giá hiệu lực hiện hành và được loại khỏi đơn mới.", product.getName(), product.getCode()));
+                        continue;
+                    }
+
+                    String unit = item.getUnit() != null && !item.getUnit().isBlank() ? item.getUnit().trim() : product.getUnit();
+                    validItems.add(OrderItemRequest.builder()
+                            .productId(product.getId())
+                            .productCode(product.getCode())
+                            .unit(unit)
+                            .quantity(item.getQuantity())
+                            .note(item.getNote())
+                            .build());
+                }
+            }
+        }
+
+        if (validItems.isEmpty()) {
+            throw new IllegalArgumentException("Tất cả mặt hàng được chọn đều đã ngừng kinh doanh hoặc không còn trong bảng giá hiệu lực hiện hành, không thể đặt lại đơn.");
+        }
+
+        Long deliveryPointId = request != null && request.getDeliveryPointId() != null
+                ? request.getDeliveryPointId()
+                : (sourceOrder.getDeliveryPoint() != null ? sourceOrder.getDeliveryPoint().getId() : null);
+
+        LocalDate expectedDeliveryDate = request != null && request.getExpectedDeliveryDate() != null
+                ? request.getExpectedDeliveryDate()
+                : today.plusDays(3);
+
+        String note = request != null && request.getNote() != null && !request.getNote().isBlank()
+                ? request.getNote()
+                : (sourceOrder.getNote() != null && !sourceOrder.getNote().isBlank()
+                    ? "[Đặt lại từ đơn " + sourceOrder.getOrderCode() + "] " + sourceOrder.getNote()
+                    : "[Đặt lại từ đơn " + sourceOrder.getOrderCode() + "]");
+
+        OrderRequest orderRequest = OrderRequest.builder()
+                .dealerId(dealer.getId())
+                .deliveryPointId(deliveryPointId)
+                .expectedDeliveryDate(expectedDeliveryDate)
+                .note(note)
+                .items(validItems)
+                .build();
+
+        OrderResponse createdOrder = createPortalOrder(orderRequest, username);
+
+        auditLogService.logAction("INVOICE", createdOrder.getOrderCode(), "REORDER_FROM",
+                sourceOrder.getOrderCode(), createdOrder.getStatus(), username != null ? username : "system");
+
+        return DealerPortalReorderResponse.builder()
+                .order(createdOrder)
+                .excludedItems(discontinuedItems)
+                .warnings(warnings)
+                .build();
     }
 }

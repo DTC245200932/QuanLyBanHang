@@ -54,7 +54,7 @@ class FrontendRoutingTest(unittest.TestCase):
             "/orders": "Đơn hàng",
             "/create-order": "Tạo đơn hàng",
             "/dealer-orders": "Đơn hàng của tôi",
-            "/dealer-portal": "Cổng đại lý",
+            "/dealer-portal": "Cổng đặt hàng đại lý",
             "/order-approval": "Duyệt đơn",
             "/suppliers": "Nhà cung cấp",
             "/profile": "Hồ sơ cá nhân",
@@ -105,6 +105,15 @@ class FrontendRoutingTest(unittest.TestCase):
         status, _, body = self.get('/warehouse/transfers')
         self.assertEqual(status, 200)
         self.assertIn('warehouse-transfers.js', body.decode('utf-8'))
+
+    def test_s508_stocktake_route_keeps_the_shared_shell_and_server_backed_scripts(self):
+        status, _, body = self.get("/warehouse/units?tab=stocktake")
+        self.assertEqual(200, status)
+        html = body.decode("utf-8")
+        for text in ["panel-stocktake", "stocktake-message", "stocktake-history-body", "/js/warehouse-stocktake.js", "/js/app-navigation.js"]:
+            self.assertIn(text, html)
+        self.assertEqual(1, html.count('id="sidebar"'))
+        self.assertEqual(1, html.count('class="main-area"'))
 
     def test_s509_minimum_route(self):
         status, _, body = self.get('/warehouse/minimums')

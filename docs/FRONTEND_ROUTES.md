@@ -30,6 +30,7 @@ Backend vẫn chạy ở cổng 8080 theo cấu hình trong README.
 | Đơn vị tính | `/warehouse/units?tab=units` |
 | Lập chứng từ | `/warehouse/units?tab=receipts` |
 | Sổ cái kho | `/warehouse/units?tab=ledger` |
+| Kiểm kê kho (S5-08) | `/warehouse/units?tab=stocktake` — VIEW hoặc ADJUST để xem/tạo/đếm, ADJUST để chốt; phiếu và số đếm lưu qua `/warehouse/stock-counts` |
 | Tồn kho | `/warehouse/inventory` (tab cũ `?tab=inventory` được chuyển tiếp) |
 | Ngưỡng tồn tối thiểu (S5-09) | `/warehouse/minimums` |
 | Tài khoản nhân sự | `/admin/users` |

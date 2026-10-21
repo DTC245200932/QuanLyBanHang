@@ -1,0 +1,16 @@
+.dashboard-stock-alerts { margin-top: 28px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised); overflow: hidden; }
+.dashboard-stock-alerts.has-low-stock { border-color: #d99725; }
+.dashboard-stock-alert-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; }
+.has-low-stock .dashboard-stock-alert-heading { background: #fff8e8; }
+.dashboard-stock-alert-heading h2 { font-size: 1.125rem; }
+.dashboard-stock-alert-heading p { color: var(--ink-600); margin-top: 7px; line-height: 1.6; }
+.dashboard-stock-alert-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+#dashboard-stock-alert-state,#dashboard-stock-alert-error { padding: 12px 20px; line-height: 1.6; }
+#dashboard-stock-alert-error { color: var(--danger); background: var(--danger-soft); }
+.dashboard-stock-alert-link { display: flex; gap: 16px; justify-content: space-between; align-items: center; padding: 14px 20px; border-top: 1px solid var(--line-light); }
+.dashboard-stock-alert-link:hover { background: #fff8e8; }
+.dashboard-stock-alert-link small { display: block; color: var(--ink-600); margin-top: 6px; }
+.dashboard-stock-alert-link strong { overflow-wrap: anywhere; }
+.dashboard-stock-alert-quantities { color: #8c5900; font-weight: 600; text-align: right; flex-shrink: 0; }
+.dashboard-stock-alerts :is(a,button):focus-visible { outline: 3px solid var(--teal); outline-offset: -3px; }
+@media(max-width:640px){.dashboard-stock-alert-heading,.dashboard-stock-alert-link{align-items:flex-start;flex-direction:column;}.dashboard-stock-alert-quantities{text-align:left;}.dashboard-stock-alert-actions{flex-shrink:1;}}

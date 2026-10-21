@@ -30,7 +30,8 @@ Backend vẫn chạy ở cổng 8080 theo cấu hình trong README.
 | Đơn vị tính | `/warehouse/units?tab=units` |
 | Lập chứng từ | `/warehouse/units?tab=receipts` |
 | Sổ cái kho | `/warehouse/units?tab=ledger` |
-| Tồn kho | `/warehouse/units?tab=inventory` |
+| Tồn kho | `/warehouse/inventory` (tab cũ `?tab=inventory` được chuyển tiếp) |
+| Ngưỡng tồn tối thiểu (S5-09) | `/warehouse/minimums` |
 | Tài khoản nhân sự | `/admin/users` |
 | Nhật ký thao tác | `/admin/audit-logs` |
 | Quên mật khẩu | `/forgot-password` |
@@ -44,6 +45,8 @@ sang đường dẫn mới; tham số truy vấn được giữ lại.
 Server dùng thư viện chuẩn Python, không cần cài thêm package. Khi thêm trang,
 cập nhật `ROUTES` trong `serve_frontend.py` và menu trong `frontend/js/menu-config.js`.
 Không dùng `python -m http.server` cho các đường dẫn ngắn này.
+
+S5-09: **Kho hàng → Ngưỡng tồn tối thiểu** cần `WAREHOUSE_MANAGE` (**Quản lý danh mục kho và vị trí**) hoặc ADMIN. Khai báo theo SKU + kho, phân biệt mức 0 với chưa khai báo. **Tồn kho** và khối cảnh báo trên **Tổng quan** cần `WAREHOUSE_VIEW` (**Xem tồn kho**), không lấy quyền thay thế từ vai trò hoặc MANAGE. `/warehouse/inventory?belowMinimum=true` chỉ hiện hàng có tồn khả dụng dưới ngưỡng. Cả hai quyền tuân theo ma trận đã lưu và phạm vi kho; khởi động lại backend/frontend sau cập nhật mã.
 
 ADMIN mở `/dealer-orders` hoặc `/dealer-portal` sẽ chọn đại lý từ danh sách DB,
 không cần gắn hồ sơ đại lý vào tài khoản admin. Sau khi chọn, URL có `?dealerId=<id>`;

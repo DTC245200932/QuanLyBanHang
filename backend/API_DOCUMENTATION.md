@@ -20,7 +20,7 @@ Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message":
 | Nhập sản phẩm Excel | Preview/import cần cả PRODUCT_CREATE + PRODUCT_EDIT vì file có thể chứa SKU tạo mới và cập nhật; template cần một trong hai |
 | Bảng giá / chiết khấu | Đọc: một trong PRODUCT_VIEW/PRODUCT_EDIT/ORDER_CREATE; ghi: PRODUCT_EDIT; lấy bảng hiệu lực/tính chiết khấu để đặt đơn: ORDER_CREATE |
 | Nhà cung cấp / đơn vị quy đổi | Nhà cung cấp đọc: WAREHOUSE_VIEW/MANAGE, ghi: WAREHOUSE_MANAGE. Đơn vị đọc hỗ trợ quyền tham chiếu của sản phẩm/đặt đơn/kho; ghi: WAREHOUSE_MANAGE |
-| Kho | Nhập: WAREHOUSE_IMPORT; xuất: WAREHOUSE_EXPORT; xác nhận phiếu: WAREHOUSE_APPROVE; điều chỉnh: WAREHOUSE_ADJUST; chuyển: WAREHOUSE_TRANSFER; danh mục kho/vị trí ghi: WAREHOUSE_MANAGE |
+| Kho | Nhập: WAREHOUSE_IMPORT; xuất: WAREHOUSE_EXPORT; xác nhận phiếu: WAREHOUSE_APPROVE; điều chỉnh/chốt kiểm kê: WAREHOUSE_ADJUST; xem/lập kiểm kê: WAREHOUSE_VIEW; chuyển: WAREHOUSE_TRANSFER; danh mục kho/vị trí ghi: WAREHOUSE_MANAGE |
 | Vòng đời đơn / giao hàng | WAREHOUSE_EXPORT; chỉ WAREHOUSE_IMPORT không cho phép xuất/chuyển vòng đời đơn. Giữ các kiểm tra phạm vi kho, thứ tự trạng thái và điều kiện hủy |
 | Sao chép đơn / đơn gần nhất | Cả ORDER_CREATE + ORDER_VIEW, áp dụng cho `/orders/{id}/copy`, `/copy-to-draft`, `/orders/dealer/{dealerId}/last-order-to-draft` và đường tương ứng dưới `/dealers` |
 | Giá vốn / lợi nhuận / công nợ | FINANCE_VIEW_COST_PRICE / FINANCE_VIEW_PROFIT_MARGIN / FINANCE_VIEW_DEBT; thay đổi hạn mức hoặc ngày nợ cần FINANCE_MANAGE, kể cả gửi trường này qua POST/PUT hồ sơ đại lý |
@@ -52,11 +52,14 @@ có vai trò đại lý trả 400. Thông tin tài khoản trả lại có `deal
 | GET | `/portal/orders` | DEALER + ORDER_VIEW, hoặc ADMIN; danh sách giới hạn theo đại lý trong ngữ cảnh |
 | GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW, hoặc ADMIN; đơn ngoài đại lý trong ngữ cảnh trả 403 |
 | POST | `/portal/orders` | DEALER + ORDER_CREATE, hoặc ADMIN; server xác định đại lý và giá |
+| GET | `/portal/orders/{id}/reorder-preview` | DEALER + ORDER_VIEW + ORDER_CREATE, hoặc ADMIN; xem trước đặt lại đơn cũ (S5-02) |
+| POST | `/portal/orders/{id}/reorder` | DEALER + ORDER_CREATE, hoặc ADMIN; đặt lại đơn cũ (toàn bộ hoặc một phần) (S5-02) |
 
 ADMIN không cần liên kết với hồ sơ đại lý. Frontend gọi `GET /portal/dealers`, yêu cầu
 chọn đại lý rồi gửi query `dealerId` cho mọi API dữ liệu cổng (kể cả POST/chi tiết/đặt lại).
 Ví dụ: `GET /portal/profile?dealerId=10`, `GET /portal/orders?dealerId=10`,
-`POST /portal/orders?dealerId=10`. ADMIN không chọn và không có liên kết trả 400 với
+`POST /portal/orders?dealerId=10`, `GET /portal/orders/12/reorder-preview?dealerId=10`,
+`POST /portal/orders/12/reorder?dealerId=10`. ADMIN không chọn và không có liên kết trả 400 với
 thông báo chọn đại lý; ID không tồn tại trả 400. Liên kết sẵn của ADMIN vẫn được hỗ trợ
 khi không có query. DEALER luôn dùng liên kết của tài khoản; query chỉ được trùng ID đó,
 chỉ định đại lý khác trả 403 cho cả đọc và tạo đơn. `dealerId` trong body không chọn
@@ -70,7 +73,7 @@ mỗi đơn vị có `unitName/factor/price`. Giá đơn vị = giá nhóm hiệ
 không lấy giá quy cách chung và không trả giá vốn. Đại lý chưa có nhóm trả 400;
 không tự coi là nhóm cấp 1.
 
-Body đặt hàng hoặc đặt lại các dòng đã chọn:
+Body đặt hàng thông thường (`POST /portal/orders`):
 
 ```json
 {
@@ -81,15 +84,127 @@ Body đặt hàng hoặc đặt lại các dòng đã chọn:
 }
 ```
 
-Không có endpoint `/portal/orders/reorder`. FE chọn dòng/đơn vị/số lượng rồi gọi
-một lần `POST /portal/orders`. Server bỏ giá do client gửi, tự tính giá/chiết khấu
-và lấy đại lý đã xác thực; mọi đơn qua cổng, kể cả ADMIN hỗ trợ, luôn là
-`PENDING_APPROVAL`, chưa giữ tồn; `createdBy` vẫn là người thực hiện thật.
-Menu và guard của trang đặt hàng cần cả `ORDER_CREATE`, `ORDER_VIEW`, `PRODUCT_VIEW`
-để dùng đầy đủ API hồ sơ/công nợ/danh mục; theo dõi đơn cần `ORDER_VIEW`, nút đặt lại
-cần thêm `ORDER_CREATE` và `PRODUCT_VIEW`. ADMIN luôn có toàn bộ quyền theo ma trận.
-Giá và tổng sau chiết khấu khi lưu là kết quả phía server. FE hiện còn thiếu preview
-chiết khấu cho giỏ/đặt lại; không xem tổng giỏ hiện tại là nguồn xác nhận kế toán.
+### Đặt lại đơn đã mua trên Cổng đại lý (S5-02)
+
+Đại lý có thể xem trước và đặt lại một đơn đã mua trước đây:
+
+#### 1. Xem trước đặt lại đơn: `GET /portal/orders/{id}/reorder-preview`
+- **Quyền yêu cầu:** `ROLE_ADMIN` hoặc (`ROLE_DEALER` + `ORDER_VIEW` + `ORDER_CREATE`).
+- **Query param:** `dealerId` (hỗ trợ cho ADMIN chọn đại lý).
+- **Quy tắc nghiệp vụ:**
+  - Kiểm tra quyền truy cập đơn gốc theo phạm vi đại lý (đơn thuộc đại lý khác trả 403).
+  - Tách các dòng hàng thành hai nhóm:
+    - `availableItems`: Mặt hàng còn kinh doanh (`active = true`) và có trong bảng giá hiệu lực hiện hành của nhóm đại lý. Giá được tính lại theo đơn giá hiện hành (kèm danh sách đơn vị quy đổi có sẵn).
+    - `discontinuedItems`: Mặt hàng đã ngừng kinh doanh (`active = false`) hoặc không còn trong bảng giá hiệu lực hiện hành, kèm lý do (`reason`).
+  - Cung cấp danh sách `warnings`, cờ `canReorder` (`true` nếu có ít nhất 1 mặt hàng khả dụng), thông tin công nợ hiện tại (`currentDebt`, `debtLimit`, `remainingCredit`).
+- **Response mẫu:**
+```json
+{
+  "success": true,
+  "message": "Xem trước đặt lại đơn hàng thành công",
+  "data": {
+    "originalOrderId": 101,
+    "originalOrderCode": "ORD-20261015-001",
+    "dealerId": 5,
+    "dealerCode": "DL005",
+    "dealerName": "Đại lý Ánh Dương",
+    "canReorder": true,
+    "totalAmount": 1500000,
+    "currentDebt": 5000000,
+    "debtLimit": 20000000,
+    "remainingCredit": 15000000,
+    "warnings": [
+      "Mặt hàng 'Sản phẩm Cũ (SKU-OLD)' đã ngừng kinh doanh và sẽ được loại khỏi đơn đặt lại."
+    ],
+    "availableItems": [
+      {
+        "lineItemId": 1,
+        "productId": 10,
+        "productCode": "SKU-010",
+        "productName": "Sữa tươi Ba Vì 1L",
+        "unit": "thùng",
+        "factor": 12,
+        "originalUnitPrice": 240000,
+        "currentUnitPrice": 250000,
+        "priceChanged": true,
+        "originalQuantity": 5,
+        "recommendedQuantity": 5,
+        "subtotal": 1250000,
+        "availableUnits": [
+          { "unitName": "hộp", "factor": 1, "price": 20833 },
+          { "unitName": "thùng", "factor": 12, "price": 250000 }
+        ]
+      }
+    ],
+    "discontinuedItems": [
+      {
+        "productId": 99,
+        "productCode": "SKU-OLD",
+        "productName": "Sản phẩm Cũ",
+        "unit": "chai",
+        "quantity": 10,
+        "originalUnitPrice": 15000,
+        "reason": "Sản phẩm đã ngừng kinh doanh"
+      }
+    ]
+  }
+}
+```
+
+#### 2. Thực hiện đặt lại đơn: `POST /portal/orders/{id}/reorder`
+- **Quyền yêu cầu:** `ROLE_ADMIN` hoặc (`ROLE_DEALER` + `ORDER_CREATE`).
+- **Query param:** `dealerId` (hỗ trợ cho ADMIN chọn đại lý).
+- **Request body (`DealerPortalReorderRequest`):**
+  - `items`: Danh sách dòng hàng chọn đặt lại (`productId`, `unit`, `quantity`). Nếu `items` là `null` hoặc rỗng `[]`, hệ thống tự động đặt lại **toàn bộ** các dòng hàng còn khả dụng từ đơn gốc theo số lượng/đơn vị ban đầu.
+  - `deliveryPointId`: Điểm giao hàng (tùy chọn, mặc định lấy theo điểm giao hàng của đơn gốc nếu hợp lệ).
+  - `expectedDeliveryDate`: Ngày giao dự kiến (tùy chọn).
+  - `note`: Ghi chú đơn mới (tùy chọn).
+```json
+{
+  "deliveryPointId": 1,
+  "expectedDeliveryDate": "2026-10-25",
+  "note": "Đặt lại định kỳ",
+  "items": [
+    { "productId": 10, "unit": "thùng", "quantity": 5 }
+  ]
+}
+```
+- **Quy tắc tạo đơn:**
+  - Loại bỏ hoàn toàn các mặt hàng đã ngừng kinh doanh hoặc không còn trong bảng giá hiệu lực hiện hành.
+  - Nếu tất cả các mặt hàng đều bị ngừng kinh doanh / không hợp lệ: trả lỗi 400 kèm thông báo rõ ràng.
+  - Áp dụng đơn giá theo bảng giá / chính sách hiện hành (không kế thừa đơn giá cũ).
+  - Đơn mới luôn được tạo ở trạng thái Chờ duyệt (`PENDING_APPROVAL`).
+  - Ghi nhận Audit Log hành động `REORDER_FROM` kèm mã đơn gốc.
+- **Response mẫu (`DealerPortalReorderResponse`):**
+```json
+{
+  "success": true,
+  "message": "Đặt lại đơn hàng thành công",
+  "data": {
+    "order": {
+      "id": 205,
+      "code": "ORD-20261021-002",
+      "status": "PENDING_APPROVAL",
+      "totalAmount": 1250000,
+      "orderDate": "2026-10-21"
+    },
+    "excludedItems": [
+      {
+        "productId": 99,
+        "productCode": "SKU-OLD",
+        "productName": "Sản phẩm Cũ",
+        "unit": "chai",
+        "quantity": 10,
+        "originalUnitPrice": 15000,
+        "reason": "Sản phẩm đã ngừng kinh doanh"
+      }
+    ],
+    "warnings": [
+      "Có 1 mặt hàng đã ngừng kinh doanh hoặc hết hiệu lực giá được loại khỏi đơn mới: SKU-OLD"
+    ]
+  }
+}
+```
 
 ### Danh sách, duyệt đơn và lịch sử
 
@@ -496,6 +611,41 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | GET | `/warehouse/inventory/lots` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Xem danh sách tồn kho chi tiết theo từng Số lô và Hạn sử dụng (S5-04) |
 | GET | `/warehouse/vouchers` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Danh sách phiếu kho (hỗ trợ lọc theo `warehouseId`, `type`, `status`: DRAFT/CONFIRMED/ADJUSTED, `supplierId`) |
 | GET | `/warehouse/vouchers/{id}` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Chi tiết phiếu kho kèm thông tin NCC, số chứng từ, số lô, HSD và đóng băng quy đổi |
+| GET | `/warehouse/stock-counts/options` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Tùy chọn kiểm kê (kho trong phạm vi, nhóm hàng, trạng thái, canAdjust) |
+| GET | `/warehouse/stock-counts` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Danh sách phiếu kiểm kê (lọc theo warehouseId, categoryId, status, keyword; phân trang) |
+| GET | `/warehouse/stock-counts/{id}` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Chi tiết phiếu kiểm kê kèm danh sách sản phẩm, tồn sổ, số thực đếm, chênh lệch |
+| POST | `/warehouse/stock-counts` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Tạo phiếu kiểm kê kho (theo kho hoặc theo nhóm hàng, chốt tồn sổ tại thời điểm tạo) |
+| PUT | `/warehouse/stock-counts/{id}/items` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Cập nhật số đếm thực tế cho các dòng sản phẩm, tự động tính chênh lệch từng dòng |
+| POST | `/warehouse/stock-counts/{id}/complete` | **`WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` (CHỈ Quản lý kho)** | Chốt kiểm kê, điều chỉnh tồn sổ về số thực đếm và bắt buộc nhập lý do |
+| POST | `/warehouse/stock-counts/{id}/cancel` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Hủy phiếu kiểm kê ở trạng thái mới tạo (DRAFT) |
+
+### Kiểm kê kho và ghi nhận chênh lệch (S5-08)
+
+Dành cho vai trò **Quản lý kho (`ROLE_WAREHOUSE_MANAGER`)** và Thủ kho (`ROLE_WAREHOUSE_STAFF`):
+1. **Tạo phiếu kiểm kê theo kho hoặc theo nhóm hàng**:
+   - `warehouseId` (bắt buộc): Kho cần kiểm kê.
+   - `categoryId` (tùy chọn): Nhóm hàng cần kiểm kê. Nếu để trống, hệ thống đưa toàn bộ sản phẩm đang hoạt động trong kho vào danh sách kiểm kê.
+   - `code` (tùy chọn): Mã phiếu kiểm kê (tự sinh `PKK-yyyyMMddHHmmssSSS` nếu để trống).
+   - `note` (tùy chọn): Ghi chú phiếu kiểm kê.
+   - **Chốt tồn sổ sách tại thời điểm tạo**: Hệ thống tự động snapshot số lượng tồn sổ sách hiện tại (`bookQuantity`) theo đơn vị cơ sở cho từng sản phẩm. Trạng thái ban đầu là `DRAFT`.
+2. **Nhập số đếm thực tế & Tự động tính chênh lệch từng dòng**:
+   - Nhân viên kiểm đếm nhập `actualQuantity` (số lượng thực tế theo đơn vị cơ sở, >= 0) cho từng sản phẩm.
+   - Hệ thống tự động tính `differenceQuantity = actualQuantity - bookQuantity`:
+     - Giá trị dương (> 0): Thừa thực tế so với sổ sách.
+     - Giá trị âm (< 0): Thiếu thực tế so với sổ sách (hao hụt, mất mát...).
+     - Bằng 0: Số thực tế khớp hoàn toàn với sổ sách.
+   - Cho phép nhập ghi chú riêng cho từng dòng sản phẩm để giải trình chênh lệch cục bộ.
+3. **Chốt kiểm kê và Điều chỉnh tồn kho về số thực đếm**:
+   - **Bắt buộc nhập lý do giải trình** (`reason` không được để trống).
+   - Kiểm tra tất cả sản phẩm trong phiếu đã có số thực đếm.
+   - Hệ thống tự động cập nhật số lượng tồn kho `WarehouseInventory.baseQuantity = actualQuantity`.
+   - Ghi nhận nhật ký thao tác `AuditLog` cho từng sản phẩm bị điều chỉnh lệch tồn và cho toàn bộ phiếu kiểm kê.
+   - Chuyển trạng thái phiếu sang `COMPLETED`, lưu người chốt và thời điểm chốt.
+4. **Phân quyền ma trận và Giới hạn quyền chốt kiểm kê**:
+   - **Chỉ Quản lý kho (`WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`)** mới được quyền chốt kiểm kê (`POST /api/warehouse/stock-counts/{id}/complete`).
+   - Thủ kho (`ROLE_WAREHOUSE_STAFF`) chỉ có quyền xem, tạo phiếu và nhập số đếm thực tế, nếu gọi API chốt kiểm kê sẽ bị từ chối `403 Forbidden`.
+   - Thu hồi quyền `WAREHOUSE_ADJUST` khỏi vai trò Quản lý kho trong ma trận phân quyền sẽ lập tức vô hiệu hóa khả năng chốt kiểm kê ở request kế tiếp (không fallback theo role cứng).
+   - Kiểm tra phạm vi kho: Người dùng chỉ được kiểm kê trên các kho được gán.
 
 ### Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (S5-04)
 
@@ -538,26 +688,36 @@ Hỗ trợ Nhân viên kho lập phiếu chuyển kho nội bộ để điều h
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| POST | `/warehouse/transfers` (hoặc `/warehouse/transfer`) | `WAREHOUSE_TRANSFER`, `WAREHOUSE_EXPORT`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu chuyển kho nội bộ. Trừ tồn kho tại kho xuất, ghi nhận hàng đang trên đường (`inTransitQuantity`), CHƯA cộng vào kho nhập |
-| GET | `/warehouse/transfers` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_VIEW`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Danh sách phiếu chuyển kho (hỗ trợ lọc `fromWarehouseId`, `toWarehouseId`, `status`) |
-| GET | `/warehouse/transfers/{id}` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_VIEW`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_VIEWER` | Chi tiết phiếu chuyển kho |
-| POST | `/warehouse/transfers/{id}/receive` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_IMPORT`, `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Kho đến xác nhận nhận hàng. Nhận đủ hoặc thực nhận; tồn kho đến mới được cộng; chênh lệch bắt buộc nhập lý do |
-| POST | `/warehouse/transfers/{id}/cancel` | `WAREHOUSE_TRANSFER`, `WAREHOUSE_APPROVE`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Hủy phiếu chuyển kho khi đang trên đường (`IN_TRANSIT`); hoàn tồn cho kho xuất và xóa hàng trên đường |
+| POST | `/warehouse/transfers` (hoặc `/warehouse/transfer`) | `WAREHOUSE_TRANSFER` hoặc ADMIN | Kho đi thuộc phạm vi được giao; trừ tồn khả dụng ở kho đi, ghi hàng đang trên đường tại kho đến; không cộng tồn thực tế kho đến |
+| GET | `/warehouse/transfers` | `WAREHOUSE_TRANSFER` hoặc `WAREHOUSE_VIEW` hoặc ADMIN | Giữ DTO danh sách cũ; chỉ phiếu có kho đi hoặc kho đến thuộc phạm vi; lọc `fromWarehouseId`, `toWarehouseId`, `status` |
+| GET | `/warehouse/transfers/search` | Như API danh sách | Trả `data.content`, `totalElements`, `totalPages`, `number`, `last`; thêm `keyword` theo mã phiếu, `page` mặc định 0, `size` mặc định 20 (1–200) |
+| GET | `/warehouse/transfers/options` | Như API danh sách | `sourceWarehouses`: kho hoạt động trong phạm vi; `destinationWarehouses`: danh mục kho đến hoạt động; `statuses`: value/label từ server; `canCreate`: quyền thao tác hiện tại |
+| GET | `/warehouse/transfers/products?warehouseId=1&keyword=SKU&page=0&size=20` | Như API danh sách | Kho đi phải trong phạm vi; sản phẩm đang hoạt động có sổ tồn tại kho; DTO hẹp `productId/productCode/productName/unit/physicalQuantity/reservedQuantity/availableQuantity`, phân trang; không cần thêm quyền sản phẩm/đơn hàng, không trả giá vốn/giá bán |
+| GET | `/warehouse/transfers/{id}` | Như API danh sách | Chi tiết trong phạm vi, kèm `canReceive`, `canCancel` do server kiểm quyền và kho tương ứng |
+| POST | `/warehouse/transfers/{id}/receive` | `WAREHOUSE_TRANSFER` hoặc ADMIN | Chỉ kho đến trong phạm vi; khóa phiếu và tồn; nhận đủ/thực nhận; chênh lệch bắt buộc lý do |
+| POST | `/warehouse/transfers/{id}/cancel` | `WAREHOUSE_TRANSFER` hoặc ADMIN | Chỉ kho đi trong phạm vi; bắt buộc `reason` 1–500 ký tự; chỉ IN_TRANSIT; hoàn tồn kho đi, xóa phần đang chuyển của phiếu |
+
+Quyền lấy từ ma trận DB ở mỗi request, không có fallback role. Bỏ `WAREHOUSE_TRANSFER` vẫn có thể xem nếu còn `WAREHOUSE_VIEW`, nhưng cả ba API POST đều trả 403. Bỏ cả hai thì không được xem/menu bị ẩn. ADMIN luôn toàn quyền. Kho được gán giới hạn mọi vai trò; riêng vai trò kho không được gán kho thì phạm vi rỗng, không tự mở toàn hệ thống. Không yêu cầu quyền IMPORT/EXPORT/PRODUCT_VIEW làm điều kiện phụ.
+
+Frontend: **Kho hàng → Chuyển kho nội bộ**, URL `/warehouse/transfers`, dùng app shell và khung nội dung chung. UI lập phiếu chọn sản phẩm theo **đơn vị cơ sở của tồn kho**; API vẫn hỗ trợ đơn vị quy đổi và đóng băng hệ số tại thời điểm tạo phiếu.
 
 #### Quy tắc nghiệp vụ chuyển kho (S5-07):
 1. **Lập phiếu chuyển**:
    - Chọn kho xuất (`fromWarehouseId`), kho nhập (`toWarehouseId`), danh sách sản phẩm, số lượng và đơn vị tính (thùng, lốc, lon...).
    - Kho xuất và kho nhập không được trùng nhau. Cả hai kho phải đang hoạt động (`active = true`).
-   - Kiểm tra tồn kho cơ sở tại kho xuất: nếu tồn kho không đủ để chuyển, hệ thống chặn với lỗi `400 Bad Request` ("Kho xuất không đủ tồn kho...").
+   - Kiểm tra **tồn khả dụng = tồn thực tế − tồn giữ chỗ**; không lấy hàng đã giữ chỗ để chuyển. Khóa ghi kho/phiếu/tồn theo thứ tự ổn định để bảo vệ nhận/hủy lặp, hai phiếu chuyển đồng thời hoặc chuyển cạnh tranh với đơn đặt hàng.
+   - Từ 1–200 dòng, không trùng SKU; số lượng dương tối đa 4 số thập phân. Mã phiếu để trống/null thì tự sinh ở backend, nhập riêng thì dùng mã đó (tối đa 50 ký tự, duy nhất).
    - Khi tạo thành công: tồn kho tại kho xuất bị trừ ngay lập tức; hàng được ghi nhận là đang trên đường chuyển (`status = IN_TRANSIT`, `inTransitQuantity` tại kho nhập tăng lên tương ứng); tồn kho khả dụng (`baseQuantity`) tại kho nhập **CHƯA ĐƯỢC CỘNG**.
 2. **Xác nhận nhận hàng tại kho đến**:
    - Chỉ được xác nhận khi phiếu ở trạng thái `IN_TRANSIT`.
    - Nếu nhận đủ: `receivedQuantity` bằng số lượng xuất, tồn kho đến được cộng đủ, `inTransitQuantity` trừ về 0, trạng thái thành `COMPLETED`.
-   - Nếu có chênh lệch (`receivedQuantity != quantity`): **BẮT BUỘC** phải nhập lý do (`discrepancyReason`). Nếu không nhập lý do, hệ thống trả về lỗi `400 Bad Request` ("Chênh lệch khi nhận hàng bắt buộc phải nhập lý do").
+   - Nếu có chênh lệch (`receivedQuantity != quantity`), kể cả nhận thừa hoặc 0: **BẮT BUỘC** lý do `discrepancyReason` 1–500 ký tự; không nhập trả 400. Lưu số chuyển, thực nhận, chênh lệch và lý do theo dòng để đối chiếu.
+   - Body vắng/null, `items` vắng hoặc `[]` giữ tương thích nhận đủ. Nếu truyền danh sách thực nhận thì phải có đủ tất cả dòng; dùng `itemId` (ưu tiên) hoặc `productId` duy nhất thuộc phiếu; từ chối dòng lạ/trùng/mâu thuẫn ID, thiếu/âm số lượng. Toàn bộ cập nhật nằm trong một transaction, lỗi ở dòng sau không làm cộng tồn dòng trước.
    - Tồn kho tại kho nhập chỉ được cộng đúng số lượng thực nhận (`receivedBaseQuantity`).
 3. **Hủy phiếu chuyển kho**:
    - Chỉ áp dụng cho phiếu đang ở trạng thái `IN_TRANSIT`.
    - Hoàn lại tồn kho cho kho xuất và xóa lượng đang trên đường tại kho nhập. Trạng thái phiếu thành `CANCELLED`.
+   - Gửi `{ "reason": "Lý do hủy phiếu" }`. Phiếu đã nhận hoặc đã hủy không thể nhận/hủy lần nữa. Lịch sử xuất/nhận/hủy được ghi audit; không thay đổi schema hoặc seed trong S5-07.
 
 #### Ví dụ Request tạo phiếu chuyển kho (`POST /api/warehouse/transfers`):
 ```json
@@ -2345,6 +2505,38 @@ HTTP/1.1 200 OK
 Content-Type: image/png
 ```
 Response Body: Binary data PNG (ảnh mã vạch Code 128)
+
+### S5-09 — Ngưỡng tồn tối thiểu và cảnh báo — 20/10/2026
+
+Nguồn AC: `4. Product Backlog!A62:F62`. Menu **Kho hàng → Ngưỡng tồn tối thiểu**, URL `/warehouse/minimums`; cảnh báo hiển thị trong **Tồn kho** và **Tổng quan**. Các endpoint dưới đây có prefix `/api`.
+
+| Method | Endpoint | Quyền ma trận | Dữ liệu / hành vi |
+|---|---|---|---|
+| GET | `/warehouse/stock-minimums/options` | `WAREHOUSE_MANAGE` hoặc ADMIN | Kho được phép khai báo và danh mục nhóm hàng tối thiểu `{id,code,name}` |
+| GET | `/warehouse/stock-minimums` | `WAREHOUSE_MANAGE` hoặc ADMIN | Page khai báo theo SKU–kho; không trả tồn thực tế/giữ chỗ/khả dụng, giá bán hoặc giá vốn |
+| PUT | `/warehouse/stock-minimums/{warehouseId}/{productId}` | `WAREHOUSE_MANAGE` hoặc ADMIN | Tạo/cập nhật mức tối thiểu; body `{"minimumQuantity":7.2501,"baseUnit":"lon"}`; trả projection khai báo |
+| DELETE | `/warehouse/stock-minimums/{warehouseId}/{productId}` | `WAREHOUSE_MANAGE` hoặc ADMIN | Bỏ khai báo, idempotent; không đổi lượng tồn hoặc giữ chỗ |
+| GET | `/warehouse/stock-alerts` | `WAREHOUSE_VIEW` hoặc ADMIN | Page dòng dưới ngưỡng với cùng DTO sổ tồn; mặc định `page=0&size=5` |
+| GET | `/warehouse/stock-ledger?belowMinimum=true` | `WAREHOUSE_VIEW` hoặc ADMIN | Bổ sung bộ lọc dưới ngưỡng vào sổ tồn; kết hợp các bộ lọc S5-05 hiện có |
+
+Hai API danh sách khai báo/cảnh báo nhận `warehouseId`, `categoryId`, `keyword` (mã/tên, tối đa 150 ký tự, `%/_/!` được escape), `page >= 0`, `size` 1–200. Khai báo mặc định 20 dòng; thứ tự mã kho/mã SKU/ID ổn định. ID kho/nhóm/sản phẩm phải dương. Kho ngoài phạm vi trả 403; dữ liệu không hợp lệ hoặc SKU không tồn tại khi lưu trả 400.
+
+Projection khai báo gồm `warehouseId/Code/Name`, `productId/Code/Name`, `categoryName`, `baseUnit`, `minimumQuantity`, `minimumUnit`, `minimumUnitMatches`, `warehouseActive`, `productActive`, `updatedBy`, `updatedAt`. Người chỉ có MANAGE không phải xin thêm VIEW/PRODUCT_VIEW để cấu hình và cũng không đọc được số tồn qua API này.
+
+Sổ tồn/cảnh báo bổ sung `minimumQuantity` (null nếu chưa khai báo), `minimumUnit` (đơn vị lúc lưu), `minimumUnitMatches`, `belowMinimum`. Ba trạng thái tồn S5-05 không thay đổi; cờ dưới ngưỡng là điều kiện độc lập do backend tính, frontend không tự suy cảnh báo.
+
+Quy tắc:
+
+- Ngưỡng riêng cho mỗi `(warehouse_id, product_id)`, đơn vị cơ sở tại kho. Mức tối thiểu không âm, tối đa 11 chữ số nguyên và 4 số thập phân; bắt buộc gửi lại `baseUnit` hiện tại. Kho/SKU ngừng hoạt động không được khai báo mới hoặc sửa.
+- Cảnh báo khi **`max(tồn thực tế − giữ chỗ, 0) < mức tối thiểu`**; không cộng hàng đang chuyển. Bằng ngưỡng không cảnh báo. Mức 0 khác chưa khai báo nhưng cả hai không phát cảnh báo. SKU chưa có dòng tồn được xem khả dụng 0; cấu hình không tự tạo dòng tồn vật lý.
+- Chỉ cảnh báo kho/SKU đang hoạt động và đơn vị ngưỡng còn khớp. Nếu đơn vị sổ tồn đổi, giữ snapshot cũ, hiển thị yêu cầu khai báo lại, không tự đổi số hay diễn giải ngưỡng theo đơn vị mới.
+- Cảnh báo truy vấn lại số tồn hiện tại, không lưu cờ cảnh báo lỗi thời. Dashboard nạp khi mở/quay lại cửa sổ và mỗi 30 giây khi trang hiển thị; có Tải lại. Lỗi đọc hiển thị chưa xác định, không coi là không có hàng thiếu.
+- Token hiện tại kiểm lại ma trận trên mỗi API; MANAGE không thay VIEW hoặc ngược lại. Thu hồi MANAGE chặn toàn bộ cấu hình bằng 403 và ẩn menu/đóng form; thu hồi VIEW chặn ledger/alerts và xóa khối cảnh báo. Không fallback theo role. ADMIN luôn được phép; vai trò chỉ giới hạn phạm vi.
+- Phạm vi thống nhất S5-05: tài khoản đã gán kho chỉ thao tác tập kho đó; vai trò kho thiếu phân công nhận tập rỗng, không được xem/cấu hình toàn hệ thống. Vai trò nội bộ khác không gán kho giữ quy ước toàn hệ thống nhưng vẫn cần đúng quyền. Đại lý vẫn chịu DealerApiScopeFilter hiện có.
+
+Lưu trữ mới: bảng **`warehouse_stock_minimums`**, unique `(warehouse_id, product_id)`, `minimum_quantity DECIMAL(15,4)`, `base_unit`, `updated_by`, `updated_at`. Ghi trong transaction, khóa kho chống upsert trùng đồng thời, audit `INVENTORY / SET_MINIMUM` và `CLEAR_MINIMUM`. FK xóa cấu hình phụ thuộc khi SKU/kho chưa phát sinh giao dịch được xóa hợp lệ; không thay quy tắc chặn xóa dữ liệu có giao dịch hiện có.
+
+Cần khởi động lại backend để Hibernate tạo bảng theo cấu hình `ddl-auto=update` hiện hành; tài khoản DB phải có quyền CREATE/ALTER. Nếu môi trường dùng `validate` hoặc migration riêng, phải triển khai bảng tương ứng trước khi sử dụng API sổ tồn mới. Không thay quyền đã lưu, seed dữ liệu hay đổi schema DB thật trong đợt triển khai mã này. Kiểm thử dùng H2/MySQL-mode, chưa nghiệm thu MySQL thật. Khởi động lại server frontend để nhận route mới.
 
 ### S5-05 — Sổ tồn theo SKU và kho — 20/10/2026
 

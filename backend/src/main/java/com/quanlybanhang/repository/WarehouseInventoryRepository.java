@@ -15,6 +15,21 @@ import java.util.Optional;
 
 @Repository
 public interface WarehouseInventoryRepository extends JpaRepository<WarehouseInventory, Long> {
+    @Query(value = """
+            select i from WarehouseInventory i join fetch i.product p
+             where i.warehouse.id = :warehouseId and p.active = true
+               and (:keyword is null or lower(p.code) like :keyword escape '!'
+                    or lower(p.name) like :keyword escape '!')
+             order by p.code, p.id
+            """, countQuery = """
+            select count(i) from WarehouseInventory i join i.product p
+             where i.warehouse.id = :warehouseId and p.active = true
+               and (:keyword is null or lower(p.code) like :keyword escape '!'
+                    or lower(p.name) like :keyword escape '!')
+            """)
+    org.springframework.data.domain.Page<WarehouseInventory> findTransferStock(
+            @Param("warehouseId") Long warehouseId, @Param("keyword") String keyword,
+            org.springframework.data.domain.Pageable pageable);
 
     Optional<WarehouseInventory> findByWarehouseIdAndProductId(Long warehouseId, Long productId);
 

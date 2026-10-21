@@ -26,6 +26,10 @@
 .stock-table th:last-child { width: 13%; }
 .stock-table .stock-number { text-align: right; font-variant-numeric: tabular-nums; }
 .stock-available { color: var(--teal-deep); font-weight: 700; background: rgba(47,184,138,.025); }
+.stock-row--below-minimum { background: #fff8e8; }
+.stock-row--below-minimum td:first-child { box-shadow: inset 3px 0 #d99725; }
+.stock-minimum-warning { color: #8c5900 !important; }
+.stock-minimum-note { font-size: .875rem; color: var(--ink-600); line-height: 1.6; }
 .stock-table strong { font-weight: 600; display: block; margin-bottom: 4px; }
 .stock-table small { color: var(--ink-600); }
 .stock-table .stock-empty { text-align: center; padding: 36px 20px; color: var(--ink-600); }

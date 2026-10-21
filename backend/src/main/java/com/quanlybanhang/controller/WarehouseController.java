@@ -455,6 +455,29 @@ public class WarehouseController {
         return ApiResponse.success("Danh sách phiếu chuyển kho", list);
     }
 
+    @GetMapping("/transfers/options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_TRANSFER')")
+    public ApiResponse transferOptions() {
+        return ApiResponse.success("Bộ chọn chuyển kho", warehouseService.getTransferOptions());
+    }
+
+    @GetMapping("/transfers/products")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_TRANSFER')")
+    public ApiResponse transferProducts(@RequestParam Long warehouseId, @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.success("Hàng tại kho đi", warehouseService.getTransferStock(warehouseId, keyword, page, size));
+    }
+
+    @GetMapping("/transfers/search")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_TRANSFER')")
+    public ApiResponse searchTransfers(@RequestParam(required = false) Long fromWarehouseId,
+            @RequestParam(required = false) Long toWarehouseId, @RequestParam(required = false) WarehouseTransferStatus status,
+            @RequestParam(required = false) String keyword, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.success("Danh sách phiếu chuyển kho", warehouseService.searchTransfers(
+                fromWarehouseId, toWarehouseId, status, keyword, page, size));
+    }
+
     /**
      * Chi tiết phiếu chuyển kho nội bộ theo ID.
      */

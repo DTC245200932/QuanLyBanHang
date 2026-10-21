@@ -1,6 +1,9 @@
 package com.quanlybanhang.service;
 
+import com.quanlybanhang.dto.request.DealerPortalReorderRequest;
 import com.quanlybanhang.dto.request.OrderRequest;
+import com.quanlybanhang.dto.response.DealerPortalReorderPreviewResponse;
+import com.quanlybanhang.dto.response.DealerPortalReorderResponse;
 import com.quanlybanhang.dto.response.OrderResponse;
 
 import java.time.LocalDate;
@@ -245,4 +248,18 @@ public interface OrderService {
      * S4-08: Tạo ảnh mã vạch Code 128 tra cứu cho đơn hàng.
      */
     byte[] generateOrderBarcode(Long id, String username);
+
+    /**
+     * S5-02: Xem trước đơn đặt lại từ đơn hàng cũ cho Đại lý.
+     * Tự động phân loại mặt hàng còn kinh doanh vs đã ngừng kinh doanh / không còn trong bảng giá,
+     * áp lại giá theo bảng giá hiệu lực hiện hành.
+     */
+    DealerPortalReorderPreviewResponse getPortalReorderPreview(Long sourceOrderId, String username);
+
+    /**
+     * S5-02: Đại lý đặt lại toàn bộ hoặc một phần đơn hàng cũ.
+     * Mặt hàng đã ngừng kinh doanh được loại khỏi đơn mới kèm thông báo.
+     * Giá được áp lại theo bảng giá hiện hành, đơn mới tạo ở trạng thái Chờ duyệt.
+     */
+    DealerPortalReorderResponse createPortalReorder(Long sourceOrderId, DealerPortalReorderRequest request, String username);
 }

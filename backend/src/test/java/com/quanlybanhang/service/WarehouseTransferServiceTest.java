@@ -12,6 +12,10 @@ import com.quanlybanhang.repository.WarehouseInventoryRepository;
 import com.quanlybanhang.repository.WarehouseRepository;
 import com.quanlybanhang.repository.WarehouseTransferRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,7 +57,7 @@ class WarehouseTransferServiceTest {
     private AuditLogService auditLogService;
 
     @InjectMocks
-    private WarehouseServiceImpl warehouseService;
+    private WarehouseTransferService warehouseService;
 
     private Warehouse khoTong;
     private Warehouse khoChiNhanh;
@@ -63,6 +67,7 @@ class WarehouseTransferServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("admin-test", "unused", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         khoTong = Warehouse.builder().id(1L).code("KHO-TONG").name("Kho Tổng").active(true).build();
         khoChiNhanh = Warehouse.builder().id(2L).code("KHO-CN").name("Kho Chi Nhánh").active(true).build();
 
@@ -73,6 +78,11 @@ class WarehouseTransferServiceTest {
                 .unit("lon")
                 .price(new BigDecimal("19000"))
                 .build();
+
+        lenient().when(warehouseRepository.findByIdForUpdate(1L)).thenAnswer(inv -> Optional.of(khoTong));
+        lenient().when(warehouseRepository.findByIdForUpdate(2L)).thenAnswer(inv -> Optional.of(khoChiNhanh));
+        lenient().when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 10L)).thenAnswer(inv -> Optional.of(tonKhoTong));
+        lenient().when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(2L, 10L)).thenAnswer(inv -> Optional.of(tonKhoChiNhanh));
 
         // Kho tổng ban đầu có 500 lon
         tonKhoTong = WarehouseInventory.builder()
@@ -95,6 +105,9 @@ class WarehouseTransferServiceTest {
                 .build();
     }
 
+    @AfterEach
+    void clearAuthentication() { SecurityContextHolder.clearContext(); }
+
     @Test
     @DisplayName("Tạo phiếu chuyển kho thành công: trừ tồn kho xuất, ghi nhận đang trên đường, kho đến chưa cộng")
     void createTransfer_Success_DeductsFromSource_RecordsInTransit_NotAddedToDestination() {
@@ -109,15 +122,15 @@ class WarehouseTransferServiceTest {
                         .build()))
                 .build();
 
-        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoTong));
-        when(warehouseRepository.findById(2L)).thenReturn(Optional.of(khoChiNhanh));
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoTong));
+        when(warehouseRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(khoChiNhanh));
         when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
         when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
-        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(tonKhoTong));
-        when(inventoryRepository.findByWarehouseIdAndProductId(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
-        when(warehouseTransferRepository.save(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 10L)).thenReturn(Optional.of(tonKhoTong));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
+        when(warehouseTransferRepository.saveAndFlush(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        WarehouseTransferResponse response = warehouseService.createTransfer(request, "thukho01");
+        WarehouseTransferResponse response = warehouseService.create(request, "thukho01");
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(WarehouseTransferStatus.IN_TRANSIT);
@@ -142,7 +155,7 @@ class WarehouseTransferServiceTest {
 
         verify(inventoryRepository).save(tonKhoTong);
         verify(inventoryRepository).save(tonKhoChiNhanh);
-        verify(warehouseTransferRepository).save(any(WarehouseTransfer.class));
+        verify(warehouseTransferRepository).saveAndFlush(any(WarehouseTransfer.class));
     }
 
     @Test
@@ -157,9 +170,9 @@ class WarehouseTransferServiceTest {
                         .build()))
                 .build();
 
-        assertThatThrownBy(() -> warehouseService.createTransfer(request, "thukho01"))
+        assertThatThrownBy(() -> warehouseService.create(request, "thukho01"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Kho xuất và kho nhập không được trùng nhau");
+                .hasMessageContaining("Kho đi và kho đến không được trùng nhau");
 
         verifyNoInteractions(warehouseTransferRepository);
     }
@@ -178,19 +191,19 @@ class WarehouseTransferServiceTest {
                         .build()))
                 .build();
 
-        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(khoTong));
-        when(warehouseRepository.findById(2L)).thenReturn(Optional.of(khoChiNhanh));
+        when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(khoTong));
+        when(warehouseRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(khoChiNhanh));
         when(productRepository.findById(10L)).thenReturn(Optional.of(biaHeineken));
         when(unitConversionService.getConversionFactor(biaHeineken, "thùng")).thenReturn(new BigDecimal("24.0000"));
-        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(tonKhoTong));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 10L)).thenReturn(Optional.of(tonKhoTong));
 
-        assertThatThrownBy(() -> warehouseService.createTransfer(request, "thukho01"))
+        assertThatThrownBy(() -> warehouseService.create(request, "thukho01"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("không đủ tồn kho để chuyển");
+                .hasMessageContaining("không đủ tồn khả dụng");
 
         // Không sửa tồn kho
         assertThat(tonKhoTong.getBaseQuantity()).isEqualByComparingTo(new BigDecimal("500.0000"));
-        verify(warehouseTransferRepository, never()).save(any());
+        verify(warehouseTransferRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -221,16 +234,16 @@ class WarehouseTransferServiceTest {
                 .build();
         transfer.addItem(transferItem);
 
-        when(warehouseTransferRepository.findById(88L)).thenReturn(Optional.of(transfer));
-        when(inventoryRepository.findByWarehouseIdAndProductId(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
-        when(warehouseTransferRepository.save(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(warehouseTransferRepository.findByIdForUpdate(88L)).thenReturn(Optional.of(transfer));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
+        when(warehouseTransferRepository.saveAndFlush(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // Xác nhận nhận đủ (không truyền chi tiết hoặc nhận đủ 10 thùng)
         WarehouseTransferReceiveRequest receiveRequest = WarehouseTransferReceiveRequest.builder()
                 .note("Đã nhận đủ hàng tại kho Chi Nhánh")
                 .build();
 
-        WarehouseTransferResponse response = warehouseService.receiveTransfer(88L, receiveRequest, "nhanvien_cn");
+        WarehouseTransferResponse response = warehouseService.receive(88L, receiveRequest, "nhanvien_cn");
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(WarehouseTransferStatus.COMPLETED);
@@ -271,7 +284,7 @@ class WarehouseTransferServiceTest {
                 .build();
         transfer.addItem(transferItem);
 
-        when(warehouseTransferRepository.findById(88L)).thenReturn(Optional.of(transfer));
+        when(warehouseTransferRepository.findByIdForUpdate(88L)).thenReturn(Optional.of(transfer));
 
         // Nhận thiếu: gửi 10 thùng nhưng nhận 9 thùng, lý do để trống!
         WarehouseTransferReceiveRequest receiveRequest = WarehouseTransferReceiveRequest.builder()
@@ -282,13 +295,13 @@ class WarehouseTransferServiceTest {
                         .build()))
                 .build();
 
-        assertThatThrownBy(() -> warehouseService.receiveTransfer(88L, receiveRequest, "nhanvien_cn"))
+        assertThatThrownBy(() -> warehouseService.receive(88L, receiveRequest, "nhanvien_cn"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("bắt buộc phải nhập lý do");
+                .hasMessageContaining("bắt buộc nhập lý do");
 
         // Không cộng tồn và không lưu
         assertThat(tonKhoChiNhanh.getBaseQuantity()).isEqualByComparingTo(new BigDecimal("50.0000"));
-        verify(warehouseTransferRepository, never()).save(any());
+        verify(warehouseTransferRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -316,9 +329,9 @@ class WarehouseTransferServiceTest {
                 .build();
         transfer.addItem(transferItem);
 
-        when(warehouseTransferRepository.findById(88L)).thenReturn(Optional.of(transfer));
-        when(inventoryRepository.findByWarehouseIdAndProductId(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
-        when(warehouseTransferRepository.save(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(warehouseTransferRepository.findByIdForUpdate(88L)).thenReturn(Optional.of(transfer));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
+        when(warehouseTransferRepository.saveAndFlush(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // Nhận 9 thùng (216 lon), thiếu 1 thùng (24 lon) do va đập bể vỡ
         WarehouseTransferReceiveRequest receiveRequest = WarehouseTransferReceiveRequest.builder()
@@ -329,7 +342,7 @@ class WarehouseTransferServiceTest {
                         .build()))
                 .build();
 
-        WarehouseTransferResponse response = warehouseService.receiveTransfer(88L, receiveRequest, "nhanvien_cn");
+        WarehouseTransferResponse response = warehouseService.receive(88L, receiveRequest, "nhanvien_cn");
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(WarehouseTransferStatus.COMPLETED);
@@ -374,12 +387,12 @@ class WarehouseTransferServiceTest {
                 .build();
         transfer.addItem(transferItem);
 
-        when(warehouseTransferRepository.findById(88L)).thenReturn(Optional.of(transfer));
-        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(tonKhoTong));
-        when(inventoryRepository.findByWarehouseIdAndProductId(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
-        when(warehouseTransferRepository.save(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(warehouseTransferRepository.findByIdForUpdate(88L)).thenReturn(Optional.of(transfer));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 10L)).thenReturn(Optional.of(tonKhoTong));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(2L, 10L)).thenReturn(Optional.of(tonKhoChiNhanh));
+        when(warehouseTransferRepository.saveAndFlush(any(WarehouseTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        WarehouseTransferResponse response = warehouseService.cancelTransfer(88L, "Hủy do thay đổi kế hoạch điều vận", "quanlykho");
+        WarehouseTransferResponse response = warehouseService.cancel(88L, "Hủy do thay đổi kế hoạch điều vận", "quanlykho");
 
         assertThat(response.getStatus()).isEqualTo(WarehouseTransferStatus.CANCELLED);
         assertThat(response.getCancelReason()).isEqualTo("Hủy do thay đổi kế hoạch điều vận");

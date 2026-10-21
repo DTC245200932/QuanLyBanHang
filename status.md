@@ -15,6 +15,20 @@ Nguồn tiêu chí: User story S5-02 (*"Là Đại lý, tôi muốn đặt lại
 
 Kiểm chứng cuối: **24 test backend qua** (7 test service `OrderReorderServiceTest`, 14 test controller `DealerPortalControllerTest`, 3 test tích hợp `DealerPortalReorderIntegrationTest` trên HTTP/JWT/JPA/H2). Kiểm chứng đầy đủ: đặt lại toàn bộ/một phần, loại bỏ hàng ngừng kinh doanh / hết hiệu lực giá, tính lại giá theo bảng giá hiện hành, đơn mới tạo ở PENDING_APPROVAL, đại lý bị khóa/ngừng hoạt động trả lỗi, cách ly đa đại lý (đại lý khác truy cập trả 403), và thu hồi quyền `ORDER_CREATE` trên cùng token JWT lập tức trả 403 mà không fallback về role. Đã cập nhật hợp đồng tại `backend/API_DOCUMENTATION.md`.
 
+## S5-08 — Kiểm kê kho và ghi nhận chênh lệch (Backend) — 21/10/2026
+
+Nguồn yêu cầu: S5-08 theo ảnh mô tả. Đã đọc AGENTS.md và hai skill trong SKILLS. Thực hiện backend theo yêu cầu "chỉ làm backend".
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Tạo phiếu kiểm kê theo kho hoặc theo nhóm hàng | Đã hoàn thành: `POST /api/warehouse/stock-counts`, chốt số lượng tồn sổ sách (`bookQuantity`) theo đơn vị cơ sở tại thời điểm tạo; lọc theo kho hoặc nhóm hàng; tự sinh mã `PKK-yyyyMMddHHmmssSSS`; trạng thái `DRAFT` | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quyền `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`; kiểm tra phạm vi kho được phân công |
+| Nhập số đếm thực tế, tính chênh lệch từng dòng | Đã hoàn thành: `PUT /api/warehouse/stock-counts/{id}/items`, nhận `actualQuantity` cho từng dòng sản phẩm, tự động tính `differenceQuantity = actualQuantity - bookQuantity` và lưu ghi chú dòng; chặn số lượng âm | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quyền `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`; chỉ cập nhật khi phiếu ở trạng thái `DRAFT` |
+| Chốt kiểm kê điều chỉnh tồn về số thực đếm và bắt buộc nhập lý do | Đã hoàn thành: `POST /api/warehouse/stock-counts/{id}/complete`, cập nhật tồn kho `WarehouseInventory.baseQuantity = actualQuantity`, bắt buộc nhập lý do `reason` (báo lỗi nếu để trống), chuyển trạng thái `COMPLETED`, ghi nhận AuditLog chi tiết | Chưa triển khai (chỉ làm backend theo yêu cầu) | Bắt buộc quyền `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`; ghi nhận `completedBy`, `completedAt`, `adjustmentReason` |
+| Chỉ Quản lý kho được chốt phiếu kiểm kê | Đã hoàn thành: Controller & Service bắt buộc quyền `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`; Thủ kho (`ROLE_WAREHOUSE_STAFF`) không có quyền điều chỉnh bị chặn 403 Forbidden; thu hồi `WAREHOUSE_ADJUST` từ Quản lý kho có hiệu lực ngay lập tức (không fallback role) | Chưa triển khai (chỉ làm backend theo yêu cầu) | Ma trận phân quyền database-backed là nguồn sự thật duy nhất; đã kiểm thử cấp/thu hồi quyền trực tiếp trên MockMvc |
+| Xem, tìm kiếm và hủy phiếu kiểm kê | Đã hoàn thành: `GET /options`, `GET /` (tìm kiếm/lọc kho, nhóm hàng, trạng thái, keyword, phân trang), `GET /{id}` (chi tiết kèm toàn bộ dòng kiểm kê), `POST /{id}/cancel` (hủy phiếu DRAFT) | Chưa triển khai (chỉ làm backend theo yêu cầu) | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`; kiểm tra phạm vi kho |
+
+Kiểm chứng: **28 test backend qua**, bao gồm 13 test `StockCountServiceTest` (tạo phiếu, snapshot tồn sổ theo kho/nhóm hàng, nhập số đếm, tính chênh lệch, chốt kiểm kê cập nhật tồn kho, bắt buộc lý do, chặn số âm/chưa đếm hết/phiếu đã chốt, kiểm tra quyền và phạm vi kho), 9 test `StockCountControllerTest` (endpoint REST, validation, HTTP status), 6 test `StockCountSecurityTest` (phân quyền ma trận, chặn 401 khi chưa đăng nhập, 403 khi thiếu quyền, chặn Thủ kho không được chốt kiểm kê, cho phép Quản lý kho và Admin chốt, thu hồi quyền WAREHOUSE_ADJUST lập tức trả 403).
+
 ## S5-09 — Tồn tối thiểu và cảnh báo (backend + frontend) — 20/10/2026
 
 Nguồn AC: `4. Product Backlog!A62:F62`. Thực hiện trên nhánh `feature/S5-09-frontend-va-backend-canh-bao-ton-duoi-muc-toi-thieu`, nền `38b9795`; đã đọc AGENTS.md và hai skill trong SKILLS. Không merge/pull/lấy code nhánh khác, không tự commit.

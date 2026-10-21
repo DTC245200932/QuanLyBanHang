@@ -7,12 +7,15 @@
  * 3. Đổi hệ số quy đổi không làm sai lệch các giao dịch đã ghi trước đó (Cơ chế Snapshot).
  */
 
-(() => {
+(async () => {
   if (!Auth.requireLogin()) return;
+  await Auth.ready;
 
   const user = Auth.getUser() || {};
-  const canManageUnits = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_SALES_MANAGER");
-  const canRecordVouchers = Auth.hasAnyRole("ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF");
+  let canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
+  let canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
+  let canViewOrders = Auth.hasPermission("ORDER_VIEW");
+  const canReadStocktake = () => WarehouseStocktake.canUserReadStocktake(Auth.getUser());
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (v) => String(v ?? "").replace(/[&<>'"]/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -20,7 +23,7 @@
   const formatNumber = (num) => new Intl.NumberFormat("vi-VN").format(Number(num) || 0);
   const statusLabel = (status) => ({
     RECORDED: "Đã ghi sổ", PENDING_APPROVAL: "Chờ duyệt",
-    DRAFT: "Bản nháp", ADJUSTED: "Đã điều chỉnh",
+    DRAFT: "Bản nháp", COMPLETED: "Đã chốt", ADJUSTED: "Đã điều chỉnh",
     CANCELLED: "Đã hủy", REJECTED: "Đã từ chối",
   })[status] || status || "—";
 
@@ -32,6 +35,7 @@
     receipts: [],
     suppliers: [],
     drafts: [],
+    warehouses: [],
     loaded: false,
     warehouseId: null,
 
@@ -47,6 +51,7 @@
     async init() {
       this.loaded = false;
       const warehouses = await this.request("/warehouse/options");
+      this.warehouses = warehouses || [];
       const currentWarehouse = $("active-warehouse-select")?.value;
       const preferredWarehouse = warehouses.find(warehouse => String(warehouse.id) === currentWarehouse)
         || warehouses.find(warehouse => user.warehouses?.some(scope => scope.id === warehouse.id))
@@ -64,11 +69,14 @@
       }
       $("btn-export-inventory-excel").disabled = !this.warehouseId;
       const [products, inventory, vouchers, orders, suppliersData] = await Promise.all([
-        this.request("/products"),
-        this.warehouseId ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
-        this.warehouseId ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`) : [],
-        this.request("/orders"),
-        this.request("/suppliers?size=100").catch(() => ({ content: [] })),
+        this.request("/products/lookup"),
+        this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
+        this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`) : [],
+        // Đơn vị tính/tồn kho không yêu cầu ORDER_VIEW. Chỉ tải lịch sử đơn
+        // khi ma trận quyền cho phép, tránh mở trang bị 403 dù menu đã hiện.
+        canViewOrders ? this.request("/orders") : [],
+        Auth.hasPermission("WAREHOUSE_IMPORT") && Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
+          ? this.request("/suppliers?size=100").catch(() => ({ content: [] })) : [],
       ]);
 
       const rawSuppliers = Array.isArray(suppliersData)
@@ -161,6 +169,7 @@
           if (values.includes(current)) select.value = current;
         }
       }
+
       this.loaded = true;
     },
 
@@ -226,6 +235,8 @@
      * Lưu bản nháp phiếu kho (không ảnh hưởng tồn kho, cho phép chỉnh sửa lại).
      */
     saveDraftReceipt(receiptData) {
+      const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptData.type];
+      if (!permission || !Auth.hasPermission(permission)) throw new Error("Bạn không có quyền lưu nháp loại phiếu này.");
       if (!receiptData.items || !receiptData.items.length) {
         throw new Error("Vui lòng thêm ít nhất một mặt hàng.");
       }
@@ -376,8 +387,26 @@
       }
 
       return parts.join(" + ");
-    }
+    },
   };
+
+  const stocktake = WarehouseStocktake.createClient({
+    request: (path, options) => Store.request(path, options),
+    getUser: () => Auth.getUser(),
+    onChange: () => renderStocktakePanel(),
+  });
+  let legacyLoad = null;
+  function stocktakeIsActive() { return document.querySelector(".nav-tab--active")?.dataset.tab === "stocktake"; }
+  function ensureLegacyData() {
+    if (Store.loaded) return Promise.resolve();
+    if (legacyLoad) return legacyLoad;
+    legacyLoad = Store.init().then(() => {
+      renderSkuTable(); updateMetrics(); prepareReceiptForm(); renderLedgerTable(); renderInventoryTable();
+      if (stocktakeIsActive()) renderStocktakePanel();
+    }).catch(error => showToast(error.message || "Không tải được dữ liệu kho.", "error"))
+      .finally(() => { legacyLoad = null; });
+    return legacyLoad;
+  }
 
   // ══════════════════════════════════════════════════
   // 2. UI SHELL & NAVIGATION SETUP
@@ -449,6 +478,17 @@
   const panels = document.querySelectorAll(".tab-panel");
 
   function switchTab(tabId) {
+    const allowed = tabId === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
+      : tabId === "create-receipt" ? canRecordVouchers
+      : tabId === "stocktake" ? canReadStocktake()
+      : Auth.hasPermission("WAREHOUSE_VIEW");
+    if (!allowed) return;
+    document.title = tabId === "stocktake" ? "Kiểm kê kho & Chênh lệch | SaleStock" : "Đơn vị tính & Nhập / Xuất kho | SaleStock";
+    document.querySelector(".units-main > h1").textContent = tabId === "stocktake" ? "Kiểm kê kho & Chênh lệch" : "Kho hàng";
+    if (tabId === "inventory-report") {
+      window.location.href = "/warehouse/inventory";
+      return;
+    }
     tabs.forEach((tab) => {
       const active = tab.dataset.tab === tabId;
       tab.classList.toggle("nav-tab--active", active);
@@ -464,11 +504,20 @@
     if (tabId === "create-receipt") prepareReceiptForm();
     if (tabId === "ledger-audit") renderLedgerTable();
     if (tabId === "inventory-report") renderInventoryTable();
+    document.querySelector(".units-metrics-grid").hidden = tabId === "stocktake";
+    if (tabId === "stocktake") {
+      renderStocktakePanel();
+      if (!stocktake.state.ready && !stocktake.state.pending) loadStocktakes();
+    } else {
+      if (Store.loaded) renderWarehouseSelector(Store.warehouses, Store.warehouseId, !Store.warehouseId);
+      ensureLegacyData();
+    }
     const tabParam = {
       "sku-units": "units",
       "create-receipt": "receipts",
       "ledger-audit": "ledger",
       "inventory-report": "inventory",
+      "stocktake": "stocktake",
     }[tabId];
     if (tabParam) {
       const currentUrl = new URL(window.location.href);
@@ -642,7 +691,8 @@
 
   function updateReceiptAvailability() {
     const needsWarehouse = receiptState.type !== "ORDER";
-    const canSave = Store.loaded && Store.products.length && (!needsWarehouse || Store.warehouseId);
+    const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptState.type];
+    const canSave = Auth.hasPermission(permission) && Store.loaded && Store.products.length && (!needsWarehouse || Store.warehouseId);
     $("btn-save-receipt").disabled = !canSave;
     if ($("btn-save-draft-receipt")) {
       $("btn-save-draft-receipt").disabled = !canSave;
@@ -965,6 +1015,8 @@
   // Submit Receipt and Record into Stock Ledger with Frozen Snapshot
   $("btn-save-receipt")?.addEventListener("click", async () => {
     try {
+      const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptState.type];
+      if (!permission || !Auth.hasPermission(permission)) throw new Error("Bạn không có quyền ghi loại phiếu này.");
       const code = $("receipt-code").value.trim() || Store.generateReceiptCode(receiptState.type);
       const date = $("receipt-date").value;
       const warehouseId = Number($("receipt-warehouse").value) || null;
@@ -1191,7 +1243,7 @@
         </tr>
       `;
     }).join("");
-    tbody.querySelectorAll("[data-action=quick-import]").forEach(button => { button.hidden = !canRecordVouchers; });
+    tbody.querySelectorAll("[data-action=quick-import]").forEach(button => { button.hidden = !Auth.hasPermission("WAREHOUSE_IMPORT"); });
   }
 
   $("inv-search-input")?.addEventListener("input", renderInventoryTable);
@@ -1478,29 +1530,263 @@
     window.print();
   });
 
-  const requestedTab = {
-    receipts: "create-receipt", ledger: "ledger-audit", inventory: "inventory-report",
-  }[initialTabParam] || "sku-units";
-  switchTab(requestedTab);
+  // ══════════════════════════════════════════════════
+  // 10. PANEL 5: KIỂM KÊ KHO VÀ GHI NHẬN CHÊNH LỆCH (S5-08)
+  // ══════════════════════════════════════════════════
 
+  function stocktakeMessage(message = "", type = "error") {
+    const element = $("stocktake-message");
+    element.textContent = message;
+    element.dataset.type = type;
+    element.hidden = !message;
+  }
+
+  function renderWarehouseSelector(warehouses, selected, disabled) {
+    const select = $("active-warehouse-select");
+    select.innerHTML = warehouses.length ? warehouses.map(w =>
+      `<option value="${escapeHtml(w.id)}">${escapeHtml(w.name)}</option>`).join("")
+      : '<option value="">Chưa cấu hình kho</option>';
+    select.value = selected == null ? "" : String(selected);
+    select.disabled = disabled;
+  }
+
+  function renderStocktakePanel() {
+    const state = stocktake.state, st = state.current;
+    const allowed = stocktake.canRead(), editable = stocktake.canEdit(), completable = stocktake.canComplete();
+    $("panel-stocktake").setAttribute("aria-busy", String(state.pending));
+    if (stocktakeIsActive()) {
+      renderWarehouseSelector(state.options?.warehouses || [], state.warehouseId, state.pending || !allowed || !state.warehouseId);
+    }
+    const scope = $("stocktake-scope-filter"), previousScope = scope.value;
+    scope.innerHTML = '<option value="ALL">Toàn bộ mặt hàng trong kho</option>' +
+      (state.options?.categories || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("");
+    if ([...scope.options].some(option => option.value === previousScope)) scope.value = previousScope;
+    scope.disabled = state.pending || !allowed || !state.ready;
+    $("btn-start-stocktake").hidden = !allowed;
+    $("btn-start-stocktake").disabled = state.pending || !state.ready || !state.warehouseId;
+    $("btn-reload-stocktake").disabled = state.pending || !allowed;
+    $("btn-toggle-stocktake-history").disabled = state.pending || !allowed;
+    $("stocktake-active-card").hidden = !allowed || !st;
+    $("stocktake-empty-state").hidden = !allowed || Boolean(st);
+    $("stocktake-voucher-code").textContent = st?.code || "—";
+    $("stocktake-scope-badge").textContent = st ? (st.categoryName || "Toàn bộ kho") : "—";
+    $("stocktake-status-badge").textContent = st?.statusLabel || statusLabel(st?.status);
+    $("stocktake-warehouse-name").textContent = st?.warehouseName || "—";
+    $("stocktake-frozen-date").textContent = st?.createdAt?.replace("T", " ").slice(0, 19) || "—";
+    $("stocktake-created-by").textContent = st?.createdBy || "—";
+    $("stocktake-adjustment-reason").value = state.reason;
+    $("stocktake-adjustment-reason").disabled = state.pending || !completable;
+    $("stocktake-note").value = st?.note || "";
+    $("stocktake-note").disabled = state.pending || !editable;
+    $("stocktake-cancel-reason").value = state.cancelReason;
+    $("stocktake-cancel-reason").disabled = state.pending || !editable;
+    $("btn-save-draft-stocktake").hidden = !editable;
+    $("btn-save-draft-stocktake").disabled = state.pending || !editable;
+    $("btn-confirm-stocktake").hidden = !completable;
+    $("btn-confirm-stocktake").disabled = state.pending || !completable;
+    $("btn-cancel-stocktake").hidden = !editable;
+    $("btn-cancel-stocktake").disabled = state.pending || !editable;
+    $("stocktake-role-hint").hidden = !st || st.status !== "DRAFT" || completable;
+    const tbody = $("stocktake-table-body");
+    tbody.innerHTML = (allowed ? st?.items || [] : []).map((item, idx) => {
+      const diff = WarehouseStocktake.calculateDifference(item.actualQuantity, item.bookQuantity);
+      return `<tr data-idx="${idx}">
+        <td>${idx + 1}</td>
+        <td><div class="sku-identity"><span class="sku-name">${escapeHtml(item.productName)}</span><span class="sku-code">${escapeHtml(item.productCode)}</span></div></td>
+        <td>${escapeHtml(item.categoryName || "—")}</td><td>${escapeHtml(item.baseUnit)}</td>
+        <td class="stocktake-number">${formatNumber(item.bookQuantity)}</td>
+        <td><input type="number" step="any" min="0" class="form-control stocktake-actual-input" data-idx="${idx}"
+          aria-label="Thực tế đếm ${escapeHtml(item.productCode)}" value="${escapeHtml(item.actualQuantity ?? "")}" ${state.pending || !editable ? "disabled" : ""} /></td>
+        <td><span class="stocktake-diff-badge stocktake-diff-badge--${diff.status.toLowerCase()}" id="diff-badge-${idx}">${escapeHtml(diff.label)}</span></td>
+        <td><input type="text" maxlength="500" class="form-control stocktake-note-input" data-idx="${idx}"
+          aria-label="Ghi chú ${escapeHtml(item.productCode)}" placeholder="Ghi chú chênh lệch" value="${escapeHtml(item.note || "")}" ${state.pending || !editable ? "disabled" : ""} /></td>
+      </tr>`;
+    }).join("");
+    tbody.querySelectorAll(".stocktake-actual-input").forEach(input => input.addEventListener("input", event => {
+      if (!stocktake.canEdit() || state.pending) return;
+      const item = state.current.items[Number(event.target.dataset.idx)];
+      item.actualQuantity = event.target.validity.badInput ? NaN : event.target.value === "" ? null : event.target.value;
+      state.dirty = true;
+      const diff = WarehouseStocktake.calculateDifference(item.actualQuantity, item.bookQuantity);
+      const badge = $(`diff-badge-${event.target.dataset.idx}`);
+      badge.className = `stocktake-diff-badge stocktake-diff-badge--${diff.status.toLowerCase()}`;
+      badge.textContent = diff.label;
+      updateStocktakeMetrics();
+    }));
+    tbody.querySelectorAll(".stocktake-note-input").forEach(input => input.addEventListener("input", event => {
+      if (!stocktake.canEdit() || state.pending) return;
+      state.current.items[Number(event.target.dataset.idx)].note = event.target.value;
+      state.dirty = true;
+    }));
+    updateStocktakeMetrics();
+    renderStocktakeHistory();
+  }
+
+  function updateStocktakeMetrics() {
+    const metrics = WarehouseStocktake.calculateMetrics(stocktake.state.current?.items);
+    for (const key of ["total", "match", "surplus", "deficit", "uncounted"]) {
+      $(`st-metric-${key}`).textContent = String(metrics[key]);
+    }
+  }
+
+  function renderStocktakeHistory() {
+    const state = stocktake.state;
+    $("stocktake-history-body").innerHTML = state.history.length ? state.history.map(h => `
+      <tr>
+        <td><strong class="receipt-code-pill">${escapeHtml(h.code)}</strong></td>
+        <td>${escapeHtml(h.createdAt?.replace("T", " ").slice(0, 19) || "—")}</td>
+        <td>${escapeHtml(h.warehouseName)}</td><td>${escapeHtml(h.categoryName || "Toàn bộ kho")}</td>
+        <td>${escapeHtml(h.createdBy)}</td><td>${escapeHtml(h.adjustmentReason || h.cancelReason || h.note || "—")}</td>
+        <td>${escapeHtml(h.statusLabel || state.options?.statuses?.find(s => s.code === h.status)?.label || statusLabel(h.status))}</td>
+        <td><button type="button" class="btn btn--secondary btn--xs" data-view-stocktake="${escapeHtml(h.id)}" ${state.pending ? "disabled" : ""}>Chi tiết</button></td>
+      </tr>`).join("") : '<tr><td colspan="8" class="empty">Chưa có phiếu kiểm kê trong kho này.</td></tr>';
+    $("stocktake-history-page").textContent = `Trang ${state.totalPages ? state.page + 1 : 0} / ${state.totalPages || 0} · ${state.totalElements || 0} phiếu`;
+    $("stocktake-history-prev").disabled = state.pending || state.page <= 0 || !stocktake.canRead();
+    $("stocktake-history-next").disabled = state.pending || state.page + 1 >= state.totalPages || !stocktake.canRead();
+  }
+
+  function mayLeaveStocktake() {
+    return !stocktake.state.dirty || window.confirm("Có thay đổi chưa lưu. Bỏ các thay đổi này? Phiếu đã lưu vẫn có trong lịch sử.");
+  }
+
+  async function performStocktake(action, success, refreshHistory = false) {
+    if (stocktake.state.pending || !stocktake.canRead()) return;
+    stocktakeMessage();
+    try {
+      await action();
+      if (!stocktake.canRead()) return;
+      stocktakeMessage(success, "success");
+      if (refreshHistory) {
+        // The write succeeded. A history failure must never offer a duplicate write.
+        try { await stocktake.history(); }
+        catch (error) {
+          if (error.code !== "STALE_STOCKTAKE" && stocktake.canRead()) stocktakeMessage(`${success} Tuy nhiên, chưa tải lại được lịch sử: ${error.message}`, "warning");
+        }
+      }
+    } catch (error) {
+      if (error.code !== "STALE_STOCKTAKE" && stocktake.canRead()) stocktakeMessage(error.message || "Không thể xử lý phiếu kiểm kê.");
+    }
+  }
+
+  function loadStocktakes() {
+    return performStocktake(() => stocktake.initialize($("active-warehouse-select").value), "Đã tải danh sách kiểm kê.", false);
+  }
+  $("btn-start-stocktake").addEventListener("click", () => {
+    if (!mayLeaveStocktake()) return;
+    const categoryId = $("stocktake-scope-filter").value;
+    performStocktake(() => stocktake.create(categoryId), "Đã tạo phiếu kiểm kê và chốt tồn sổ từ máy chủ.", true);
+  });
+  $("btn-save-draft-stocktake").addEventListener("click", () =>
+    performStocktake(() => stocktake.save(), "Đã lưu nháp tiến độ kiểm kê.", true));
+  $("btn-confirm-stocktake").addEventListener("click", () =>
+    performStocktake(async () => { await stocktake.complete(); Store.loaded = false; }, "Đã chốt kiểm kê và điều chỉnh tồn kho.", true));
+  $("btn-cancel-stocktake").addEventListener("click", () => {
+    if (!window.confirm("Hủy phiếu kiểm kê này? Tồn kho sẽ không thay đổi.")) return;
+    performStocktake(() => stocktake.cancel(), "Đã hủy phiếu kiểm kê.", true);
+  });
+  $("btn-reload-stocktake").addEventListener("click", () => {
+    if (!mayLeaveStocktake()) return;
+    performStocktake(async () => {
+      await stocktake.initialize(stocktake.state.warehouseId);
+      if (stocktake.state.current) await stocktake.open(stocktake.state.current.id);
+    }, "Đã tải lại dữ liệu kiểm kê.");
+  });
+  $("btn-toggle-stocktake-history").addEventListener("click", () => {
+    const section = $("stocktake-history-section");
+    section.hidden = !section.hidden;
+    $("btn-stocktake-history-text").textContent = section.hidden ? "Xem lịch sử kiểm kê" : "Ẩn lịch sử kiểm kê";
+  });
+  $("stocktake-history-body").addEventListener("click", event => {
+    const button = event.target.closest("[data-view-stocktake]");
+    if (!button || !mayLeaveStocktake()) return;
+    performStocktake(() => stocktake.open(button.dataset.viewStocktake), "Đã mở phiếu kiểm kê.");
+  });
+  $("stocktake-history-prev").addEventListener("click", () =>
+    performStocktake(() => stocktake.history(stocktake.state.page - 1), "Đã tải lịch sử kiểm kê."));
+  $("stocktake-history-next").addEventListener("click", () =>
+    performStocktake(() => stocktake.history(stocktake.state.page + 1), "Đã tải lịch sử kiểm kê."));
+  for (const [id, field] of [["stocktake-adjustment-reason", "reason"], ["stocktake-cancel-reason", "cancelReason"]]) {
+    $(id).addEventListener("input", event => {
+      if (!stocktake.canEdit() || stocktake.state.pending) return;
+      stocktake.state[field] = event.target.value;
+      stocktake.state.dirty = true;
+    });
+  }
+  $("stocktake-note").addEventListener("input", event => {
+    if (!stocktake.canEdit() || stocktake.state.pending) return;
+    stocktake.state.current.note = event.target.value;
+    stocktake.state.dirty = true;
+  });
+  window.addEventListener("beforeunload", event => {
+    if (stocktake.state.dirty) { event.preventDefault(); event.returnValue = ""; }
+  });
+
+  const requestedTab = {
+    receipts: "create-receipt", ledger: "ledger-audit", inventory: "inventory-report", stocktake: "stocktake",
+  }[initialTabParam] || "sku-units";
   $("active-warehouse-select").addEventListener("change", async () => {
+    if (stocktakeIsActive()) {
+      const selected = $("active-warehouse-select").value;
+      if (stocktake.state.pending || !mayLeaveStocktake()) { renderStocktakePanel(); return; }
+      await performStocktake(() => stocktake.selectWarehouse(selected), "Đã đổi kho kiểm kê.");
+      return;
+    }
     try {
       await Store.init();
       switchTab(document.querySelector(".nav-tab--active")?.dataset.tab || requestedTab);
-    } catch (error) {
-      showToast(error.message || "Không tải được dữ liệu kho.", "error");
-    }
+    } catch (error) { showToast(error.message || "Không tải được dữ liệu kho.", "error"); }
   });
 
-  // Initial render from backend APIs.
-  Store.init().then(() => {
+  function syncWarehouseActions() {
+    canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
+    canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
+    canViewOrders = Auth.hasPermission("ORDER_VIEW");
+    tabs.forEach(tab => {
+      tab.hidden = !(tab.dataset.tab === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
+        : tab.dataset.tab === "create-receipt" ? canRecordVouchers
+        : tab.dataset.tab === "stocktake" ? canReadStocktake()
+        : Auth.hasPermission("WAREHOUSE_VIEW"));
+    });
+    $("tab-create-receipt").hidden = !canRecordVouchers;
+    $("tab-stocktake").hidden = !canReadStocktake();
+    if (!canReadStocktake()) $("panel-stocktake").hidden = true;
+    $("btn-open-create-unit-modal").hidden = !canManageUnits;
+
+    document.querySelectorAll("#receipt-type-radios input").forEach(radio => {
+      const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[radio.value];
+      radio.disabled = !Auth.hasPermission(permission);
+      radio.closest("label").hidden = radio.disabled;
+    });
+    const selected = document.querySelector('#receipt-type-radios input:checked');
+    if (!selected || selected.disabled) {
+      const first = document.querySelector('#receipt-type-radios input:not(:disabled)');
+      if (first) { first.checked = true; receiptState.type = first.value; }
+    }
     renderSkuTable();
-    updateMetrics();
-    prepareReceiptForm();
-    renderLedgerTable();
     renderInventoryTable();
-  }).catch((error) => {
-    console.error("Store.init error:", error);
-    showToast(error.message || "Không tải được dữ liệu kho từ máy chủ.", "error");
+    updateReceiptAvailability();
+  }
+  syncWarehouseActions();
+  let permissionVersion = 0;
+  window.addEventListener("auth:permissions-changed", async () => {
+    const version = ++permissionVersion;
+    const previousId = stocktake.state.current?.id;
+    const previousWarehouse = stocktake.state.warehouseId;
+    stocktake.invalidate();
+    stocktakeMessage();
+    syncWarehouseActions();
+    // Wait for any old request; its response cannot repopulate the cleared draft.
+    await stocktake.idle();
+    if (version === permissionVersion && stocktakeIsActive() && canReadStocktake()) {
+      $("panel-stocktake").hidden = false;
+      await performStocktake(async () => {
+        await stocktake.initialize(previousWarehouse);
+        if (version === permissionVersion && previousId && stocktake.state.warehouseId === previousWarehouse) await stocktake.open(previousId);
+      }, "Đã cập nhật quyền và dữ liệu kiểm kê.");
+    }
   });
+  const firstAllowedTab = [...tabs].find(tab => !tab.hidden)?.dataset.tab;
+  const requestedAllowed = [...tabs].some(tab => tab.dataset.tab === requestedTab && !tab.hidden);
+  if (requestedAllowed || firstAllowedTab) switchTab(requestedAllowed ? requestedTab : firstAllowedTab);
+  else panels.forEach(panel => { panel.hidden = true; });
 })();

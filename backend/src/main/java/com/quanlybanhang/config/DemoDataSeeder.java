@@ -120,7 +120,8 @@ public class DemoDataSeeder {
                 new DemoUser("warehouse.manager", "Quản lý kho Demo", ERole.ROLE_WAREHOUSE_MANAGER),
                 new DemoUser("warehouse.demo", "Thủ kho Demo", ERole.ROLE_WAREHOUSE_STAFF),
                 new DemoUser("accountant.demo", "Kế toán Demo", ERole.ROLE_ACCOUNTANT),
-                new DemoUser("viewer.demo", "Người xem Demo", ERole.ROLE_VIEWER));
+                new DemoUser("viewer.demo", "Người xem Demo", ERole.ROLE_VIEWER),
+                new DemoUser("dealer.demo", "Đại lý Minh Phát Demo", ERole.ROLE_DEALER));
         for (DemoUser account : accounts) {
             if (users.existsByUsername(account.username())) continue;
             Role role = roles.findByName(account.role())
@@ -224,30 +225,34 @@ public class DemoDataSeeder {
     private Map<String, Dealer> createDealers(Scope scope) {
         Map<String, Dealer> customers = new LinkedHashMap<>();
         customers.put("cap1", dealer("DEMO-DL-MINHPHAT", "Đại lý Minh Phát (Demo)", CustomerGroup.DAI_LY_CAP_1,
-                scope.east(), "100000000", 30, "123 Lê Lợi, TP.HCM (Demo)", false));
+                scope.east(), "100000000", 30, "123 Lê Lợi, TP.HCM (Demo)", false, scope.hcm()));
         customers.put("cap2", dealer("DEMO-DL-TANBINH", "Đại lý Tân Bình (Demo)", CustomerGroup.DAI_LY_CAP_2,
-                scope.west(), "50000000", 15, "456 Hoàng Văn Thụ, TP.HCM (Demo)", false));
+                scope.west(), "50000000", 15, "456 Hoàng Văn Thụ, TP.HCM (Demo)", false, scope.hcm()));
         customers.put("hanoi", dealer("DEMO-DL-HANOI", "Đại lý Hà Nội (Demo)", CustomerGroup.DAI_LY_CAP_1,
-                scope.north(), "80000000", 30, "25 Trần Duy Hưng, Hà Nội (Demo)", false));
+                scope.north(), "80000000", 30, "25 Trần Duy Hưng, Hà Nội (Demo)", false, scope.hanoi()));
         customers.put("retail", dealer("DEMO-DL-KHACHLE", "Khách lẻ (Demo)", CustomerGroup.KHACH_LE,
-                scope.east(), "0", 0, "10 Nguyễn Huệ, TP.HCM (Demo)", false));
+                scope.east(), "0", 0, "10 Nguyễn Huệ, TP.HCM (Demo)", false, scope.hcm()));
         customers.put("locked", dealer("DEMO-DL-TAMKHOA", "Đại lý tạm khóa (Demo)", CustomerGroup.DAI_LY_CAP_2,
-                scope.west(), "20000000", 7, "20 Cộng Hòa, TP.HCM (Demo)", true));
+                scope.west(), "20000000", 7, "20 Cộng Hòa, TP.HCM (Demo)", true, scope.hcm()));
         for (Dealer dealer : customers.values()) {
             deliveryPoint(dealer, dealer.getName(), dealer.getAddress(), "0900000001");
         }
         deliveryPoint(customers.get("cap1"), "Kho phụ Minh Phát (Demo)", "50 Võ Văn Kiệt, TP.HCM (Demo)", "0900000002");
+        users.findByUsername("dealer.demo").ifPresent(dealerUser -> {
+            dealerUser.setDealer(customers.get("cap1"));
+            users.save(dealerUser);
+        });
         return customers;
     }
 
     private Dealer dealer(String code, String name, CustomerGroup group, Territory territory,
-                          String limit, int days, String address, boolean locked) {
+                          String limit, int days, String address, boolean locked, Warehouse warehouse) {
         return dealers.findByCode(code).orElseGet(() -> {
             User sales = users.findByUsername("sales.demo")
                     .filter(user -> Boolean.TRUE.equals(user.getActive()) && user.getRoles().stream()
                             .anyMatch(role -> role.getName() == ERole.ROLE_SALES)).orElse(null);
             Dealer saved = dealers.save(Dealer.builder().code(code).name(name).customerGroup(group)
-                    .territory(territory).assignedUser(sales).debtLimit(decimal(limit)).maxDebtDays(days)
+                    .territory(territory).warehouse(warehouse).assignedUser(sales).debtLimit(decimal(limit)).maxDebtDays(days)
                     .address(address).phone("0900000001").email(code.toLowerCase(java.util.Locale.ROOT) + "@demo.invalid")
                     .locked(locked).lockReason(locked ? "Tình huống demo: tạm dừng bán để kiểm tra công nợ" : null)
                     .lockedBy(locked ? ACTOR : null).lockedAt(locked ? LocalDateTime.now() : null).build());
@@ -386,10 +391,27 @@ public class DemoDataSeeder {
 
     private void seedOrder(String code, Dealer dealer, Map<CustomerGroup, PriceList> prices,
                            List<OrderItemRequest> items, String outcome, Warehouse warehouse) {
+        // Trusted startup-only seed, never an HTTP authorization fallback.
+        // Give bootstrap its explicit ADMIN context and always restore the caller.
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var bootstrap = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        bootstrap.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                ACTOR, "", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        try {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(bootstrap);
+            seedOrderAsBootstrap(code, dealer, prices, items, outcome, warehouse);
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(previous);
+        }
+    }
+
+    private void seedOrderAsBootstrap(String code, Dealer dealer, Map<CustomerGroup, PriceList> prices,
+                                     List<OrderItemRequest> items, String outcome, Warehouse warehouse) {
         // Chỉ chuyển trạng thái/ghi phiếu xuất trong lần tạo đầu tiên.
         if (orders.existsByOrderCode(code)) return;
         if (!Boolean.TRUE.equals(dealer.getActive()) || Boolean.TRUE.equals(dealer.getLocked())) return;
         OrderResponse response = orderService.createOrder(OrderRequest.builder().orderCode(code).dealerId(dealer.getId())
+                .warehouseId(warehouse.getId())
                 .priceListId(prices.get(dealer.getCustomerGroup()).getId()).expectedDeliveryDate(LocalDate.now().plusDays(3))
                 .note(NOTE + ": " + outcome).items(items).build(), ACTOR);
         if ("RECORDED".equals(outcome) && "PENDING_APPROVAL".equals(response.getStatus())) {

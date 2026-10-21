@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Đơn hàng | SaleStock</title>
+    <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+    <link rel="stylesheet" href="/css/app-navigation.css" />
+    <link rel="stylesheet" href="/css/dealers.css" />
+    <link rel="stylesheet" href="/css/orders.css" />
+<script src="/js/app-transition.js"></script>
+</head>
+  <body>
+    <div class="app-shell">
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar__header">
+          <a class="sidebar__brand" href="/dashboard">
+            <img src="/assets/brand-mark.svg" alt="" class="sidebar__logo" />
+            <span class="sidebar__brand-name">SaleStock</span>
+          </a>
+          <button class="sidebar__close" id="sidebar-close" aria-label="Đóng menu">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <nav class="sidebar__nav" id="sidebar-nav" aria-label="Menu chính"></nav>
+        <div class="sidebar__footer">
+          <div class="sidebar__user" id="sidebar-user">
+            <div class="sidebar__avatar" id="user-avatar">A</div>
+            <div class="sidebar__user-info">
+              <span class="sidebar__user-name" id="user-name">—</span>
+              <span class="sidebar__user-role" id="user-role">—</span>
+            </div>
+          </div>
+          <button class="sidebar__logout" id="btn-logout" title="Đăng xuất">
+            <svg viewBox="0 0 24 24">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Area -->
+      <div class="main-area">
+        <header class="topbar">
+          <button class="topbar__menu-btn" id="sidebar-toggle" aria-label="Mở menu">
+            <svg viewBox="0 0 24 24">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          <div class="topbar__breadcrumb"></div>
+          <div class="topbar__actions">
+            <button class="topbar__btn topbar__btn--logout" id="btn-logout-topbar" title="Đăng xuất">
+              <svg viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Đăng xuất</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="content orders-page">
+          <!-- Page Heading -->
+          <div class="ord-heading">
+            <div class="ord-heading__text">
+              <p class="ord-heading__section">Kinh doanh</p>
+              <h1>Đơn hàng</h1>
+              <p class="ord-heading__desc" id="ord-heading-desc">
+                Quản lý và tra cứu toàn bộ đơn hàng — lọc theo trạng thái, đại lý, nhân viên, khu vực và thời gian.
+              </p>
+            </div>
+            <div class="ord-heading__actions">
+              <a href="/create-order" class="btn btn--primary" id="btn-create-order">
+                <svg width="16" height="16" viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Tạo đơn hàng
+              </a>
+            </div>
+          </div>
+
+          <!-- Scope banner for ROLE_SALES -->
+          <div class="ord-sales-scope-banner" id="ord-sales-scope-banner" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <span>Bạn đang xem các đơn hàng thuộc <strong>đại lý mình phụ trách</strong>.</span>
+          </div>
+
+          <!-- KPI Summary Cards (Hiển thị tổng tiền và các chỉ số tập kết quả đang lọc) -->
+          <section class="ord-summary-grid" aria-label="Tổng kết bán hàng">
+            <div class="ord-summary-card ord-summary-card--primary">
+              <div class="ord-summary-card__header">
+                <span class="ord-summary-card__label">Tổng tiền đang lọc</span>
+                <span class="ord-summary-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </span>
+              </div>
+              <div class="ord-summary-card__value" id="kpi-total-amount">0 ₫</div>
+              <div class="ord-summary-card__sub" id="kpi-total-sub">Tính trên các đơn hàng thỏa mãn bộ lọc</div>
+            </div>
+
+            <div class="ord-summary-card">
+              <div class="ord-summary-card__header">
+                <span class="ord-summary-card__label">Số lượng đơn hàng</span>
+                <span class="ord-summary-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/></svg>
+                </span>
+              </div>
+              <div class="ord-summary-card__value" id="kpi-order-count">0</div>
+              <div class="ord-summary-card__sub" id="kpi-count-sub">0 đơn hiển thị</div>
+            </div>
+
+            <div class="ord-summary-card ord-summary-card--warning">
+              <div class="ord-summary-card__header">
+                <span class="ord-summary-card__label">Chờ duyệt giá / nợ</span>
+                <span class="ord-summary-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </span>
+              </div>
+              <div class="ord-summary-card__value" id="kpi-pending-count">0</div>
+              <div class="ord-summary-card__sub" id="kpi-pending-sub">Cần Quản lý kinh doanh duyệt</div>
+            </div>
+
+            <div class="ord-summary-card ord-summary-card--success">
+              <div class="ord-summary-card__header">
+                <span class="ord-summary-card__label">Đã hoàn thành / Giao</span>
+                <span class="ord-summary-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </div>
+              <div class="ord-summary-card__value" id="kpi-completed-count">0</div>
+              <div class="ord-summary-card__sub" id="kpi-completed-sub">Đơn giao thành công</div>
+            </div>
+          </section>
+
+          <!-- Filter & Search Toolbar -->
+          <div class="ord-toolbar-card">
+            <div class="ord-toolbar">
+              <!-- Search Box -->
+              <div class="ord-search-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  id="ord-search"
+                  placeholder="Tìm theo mã đơn, tên đại lý, ghi chú…"
+                  autocomplete="off"
+                  aria-label="Tìm nhanh đơn hàng"
+                />
+                <button type="button" class="ord-search-clear" id="ord-search-clear" title="Xoá tìm kiếm" aria-label="Xoá tìm kiếm" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Main Filter Dropdowns -->
+              <div class="ord-filter-group">
+                <!-- 1. Trạng thái -->
+                <div class="ord-filter-item">
+                  <select id="ord-filter-status" class="dlr-select" aria-label="Lọc theo trạng thái">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="PENDING_APPROVAL">Chờ duyệt</option>
+                    <option value="RECORDED">Đã ghi nhận</option>
+                    <option value="APPROVED">Đã duyệt</option>
+                    <option value="PICKING">Đang nhặt hàng</option>
+                    <option value="EXPORTED">Đã xuất kho</option>
+                    <option value="DELIVERED">Đã giao hàng</option>
+                    <option value="COMPLETED">Hoàn thành</option>
+                    <option value="CANCELLED">Đã huỷ</option>
+                    <option value="REJECTED">Bị từ chối</option>
+                  </select>
+                </div>
+
+                <!-- 2. Đại lý -->
+                <div class="ord-filter-item">
+                  <select id="ord-filter-dealer" class="dlr-select" aria-label="Lọc theo đại lý">
+                    <option value="">Tất cả đại lý</option>
+                  </select>
+                </div>
+
+                <!-- 3. Nhân viên phụ trách -->
+                <div class="ord-filter-item">
+                  <select id="ord-filter-owner" class="dlr-select" aria-label="Lọc theo nhân viên">
+                    <option value="">Tất cả nhân viên</option>
+                  </select>
+                </div>
+
+                <!-- 4. Khu vực -->
+                <div class="ord-filter-item">
+                  <select id="ord-filter-region" class="dlr-select" aria-label="Lọc theo khu vực">
+                    <option value="">Tất cả khu vực</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Date Range & Preset Filter Row -->
+            <div class="ord-date-toolbar">
+              <div class="ord-date-group">
+                <span class="ord-date-label">Thời gian:</span>
+                <div class="ord-date-inputs">
+                  <label class="ord-date-field">
+                    <span>Từ</span>
+                    <input type="date" id="ord-date-from" aria-label="Từ ngày" />
+                  </label>
+                  <label class="ord-date-field">
+                    <span>Đến</span>
+                    <input type="date" id="ord-date-to" aria-label="Đến ngày" />
+                  </label>
+                </div>
+                <div class="ord-date-chips">
+                  <button type="button" class="ord-chip ord-chip--active" data-date="all">Tất cả</button>
+                  <button type="button" class="ord-chip" data-date="today">Hôm nay</button>
+                  <button type="button" class="ord-chip" data-date="7days">7 ngày qua</button>
+                  <button type="button" class="ord-chip" data-date="thisMonth">Tháng này</button>
+                </div>
+              </div>
+
+              <!-- Reset button -->
+              <button type="button" id="btn-reset-filters" class="btn btn--secondary dlr-btn-reset" title="Đặt lại bộ lọc" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+                <span>Đặt lại</span>
+              </button>
+            </div>
+
+            <!-- Meta bar with quick status chips -->
+            <div class="dlr-toolbar-meta">
+              <div class="dlr-meta-count" id="ord-meta-count">
+                <span class="dlr-meta-dot"></span>
+                <span id="ord-count-text">Đang tải dữ liệu…</span>
+              </div>
+              <div class="dlr-quick-chips" id="ord-quick-chips">
+                <button type="button" class="dlr-chip dlr-chip--active" data-chip="all">Tất cả đơn</button>
+                <button type="button" class="dlr-chip" data-chip="pending">Cần duyệt</button>
+                <button type="button" class="dlr-chip" data-chip="in-progress">Đang xử lý</button>
+                <button type="button" class="dlr-chip" data-chip="completed">Đã hoàn thành</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table Wrapper -->
+          <div class="dlr-table-wrap">
+            <table class="dlr-table ord-table" id="ord-table">
+              <thead>
+                <tr>
+                  <th class="col-code">Mã đơn</th>
+                  <th class="col-date">Ngày tạo</th>
+                  <th class="col-dealer">Đại lý &amp; Nhóm</th>
+                  <th class="col-region">Khu vực</th>
+                  <th class="col-owner">Phụ trách</th>
+                  <th class="col-status">Trạng thái</th>
+                  <th class="col-total">Tổng tiền</th>
+                  <th class="col-actions">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="ord-tbody">
+                <tr class="dlr-loading-row">
+                  <td colspan="8">
+                    <div class="dlr-loading">Đang tải danh sách đơn hàng…</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="dlr-pagination" id="ord-pagination" hidden></div>
+        </main>
+      </div>
+    </div>
+
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
+    <!-- Modal: Chi tiết đơn hàng -->
+    <div class="modal-overlay" id="order-detail-modal" hidden>
+      <div class="modal modal--wide ord-detail-modal" role="dialog" aria-labelledby="ord-detail-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <div class="ord-detail-heading-row">
+              <h2 id="ord-detail-title">Chi tiết đơn hàng</h2>
+              <span id="ord-detail-status-badge"></span>
+            </div>
+            <p class="modal-subtitle" id="ord-detail-sub"></p>
+          </div>
+          <button class="modal__close" type="button" data-close-detail aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div class="modal__body ord-detail-body">
+          <!-- Warnings & Notices -->
+          <div id="ord-detail-warning" class="lock-warning-banner" role="alert" hidden></div>
+          <div id="ord-detail-debt-warning" class="cancel-order-notice" role="alert" hidden></div>
+
+          <!-- Info Grid -->
+          <div class="ord-info-grid">
+            <div class="ord-info-block">
+              <h3>Thông tin đại lý</h3>
+              <dl class="ord-info-dl">
+                <dt>Đại lý:</dt>
+                <dd id="ord-detail-dealer-name">—</dd>
+                <dt>Nhóm KH:</dt>
+                <dd id="ord-detail-group">—</dd>
+                <dt>Khu vực:</dt>
+                <dd id="ord-detail-region">—</dd>
+                <dt>Người phụ trách:</dt>
+                <dd id="ord-detail-owner">—</dd>
+              </dl>
+            </div>
+
+            <div class="ord-info-block">
+              <h3>Thông tin đơn hàng</h3>
+              <dl class="ord-info-dl">
+                <dt>Bảng giá:</dt>
+                <dd id="ord-detail-pricelist">—</dd>
+                <dt>Ngày giao dự kiến:</dt>
+                <dd id="ord-detail-delivery-date">—</dd>
+                <dt>Người tạo đơn:</dt>
+                <dd id="ord-detail-created-by">—</dd>
+                <dt>Ghi chú:</dt>
+                <dd id="ord-detail-note">—</dd>
+              </dl>
+            </div>
+          </div>
+
+          <!-- Line items table -->
+          <div class="ord-items-section">
+            <h3>Danh sách sản phẩm trong đơn</h3>
+            <div class="ord-items-table-wrap">
+              <table class="ord-items-table">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th>ĐVT</th>
+                    <th class="text-right">Số lượng</th>
+                    <th class="text-right">Đơn giá</th>
+                    <th class="text-right">Chiết khấu</th>
+                    <th class="text-right">Thành tiền</th>
+                  </tr>
+                </thead>
+                <tbody id="ord-items-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Financial summary -->
+          <div class="ord-financial-summary">
+            <div class="ord-summary-row">
+              <span>Tiền hàng trước CK:</span>
+              <strong id="ord-sum-subtotal">0 ₫</strong>
+            </div>
+            <div class="ord-summary-row ord-summary-row--discount">
+              <span>Chiết khấu sản lượng:</span>
+              <strong id="ord-sum-discount">-0 ₫</strong>
+            </div>
+            <div class="ord-summary-row ord-summary-row--total">
+              <span>Tổng thanh toán:</span>
+              <strong id="ord-sum-total">0 ₫</strong>
+            </div>
+          </div>
+
+          <!-- Approval details if available -->
+          <div id="ord-approval-box" class="ord-approval-box" hidden>
+            <div class="ord-approval-box__title">Thông tin duyệt đơn</div>
+            <p id="ord-approval-box-content"></p>
+          </div>
+
+          <section id="ord-lifecycle-box" class="ord-lifecycle-box" aria-labelledby="ord-lifecycle-title" hidden>
+            <div class="ord-lifecycle-box__heading">
+              <div>
+                <h3 id="ord-lifecycle-title">Theo dõi vòng đời đơn hàng</h3>
+                <p id="ord-lifecycle-summary" class="ord-lifecycle-box__summary"></p>
+              </div>
+              <span id="ord-lifecycle-reservation" class="ord-lifecycle-reservation"></span>
+            </div>
+            <ol id="ord-lifecycle-steps" class="ord-lifecycle-steps"></ol>
+            <div class="ord-lifecycle-history">
+              <h4>Lịch sử cập nhật</h4>
+              <div id="ord-lifecycle-history-list"></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="modal__actions ord-detail-actions">
+          <button type="button" class="btn btn--secondary" data-close-detail>Đóng</button>
+          <button type="button" class="btn btn--secondary" id="btn-detail-tracking">Làm mới vòng đời</button>
+          <button type="button" class="btn btn--danger" id="btn-detail-cancel" hidden>Huỷ đơn</button>
+          <button type="button" class="btn btn--danger" id="btn-detail-reject" hidden>Từ chối duyệt</button>
+          <button type="button" class="btn btn--primary" id="btn-detail-approve" hidden>Phê duyệt đơn</button>
+          <button type="button" class="btn btn--primary" id="btn-detail-confirm-portal" hidden>Xác nhận đơn đại lý</button>
+          <button type="button" class="btn btn--primary" id="btn-detail-next-status" hidden>Chuyển bước tiếp theo</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Từ chối đơn hàng (Quản lý kinh doanh) -->
+    <div class="modal-overlay" id="reject-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="reject-modal-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="reject-modal-title">Từ chối duyệt đơn</h2>
+            <p class="modal-subtitle" id="reject-modal-sub"></p>
+          </div>
+          <button class="modal__close" type="button" data-close-reject aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <form class="modal__body" id="reject-form" novalidate>
+          <input type="hidden" id="reject-order-id" />
+          <div class="form-field">
+            <label for="reject-reason">Lý do từ chối <span class="req">*</span></label>
+            <textarea id="reject-reason" rows="3" maxlength="500" required placeholder="Nhập lý do từ chối đơn hàng này…"></textarea>
+          </div>
+          <div id="reject-message" class="form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-reject>Quay lại</button>
+            <button type="submit" class="btn btn--danger" id="btn-confirm-reject">Xác nhận từ chối</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Huỷ đơn hàng -->
+    <div class="modal-overlay" id="cancel-order-modal" hidden>
+      <div class="modal" role="dialog" aria-labelledby="cancel-order-title" aria-modal="true">
+        <div class="modal__header">
+          <div>
+            <h2 id="cancel-order-title">Huỷ đơn hàng</h2>
+            <p class="modal-subtitle" id="cancel-order-sub"></p>
+          </div>
+          <button class="modal__close" type="button" data-close-cancel-order aria-label="Đóng">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <form class="modal__body" id="cancel-order-form" novalidate>
+          <input type="hidden" id="cancel-order-id" />
+          <div class="cancel-order-notice" id="cancel-order-notice">
+            <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>Khi huỷ đơn hàng, hệ thống sẽ <strong>tự động nhả toàn bộ tồn kho đang giữ chỗ</strong> của đơn này. Đơn đã huỷ không thể phục hồi.</span>
+          </div>
+          <div class="form-field">
+            <label for="cancel-order-reason">Lý do huỷ đơn <span class="req">*</span></label>
+            <textarea id="cancel-order-reason" rows="3" maxlength="500" required placeholder="Nhập lý do huỷ đơn hàng (khách đổi ý, trùng đơn, hết nhu cầu…)"></textarea>
+            <small class="form-hint">Bắt buộc nhập lý do (tối đa 500 ký tự).</small>
+          </div>
+          <div id="cancel-order-message" class="form-message" role="alert" hidden></div>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--secondary" data-close-cancel-order>Quay lại</button>
+            <button type="submit" class="btn btn--danger" id="btn-submit-cancel-order">Xác nhận huỷ đơn</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/auth.js"></script>
+    <script src="/js/menu-config.js"></script>
+    <script src="/js/app-navigation.js"></script>
+    <script src="/js/dealer-transactions.js"></script>
+    <script src="/js/orders.js"></script>
+  </body>
+</html>

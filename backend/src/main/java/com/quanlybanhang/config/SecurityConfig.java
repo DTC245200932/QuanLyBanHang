@@ -4,6 +4,7 @@ import com.quanlybanhang.security.AuthEntryPointJwt;
 import com.quanlybanhang.security.JwtAuthenticationFilter;
 import com.quanlybanhang.security.UserDetailsServiceImpl;
 import com.quanlybanhang.security.RestAccessDeniedHandler;
+import com.quanlybanhang.security.DealerApiScopeFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -82,58 +83,17 @@ public class SecurityConfig {
                 .requestMatchers("/api/users/**").authenticated()
                 .requestMatchers("/api/test/public").permitAll()
 
-                // ── Admin only: quản lý user, cấu hình hệ thống, ma trận phân quyền ──
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-
-                // ── Quản lý: ADMIN + SALES_MANAGER + WAREHOUSE_MANAGER ──
-                .requestMatchers("/api/manager/**").hasAnyRole(
-                        "ADMIN", "SALES_MANAGER", "WAREHOUSE_MANAGER")
-
-                // ── Điều chỉnh kho: CHỈ ADMIN + WAREHOUSE_MANAGER (đảm bảo SALES và WAREHOUSE_STAFF không sửa được tồn kho!) ──
-                .requestMatchers("/api/warehouse/adjust", "/api/warehouse/adjust/**").hasAnyRole(
-                        "ADMIN", "WAREHOUSE_MANAGER")
-
-                // Dữ liệu tồn và chứng từ được phép xem bởi quản lý kinh doanh/người chỉ xem.
-                .requestMatchers("/api/warehouse/options", "/api/warehouse/inventory", "/api/warehouse/vouchers", "/api/warehouse/vouchers/**")
-                        .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF", "SALES_MANAGER", "VIEWER")
-
-                // ── Kho thông thường (nhập/xuất/xem): ADMIN + WAREHOUSE_MANAGER + WAREHOUSE_STAFF ──
-                .requestMatchers("/api/warehouse/**").hasAnyRole(
-                        "ADMIN", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF")
-
-                // ── Đơn hàng: mọi role trừ VIEWER có thể tạo/sửa, nhưng VIEWER có thể xem ──
-                // Chi tiết dùng @PreAuthorize trên từng method
-                .requestMatchers("/api/orders/**").authenticated()
-
-                // ── Sản phẩm & Nhóm hàng: mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
-                .requestMatchers("/api/products/**").authenticated()
-                .requestMatchers("/api/categories/**").authenticated()
-                .requestMatchers("/api/suppliers/**").authenticated()
-
-                // ── Bảng giá (S2-10): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
-                .requestMatchers("/api/price-lists/**").authenticated()
-
-                // ── Chính sách chiết khấu theo sản lượng (S3-01): mọi role đã đăng nhập có thể xem (thao tác quản lý dùng @PreAuthorize) ──
-                .requestMatchers("/api/volume-discounts/**").authenticated()
-                // ── Quản lý hồ sơ đại lý (S3-03): mọi role hợp lệ đã đăng nhập; chi tiết phân quyền qua @PreAuthorize ──
-                .requestMatchers("/api/dealers/**").authenticated()
-
-                // ── Khách hàng: ADMIN, SALES_MANAGER, SALES, VIEWER ──
-                .requestMatchers("/api/customers/**").hasAnyRole(
-                        "ADMIN", "SALES_MANAGER", "SALES", "VIEWER")
-
-                // ── Giá vốn & Biên lợi nhuận: Quản lý kinh doanh và Quản trị viên ──
-                .requestMatchers("/api/finance/cost-price", "/api/finance/cost-price/**",
-                        "/api/finance/profit-margin", "/api/finance/profit-margin/**")
-                        .hasAnyRole("ADMIN", "SALES_MANAGER")
-
-                // ── Tài chính khác (công nợ, quản lý): ADMIN, SALES_MANAGER, ACCOUNTANT ──
-                .requestMatchers("/api/finance/**").hasAnyRole(
-                        "ADMIN", "SALES_MANAGER", "ACCOUNTANT")
-
-                // ── Báo cáo: mọi role đã đăng nhập ──
-                // Chi tiết loại báo cáo dùng @PreAuthorize
-                .requestMatchers("/api/reports/**").authenticated()
+                // Ma trận quyền tại controller quyết định quyền nghiệp vụ.
+                // Chỉ cấu hình ma trận và nhật ký hệ thống dành riêng cho ADMIN.
+                .requestMatchers("/api/admin/permissions", "/api/admin/permissions/**",
+                        "/api/admin/audit-logs", "/api/admin/audit-logs/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**", "/api/manager/**",
+                        "/api/warehouse/**", "/api/warehouses", "/api/warehouses/**",
+                        "/api/warehouse-locations", "/api/warehouse-locations/**",
+                        "/api/orders/**", "/api/products/**", "/api/categories/**",
+                        "/api/suppliers/**", "/api/price-lists/**", "/api/volume-discounts/**",
+                        "/api/dealers/**", "/api/portal/**", "/api/finance/**",
+                        "/api/reports/**").authenticated()
 
                 .requestMatchers("/api/test/**").authenticated()
 
@@ -145,7 +105,8 @@ public class SecurityConfig {
             )
 
             .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(new DealerApiScopeFilter(accessDeniedHandler), JwtAuthenticationFilter.class);
 
         return http.build();
     }

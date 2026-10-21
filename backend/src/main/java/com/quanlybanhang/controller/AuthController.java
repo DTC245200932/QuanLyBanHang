@@ -82,6 +82,15 @@ public class AuthController {
                 adminUserService.getByUsername(authentication.getName())));
     }
 
+    @GetMapping("/permissions")
+    public ResponseEntity<ApiResponse> permissions(Authentication authentication) {
+        var authorities = authentication.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority).sorted().toList();
+        return ResponseEntity.ok(ApiResponse.success("Quyền hiện tại", java.util.Map.of(
+                "roles", authorities.stream().filter(value -> value.startsWith("ROLE_")).toList(),
+                "permissions", authorities.stream().filter(value -> !value.startsWith("ROLE_")).toList())));
+    }
+
     @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse> updateAvatar(
             @RequestPart("file") MultipartFile file,

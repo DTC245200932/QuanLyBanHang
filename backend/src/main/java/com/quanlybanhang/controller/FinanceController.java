@@ -47,7 +47,7 @@ public class FinanceController {
      * API xem giá vốn — Quản lý kinh doanh hoặc Quản trị viên.
      */
     @GetMapping("/cost-price")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('FINANCE_VIEW_COST_PRICE'))")
     public ApiResponse getCostPrice() {
         List<Map<String, Object>> costPrices = productRepository.findAll().stream()
                 .map(product -> {
@@ -66,7 +66,7 @@ public class FinanceController {
      * API xem biên lợi nhuận — Quản lý kinh doanh hoặc Quản trị viên.
      */
     @GetMapping("/profit-margin")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('FINANCE_VIEW_PROFIT_MARGIN'))")
     public ApiResponse getProfitMargin() {
         List<Map<String, Object>> margins = productRepository.findAll().stream()
                 .map(product -> {
@@ -93,7 +93,7 @@ public class FinanceController {
      * API xem công nợ — ADMIN, SALES_MANAGER, ACCOUNTANT.
      */
     @GetMapping("/debt")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER', 'ACCOUNTANT')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('FINANCE_VIEW_DEBT'))")
     public ApiResponse getDebt() {
         List<Map<String, Object>> debts = dealerRepository.findAll().stream()
                 .map(dealer -> {
@@ -117,7 +117,7 @@ public class FinanceController {
      * Chỉ Kế toán công nợ và Quản lý kinh doanh (và Quản trị hệ thống) được phép sửa.
      */
     @PutMapping("/debt/{dealerId}/limit")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('FINANCE_MANAGE'))")
     @Transactional
     public ApiResponse updateDebtLimit(
             @PathVariable Long dealerId,

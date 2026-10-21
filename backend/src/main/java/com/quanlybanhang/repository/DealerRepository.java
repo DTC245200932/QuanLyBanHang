@@ -29,6 +29,8 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
 
     long countByAssignedUserId(Long userId);
 
+    long countByWarehouseId(Long warehouseId);
+
     List<Dealer> findByActiveTrueOrderByNameAsc();
 
     List<Dealer> findByAssignedUserIdAndActiveTrueOrderByNameAsc(Long userId);

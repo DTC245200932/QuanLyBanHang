@@ -46,5 +46,23 @@ public class OrderCalculateItemResponse {
     private String appliedPolicyName;
     private String selectionReason;
     private BigDecimal totalAmount;
+
+    /** Tồn thực tế trong kho (đơn vị cơ sở). */
+    private BigDecimal physicalQuantity;
+
+    /** Tồn đang giữ chỗ (đơn vị cơ sở). */
+    private BigDecimal reservedQuantity;
+
+    /** Tồn khả dụng = Tồn thực tế - Tồn giữ chỗ (đơn vị cơ sở). */
+    private BigDecimal availableQuantity;
+
+    /** Tồn khả dụng quy đổi theo đơn vị đặt hàng. */
+    private BigDecimal availableInUnit;
+
+    /** Số lượng tối đa có thể đặt theo đơn vị đã chọn. */
+    private BigDecimal maxAllowedInUnit;
+
+    /** Cảnh báo dòng đặt hàng có vượt tồn khả dụng hay không. */
+    private Boolean exceedsStock;
 }
 

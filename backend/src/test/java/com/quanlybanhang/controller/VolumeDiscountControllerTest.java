@@ -82,7 +82,7 @@ class VolumeDiscountControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("GET /api/volume-discounts cho phép nhân viên kinh doanh xem -> 200 OK")
     void getAllPolicies_SalesRole_Returns200() throws Exception {
         VolumeDiscountPolicyResponse resp = VolumeDiscountPolicyResponse.builder()
@@ -102,7 +102,7 @@ class VolumeDiscountControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("POST /api/volume-discounts cho phép Quản lý kinh doanh tạo chính sách -> 201 Created")
     void createPolicy_SalesManager_Returns201() throws Exception {
         VolumeDiscountPolicyRequest req = VolumeDiscountPolicyRequest.builder()
@@ -137,7 +137,7 @@ class VolumeDiscountControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("POST /api/volume-discounts chặn nhân viên kinh doanh tự ý tạo chính sách -> 403 Forbidden")
     void createPolicy_SalesRole_Returns403() throws Exception {
         VolumeDiscountPolicyRequest req = VolumeDiscountPolicyRequest.builder()

@@ -84,6 +84,7 @@ public class ProductServiceImpl implements ProductService {
                 .packingSpecification(request.getPackingSpecification() != null ? request.getPackingSpecification().trim() : null)
                 .imageUrl(request.getImageUrl() != null ? request.getImageUrl().trim() : null)
                 .active(request.getActive() != null ? request.getActive() : true)
+                .manageLot(request.getManageLot() != null ? request.getManageLot() : false)
                 .build();
 
         if (request.getUnitConversions() != null && !request.getUnitConversions().isEmpty()) {
@@ -135,7 +136,7 @@ public class ProductServiceImpl implements ProductService {
             if (product.getPrice() == null || product.getPrice().compareTo(request.getPrice()) != 0) {
                 Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
                 String username = authentication != null ? authentication.getName() : "SYSTEM";
-                
+
                 ProductPriceHistory history = ProductPriceHistory.builder()
                         .product(product)
                         .oldPrice(product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO)
@@ -175,6 +176,9 @@ public class ProductServiceImpl implements ProductService {
         }
         if (request.getActive() != null) {
             product.setActive(request.getActive());
+        }
+        if (request.getManageLot() != null) {
+            product.setManageLot(request.getManageLot());
         }
 
         Product saved = productRepository.save(product);
@@ -642,7 +646,6 @@ public class ProductServiceImpl implements ProductService {
         }
         return auth.getAuthorities().stream().anyMatch(a ->
                 "ROLE_ADMIN".equals(a.getAuthority()) ||
-                "ROLE_SALES_MANAGER".equals(a.getAuthority()) ||
                 Permission.FINANCE_VIEW_COST_PRICE.name().equals(a.getAuthority())
         );
     }
@@ -652,7 +655,7 @@ public class ProductServiceImpl implements ProductService {
     public List<ProductPriceHistoryResponse> getPriceHistory(Long productId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + productId));
-        
+
         return productPriceHistoryRepository.findByProductIdOrderByAppliedAtDesc(productId)
                 .stream()
                 .map(h -> ProductPriceHistoryResponse.builder()
@@ -711,6 +714,7 @@ public class ProductServiceImpl implements ProductService {
                 .packingSpecification(product.getPackingSpecification())
                 .imageUrl(product.getImageUrl())
                 .active(product.getActive())
+                .manageLot(product.getManageLot() != null ? product.getManageLot() : false)
                 .unitConversions(conversions)
                 .status(Boolean.TRUE.equals(product.getActive()) ? "Đang kinh doanh" : "Ngừng kinh doanh")
                 .hasTransactions(hasTrans)
@@ -725,4 +729,3 @@ public class ProductServiceImpl implements ProductService {
                 || warehouseVoucherItemRepository.existsByProductId(productId));
     }
 }
-

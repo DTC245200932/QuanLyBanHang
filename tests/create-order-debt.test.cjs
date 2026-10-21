@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-async function openOrderForm(debtResponse) {
+async function openOrderForm(debtResponse, hasPermission = () => true) {
   const elements = new Map();
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -25,7 +25,8 @@ async function openOrderForm(debtResponse) {
     MenuConfig: {},
     requestAnimationFrame: (fn) => fn(), setTimeout() {}, clearTimeout() {},
     Auth: {
-      requireLogin: () => true, hasAnyRole: () => true, hasPermission: () => true,
+      refreshPermissions: async () => true,
+      requireLogin: () => true, hasAnyRole: () => true, hasPermission,
       getUser: () => null,
       apiFetch: async (url) => {
         calls.push(url);
@@ -47,6 +48,13 @@ async function openOrderForm(debtResponse) {
 }
 
 const debt = (data) => () => ({ ok: true, json: async () => ({ success: true, data }) });
+
+test('tạo đơn không gọi lịch sử mua hàng khi thiếu ORDER_VIEW', async () => {
+  const { element, calls } = await openOrderForm(debt({ currentDebt: 0 }), permission => permission !== 'ORDER_VIEW');
+  assert.ok(!calls.some(url => url.includes('purchase-history')));
+  assert.equal(element('co-history-section').hidden, true);
+  assert.equal(element('btn-add-all-history').hidden, true);
+});
 
 test('màn hình tạo đơn dùng API công nợ dành cho SALES và đọc DTO của backend S4-02', async () => {
   const { element, calls } = await openOrderForm(debt({ currentDebt: 300, debtLimit: 1000, remainingLimit: 700, hasOverdueDebt: false, isBlocked: false }));

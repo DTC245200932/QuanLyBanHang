@@ -11,27 +11,24 @@
  * - Khai báo nhiều điểm giao hàng, chọn mặc định và gắn vào đơn hàng (S3-04)
  * - Phân trang phía client, tải danh mục tham chiếu từ /dealers/options
  */
-(() => {
+ (async () => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
-  if (!Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_SALES', 'ROLE_VIEWER')) {
+  if (!Auth.hasAnyPermission('CUSTOMER_VIEW', 'ORDER_VIEW')) {
     location.href = '/error?status=403';
     return;
   }
-  if (!Auth.hasPermission('CUSTOMER_VIEW')) {
-    location.href = '/error?status=403';
-    return;
-  }
-  const CAN_MANAGE = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT');
-  const CAN_ASSIGN = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
-  const CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyRole(
-    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_VIEWER',
-  );
-  const CAN_MANAGE_DELIVERY_POINTS = Auth.hasAnyRole(
-    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_ACCOUNTANT', 'ROLE_SALES',
-  );
-  const CAN_COPY_ORDER = Auth.hasPermission('ORDER_CREATE');
+  let CAN_MANAGE = Auth.hasPermission('CUSTOMER_EDIT');
+  let CAN_ASSIGN = Auth.hasPermission('CUSTOMER_EDIT');
+  let CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyPermission('CUSTOMER_VIEW', 'ORDER_VIEW');
+  let CAN_MANAGE_DELIVERY_POINTS = Auth.hasPermission('CUSTOMER_EDIT');
+  let CAN_VIEW_DEALER_ORDERS = Auth.hasPermission('ORDER_VIEW');
+  // Sao chép cần đọc đơn nguồn trước khi tạo bản nháp.
+  // Không hiện nút nếu thiếu ORDER_VIEW, tránh hiện nút rồi nhận 403 từ /orders/{id}.
+  let CAN_COPY_ORDER = Auth.hasPermission('ORDER_CREATE')
+    && Auth.hasPermission('ORDER_VIEW');
 
   /* ── DOM helpers ────────────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
@@ -439,12 +436,12 @@
         : `<span class="status-badge status-badge--inactive"><span class="status-badge__dot"></span>Ngừng giao dịch</span>`;
 
       const actions = `<div class="dlr-actions">
-            <button class="dlr-action-btn" data-action="orders" data-id="${dlr.id}" title="Đơn đang dở" aria-label="Đơn đang dở của ${escHtml(dlr.name)}">
+            ${CAN_VIEW_DEALER_ORDERS ? `<button class="dlr-action-btn" data-action="orders" data-id="${dlr.id}" title="Đơn đang dở" aria-label="Đơn đang dở của ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><path d="M9 5H5v16h14V5h-4M9 3h6v4H9zM8 12h8M8 16h5"/></svg>
             </button>
             <button class="dlr-action-btn" data-action="order-history" data-id="${dlr.id}" title="Lịch sử đơn hàng" aria-label="Lịch sử đơn hàng của ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/><path d="M7 3v4M17 3v4"/></svg>
-            </button>
+            </button>` : ''}
             ${CAN_ASSIGN ? `
             <button class="dlr-action-btn dlr-action-btn--assign" data-action="assign" data-id="${dlr.id}" title="Phân công người phụ trách" aria-label="Phân công người phụ trách cho ${escHtml(dlr.name)}">
               <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M19 8v6M22 11h-6"/></svg>
@@ -902,7 +899,7 @@
 
   /* ── Dealer modal (Add / Edit) ──────────────────────────── */
   function openDealerModal(dlr = null) {
-    if (!CAN_MANAGE) {
+    if (!Auth.hasPermission(dlr ? 'CUSTOMER_EDIT' : 'CUSTOMER_CREATE')) {
       showToast('Bạn không có quyền quản lý đại lý.', 'error');
       return;
     }
@@ -943,6 +940,10 @@
   $('dealer-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = $('dlr-id').value;
+    if (!Auth.hasPermission(id ? 'CUSTOMER_EDIT' : 'CUSTOMER_CREATE')) {
+      showFormError('dealer-form-message', 'Quyền thao tác đã bị thu hồi.');
+      return;
+    }
 
     const payload = {
       code:          $('dlr-code').value.trim().toUpperCase(),
@@ -1221,8 +1222,8 @@
   }
 
   function renderDealerOrders(orders) {
-    const canApprove = Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER');
-    const canCancelRole = Auth.hasAnyRole('ROLE_SALES', 'ROLE_SALES_MANAGER', 'ROLE_ADMIN');
+    const canApprove = Auth.hasPermission('ORDER_APPROVE');
+    const canCancel = Auth.hasPermission('ORDER_CANCEL');
 
     $('dealer-orders-body').innerHTML = orders.length ? orders.map(order => {
       const normStatus = String(order.status || '').toUpperCase();
@@ -1234,7 +1235,11 @@
         actionButtons.push(`<button class="btn btn--secondary" data-order-action="reject" data-order-id="${order.id}">Từ chối</button>`);
       }
 
-      if (canCancelRole) {
+      if (Auth.hasPermission('ORDER_VIEW')) {
+        actionButtons.push(`<button class="btn btn--secondary" data-order-tracking="${order.id}" data-order-code="${escHtml(order.orderCode)}">Theo dõi</button>`);
+      }
+
+      if (canCancel) {
         if (config.canCancel) {
           actionButtons.push(`<button class="btn btn--danger" data-order-cancel="${order.id}" data-order-code="${escHtml(order.orderCode)}">Huỷ đơn</button>`);
         } else if (config.exported) {
@@ -1308,13 +1313,19 @@
   }
 
   $('dealer-orders-body').addEventListener('click', async event => {
+    const trackingBtn = event.target.closest('[data-order-tracking]');
+    if (trackingBtn) {
+      await openDealerOrderTracking(Number(trackingBtn.dataset.orderTracking), trackingBtn.dataset.orderCode);
+      return;
+    }
+
     const copyBtn = event.target.closest('[data-order-copy]');
     if (copyBtn) {
       if (!CAN_COPY_ORDER) return;
       copyBtn.disabled = true;
       try {
         await DealerTransactions.copyOrderToDraft(Number(copyBtn.dataset.orderCopy));
-        window.location.href = '/create-order.html?copied=1';
+        window.location.href = '/create-order?copied=1';
       } catch (error) {
         showFormError('dealer-orders-message', error.message);
         copyBtn.disabled = false;
@@ -1331,7 +1342,7 @@
     }
 
     const button = event.target.closest('[data-order-action]');
-    if (!button || !Auth.hasAnyRole('ROLE_ADMIN', 'ROLE_SALES_MANAGER')) return;
+    if (!button || !Auth.hasPermission('ORDER_APPROVE')) return;
     const dealerId = orderDealerId;
     button.disabled = true;
     try {
@@ -1342,6 +1353,36 @@
     } catch (error) { showFormError('dealer-orders-message', error.message); }
     finally { button.disabled = false; }
   });
+
+  async function openDealerOrderTracking(orderId, orderCode) {
+    const modal = $('dealer-order-tracking-modal');
+    if (!modal || !Auth.hasPermission('ORDER_VIEW')) return;
+    const formatTrackingDate = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—';
+    $('dealer-order-tracking-title').textContent = `Vòng đời đơn hàng · ${orderCode || `#${orderId}`}`;
+    $('dealer-order-tracking-body').innerHTML = '<p class="dealer-tracking-state">Đang tải trạng thái và lịch sử…</p>';
+    modal.hidden = false;
+    try {
+      const response = await Auth.apiFetch(`/orders/${orderId}/tracking`);
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success || !result.data) {
+        throw new Error(result?.message || 'Không thể tải vòng đời đơn hàng');
+      }
+      const data = result.data;
+      const steps = Array.isArray(data.steps) ? data.steps : [];
+      const history = Array.isArray(data.history) ? data.history : [];
+      $('dealer-order-tracking-body').innerHTML = `
+        <p class="dealer-tracking-summary"><strong>Hiện tại:</strong> ${escHtml(data.currentStatusDisplayName || data.currentStatus || '—')}</p>
+        <ol class="dealer-tracking-steps">${steps.map(step => `
+          <li class="dealer-tracking-step dealer-tracking-step--${escHtml(String(step.state || '').toLowerCase())}">
+            <span class="dealer-tracking-step__marker"></span>
+            <div><strong>${escHtml(step.displayName || step.status || '—')}</strong><span>${escHtml(step.description || '')}</span>${step.timestamp ? `<small>${formatTrackingDate(step.timestamp)}${step.operator ? ` · ${escHtml(step.operator)}` : ''}</small>` : ''}</div>
+          </li>`).join('')}</ol>
+        <h3>Lịch sử cập nhật</h3>
+        <div class="dealer-tracking-history">${history.length ? history.map(entry => `<div><strong>${escHtml(entry.statusDisplayName || entry.newStatus || '—')}</strong><span>${escHtml(entry.note || 'Cập nhật trạng thái')}</span><small>${formatTrackingDate(entry.changedAt)}${entry.changedBy ? ` · ${escHtml(entry.changedBy)}` : ''}</small></div>`).join('') : '<p class="dealer-tracking-state">Chưa có cập nhật trạng thái.</p>'}</div>`;
+    } catch (error) {
+      $('dealer-order-tracking-body').innerHTML = `<p class="dealer-tracking-error">${escHtml(error.message)}</p>`;
+    }
+  }
 
   $('cancel-order-form')?.addEventListener('submit', async event => {
     event.preventDefault();
@@ -1373,6 +1414,9 @@
   document.querySelectorAll('[data-close-cancel-order]').forEach(btn =>
     btn.addEventListener('click', closeCancelOrderModal)
   );
+  document.querySelectorAll('[data-close-dealer-tracking]').forEach(btn =>
+    btn.addEventListener('click', () => { $('dealer-order-tracking-modal').hidden = true; })
+  );
 
   document.querySelectorAll('[data-close-transaction]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.closeTransaction === 'dealer-orders-modal') orderDealerId = null;
@@ -1380,19 +1424,21 @@
     closeTransactionModal(button.dataset.closeTransaction);
   }));
 
-  ['lock-modal', 'dealer-orders-modal', 'delivery-points-modal', 'cancel-order-modal'].forEach(id => $(id)?.addEventListener('click', event => {
+  ['lock-modal', 'dealer-orders-modal', 'dealer-order-tracking-modal', 'delivery-points-modal', 'cancel-order-modal'].forEach(id => $(id)?.addEventListener('click', event => {
     if (event.target !== $(id)) return;
     if (id === 'dealer-orders-modal') orderDealerId = null;
     if (id === 'delivery-points-modal') state.deliveryDealerId = null;
     if (id === 'cancel-order-modal') { closeCancelOrderModal(); return; }
+    if (id === 'dealer-order-tracking-modal') { $(id).hidden = true; return; }
     closeTransactionModal(id);
   }));
 
   document.addEventListener('keydown', event => {
-    const id = ['cancel-order-modal', 'lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].find(name => $(name) && !$(name).hidden);
+    const id = ['cancel-order-modal', 'dealer-order-tracking-modal', 'lock-modal', 'dealer-orders-modal', 'delivery-points-modal'].find(name => $(name) && !$(name).hidden);
     if (!id) return;
     if (event.key === 'Escape') {
       if (id === 'cancel-order-modal') { closeCancelOrderModal(); return; }
+      if (id === 'dealer-order-tracking-modal') { $(id).hidden = true; return; }
       if (id === 'dealer-orders-modal') orderDealerId = null;
       if (id === 'delivery-points-modal') state.deliveryDealerId = null;
       closeTransactionModal(id);
@@ -1613,7 +1659,7 @@
   }
 
   /* ── Manage privileges UI ────────────────────────────────── */
-  if (CAN_MANAGE) {
+  if (Auth.hasPermission('CUSTOMER_CREATE')) {
     const addBtn = $('btn-add-dealer');
     if (addBtn) addBtn.hidden = false;
   }
@@ -1809,4 +1855,21 @@
   /* ── Init ───────────────────────────────────────────────── */
   loadOptions();
   loadDealers();
+  window.addEventListener("auth:permissions-changed", () => {
+    CAN_MANAGE = Auth.hasPermission('CUSTOMER_EDIT');
+    CAN_ASSIGN = CAN_MANAGE;
+    CAN_MANAGE_DELIVERY_POINTS = CAN_MANAGE;
+    CAN_VIEW_ASSIGNMENT_HISTORY = Auth.hasAnyPermission('CUSTOMER_VIEW', 'ORDER_VIEW');
+    CAN_VIEW_DEALER_ORDERS = Auth.hasPermission('ORDER_VIEW');
+    CAN_COPY_ORDER = Auth.hasPermission('ORDER_CREATE') && CAN_VIEW_DEALER_ORDERS;
+    $('btn-add-dealer').hidden = !Auth.hasPermission('CUSTOMER_CREATE');
+    $('dealer-assignment-panel').hidden = !CAN_ASSIGN;
+    renderTable();
+    if (!CAN_MANAGE && !Auth.hasPermission('CUSTOMER_CREATE')) closeDealerModal();
+    if (!CAN_MANAGE) {
+      closeStatusModal();
+      closeAssignmentModal();
+      closeBulkHandoverModal();
+    }
+  });
 })();

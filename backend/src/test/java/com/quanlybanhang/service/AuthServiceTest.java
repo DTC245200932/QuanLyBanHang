@@ -56,7 +56,7 @@ class AuthServiceTest {
             int remainingAttempts = 5 - attempt;
             assertThatThrownBy(() -> authService.login(request))
                     .isInstanceOf(BadCredentialsException.class)
-                    .hasMessage("Đăng nhập thất bại. Còn " + remainingAttempts + " lần thử.");
+                    .hasMessage("Tên đăng nhập hoặc mật khẩu không đúng");
         }
 
         assertThatThrownBy(() -> authService.login(request))
@@ -67,6 +67,10 @@ class AuthServiceTest {
 
     @Test
     void unknownAndKnownAccountsUseTheSameBadCredentialsMessage() {
+        when(userRepository.findByUsername("sales01")).thenReturn(Optional.of(
+                User.builder().username("sales01").password("encoded").active(true).build()));
+        when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("bad"));
+        assertThatThrownBy(() -> authService.login(request)).hasMessage("Tên đăng nhập hoặc mật khẩu không đúng");
         when(userRepository.findByUsername("sales01")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BadCredentialsException.class)

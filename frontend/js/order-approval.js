@@ -1,21 +1,22 @@
 /**
  * order-approval.js — S4-05 Duyệt đơn vượt hạn mức / dưới giá sàn.
  *
- * Vai trò: ROLE_SALES_MANAGER, ROLE_ADMIN
+ * Quyền: ORDER_APPROVE + ORDER_VIEW trong ma trận phân quyền (ROLE_ADMIN luôn được phép)
  * - Danh sách đơn chờ duyệt hiển thị rõ lý do cần duyệt và mức vi phạm
  * - Ba hành động: Duyệt, Từ chối, Trả lại sửa
  *   — Từ chối và Trả lại sửa bắt buộc nhập ý kiến
  * - Đơn được duyệt mới chuyển sang giữ chỗ tồn và chờ xuất kho
  * - Lịch sử duyệt không sửa và không xoá được
  */
-(() => {
+ (async () => {
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
   const user = Auth.getUser();
 
-  // ── Role guard ──
-  if (!Auth.hasAnyRole("ROLE_ADMIN", "ROLE_SALES_MANAGER")) {
-    sessionStorage.setItem("errorMessage", "Bạn không có quyền truy cập chức năng duyệt đơn hàng.");
+  // ── Permission guard ──
+  if (!Auth.hasPermission("ORDER_APPROVE") || !Auth.hasPermission("ORDER_VIEW")) {
+    sessionStorage.setItem("errorMessage", "Bạn cần quyền xem và duyệt đơn hàng để truy cập chức năng này.");
     window.location.href = "/error?status=403";
     return;
   }
@@ -208,10 +209,24 @@
   }
 
   function renderReasonTags(reasons) {
-    if (!reasons.length) return `<span class="oa-reason-tag oa-reason-tag--debt">Chờ xác nhận</span>`;
-    return reasons.map((r) => {
-      const info = REASON_MAP[r] || { label: r, tagClass: "oa-reason-tag--debt" };
-      return `<span class="oa-reason-tag ${info.tagClass}">${escapeHtml(info.label)}</span>`;
+    const values = Array.isArray(reasons) ? reasons : reasons ? [reasons] : [];
+    if (!values.length) return `<span class="oa-reason-tag oa-reason-tag--debt">Chờ xác nhận</span>`;
+
+    return values.map((reason) => {
+      const raw = String(reason ?? "").trim();
+      const upper = raw.toUpperCase();
+      const mapped = REASON_MAP[upper];
+      const inferred = mapped || (
+        upper.includes("DEBT") || /hạn mức công nợ/i.test(raw)
+          ? { label: "Vượt hạn mức công nợ", tagClass: "oa-reason-tag--debt" }
+          : upper.includes("FLOOR") || /giá sàn|dưới giá/i.test(raw)
+            ? { label: "Bán dưới giá sàn", tagClass: "oa-reason-tag--price" }
+            : upper.includes("QUANTITY") || /số lượng/i.test(raw)
+              ? { label: "Vượt hạn mức số lượng", tagClass: "oa-reason-tag--quantity" }
+              : { label: raw.length > 32 ? `${raw.slice(0, 32)}…` : raw, tagClass: "oa-reason-tag--debt" }
+      );
+      const title = raw && raw !== inferred.label ? ` title="${escapeHtml(raw)}"` : "";
+      return `<span class="oa-reason-tag ${inferred.tagClass}"${title}>${escapeHtml(inferred.label || "Chờ xác nhận")}</span>`;
     }).join(" ");
   }
 
@@ -233,7 +248,7 @@
       }
       return `<span style="color:var(--ink-500); font-size:.75rem">Xem chi tiết</span>`;
     }
-    return violations.map((v) => `<div class="oa-violation-detail">
+    return violations.map((v) => `<div class="oa-violation-detail" title="${escapeHtml(v.description || "")}">
       <span class="oa-violation-value">${escapeHtml(v.displayValue || v.value || "")}</span>
       <span class="oa-violation-label">${escapeHtml(v.description || "")}</span>
     </div>`).join("");

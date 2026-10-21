@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-18",
+  "timezone": "Asia/Bangkok",
+  "verifiedCodeCommit": "36a78e6df5f0a37510e40288edf8b7de4ffbadbb",
+  "baseDevelop": "54cb772d88c9ccf978b35f2fe6282f552b85f921",
+  "storiesAudited": 48,
+  "targetBranch": "develop",
+  "integrationBranch": "feature/ra-soat-sprint-1-5",
+  "backend": {
+    "command": "backend/mvnw.cmd -f backend/pom.xml verify",
+    "javaRelease": 17,
+    "result": "BUILD SUCCESS",
+    "tests": 499,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "command": "node --test tests/*.test.cjs",
+    "tests": 55,
+    "failures": 0
+  },
+  "routes": {
+    "command": "python -m unittest discover -s tests -p test_frontend_server.py",
+    "tests": 5,
+    "failures": 0
+  },
+  "integration": {
+    "testClass": "SprintMergeIntegrationTest",
+    "tests": 5,
+    "database": "isolated H2 in memory",
+    "serviceOrRepositoryMocks": false
+  },
+  "prs": [
+    {
+      "number": 78,
+      "head": "402212e74893ef756c5886c6d0dc4c06dc9309f9",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/78"
+    },
+    {
+      "number": 82,
+      "head": "3b9303954f6365c107407eaa3d757d065d52bc63",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/82"
+    },
+    {
+      "number": 87,
+      "head": "19cb43cf20dcf34c3065725d4e6e9697d5e615e8",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/87"
+    },
+    {
+      "number": 91,
+      "head": "90de12c9291912a2e2c63617fd035eba525df8be",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/91"
+    },
+    {
+      "number": 92,
+      "head": "dc05e6c99b6d7871c37756dd939f055f43a7a467",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/92"
+    },
+    {
+      "number": 95,
+      "head": "9fa5556f66afdd9fe6473dcab8b4380d968ab13a",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/95"
+    },
+    {
+      "number": 96,
+      "head": "c280bcb4450c0022b952253b5b4d039959e2e86c",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/96"
+    },
+    {
+      "number": 97,
+      "head": "40f66f70edd99ff43c698286ea2cfb6d3b4bb974",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/97"
+    },
+    {
+      "number": 98,
+      "head": "5771a1ba64ed5c56a75f3f656184b9444b99859f",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/98"
+    },
+    {
+      "number": 99,
+      "head": "da6e0c7635add2c81fb8520c956c8ef4696ceeec",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/99"
+    },
+    {
+      "number": 100,
+      "head": "e0aa365330ade4415e790aeb7409ec71a24ba465",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/100"
+    },
+    {
+      "number": 101,
+      "head": "f6323f14c30ec207d49bab35836e8eecb85c0c00",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/101"
+    },
+    {
+      "number": 102,
+      "head": "01339077fa64b32271532b269917553579e100bd",
+      "url": "https://github.com/KoAiBitTuiLaAi/QuanLyBanHang/pull/102"
+    }
+  ],
+  "notVerified": [
+    "MySQL concurrency",
+    "real SMTP delivery",
+    "all pages at 360px",
+    "5000 SKU import"
+  ],
+  "allAcceptanceCriteriaComplete": false
+}

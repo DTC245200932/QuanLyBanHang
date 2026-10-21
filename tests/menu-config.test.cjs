@@ -8,17 +8,77 @@ const source = fs.readFileSync(path.join(__dirname, '../frontend/js/menu-config.
 const menu = vm.runInNewContext(`${source}\nMenuConfig;`, { URLSearchParams });
 const ids = user => Array.from(menu.getMenuForUser(user), item => item.id);
 
+test('S5-08 merge preserves stocktaking, stock minimums and warehouse transfers as distinct menus', () => {
+  const pages = [
+    ['warehouse-stocktake', '/warehouse/units?tab=stocktake'],
+    ['stock-minimums', '/warehouse/minimums'],
+    ['warehouse-transfers', '/warehouse/transfers'],
+  ];
+  const adminMenu = ids({ roles: ['ROLE_ADMIN'], permissions: [] });
+  for (const [id, href] of pages) {
+    assert.equal(menu.menuItems.filter(item => item.id === id).length, 1, id);
+    assert.ok(adminMenu.includes(id), id);
+    assert.equal(menu.getPageForLocation(new URL(href, 'http://localhost')).id, id);
+  }
+});
+
+test('merged stocktaking menu follows VIEW or ADJUST grants and revocations without role fallback', () => {
+  for (const role of ['ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF', 'ROLE_VIEWER', 'ROLE_SALES']) {
+    for (const permission of ['WAREHOUSE_VIEW', 'WAREHOUSE_ADJUST']) {
+      assert.ok(ids({ roles: [role], permissions: [permission] }).includes('warehouse-stocktake'), `${role}: ${permission}`);
+    }
+    assert.ok(!ids({ roles: [role], permissions: [] }).includes('warehouse-stocktake'), role);
+  }
+  assert.ok(ids({ roles: ['ROLE_ADMIN'], permissions: [] }).includes('warehouse-stocktake'));
+});
+
 test('admin can reach implemented account, audit and catalog pages', () => {
   const visible = ids({roles:['ROLE_ADMIN'], permissions:['USER_VIEW', 'PRODUCT_VIEW', 'WAREHOUSE_VIEW', 'WAREHOUSE_IMPORT']});
-  for (const id of ['dashboard', 'profile', 'users', 'audit-logs', 'products', 'product-groups', 'suppliers', 'price-lists', 'discount-policies']) assert.ok(visible.includes(id));
-  for (const id of ['orders', 'customers', 'finance', 'reports']) assert.ok(!visible.includes(id));
+  for (const id of ['dashboard', 'profile', 'users', 'audit-logs', 'products', 'product-groups', 'suppliers', 'price-lists', 'discount-policies', 'orders', 'order-approval']) assert.ok(visible.includes(id));
+  for (const id of ['customers', 'finance', 'reports']) assert.ok(!visible.includes(id));
 });
 
 test('admin keeps management menus when the session has stale permissions', () => {
   const visible = ids({roles:['ROLE_ADMIN'], permissions:[]});
-  for (const id of ['products', 'price-lists', 'discount-policies', 'debt-limits', 'users']) {
+  for (const id of ['products', 'price-lists', 'discount-policies', 'debt-limits', 'users', 'dealer-orders', 'dealer-portal']) {
     assert.ok(visible.includes(id), id);
   }
+});
+
+test('S5-03 warehouse menu follows view/manage permissions without a warehouse role fallback', () => {
+  for (const role of ['ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_MANAGER']) {
+    for (const permission of ['WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE']) {
+      assert.ok(ids({ roles: [role], permissions: [permission] }).includes('warehouses'));
+    }
+    assert.ok(!ids({ roles: [role], permissions: [] }).includes('warehouses'));
+  }
+  assert.ok(ids({ roles: ['ROLE_ADMIN'], permissions: [] }).includes('warehouses'));
+  assert.equal(menu.getPageForLocation(new URL('http://localhost/warehouses')).id, 'warehouses');
+});
+
+test('S5-05 keeps the inventory menu on the permission matrix and resolves old links', () => {
+  const item = menu.menuItems.find(item => item.id === 'warehouse');
+  assert.equal(item.href, '/warehouse/inventory');
+  assert.ok(ids({ roles: ['ROLE_VIEWER'], permissions: ['WAREHOUSE_VIEW'] }).includes('warehouse'));
+  assert.ok(!ids({ roles: ['ROLE_WAREHOUSE_MANAGER'], permissions: ['WAREHOUSE_MANAGE'] }).includes('warehouse'));
+  assert.equal(menu.getPageForLocation(new URL('http://localhost/warehouse/units?tab=inventory')).id, 'warehouse');
+});
+
+test('dealer menus require the permissions of every API used by the page', () => {
+  const permissions = ['ORDER_VIEW', 'ORDER_CREATE', 'PRODUCT_VIEW'];
+  assert.ok(ids({ roles: ['ROLE_DEALER'], permissions }).includes('dealer-portal'));
+  for (const revoked of permissions) {
+    const visible = ids({ roles: ['ROLE_DEALER'], permissions: permissions.filter(p => p !== revoked) });
+    assert.ok(!visible.includes('dealer-portal'), revoked);
+    assert.equal(visible.includes('dealer-orders'), revoked !== 'ORDER_VIEW');
+  }
+});
+
+test('dealer-only accounts never see internal menus rejected by portal data scoping', () => {
+  const visible = ids({ roles: ['ROLE_DEALER'], permissions: ['ORDER_VIEW', 'PRODUCT_VIEW', 'USER_VIEW', 'WAREHOUSE_VIEW'] });
+  assert.ok(visible.includes('dealer-orders'));
+  for (const id of ['orders', 'products', 'users', 'warehouse']) assert.ok(!visible.includes(id));
+  assert.ok(ids({ roles: ['ROLE_DEALER', 'ROLE_SALES'], permissions: ['ORDER_VIEW'] }).includes('orders'));
 });
 
 test('permission removal hides permission-gated menus for non-admin roles', () => {
@@ -31,19 +91,20 @@ test('permission removal hides permission-gated menus for non-admin roles', () =
   assert.ok(!ids({roles:['ROLE_SALES'], permissions:['PRODUCT_VIEW', 'ORDER_CREATE']}).includes('dealers'));
 });
 
-test('warehouse staff and viewers do not receive admin or business management menus', () => {
+test('granted permissions enable menus regardless of the default role', () => {
   for (const role of ['ROLE_WAREHOUSE_STAFF', 'ROLE_VIEWER']) {
     const visible = ids({roles:[role], permissions:['USER_VIEW', 'PRODUCT_VIEW', 'WAREHOUSE_VIEW', 'WAREHOUSE_IMPORT']});
     assert.ok(visible.includes('products'));
     assert.ok(visible.includes('warehouse'));
-    assert.ok(!visible.includes('users'));
+    assert.ok(visible.includes('users'));
+    assert.ok(!ids({roles:[role], permissions:[]}).includes('users'));
     assert.ok(!visible.includes('audit-logs'));
     assert.ok(!visible.includes('price-lists'));
   }
 });
 
 test('sales manager can use groups, prices and conversions; permission removal hides product pages', () => {
-  const visible = ids({roles:['ROLE_SALES_MANAGER'], permissions:['PRODUCT_VIEW', 'WAREHOUSE_VIEW']});
+  const visible = ids({roles:['ROLE_SALES_MANAGER'], permissions:['PRODUCT_VIEW', 'PRODUCT_EDIT', 'WAREHOUSE_VIEW']});
   for (const id of ['product-groups', 'price-lists', 'product-units']) assert.ok(visible.includes(id));
   assert.ok(!ids({roles:['ROLE_SALES_MANAGER'], permissions:[]}).includes('products'));
 });
@@ -56,20 +117,28 @@ test('every visible page has an absolute, extensionless link even from a nested 
   }
 });
 
-test('debt limit menu follows finance roles and view permission', () => {
+test('debt limit menu follows the finance permission matrix', () => {
   assert.ok(ids({roles:['ROLE_ADMIN'], permissions:[]}).includes('debt-limits'));
-  for (const role of ['ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER']) {
+  for (const role of ['ROLE_ACCOUNTANT', 'ROLE_SALES_MANAGER', 'ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER']) {
     assert.ok(ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
     assert.ok(!ids({roles:[role], permissions:[]}).includes('debt-limits'));
-  }
-  for (const role of ['ROLE_VIEWER', 'ROLE_SALES', 'ROLE_WAREHOUSE_STAFF', 'ROLE_WAREHOUSE_MANAGER']) {
-    assert.ok(!ids({roles:[role], permissions:['FINANCE_VIEW_DEBT']}).includes('debt-limits'));
   }
 });
 
 test('debt limit menu uses the existing dashboard route', () => {
   const item = menu.menuItems.find(item => item.id === 'debt-limits');
   assert.equal(item.href, '/dashboard?view=debt-limits');
+});
+
+test('order approval menu requires both viewing and approving orders', () => {
+  assert.ok(ids({
+    roles: ['ROLE_SALES_MANAGER'],
+    permissions: ['ORDER_APPROVE', 'ORDER_VIEW'],
+  }).includes('order-approval'));
+  assert.ok(!ids({
+    roles: ['ROLE_SALES_MANAGER'],
+    permissions: ['ORDER_APPROVE'],
+  }).includes('order-approval'));
 });
 
 const pageAt = href => menu.getPageForLocation(new URL(href, 'http://127.0.0.1:5500'));
@@ -91,6 +160,22 @@ test('warehouse views resolve distinct sidebar entries with a stable default', (
 test('all menu links resolve back to their own page instead of another view on the same path', () => {
   for (const item of menu.menuItems) assert.equal(pageAt(item.href).id, item.id, item.href);
   assert.equal(pageAt('/not-a-page'), null);
+});
+
+test('S5-09: minimum configuration follows MANAGE, never a warehouse role or VIEW fallback', () => {
+  assert.ok(menu.getMenuForUser({roles:['ROLE_VIEWER'],permissions:['WAREHOUSE_MANAGE']}).some(item=>item.id==='stock-minimums'));
+  assert.ok(!menu.getMenuForUser({roles:['ROLE_WAREHOUSE_MANAGER'],permissions:['WAREHOUSE_VIEW']}).some(item=>item.id==='stock-minimums'));
+  assert.ok(menu.getMenuForUser({roles:['ROLE_ADMIN'],permissions:[]}).some(item=>item.id==='stock-minimums'));
+  assert.equal(pageAt('/warehouse/minimums').id,'stock-minimums');
+});
+
+test('S5-07: transfer menu follows matrix permission, not a fixed role', () => {
+  for (const permission of ['WAREHOUSE_TRANSFER', 'WAREHOUSE_VIEW']) {
+    assert.ok(menu.getMenuForUser({roles:['ROLE_VIEWER'],permissions:[permission]}).some(item=>item.id==='warehouse-transfers'));
+  }
+  assert.ok(!menu.getMenuForUser({roles:['ROLE_WAREHOUSE_STAFF'],permissions:[]}).some(item=>item.id==='warehouse-transfers'));
+  assert.ok(menu.getMenuForUser({roles:['ROLE_ADMIN'],permissions:[]}).some(item=>item.id==='warehouse-transfers'));
+  assert.equal(pageAt('/warehouse/transfers').id, 'warehouse-transfers');
 });
 
 test('breadcrumbs use home, actual section and current page; section labels have no misleading destination', () => {

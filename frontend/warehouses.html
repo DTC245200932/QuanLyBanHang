@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kho & vị trí lưu | SaleStock</title>
+  <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
+  <link rel="stylesheet" href="/css/toast.css">
+  <link rel="stylesheet" href="/css/warehouses.css">
+  <link rel="stylesheet" href="/css/app-navigation.css">
+  <script src="/js/app-transition.js"></script>
+</head>
+<body>
+  <div data-app-content>
+    <main class="content wh-page">
+      <header class="wh-heading">
+        <div><h1>Kho & vị trí lưu</h1><p>Quản lý kho, khu vực, kệ hàng và kho phục vụ mặc định cho đại lý.</p></div>
+        <div class="wh-actions">
+          <button class="btn btn--secondary" id="wh-reload" type="button">Tải lại</button>
+          <button class="btn btn--primary" id="wh-create" type="button" data-wh-manage hidden>Thêm kho</button>
+        </div>
+      </header>
+      <p id="wh-message" class="wh-message" role="alert" hidden></p>
+      <p id="wh-readonly" class="wh-note" hidden>Bạn đang có quyền xem. Quyền quản lý danh mục kho và vị trí được cấu hình trong ma trận phân quyền.</p>
+      <section class="wh-panel" aria-labelledby="wh-list-title">
+        <div class="wh-panel-heading"><h2 id="wh-list-title">Danh sách kho</h2><span id="wh-count" class="wh-muted" aria-live="polite"></span></div>
+        <form id="wh-filter" class="wh-toolbar" role="search">
+          <label class="wh-search">Tìm kho<input id="wh-search" type="search" maxlength="150" placeholder="Mã, tên kho, địa chỉ hoặc người phụ trách"></label>
+          <label>Trạng thái<select id="wh-active"><option value="">Tất cả trạng thái</option><option value="true">Hoạt động</option><option value="false">Ngừng hoạt động</option></select></label>
+          <button class="btn btn--secondary" type="submit">Lọc</button>
+        </form>
+        <div class="wh-table-scroll" tabindex="0" role="region" aria-label="Danh sách kho, có thể cuộn ngang">
+          <table class="wh-table"><thead><tr><th>Mã / Tên kho</th><th>Địa chỉ</th><th>Người phụ trách</th><th>Trạng thái</th><th>Vị trí / Đại lý</th><th>Thao tác</th></tr></thead><tbody id="wh-rows"><tr><td colspan="6">Đang tải danh sách kho…</td></tr></tbody></table>
+        </div>
+      </section>
+      <section id="wh-detail" class="wh-panel" aria-labelledby="wh-detail-title" hidden>
+        <div class="wh-panel-heading">
+          <div><h2 id="wh-detail-title">Vị trí lưu trong kho</h2><p id="wh-detail-meta" class="wh-muted"></p></div>
+          <button class="btn btn--primary" id="wh-add-location" type="button" data-wh-manage hidden>Thêm vị trí</button>
+        </div>
+        <form id="wh-location-filter" class="wh-toolbar" role="search">
+          <label class="wh-search">Tìm vị trí<input id="wh-location-search" type="search" placeholder="Mã hoặc tên khu / kệ"></label>
+          <label>Loại vị trí<select id="wh-location-type"><option value="">Tất cả loại</option><option value="ZONE">Khu vực</option><option value="SHELF">Kệ</option></select></label>
+          <label>Trạng thái<select id="wh-location-active"><option value="">Tất cả trạng thái</option><option value="true">Đang dùng</option><option value="false">Tạm ngừng</option></select></label>
+          <button class="btn btn--secondary" type="submit">Lọc</button>
+        </form>
+        <p id="wh-location-message" class="wh-message" role="alert" hidden></p>
+        <div class="wh-table-scroll" tabindex="0" role="region" aria-label="Vị trí lưu, có thể cuộn ngang">
+          <table class="wh-table"><thead><tr><th>Mã / Tên vị trí</th><th>Loại</th><th>Khu vực cha</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody id="wh-location-rows"></tbody></table>
+        </div>
+      </section>
+      <section id="wh-dealers" class="wh-panel" aria-labelledby="wh-dealers-title" hidden>
+        <div class="wh-panel-heading"><div><h2 id="wh-dealers-title">Kho phục vụ đại lý</h2><p class="wh-muted">Gán một kho đang hoạt động làm kho phục vụ mặc định của từng đại lý.</p></div></div>
+        <form id="wh-dealer-filter" class="wh-toolbar" role="search"><label class="wh-search">Tìm đại lý<input id="wh-dealer-search" type="search" maxlength="150" placeholder="Mã hoặc tên đại lý"></label><button class="btn btn--secondary" type="submit">Tìm</button></form>
+        <p id="wh-dealer-message" class="wh-message" role="alert" hidden></p>
+        <div class="wh-table-scroll" tabindex="0" role="region" aria-label="Kho phục vụ đại lý, có thể cuộn ngang">
+          <table class="wh-table"><thead><tr><th>Đại lý</th><th>Trạng thái</th><th>Kho mặc định</th><th>Thao tác</th></tr></thead><tbody id="wh-dealer-rows"></tbody></table>
+        </div>
+        <div class="wh-pagination"><span id="wh-dealer-count" class="wh-muted" aria-live="polite"></span><button class="btn btn--secondary" id="wh-dealer-prev" type="button">Trước</button><button class="btn btn--secondary" id="wh-dealer-next" type="button">Sau</button></div>
+      </section>
+    </main>
+  </div>
+  <dialog id="wh-dialog" class="wh-dialog" aria-labelledby="wh-dialog-title"></dialog>
+  <script src="/js/auth.js"></script>
+  <script src="/js/menu-config.js"></script>
+  <script src="/js/app-shell.js"></script>
+  <script src="/js/app-navigation.js"></script>
+  <script src="/js/toast.js"></script>
+  <script src="/js/warehouses.js"></script>
+</body>
+</html>

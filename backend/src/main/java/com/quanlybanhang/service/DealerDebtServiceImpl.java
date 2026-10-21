@@ -7,6 +7,7 @@ import com.quanlybanhang.exception.DealerDebtOverdueException;
 import com.quanlybanhang.exception.DealerLockedException;
 import com.quanlybanhang.model.Dealer;
 import com.quanlybanhang.model.Order;
+import com.quanlybanhang.model.OrderStatus;
 import com.quanlybanhang.model.User;
 import com.quanlybanhang.repository.DealerRepository;
 import com.quanlybanhang.repository.OrderRepository;
@@ -39,6 +40,14 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         Dealer dealer = dealerRepository.findById(dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đại lý với ID: " + dealerId));
 
+        // S4-10: Đại lý chỉ nhìn thấy công nợ của chính mình
+        if (isDealerUser()) {
+            User currentUser = getCurrentUser();
+            if (currentUser != null && (currentUser.getDealer() == null || !currentUser.getDealer().getId().equals(dealerId))) {
+                throw new AccessDeniedException("Bạn chỉ có quyền xem công nợ của chính đại lý mình");
+            }
+        }
+
         // S3-06 / S4-02: Nhân viên kinh doanh chỉ nhìn thấy công nợ đại lý mình phụ trách
         if (isSalesOnlyUser()) {
             User currentUser = getCurrentUser();
@@ -56,14 +65,14 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         BigDecimal debtLimit = dealer.getDebtLimit() != null ? dealer.getDebtLimit() : BigDecimal.ZERO;
         int maxDebtDays = dealer.getMaxDebtDays() != null ? dealer.getMaxDebtDays() : 0;
 
-        BigDecimal currentDebt = orderRepository.sumTotalAmountByDealerIdAndStatus(dealer.getId(), "RECORDED");
+        BigDecimal currentDebt = orderRepository.sumTotalAmountByDealerIdAndStatusIn(dealer.getId(), OrderStatus.debtBearingStatuses());
         if (currentDebt == null) {
             currentDebt = BigDecimal.ZERO;
         }
 
         BigDecimal remainingLimit = debtLimit.subtract(currentDebt);
 
-        List<Order> recordedOrders = orderRepository.findByDealerIdAndStatusOrderByRecordedAtAsc(dealer.getId(), "RECORDED");
+        List<Order> recordedOrders = orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(dealer.getId(), OrderStatus.debtBearingStatuses());
         LocalDate today = LocalDate.now();
 
         boolean hasOverdueDebt = false;
@@ -245,6 +254,15 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         return hasSales && !hasManagerOrAdmin;
     }
 
+    private boolean isDealerUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_DEALER"));
+    }
+
     private User getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || auth.getName() == null) {
@@ -259,4 +277,3 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         return df.format(amount);
     }
 }
-

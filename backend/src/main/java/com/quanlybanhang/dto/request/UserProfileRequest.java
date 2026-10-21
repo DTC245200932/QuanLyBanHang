@@ -6,7 +6,7 @@ import lombok.Data;
 
 @Data
 public class UserProfileRequest {
-    
+
     @NotBlank(message = "Họ tên không được để trống")
     private String fullName;
 

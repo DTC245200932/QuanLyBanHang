@@ -50,6 +50,7 @@ public class ProductResponse {
 
     private Boolean active;
     private String status;
+    private Boolean manageLot;
 
     /**
      * Sản phẩm đã phát sinh giao dịch thì không được xoá (S2-05).
@@ -62,4 +63,3 @@ public class ProductResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

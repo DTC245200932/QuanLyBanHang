@@ -25,13 +25,14 @@ public class UnitConversionController {
     private final UnitConversionService unitConversionService;
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCT_VIEW', 'PRODUCT_CREATE', 'PRODUCT_EDIT', 'ORDER_CREATE', 'WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE', 'WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT')")
     public ApiResponse getUnitConversions(@PathVariable Long productId) {
         List<UnitConversionResponse> conversions = unitConversionService.getConversionsByProductId(productId);
         return ApiResponse.success("Danh sách đơn vị quy đổi của sản phẩm", conversions);
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ResponseEntity<ApiResponse> addUnitConversion(
             @PathVariable Long productId,
             @Valid @RequestBody UnitConversionRequest request) {
@@ -41,7 +42,7 @@ public class UnitConversionController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse updateUnitConversion(
             @PathVariable Long productId,
             @PathVariable Long id,
@@ -51,7 +52,7 @@ public class UnitConversionController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
     public ApiResponse deleteUnitConversion(
             @PathVariable Long productId,
             @PathVariable Long id) {

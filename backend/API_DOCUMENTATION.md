@@ -52,11 +52,14 @@ có vai trò đại lý trả 400. Thông tin tài khoản trả lại có `deal
 | GET | `/portal/orders` | DEALER + ORDER_VIEW, hoặc ADMIN; danh sách giới hạn theo đại lý trong ngữ cảnh |
 | GET | `/portal/orders/{id}` | DEALER + ORDER_VIEW, hoặc ADMIN; đơn ngoài đại lý trong ngữ cảnh trả 403 |
 | POST | `/portal/orders` | DEALER + ORDER_CREATE, hoặc ADMIN; server xác định đại lý và giá |
+| GET | `/portal/orders/{id}/reorder-preview` | DEALER + ORDER_VIEW + ORDER_CREATE, hoặc ADMIN; xem trước đặt lại đơn cũ (S5-02) |
+| POST | `/portal/orders/{id}/reorder` | DEALER + ORDER_CREATE, hoặc ADMIN; đặt lại đơn cũ (toàn bộ hoặc một phần) (S5-02) |
 
 ADMIN không cần liên kết với hồ sơ đại lý. Frontend gọi `GET /portal/dealers`, yêu cầu
 chọn đại lý rồi gửi query `dealerId` cho mọi API dữ liệu cổng (kể cả POST/chi tiết/đặt lại).
 Ví dụ: `GET /portal/profile?dealerId=10`, `GET /portal/orders?dealerId=10`,
-`POST /portal/orders?dealerId=10`. ADMIN không chọn và không có liên kết trả 400 với
+`POST /portal/orders?dealerId=10`, `GET /portal/orders/12/reorder-preview?dealerId=10`,
+`POST /portal/orders/12/reorder?dealerId=10`. ADMIN không chọn và không có liên kết trả 400 với
 thông báo chọn đại lý; ID không tồn tại trả 400. Liên kết sẵn của ADMIN vẫn được hỗ trợ
 khi không có query. DEALER luôn dùng liên kết của tài khoản; query chỉ được trùng ID đó,
 chỉ định đại lý khác trả 403 cho cả đọc và tạo đơn. `dealerId` trong body không chọn
@@ -70,7 +73,7 @@ mỗi đơn vị có `unitName/factor/price`. Giá đơn vị = giá nhóm hiệ
 không lấy giá quy cách chung và không trả giá vốn. Đại lý chưa có nhóm trả 400;
 không tự coi là nhóm cấp 1.
 
-Body đặt hàng hoặc đặt lại các dòng đã chọn:
+Body đặt hàng thông thường (`POST /portal/orders`):
 
 ```json
 {
@@ -81,15 +84,127 @@ Body đặt hàng hoặc đặt lại các dòng đã chọn:
 }
 ```
 
-Không có endpoint `/portal/orders/reorder`. FE chọn dòng/đơn vị/số lượng rồi gọi
-một lần `POST /portal/orders`. Server bỏ giá do client gửi, tự tính giá/chiết khấu
-và lấy đại lý đã xác thực; mọi đơn qua cổng, kể cả ADMIN hỗ trợ, luôn là
-`PENDING_APPROVAL`, chưa giữ tồn; `createdBy` vẫn là người thực hiện thật.
-Menu và guard của trang đặt hàng cần cả `ORDER_CREATE`, `ORDER_VIEW`, `PRODUCT_VIEW`
-để dùng đầy đủ API hồ sơ/công nợ/danh mục; theo dõi đơn cần `ORDER_VIEW`, nút đặt lại
-cần thêm `ORDER_CREATE` và `PRODUCT_VIEW`. ADMIN luôn có toàn bộ quyền theo ma trận.
-Giá và tổng sau chiết khấu khi lưu là kết quả phía server. FE hiện còn thiếu preview
-chiết khấu cho giỏ/đặt lại; không xem tổng giỏ hiện tại là nguồn xác nhận kế toán.
+### Đặt lại đơn đã mua trên Cổng đại lý (S5-02)
+
+Đại lý có thể xem trước và đặt lại một đơn đã mua trước đây:
+
+#### 1. Xem trước đặt lại đơn: `GET /portal/orders/{id}/reorder-preview`
+- **Quyền yêu cầu:** `ROLE_ADMIN` hoặc (`ROLE_DEALER` + `ORDER_VIEW` + `ORDER_CREATE`).
+- **Query param:** `dealerId` (hỗ trợ cho ADMIN chọn đại lý).
+- **Quy tắc nghiệp vụ:**
+  - Kiểm tra quyền truy cập đơn gốc theo phạm vi đại lý (đơn thuộc đại lý khác trả 403).
+  - Tách các dòng hàng thành hai nhóm:
+    - `availableItems`: Mặt hàng còn kinh doanh (`active = true`) và có trong bảng giá hiệu lực hiện hành của nhóm đại lý. Giá được tính lại theo đơn giá hiện hành (kèm danh sách đơn vị quy đổi có sẵn).
+    - `discontinuedItems`: Mặt hàng đã ngừng kinh doanh (`active = false`) hoặc không còn trong bảng giá hiệu lực hiện hành, kèm lý do (`reason`).
+  - Cung cấp danh sách `warnings`, cờ `canReorder` (`true` nếu có ít nhất 1 mặt hàng khả dụng), thông tin công nợ hiện tại (`currentDebt`, `debtLimit`, `remainingCredit`).
+- **Response mẫu:**
+```json
+{
+  "success": true,
+  "message": "Xem trước đặt lại đơn hàng thành công",
+  "data": {
+    "originalOrderId": 101,
+    "originalOrderCode": "ORD-20261015-001",
+    "dealerId": 5,
+    "dealerCode": "DL005",
+    "dealerName": "Đại lý Ánh Dương",
+    "canReorder": true,
+    "totalAmount": 1500000,
+    "currentDebt": 5000000,
+    "debtLimit": 20000000,
+    "remainingCredit": 15000000,
+    "warnings": [
+      "Mặt hàng 'Sản phẩm Cũ (SKU-OLD)' đã ngừng kinh doanh và sẽ được loại khỏi đơn đặt lại."
+    ],
+    "availableItems": [
+      {
+        "lineItemId": 1,
+        "productId": 10,
+        "productCode": "SKU-010",
+        "productName": "Sữa tươi Ba Vì 1L",
+        "unit": "thùng",
+        "factor": 12,
+        "originalUnitPrice": 240000,
+        "currentUnitPrice": 250000,
+        "priceChanged": true,
+        "originalQuantity": 5,
+        "recommendedQuantity": 5,
+        "subtotal": 1250000,
+        "availableUnits": [
+          { "unitName": "hộp", "factor": 1, "price": 20833 },
+          { "unitName": "thùng", "factor": 12, "price": 250000 }
+        ]
+      }
+    ],
+    "discontinuedItems": [
+      {
+        "productId": 99,
+        "productCode": "SKU-OLD",
+        "productName": "Sản phẩm Cũ",
+        "unit": "chai",
+        "quantity": 10,
+        "originalUnitPrice": 15000,
+        "reason": "Sản phẩm đã ngừng kinh doanh"
+      }
+    ]
+  }
+}
+```
+
+#### 2. Thực hiện đặt lại đơn: `POST /portal/orders/{id}/reorder`
+- **Quyền yêu cầu:** `ROLE_ADMIN` hoặc (`ROLE_DEALER` + `ORDER_CREATE`).
+- **Query param:** `dealerId` (hỗ trợ cho ADMIN chọn đại lý).
+- **Request body (`DealerPortalReorderRequest`):**
+  - `items`: Danh sách dòng hàng chọn đặt lại (`productId`, `unit`, `quantity`). Nếu `items` là `null` hoặc rỗng `[]`, hệ thống tự động đặt lại **toàn bộ** các dòng hàng còn khả dụng từ đơn gốc theo số lượng/đơn vị ban đầu.
+  - `deliveryPointId`: Điểm giao hàng (tùy chọn, mặc định lấy theo điểm giao hàng của đơn gốc nếu hợp lệ).
+  - `expectedDeliveryDate`: Ngày giao dự kiến (tùy chọn).
+  - `note`: Ghi chú đơn mới (tùy chọn).
+```json
+{
+  "deliveryPointId": 1,
+  "expectedDeliveryDate": "2026-10-25",
+  "note": "Đặt lại định kỳ",
+  "items": [
+    { "productId": 10, "unit": "thùng", "quantity": 5 }
+  ]
+}
+```
+- **Quy tắc tạo đơn:**
+  - Loại bỏ hoàn toàn các mặt hàng đã ngừng kinh doanh hoặc không còn trong bảng giá hiệu lực hiện hành.
+  - Nếu tất cả các mặt hàng đều bị ngừng kinh doanh / không hợp lệ: trả lỗi 400 kèm thông báo rõ ràng.
+  - Áp dụng đơn giá theo bảng giá / chính sách hiện hành (không kế thừa đơn giá cũ).
+  - Đơn mới luôn được tạo ở trạng thái Chờ duyệt (`PENDING_APPROVAL`).
+  - Ghi nhận Audit Log hành động `REORDER_FROM` kèm mã đơn gốc.
+- **Response mẫu (`DealerPortalReorderResponse`):**
+```json
+{
+  "success": true,
+  "message": "Đặt lại đơn hàng thành công",
+  "data": {
+    "order": {
+      "id": 205,
+      "code": "ORD-20261021-002",
+      "status": "PENDING_APPROVAL",
+      "totalAmount": 1250000,
+      "orderDate": "2026-10-21"
+    },
+    "excludedItems": [
+      {
+        "productId": 99,
+        "productCode": "SKU-OLD",
+        "productName": "Sản phẩm Cũ",
+        "unit": "chai",
+        "quantity": 10,
+        "originalUnitPrice": 15000,
+        "reason": "Sản phẩm đã ngừng kinh doanh"
+      }
+    ],
+    "warnings": [
+      "Có 1 mặt hàng đã ngừng kinh doanh hoặc hết hiệu lực giá được loại khỏi đơn mới: SKU-OLD"
+    ]
+  }
+}
+```
 
 ### Danh sách, duyệt đơn và lịch sử
 

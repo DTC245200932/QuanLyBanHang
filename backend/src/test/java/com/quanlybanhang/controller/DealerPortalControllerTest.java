@@ -3,9 +3,10 @@ package com.quanlybanhang.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.quanlybanhang.config.SecurityConfig;
 import com.quanlybanhang.dto.request.DealerPortalOrderRequest;
+import com.quanlybanhang.dto.request.DealerPortalReorderItemRequest;
+import com.quanlybanhang.dto.request.DealerPortalReorderRequest;
 import com.quanlybanhang.dto.request.OrderItemRequest;
-import com.quanlybanhang.dto.response.DealerDebtResponse;
-import com.quanlybanhang.dto.response.OrderResponse;
+import com.quanlybanhang.dto.response.*;
 import com.quanlybanhang.exception.DealerLockedException;
 import com.quanlybanhang.exception.GlobalExceptionHandler;
 import com.quanlybanhang.model.*;
@@ -332,5 +333,136 @@ class DealerPortalControllerTest {
         mvc.perform(get("/api/portal/orders/1").with(authentication(dealerAuth)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderCode").value("DH-001"));
+    }
+
+    @Test
+    @DisplayName("S5-02 GET /api/portal/orders/{id}/reorder-preview: Xem trước đặt lại đơn hàng thành công -> 200 OK")
+    void getReorderPreview_Success() throws Exception {
+        DealerPortalReorderPreviewResponse preview = DealerPortalReorderPreviewResponse.builder()
+                .sourceOrderId(1L)
+                .sourceOrderCode("DH-001")
+                .dealerId(100L)
+                .dealerName("Đại lý Minh Phát")
+                .canReorder(true)
+                .availableItems(List.of(
+                        DealerPortalReorderItemResponse.builder()
+                                .productId(10L)
+                                .productCode("BIA-01")
+                                .productName("Bia Heineken")
+                                .unit("thùng")
+                                .quantity(new BigDecimal("5"))
+                                .currentPrice(new BigDecimal("432000"))
+                                .subtotalAmount(new BigDecimal("2160000"))
+                                .build()
+                ))
+                .discontinuedItems(List.of(
+                        DealerPortalDiscontinuedItemResponse.builder()
+                                .productId(20L)
+                                .productCode("NUOC-01")
+                                .productName("Nước ngọt cũ")
+                                .unit("chai")
+                                .quantity(new BigDecimal("2"))
+                                .reason("Mặt hàng đã ngừng kinh doanh")
+                                .build()
+                ))
+                .warnings(List.of("Mặt hàng 'Nước ngọt cũ' (mã: NUOC-01) đã ngừng kinh doanh và được loại khỏi đơn mới."))
+                .build();
+
+        when(orderService.getPortalReorderPreview(1L, "dealer.demo")).thenReturn(preview);
+
+        mvc.perform(get("/api/portal/orders/1/reorder-preview").with(authentication(dealerAuth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sourceOrderId").value(1))
+                .andExpect(jsonPath("$.data.canReorder").value(true))
+                .andExpect(jsonPath("$.data.availableItems.length()").value(1))
+                .andExpect(jsonPath("$.data.availableItems[0].productCode").value("BIA-01"))
+                .andExpect(jsonPath("$.data.discontinuedItems.length()").value(1))
+                .andExpect(jsonPath("$.data.discontinuedItems[0].productCode").value("NUOC-01"))
+                .andExpect(jsonPath("$.data.warnings.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("S5-02 GET /api/portal/orders/{id}/reorder-preview: Đơn không thuộc đại lý -> 403 Forbidden")
+    void getReorderPreview_WrongDealer_Returns403() throws Exception {
+        DealerPortalReorderPreviewResponse previewOther = DealerPortalReorderPreviewResponse.builder()
+                .sourceOrderId(2L)
+                .dealerId(999L) // Đại lý khác
+                .build();
+
+        when(orderService.getPortalReorderPreview(2L, "dealer.demo")).thenReturn(previewOther);
+
+        mvc.perform(get("/api/portal/orders/2/reorder-preview").with(authentication(dealerAuth)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("S5-02 GET /api/portal/orders/{id}/reorder-preview: Thu hồi ORDER_VIEW -> 403 Forbidden")
+    void getReorderPreview_RevokedOrderView_Returns403() throws Exception {
+        UsernamePasswordAuthenticationToken noViewAuth = new UsernamePasswordAuthenticationToken(
+                "dealer.demo", null, List.of(new SimpleGrantedAuthority("ROLE_DEALER"), new SimpleGrantedAuthority("ORDER_CREATE")));
+
+        mvc.perform(get("/api/portal/orders/1/reorder-preview").with(authentication(noViewAuth)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("S5-02 POST /api/portal/orders/{id}/reorder: Đặt lại đơn hàng thành công -> 201 Created")
+    void reorder_Success() throws Exception {
+        OrderResponse createdOrder = OrderResponse.builder()
+                .id(888L)
+                .orderCode("DH-NEW-REORDER")
+                .dealerId(100L)
+                .status("PENDING_APPROVAL")
+                .requiresApproval(true)
+                .totalAmount(new BigDecimal("2160000"))
+                .build();
+
+        DealerPortalReorderResponse reorderResponse = DealerPortalReorderResponse.builder()
+                .order(createdOrder)
+                .excludedItems(List.of(
+                        DealerPortalDiscontinuedItemResponse.builder()
+                                .productCode("NUOC-01")
+                                .productName("Nước ngọt cũ")
+                                .reason("Mặt hàng đã ngừng kinh doanh")
+                                .build()
+                ))
+                .warnings(List.of("Mặt hàng 'Nước ngọt cũ' (mã: NUOC-01) đã ngừng kinh doanh và được loại khỏi đơn mới."))
+                .build();
+
+        when(orderService.createPortalReorder(eq(1L), any(), eq("dealer.demo"))).thenReturn(reorderResponse);
+
+        DealerPortalReorderRequest request = DealerPortalReorderRequest.builder()
+                .note("Đặt lại hàng tuần")
+                .items(List.of(
+                        DealerPortalReorderItemRequest.builder()
+                                .productId(10L)
+                                .unit("thùng")
+                                .quantity(new BigDecimal("5"))
+                                .build()
+                ))
+                .build();
+
+        mvc.perform(post("/api/portal/orders/1/reorder")
+                        .with(authentication(dealerAuth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.order.id").value(888))
+                .andExpect(jsonPath("$.data.order.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.data.excludedItems.length()").value(1))
+                .andExpect(jsonPath("$.data.warnings.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("S5-02 POST /api/portal/orders/{id}/reorder: Thu hồi ORDER_CREATE -> 403 Forbidden")
+    void reorder_RevokedOrderCreate_Returns403() throws Exception {
+        UsernamePasswordAuthenticationToken noCreateAuth = new UsernamePasswordAuthenticationToken(
+                "dealer.demo", null, List.of(new SimpleGrantedAuthority("ROLE_DEALER"), new SimpleGrantedAuthority("ORDER_VIEW")));
+
+        mvc.perform(post("/api/portal/orders/1/reorder")
+                        .with(authentication(noCreateAuth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
     }
 }

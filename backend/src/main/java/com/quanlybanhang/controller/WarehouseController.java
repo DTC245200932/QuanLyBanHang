@@ -290,6 +290,18 @@ public class WarehouseController {
      * Nếu request có draft=true hoặc status="DRAFT": lưu nháp, chưa cộng tồn kho.
      * Nếu không: ghi sổ và cộng tồn kho ngay.
      */
+    @GetMapping("/import/options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('WAREHOUSE_IMPORT', 'WAREHOUSE_APPROVE', 'WAREHOUSE_ADJUST')")
+    public ApiResponse getImportOptions() {
+        return ApiResponse.success("Danh mục lập phiếu nhập", warehouseService.getImportOptions());
+    }
+
+    @GetMapping("/imports")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('WAREHOUSE_IMPORT', 'WAREHOUSE_APPROVE', 'WAREHOUSE_ADJUST')")
+    public ApiResponse getImports(@RequestParam(required = false) Long warehouseId) {
+        return ApiResponse.success("Phiếu nhập kho", warehouseService.getImports(warehouseId));
+    }
+
     @PostMapping("/import")
     @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_IMPORT'))")
     public ApiResponse importGoods(

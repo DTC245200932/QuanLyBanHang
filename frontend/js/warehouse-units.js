@@ -15,6 +15,8 @@
   let canManageUnits = Auth.hasPermission("WAREHOUSE_MANAGE");
   let canRecordVouchers = Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_EXPORT");
   let canViewOrders = Auth.hasPermission("ORDER_VIEW");
+  const canUseImports = () => Auth.hasAnyPermission("WAREHOUSE_IMPORT", "WAREHOUSE_APPROVE", "WAREHOUSE_ADJUST");
+  const canReadLedger = () => Auth.hasPermission("WAREHOUSE_VIEW") || canUseImports();
   const canReadStocktake = () => WarehouseStocktake.canUserReadStocktake(Auth.getUser());
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (v) => String(v ?? "").replace(/[&<>'"]/g, (c) => ({
@@ -23,7 +25,7 @@
   const formatNumber = (num) => new Intl.NumberFormat("vi-VN").format(Number(num) || 0);
   const statusLabel = (status) => ({
     RECORDED: "Đã ghi sổ", PENDING_APPROVAL: "Chờ duyệt",
-    DRAFT: "Bản nháp", COMPLETED: "Đã chốt", ADJUSTED: "Đã điều chỉnh",
+    DRAFT: "Bản nháp", CONFIRMED: "Đã xác nhận", COMPLETED: "Đã chốt", ADJUSTED: "Đã điều chỉnh",
     CANCELLED: "Đã hủy", REJECTED: "Đã từ chối",
   })[status] || status || "—";
 
@@ -38,6 +40,7 @@
     warehouses: [],
     loaded: false,
     warehouseId: null,
+    epoch: 0,
 
     async request(path, options) {
       const response = await Auth.apiFetch(path, options);
@@ -49,8 +52,11 @@
     },
 
     async init() {
+      const epoch = ++this.epoch;
       this.loaded = false;
-      const warehouses = await this.request("/warehouse/options");
+      const importOptions = canUseImports() ? await this.request("/warehouse/import/options") : null;
+      const warehouses = importOptions?.warehouses || await this.request("/warehouse/options");
+      if (epoch !== this.epoch) return false;
       this.warehouses = warehouses || [];
       const currentWarehouse = $("active-warehouse-select")?.value;
       const preferredWarehouse = warehouses.find(warehouse => String(warehouse.id) === currentWarehouse)
@@ -71,13 +77,14 @@
       const [products, inventory, vouchers, orders, suppliersData] = await Promise.all([
         this.request("/products/lookup"),
         this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
-        this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`) : [],
+        this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`)
+          : this.warehouseId && canUseImports() ? this.request(`/warehouse/imports?warehouseId=${this.warehouseId}`) : [],
         // Đơn vị tính/tồn kho không yêu cầu ORDER_VIEW. Chỉ tải lịch sử đơn
         // khi ma trận quyền cho phép, tránh mở trang bị 403 dù menu đã hiện.
         canViewOrders ? this.request("/orders") : [],
-        Auth.hasPermission("WAREHOUSE_IMPORT") && Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
-          ? this.request("/suppliers?size=100").catch(() => ({ content: [] })) : [],
+        importOptions?.suppliers || [],
       ]);
+      if (epoch !== this.epoch) return false;
 
       const rawSuppliers = Array.isArray(suppliersData)
         ? suppliersData
@@ -86,6 +93,7 @@
 
       const conversions = await Promise.all((products || []).map((product) =>
         this.request(`/products/${product.id}/unit-conversions`)));
+      if (epoch !== this.epoch) return false;
 
       this.products = (products || []).map((product, index) => {
         const stock = (inventory || []).find((item) => item.productId === product.id);
@@ -97,6 +105,7 @@
           baseUnit: product.unit,
           price: product.price,
           costPrice: product.costPrice,
+          manageLot: Boolean(product.manageLot),
           inventoryBaseQty: stock?.baseQuantity || 0,
           units: (conversions[index] || []).map((unit) => ({
             id: unit.id,
@@ -109,28 +118,7 @@
         };
       });
 
-      const voucherRows = (vouchers || []).map((voucher) => ({
-        id: voucher.voucherCode,
-        backendId: voucher.id,
-        type: voucher.type,
-        date: voucher.recordedAt?.slice(0, 10) || "",
-        createdAt: voucher.recordedAt,
-        warehouse: voucher.warehouseName || voucher.warehouseCode || "—",
-        partner: "—",
-        createdBy: voucher.createdBy,
-        notes: voucher.note || "",
-        status: voucher.status,
-        items: (voucher.items || []).map((item) => ({
-          sku: item.productCode,
-          productName: item.productName,
-          inputUnit: item.unit,
-          inputQuantity: Number(item.quantity),
-          conversionRateSnapshot: Number(item.conversionFactor),
-          baseUnit: item.baseUnit,
-          baseQuantity: Number(item.baseQuantity),
-          notes: item.note || "",
-        })),
-      }));
+      const voucherRows = (vouchers || []).map((voucher) => this.mapVoucher(voucher));
       const orderRows = (orders || []).map((order) => ({
         id: order.orderCode,
         backendId: order.id,
@@ -169,8 +157,44 @@
           if (values.includes(current)) select.value = current;
         }
       }
-
       this.loaded = true;
+      return true;
+    },
+
+    mapVoucher(voucher) {
+      return {
+        id: voucher.voucherCode,
+        backendId: voucher.id,
+        version: voucher.version,
+        type: voucher.type,
+        date: (voucher.voucherDate || voucher.recordedAt || "").slice(0, 10),
+        createdAt: voucher.recordedAt,
+        warehouseId: voucher.warehouseId,
+        warehouse: voucher.warehouseName || voucher.warehouseCode || "—",
+        supplierId: voucher.supplierId,
+        supplierName: voucher.supplierName,
+        docNumber: voucher.documentNumber,
+        referenceVoucherCode: voucher.referenceVoucherCode,
+        adjustmentReason: voucher.adjustmentReason,
+        partner: voucher.supplierName || "—",
+        createdBy: voucher.createdBy,
+        notes: voucher.note || "",
+        status: voucher.status,
+        items: (voucher.items || []).map((item) => ({
+          sku: item.productCode,
+          productId: item.productId,
+          productName: item.productName,
+          inputUnit: item.unit,
+          inputQuantity: Number(item.quantity),
+          conversionRateSnapshot: Number(item.conversionFactor),
+          baseUnit: item.baseUnit,
+          baseQuantity: Number(item.baseQuantity),
+          notes: item.note || "",
+          batchNumber: item.lotNumber || "",
+          expiryDate: item.expiryDate || "",
+          manufacturingDate: item.manufacturingDate || "",
+        })),
+      };
     },
 
     async reloadFromServer() {
@@ -234,55 +258,48 @@
     /**
      * Lưu bản nháp phiếu kho (không ảnh hưởng tồn kho, cho phép chỉnh sửa lại).
      */
-    saveDraftReceipt(receiptData) {
+    async saveDraftReceipt(receiptData) {
+      const epoch = this.epoch;
       const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptData.type];
       if (!permission || !Auth.hasPermission(permission)) throw new Error("Bạn không có quyền lưu nháp loại phiếu này.");
       if (!receiptData.items || !receiptData.items.length) {
         throw new Error("Vui lòng thêm ít nhất một mặt hàng.");
       }
-      const code = receiptData.id || this.generateReceiptCode(receiptData.type);
-      const existingIndex = this.drafts.findIndex((d) => d.id === code);
-      const draftRecord = {
-        id: code,
-        type: receiptData.type,
-        date: receiptData.date,
-        createdAt: new Date().toISOString(),
-        warehouse: receiptData.warehouse || "—",
+      if (receiptData.type !== "IMPORT") throw new Error("Chức năng lưu nháp chỉ áp dụng cho phiếu nhập kho.");
+      if (!receiptData.warehouseId || !receiptData.supplierId || !receiptData.docNumber || !receiptData.date) {
+        throw new Error("Vui lòng chọn kho, nhà cung cấp, ngày nhập và nhập số chứng từ.");
+      }
+      const payload = {
+        voucherCode: receiptData.id || null,
+        version: receiptState.version,
         warehouseId: receiptData.warehouseId,
         supplierId: receiptData.supplierId,
-        supplierName: receiptData.supplierName,
-        docNumber: receiptData.docNumber || "",
-        partner: receiptData.partner || receiptData.supplierName || "—",
-        createdBy: user.fullName || user.username || "Nhân viên kho",
-        notes: receiptData.notes || "",
+        documentNumber: receiptData.docNumber,
+        voucherDate: `${receiptData.date}T00:00:00`,
+        note: receiptData.notes,
+        draft: true,
         status: "DRAFT",
-        isDraft: true,
-        items: receiptData.items.map((item) => {
-          const prod = this.getProductBySku(item.sku);
-          const unit = prod?.units.find((u) => u.name.toLowerCase() === item.inputUnit.toLowerCase()) || prod?.units[0];
-          const rate = unit?.conversionRate || 1;
-          const qty = Number(item.inputQuantity) || 0;
-          return {
-            sku: item.sku,
-            productName: prod?.name || item.sku,
-            inputUnit: item.inputUnit,
-            inputQuantity: qty,
-            batchNumber: item.batchNumber || "",
-            expiryDate: item.expiryDate || "",
-            conversionRateSnapshot: rate,
-            baseUnit: prod?.baseUnit || "đơn vị",
-            baseQuantity: Math.round(qty * rate),
-            notes: item.notes || "",
-          };
+        items: receiptData.items.map(item => {
+          const product = this.getProductBySku(item.sku);
+          if (!product) throw new Error("Mặt hàng không còn trong danh mục. Hãy tải lại.");
+          const quantity = Number(item.inputQuantity);
+          if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`Số lượng ${product.name} phải lớn hơn 0.`);
+          if (product.manageLot && (!item.batchNumber?.trim() || !item.expiryDate)) throw new Error(`Mặt hàng ${product.name} phải có số lô và hạn sử dụng.`);
+          return { productId: product.id, unit: item.inputUnit, quantity,
+            lotNumber: item.batchNumber?.trim() || null, expiryDate: item.expiryDate || null,
+            manufacturingDate: item.manufacturingDate || null, note: item.notes || "" };
         }),
       };
-
-      if (existingIndex >= 0) {
-        this.drafts[existingIndex] = draftRecord;
-      } else {
-        this.drafts.unshift(draftRecord);
-      }
-      return draftRecord;
+      const saved = await this.request(receiptState.backendId ? `/warehouse/vouchers/${receiptState.backendId}` : "/warehouse/import/draft", {
+        method: receiptState.backendId ? "PUT" : "POST", body: JSON.stringify(payload),
+      });
+      if (epoch !== this.epoch || !Auth.hasPermission("WAREHOUSE_IMPORT")) throw new Error("Quyền hoặc phạm vi đã thay đổi. Hãy tải lại để kiểm tra phiếu đã lưu.");
+      const draft = this.mapVoucher(saved);
+      receiptState.backendId = saved.id;
+      receiptState.version = saved.version;
+      $("receipt-code").value = saved.voucherCode;
+      this.receipts = [draft, ...this.receipts.filter(r => r.backendId !== draft.backendId || r.type === "ORDER")];
+      return draft;
     },
 
     /**
@@ -293,6 +310,11 @@
      * - Phiếu đã xác nhận cộng tồn kho thực tế và không thể sửa lại!
      */
     async recordReceipt(receiptData) {
+      if (receiptData.type === "IMPORT") {
+        if (!Auth.hasPermission("WAREHOUSE_APPROVE")) throw new Error("Bạn cần quyền xác nhận nhập/xuất kho để cộng tồn. Có thể lưu nháp trước.");
+        const draft = await this.saveDraftReceipt(receiptData);
+        return this.confirmImport(draft);
+      }
       if (!receiptData.items || !receiptData.items.length) {
         throw new Error("Vui lòng thêm ít nhất một mặt hàng.");
       }
@@ -352,10 +374,21 @@
     },
 
     generateReceiptCode(type) {
+      if (type === "IMPORT") return ""; // The server allocates the unique code on first save.
       const prefix = type === "IMPORT" ? "PNK" : type === "EXPORT" ? "PXK" : "DH";
       const ym = new Date().toISOString().slice(0, 7).replace("-", "");
       const count = this.receipts.filter((r) => r.type === type).length + this.drafts.filter((r) => r.type === type).length + 1;
       return `${prefix}-${ym}-${String(count).padStart(3, "0")}`;
+    },
+
+    async confirmImport(draft) {
+      const epoch = this.epoch;
+      if (!Auth.hasPermission("WAREHOUSE_APPROVE")) throw new Error("Bạn không có quyền xác nhận phiếu nhập kho.");
+      const result = await this.request(`/warehouse/vouchers/${draft.backendId}/confirm`, { method: "POST" });
+      if (epoch !== this.epoch || !Auth.hasPermission("WAREHOUSE_APPROVE")) throw new Error("Quyền hoặc phạm vi đã thay đổi. Hãy tải lại để kiểm tra trạng thái phiếu.");
+      const recorded = this.mapVoucher(result);
+      this.receipts = [recorded, ...this.receipts.filter(r => r.backendId !== recorded.backendId || r.type === "ORDER")];
+      return recorded;
     },
 
     /**
@@ -400,12 +433,14 @@
   function ensureLegacyData() {
     if (Store.loaded) return Promise.resolve();
     if (legacyLoad) return legacyLoad;
-    legacyLoad = Store.init().then(() => {
+    const loading = Store.init().then(applied => {
+      if (!applied) return;
       renderSkuTable(); updateMetrics(); prepareReceiptForm(); renderLedgerTable(); renderInventoryTable();
       if (stocktakeIsActive()) renderStocktakePanel();
     }).catch(error => showToast(error.message || "Không tải được dữ liệu kho.", "error"))
-      .finally(() => { legacyLoad = null; });
-    return legacyLoad;
+      .finally(() => { if (legacyLoad === loading) legacyLoad = null; });
+    legacyLoad = loading;
+    return loading;
   }
 
   // ══════════════════════════════════════════════════
@@ -481,7 +516,7 @@
     const allowed = tabId === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
       : tabId === "create-receipt" ? canRecordVouchers
       : tabId === "stocktake" ? canReadStocktake()
-      : Auth.hasPermission("WAREHOUSE_VIEW");
+      : tabId === "ledger-audit" ? canReadLedger() : Auth.hasPermission("WAREHOUSE_VIEW");
     if (!allowed) return;
     document.title = tabId === "stocktake" ? "Kiểm kê kho & Chênh lệch | SaleStock" : "Đơn vị tính & Nhập / Xuất kho | SaleStock";
     document.querySelector(".units-main > h1").textContent = tabId === "stocktake" ? "Kiểm kê kho & Chênh lệch" : "Kho hàng";
@@ -501,7 +536,7 @@
     });
 
     if (tabId === "sku-units") renderSkuTable();
-    if (tabId === "create-receipt") prepareReceiptForm();
+    if (tabId === "create-receipt" && !receiptState.backendId) prepareReceiptForm();
     if (tabId === "ledger-audit") renderLedgerTable();
     if (tabId === "inventory-report") renderInventoryTable();
     document.querySelector(".units-metrics-grid").hidden = tabId === "stocktake";
@@ -678,6 +713,9 @@
   // ══════════════════════════════════════════════════
   const receiptState = {
     type: "IMPORT",
+    backendId: null,
+    version: null,
+    busy: false,
     lines: []
   };
 
@@ -693,12 +731,17 @@
     const needsWarehouse = receiptState.type !== "ORDER";
     const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptState.type];
     const canSave = Auth.hasPermission(permission) && Store.loaded && Store.products.length && (!needsWarehouse || Store.warehouseId);
-    $("btn-save-receipt").disabled = !canSave;
+    $("btn-save-receipt").disabled = !canSave || receiptState.busy || (receiptState.type === "IMPORT" && !Auth.hasPermission("WAREHOUSE_APPROVE"));
+    $("btn-save-receipt").hidden = receiptState.type === "IMPORT" && !Auth.hasPermission("WAREHOUSE_APPROVE");
     if ($("btn-save-draft-receipt")) {
-      $("btn-save-draft-receipt").disabled = !canSave;
+      $("btn-save-draft-receipt").disabled = !canSave || receiptState.busy;
+      $("btn-save-draft-receipt").hidden = receiptState.type !== "IMPORT" || !Auth.hasPermission("WAREHOUSE_IMPORT");
     }
     $("warehouse-configuration-message").hidden = !Store.loaded || !needsWarehouse || Boolean(Store.warehouseId);
     $("receipt-warehouse").closest(".form-field").hidden = !needsWarehouse;
+    document.querySelectorAll('#panel-create-receipt input, #panel-create-receipt select, #btn-reset-receipt, #btn-add-line-item, .btn-remove-line').forEach(element => {
+      if (element.type !== "radio") element.disabled = receiptState.busy || !Auth.hasPermission(permission);
+    });
   }
 
   function populateSupplierSelect() {
@@ -712,10 +755,15 @@
   }
 
   function prepareReceiptForm(existingData = null) {
+    receiptState.backendId = existingData?.backendId || null;
+    receiptState.version = existingData?.version ?? null;
     updateReceiptAvailability();
     populateSupplierSelect();
     $("receipt-date").value = existingData?.date || new Date().toISOString().slice(0, 10);
     $("receipt-code").value = existingData?.id || Store.generateReceiptCode(receiptState.type);
+    $("receipt-code").placeholder = "Tự sinh khi lưu phiếu";
+    $("btn-regen-code").hidden = receiptState.type === "IMPORT";
+    $("receipt-partner").hidden = receiptState.type === "IMPORT";
     if (existingData) {
       if (existingData.supplierId && $("receipt-supplier-select")) {
         $("receipt-supplier-select").value = String(existingData.supplierId);
@@ -725,6 +773,7 @@
       }
       $("receipt-partner").value = existingData.partner || existingData.supplierName || "";
       $("receipt-notes").value = existingData.notes || "";
+      if (existingData.warehouseId) $("receipt-warehouse").value = String(existingData.warehouseId);
       receiptState.lines = existingData.items?.length ? existingData.items.map((it, idx) => ({
         id: "line-" + (idx + 1),
         sku: it.sku,
@@ -732,6 +781,7 @@
         inputQuantity: it.inputQuantity,
         batchNumber: it.batchNumber || "",
         expiryDate: it.expiryDate || "",
+        manufacturingDate: it.manufacturingDate || "",
         notes: it.notes || ""
       })) : [];
     } else {
@@ -758,11 +808,16 @@
   // Receipt type switcher (Radio pills)
   document.querySelectorAll("#receipt-type-radios input[type='radio']").forEach((radio) => {
     radio.addEventListener("change", (e) => {
+      if (receiptState.busy) return;
+      receiptState.backendId = null;
+      receiptState.version = null;
       receiptState.type = e.target.value;
       document.querySelectorAll(".receipt-type-pill").forEach((pill) => {
         pill.classList.toggle("receipt-type-pill--active", pill.querySelector("input").checked);
       });
       $("receipt-code").value = Store.generateReceiptCode(receiptState.type);
+      $("btn-regen-code").hidden = receiptState.type === "IMPORT";
+      $("receipt-partner").hidden = receiptState.type === "IMPORT";
 
       const supplierWrap = $("receipt-supplier-select")?.closest(".form-field");
       const partnerLabel = $("label-receipt-partner") || $("label-receipt-supplier");
@@ -801,17 +856,17 @@
       const validUnits = prod?.units || [];
       const currentUnit = validUnits.find((u) => u.name.toLowerCase() === (line.inputUnit || "").toLowerCase()) || validUnits[0];
       const rate = currentUnit?.conversionRate || 1;
-      const baseQty = Math.round((Number(line.inputQuantity) || 0) * rate);
+      const baseQty = (Number(line.inputQuantity) || 0) * rate;
 
       const skuOptions = Store.products.map((p) => `
-        <option value="${p.sku}" ${p.sku === prod.sku ? "selected" : ""}>
+        <option value="${escapeHtml(p.sku)}" ${p.sku === prod.sku ? "selected" : ""}>
           ${escapeHtml(p.name)} (${p.sku}) [Cơ sở: ${escapeHtml(p.baseUnit)}]
         </option>
       `).join("");
 
       const unitOptions = validUnits.map((u) => `
-        <option value="${u.name}" ${u.name.toLowerCase() === currentUnit.name.toLowerCase() ? "selected" : ""}>
-          ${escapeHtml(u.name)} (×${u.conversionRate} ${prod.baseUnit})
+        <option value="${escapeHtml(u.name)}" ${u.name.toLowerCase() === currentUnit.name.toLowerCase() ? "selected" : ""}>
+          ${escapeHtml(u.name)} (×${u.conversionRate} ${escapeHtml(prod.baseUnit)})
         </option>
       `).join("");
 
@@ -828,13 +883,13 @@
             </select>
           </td>
           <td>
-            <input type="number" class="line-qty-input" data-index="${index}" min="1" step="1" value="${line.inputQuantity}" />
+            <input type="number" class="line-qty-input" data-index="${index}" min="0.0001" step="0.0001" value="${escapeHtml(line.inputQuantity)}" />
           </td>
           <td>
-            <input type="text" class="line-batch-input" data-index="${index}" placeholder="Số lô..." value="${escapeHtml(line.batchNumber || '')}" />
+            <input type="text" class="line-batch-input" data-index="${index}" maxlength="50" ${prod.manageLot ? 'required' : ''} placeholder="${prod.manageLot ? 'Số lô (bắt buộc)' : 'Số lô (nếu có)'}" value="${escapeHtml(line.batchNumber || '')}" />
           </td>
           <td>
-            <input type="date" class="line-expiry-input" data-index="${index}" value="${escapeHtml(line.expiryDate || '')}" />
+            <input type="date" class="line-expiry-input" data-index="${index}" ${prod.manageLot ? 'required' : ''} value="${escapeHtml(line.expiryDate || '')}" />
           </td>
           <td>
             <div class="conversion-rate-cell">
@@ -869,9 +924,10 @@
 
     receiptState.lines.forEach((line) => {
       const prod = Store.getProductBySku(line.sku) || Store.products[0];
-      const unit = prod.units.find((u) => u.name.toLowerCase() === (line.inputUnit || "").toLowerCase()) || prod.units[0];
+      const unit = prod?.units.find((u) => u.name.toLowerCase() === (line.inputUnit || "").toLowerCase()) || prod?.units[0];
+      if (!prod || !unit) return;
       const rate = unit?.conversionRate || 1;
-      const baseQty = Math.round((Number(line.inputQuantity) || 0) * rate);
+      const baseQty = (Number(line.inputQuantity) || 0) * rate;
       totalBaseQty += baseQty;
       if (line.inputQuantity > 0) {
         packageParts.push(`${line.inputQuantity} ${unit.name}`);
@@ -893,6 +949,9 @@
       const newSku = target.value;
       const prod = Store.getProductBySku(newSku);
       receiptState.lines[index].sku = newSku;
+      receiptState.lines[index].batchNumber = "";
+      receiptState.lines[index].expiryDate = "";
+      receiptState.lines[index].manufacturingDate = "";
       // Default to the first bulk unit or base unit
       const bulkUnit = prod.units.find((u) => !u.isBase) || prod.units[0];
       receiptState.lines[index].inputUnit = bulkUnit.name;
@@ -901,8 +960,9 @@
       receiptState.lines[index].inputUnit = target.value;
       renderLineItems();
     } else if (target.classList.contains("line-qty-input")) {
-      receiptState.lines[index].inputQuantity = Math.max(1, Number(target.value) || 1);
-      renderLineItems();
+      receiptState.lines[index].inputQuantity = target.value;
+      // Keep the row/input nodes: replacing them on blur loses focus and the next field's input.
+      updateReceiptSummary();
     } else if (target.classList.contains("line-batch-input")) {
       receiptState.lines[index].batchNumber = target.value.trim();
     } else if (target.classList.contains("line-expiry-input")) {
@@ -922,7 +982,7 @@
       const prod = Store.getProductBySku(receiptState.lines[index].sku);
       const unit = prod.units.find((u) => u.name.toLowerCase() === (receiptState.lines[index].inputUnit || "").toLowerCase()) || prod.units[0];
       const rate = unit?.conversionRate || 1;
-      const baseQty = Math.round((Number(target.value) || 0) * rate);
+      const baseQty = (Number(target.value) || 0) * rate;
       row.querySelector(".base-qty-badge").textContent = `${formatNumber(baseQty)} ${prod.baseUnit}`;
       row.querySelector(".base-qty-formula").textContent = `${target.value || 0} ${unit.name} × ${rate}`;
       updateReceiptSummary();
@@ -977,7 +1037,10 @@
   });
 
   // Action: Save Draft (Lưu nháp - Không ảnh hưởng tồn kho, cho phép chỉnh sửa)
-  $("btn-save-draft-receipt")?.addEventListener("click", () => {
+  $("btn-save-draft-receipt")?.addEventListener("click", async () => {
+    if (receiptState.busy) return;
+    receiptState.busy = true;
+    updateReceiptAvailability();
     try {
       const code = $("receipt-code").value.trim() || Store.generateReceiptCode(receiptState.type);
       const date = $("receipt-date").value;
@@ -990,7 +1053,7 @@
       const docNumber = $("receipt-doc-number") ? $("receipt-doc-number").value.trim() : "";
       const notes = $("receipt-notes").value.trim();
 
-      const draft = Store.saveDraftReceipt({
+      const draft = await Store.saveDraftReceipt({
         id: code,
         type: receiptState.type,
         date: date,
@@ -1009,11 +1072,17 @@
       switchTab("ledger-audit");
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      receiptState.busy = false;
+      updateReceiptAvailability();
     }
   });
 
   // Submit Receipt and Record into Stock Ledger with Frozen Snapshot
   $("btn-save-receipt")?.addEventListener("click", async () => {
+    if (receiptState.busy) return;
+    receiptState.busy = true;
+    updateReceiptAvailability();
     try {
       const permission = { IMPORT: "WAREHOUSE_IMPORT", EXPORT: "WAREHOUSE_EXPORT", ORDER: "ORDER_CREATE" }[receiptState.type];
       if (!permission || !Auth.hasPermission(permission)) throw new Error("Bạn không có quyền ghi loại phiếu này.");
@@ -1060,6 +1129,9 @@
       switchTab("ledger-audit");
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      receiptState.busy = false;
+      updateReceiptAvailability();
     }
   });
 
@@ -1090,7 +1162,7 @@
 
     // Populate SKU filter dropdown
     const skuOptionsHtml = `<option value="">Tất cả SKU</option>` + Store.products.map((p) => `
-      <option value="${p.sku}" ${p.sku === skuFilter ? "selected" : ""}>${escapeHtml(p.sku)} - ${escapeHtml(p.name)}</option>
+      <option value="${escapeHtml(p.sku)}" ${p.sku === skuFilter ? "selected" : ""}>${escapeHtml(p.sku)} - ${escapeHtml(p.name)}</option>
     `).join("");
     $("ledger-sku-filter").innerHTML = skuOptionsHtml;
 
@@ -1099,7 +1171,7 @@
         ? `<span class="badge badge--import"> Nhập kho</span>`
         : r.type === "EXPORT"
         ? `<span class="badge badge--export"> Xuất kho</span>`
-        : `<span class="badge badge--order"> Đơn hàng</span>`;
+        : r.type === "ADJUSTMENT" ? `<span class="badge badge--draft">Điều chỉnh</span>` : `<span class="badge badge--order"> Đơn hàng</span>`;
 
       const statusBadgeClass = r.status === "DRAFT" ? "badge--draft" : "badge--pill";
 
@@ -1127,7 +1199,7 @@
           <td>
             <span class="snapshot-rate-badge" title="Hệ số quy đổi đã chốt tại thời điểm lập phiếu - Không bao giờ đổi">
               <svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              × ${item.conversionRateSnapshot} (${item.baseUnit}/${item.inputUnit})
+              × ${formatNumber(item.conversionRateSnapshot)} (${escapeHtml(item.baseUnit)}/${escapeHtml(item.inputUnit)})
             </span>
           </td>
           <td>
@@ -1144,15 +1216,14 @@
               <span class="badge ${statusBadgeClass}">${escapeHtml(statusLabel(r.status))}</span>
             </td>
             <td rowspan="${r.items.length}" class="th-actions">
-              ${r.status === "DRAFT" ? `
-                <button class="action-btn action-btn--primary" data-edit-draft="${r.id}" title="Tiếp tục chỉnh sửa bản nháp">
+              ${r.status === "DRAFT" && r.type === "IMPORT" && Auth.hasPermission("WAREHOUSE_IMPORT") ? `
+                <button class="action-btn action-btn--primary" data-edit-draft="${escapeHtml(r.id)}" title="Tiếp tục chỉnh sửa bản nháp">
                   Sửa nháp
                 </button>
-              ` : `
-                <button class="action-btn" data-view-receipt="${r.id}" title="Xem chi tiết phiếu đã ghi sổ">
+              ` : ""}
+                <button class="action-btn" data-view-receipt="${escapeHtml(r.id)}" title="Xem chi tiết phiếu">
                   Chi tiết
                 </button>
-              `}
             </td>
           ` : ""}
         </tr>
@@ -1173,7 +1244,7 @@
     const editDraftBtn = e.target.closest("[data-edit-draft]");
     if (editDraftBtn) {
       const draftId = editDraftBtn.dataset.editDraft;
-      const draft = Store.drafts.find((d) => d.id === draftId);
+      const draft = Store.receipts.find((d) => d.id === draftId && d.status === "DRAFT" && d.type === "IMPORT");
       if (draft) {
         receiptState.type = draft.type;
         document.querySelectorAll("#receipt-type-radios input[type='radio']").forEach((radio) => {
@@ -1182,8 +1253,8 @@
         document.querySelectorAll(".receipt-type-pill").forEach((pill) => {
           pill.classList.toggle("receipt-type-pill--active", pill.querySelector("input").checked);
         });
-        prepareReceiptForm(draft);
         switchTab("create-receipt");
+        prepareReceiptForm(draft);
       }
     }
   });
@@ -1437,7 +1508,7 @@
     if (!r) return;
 
     $("detail-receipt-code").textContent = r.id;
-    const typeLabel = r.type === "IMPORT" ? "Phiếu nhập kho" : r.type === "EXPORT" ? "Phiếu xuất kho" : "Đơn hàng bán";
+    const typeLabel = r.type === "IMPORT" ? "Phiếu nhập kho" : r.type === "EXPORT" ? "Phiếu xuất kho" : r.type === "ADJUSTMENT" ? "Phiếu điều chỉnh" : "Đơn hàng bán";
     $("modal-receipt-title").textContent = `Chi tiết ${typeLabel}`;
 
     const itemsHtml = r.items.map((item, idx) => `
@@ -1452,7 +1523,7 @@
         <td><strong>${formatNumber(item.inputQuantity)} ${escapeHtml(item.inputUnit)}</strong></td>
         <td>
           <span class="snapshot-rate-badge">
-            × ${item.conversionRateSnapshot} (${item.baseUnit}/${item.inputUnit})
+            × ${formatNumber(item.conversionRateSnapshot)} (${escapeHtml(item.baseUnit)}/${escapeHtml(item.inputUnit)})
           </span>
         </td>
         <td>
@@ -1462,13 +1533,13 @@
       </tr>
     `).join("");
 
-    const isRecorded = r.status === "RECORDED";
+    const isRecorded = ["RECORDED", "CONFIRMED", "ADJUSTED"].includes(r.status);
 
     $("receipt-detail-content").innerHTML = `
       <div class="receipt-detail-grid">
         <div class="meta-item">
           <span>Ngày lập:</span>
-          <strong>${escapeHtml(r.createdAt || r.date)}</strong>
+          <strong>${escapeHtml(r.date)}</strong>
         </div>
         <div class="meta-item">
           <span>Kho thực hiện:</span>
@@ -1483,6 +1554,10 @@
           <strong>${escapeHtml(r.partner || "—")}</strong>
         </div>
         <div class="meta-item">
+          <span>Số chứng từ:</span>
+          <strong>${escapeHtml(r.docNumber || "—")}</strong>
+        </div>
+        <div class="meta-item">
           <span>Trạng thái:</span>
           <strong>${escapeHtml(statusLabel(r.status))}</strong>
         </div>
@@ -1491,6 +1566,13 @@
           <strong>${escapeHtml(r.notes || "Không")}</strong>
         </div>
       </div>
+
+      ${r.referenceVoucherCode ? `<p>Điều chỉnh cho: ${escapeHtml(r.referenceVoucherCode)} · ${escapeHtml(r.adjustmentReason)}</p>` : ""}
+      ${r.type === "IMPORT" && r.status === "DRAFT" ? `
+        <p>Phiếu nháp chưa cộng tồn. Hệ số quy đổi sẽ được chốt lại tại thời điểm xác nhận.</p>
+        ${Auth.hasPermission("WAREHOUSE_APPROVE") ? `<button class="btn btn--primary" data-confirm-import="${escapeHtml(r.id)}">Xác nhận nhập kho</button>` : ""}
+        ${Auth.hasPermission("WAREHOUSE_IMPORT") ? `<button class="btn btn--secondary" data-delete-import="${escapeHtml(r.id)}">Xóa bản nháp</button>` : ""}
+      ` : ""}
 
       ${isRecorded ? `
         <div class="alert-notice alert-notice--info" style="margin: 16px 0; display:flex; align-items:center; gap:10px; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#166534; font-size:0.8125rem">
@@ -1517,10 +1599,82 @@
         </table>
       </div>
 
+      ${r.type === "IMPORT" && isRecorded && Auth.hasPermission("WAREHOUSE_ADJUST") ? `
+        <form id="import-adjustment-form" data-voucher="${escapeHtml(r.id)}" class="receipt-form-meta">
+          <div class="form-field form-field--span2"><h3>Lập phiếu điều chỉnh</h3><p>Giữ nguyên phiếu gốc. Nhập lượng tăng (+) hoặc giảm (-) theo đơn vị đã chọn trên dòng gốc.</p></div>
+          <div class="form-field"><label for="import-adjustment-line">Mặt hàng / lô</label>
+            <select id="import-adjustment-line">${r.items.map((item, index) => `<option value="${index}">${escapeHtml(item.productName)} · ${escapeHtml(item.batchNumber || "Không quản lý lô")} (${escapeHtml(item.inputUnit)})</option>`).join("")}</select></div>
+          <div class="form-field"><label for="import-adjustment-delta">Số lượng tăng / giảm</label><input id="import-adjustment-delta" type="number" step="0.0001" required /></div>
+          <div class="form-field form-field--span2"><label for="import-adjustment-reason">Lý do điều chỉnh (bắt buộc)</label><textarea id="import-adjustment-reason" maxlength="500" required></textarea></div>
+          <button class="btn btn--primary" type="submit">Lập phiếu điều chỉnh</button>
+        </form>
+      ` : ""}
+
     `;
 
     modalReceipt.hidden = false;
   }
+
+  let detailBusy = false;
+  $("receipt-detail-content").addEventListener("click", async event => {
+    const confirmButton = event.target.closest("[data-confirm-import]");
+    const deleteButton = event.target.closest("[data-delete-import]");
+    const button = confirmButton || deleteButton;
+    if (!button || detailBusy) return;
+    const code = confirmButton?.dataset.confirmImport || deleteButton?.dataset.deleteImport;
+    const record = Store.receipts.find(row => row.id === code && row.type === "IMPORT" && row.status === "DRAFT");
+    if (!record) return;
+    const permission = confirmButton ? "WAREHOUSE_APPROVE" : "WAREHOUSE_IMPORT";
+    if (!Auth.hasPermission(permission)) { showToast("Quyền thao tác đã bị thu hồi.", "error"); return; }
+    if (!window.confirm(confirmButton ? "Xác nhận phiếu nhập và cộng tồn kho?" : "Xóa bản nháp này? Tồn kho không thay đổi.")) return;
+    detailBusy = true; button.disabled = true;
+    try {
+      if (confirmButton) {
+        await Store.confirmImport(record);
+        if (receiptState.backendId === record.backendId) {
+          receiptState.lines = [];
+          for (const id of ["receipt-supplier-select", "receipt-doc-number", "receipt-partner", "receipt-notes"]) $(id).value = "";
+          prepareReceiptForm();
+        }
+        openReceiptDetailModal(code);
+      }
+      else {
+        await Store.request(`/warehouse/vouchers/${record.backendId}`, { method: "DELETE" });
+        Store.receipts = Store.receipts.filter(row => row !== record);
+        if (receiptState.backendId === record.backendId) prepareReceiptForm();
+        modalReceipt.hidden = true;
+      }
+      renderLedgerTable(); updateMetrics();
+      showToast(confirmButton ? "Đã xác nhận phiếu nhập và cộng tồn." : "Đã xóa phiếu nháp.");
+    } catch (error) { showToast(error.message, "error"); }
+    finally { detailBusy = false; button.disabled = false; }
+  });
+
+  $("receipt-detail-content").addEventListener("submit", async event => {
+    if (event.target.id !== "import-adjustment-form") return;
+    event.preventDefault();
+    if (detailBusy || !Auth.hasPermission("WAREHOUSE_ADJUST")) return;
+    const record = Store.receipts.find(row => row.id === event.target.dataset.voucher && row.type === "IMPORT");
+    const line = record?.items[Number($("import-adjustment-line").value)];
+    const delta = Number($("import-adjustment-delta").value);
+    const reason = $("import-adjustment-reason").value.trim();
+    if (!line || !Number.isFinite(delta) || !delta || !reason) { showToast("Nhập lượng tăng/giảm khác 0 và lý do điều chỉnh.", "error"); return; }
+    if (!window.confirm("Ghi phiếu điều chỉnh và cập nhật tồn kho?")) return;
+    detailBusy = true;
+    const button = event.target.querySelector('button[type="submit"]'); button.disabled = true;
+    try {
+      const data = await Store.request(`/warehouse/vouchers/${record.backendId}/adjust`, { method: "POST", body: JSON.stringify({
+        warehouseId: record.warehouseId, adjustmentReason: reason, delta,
+        items: [{ productId: line.productId, unit: line.inputUnit, quantity: Math.abs(delta),
+          lotNumber: line.batchNumber || null, expiryDate: line.expiryDate || null, manufacturingDate: line.manufacturingDate || null }],
+      }) });
+      record.status = "ADJUSTED";
+      Store.receipts.unshift(Store.mapVoucher(data));
+      renderLedgerTable(); updateMetrics(); modalReceipt.hidden = true;
+      showToast("Đã lập phiếu điều chỉnh. Phiếu gốc được giữ nguyên.");
+    } catch (error) { showToast(error.message, "error"); }
+    finally { detailBusy = false; button.disabled = false; }
+  });
 
   document.querySelectorAll("[data-close-receipt-modal]").forEach((btn) => {
     btn.addEventListener("click", () => { modalReceipt.hidden = true; });
@@ -1745,7 +1899,7 @@
       tab.hidden = !(tab.dataset.tab === "sku-units" ? Auth.hasAnyPermission("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE")
         : tab.dataset.tab === "create-receipt" ? canRecordVouchers
         : tab.dataset.tab === "stocktake" ? canReadStocktake()
-        : Auth.hasPermission("WAREHOUSE_VIEW"));
+        : tab.dataset.tab === "ledger-audit" ? canReadLedger() : Auth.hasPermission("WAREHOUSE_VIEW"));
     });
     $("tab-create-receipt").hidden = !canRecordVouchers;
     $("tab-stocktake").hidden = !canReadStocktake();
@@ -1764,6 +1918,7 @@
     }
     renderSkuTable();
     renderInventoryTable();
+    renderLedgerTable();
     updateReceiptAvailability();
   }
   syncWarehouseActions();
@@ -1773,8 +1928,23 @@
     const previousId = stocktake.state.current?.id;
     const previousWarehouse = stocktake.state.warehouseId;
     stocktake.invalidate();
+    Store.epoch++;
+    legacyLoad = null;
+    Store.loaded = false;
+    Store.receipts = [];
+    Store.drafts = [];
+    Store.suppliers = [];
+    modalReceipt.hidden = true;
     stocktakeMessage();
     syncWarehouseActions();
+    if (!stocktakeIsActive()) {
+      const active = document.querySelector(".nav-tab--active");
+      if (active?.hidden) {
+        const next = [...tabs].find(tab => !tab.hidden);
+        if (next) switchTab(next.dataset.tab);
+        else panels.forEach(panel => { panel.hidden = true; });
+      } else if (active) await ensureLegacyData();
+    }
     // Wait for any old request; its response cannot repopulate the cleared draft.
     await stocktake.idle();
     if (version === permissionVersion && stocktakeIsActive() && canReadStocktake()) {

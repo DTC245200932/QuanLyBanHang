@@ -27,6 +27,11 @@ public class WarehouseVoucher {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    @Builder.Default
+    private Long version = 0L;
+
     @Column(name = "voucher_code", nullable = false, length = 50, unique = true)
     private String voucherCode;
 

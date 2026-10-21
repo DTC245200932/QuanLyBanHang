@@ -11,6 +11,8 @@ import com.quanlybanhang.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -50,6 +52,61 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final WarehouseTransferRepository warehouseTransferRepository;
     private final AuditLogService auditLogService;
     private final WarehouseTransferService transferService;
+
+    private void requireGrant(String... permissions) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("ROLE_ADMIN") || Arrays.asList(permissions).contains(a.getAuthority()))) return;
+        throw new AccessDeniedException("Bạn không có quyền thực hiện thao tác phiếu kho này");
+    }
+
+    private boolean mayAccessWarehouse(Long id) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return false;
+        Set<String> grants = auth.getAuthorities().stream().map(a -> a.getAuthority()).collect(Collectors.toSet());
+        if (grants.contains("ROLE_ADMIN")) return true;
+        User actor = userRepository.findByUsername(auth.getName()).orElseThrow(() -> new AccessDeniedException("Không tìm thấy tài khoản"));
+        Set<Warehouse> assigned = actor.getWarehouses();
+        if (assigned != null && !assigned.isEmpty()) return assigned.stream().anyMatch(w -> Objects.equals(w.getId(), id));
+        return !grants.contains("ROLE_WAREHOUSE_STAFF") && !grants.contains("ROLE_WAREHOUSE_MANAGER");
+    }
+
+    private void requireWarehouse(Long id) {
+        if (!mayAccessWarehouse(id)) throw new AccessDeniedException("Kho này không thuộc phạm vi được giao");
+    }
+
+    private Warehouse lockVoucherWarehouse(Warehouse warehouse) {
+        requireWarehouse(warehouse.getId());
+        Warehouse locked = warehouseRepository.findByIdForUpdate(warehouse.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy kho"));
+        if (!Boolean.TRUE.equals(locked.getActive())) throw new IllegalArgumentException("Kho đã ngừng hoạt động");
+        return locked;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getImportOptions() {
+        requireGrant("WAREHOUSE_IMPORT", "WAREHOUSE_APPROVE", "WAREHOUSE_ADJUST");
+        return Map.of("warehouses", warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
+                        .filter(w -> mayAccessWarehouse(w.getId()))
+                        .map(w -> new NamedResourceResponse(w.getId(), w.getCode(), w.getName())).toList(),
+                "suppliers", supplierRepository.findAll().stream().filter(s -> Boolean.TRUE.equals(s.getActive()))
+                        .sorted(Comparator.comparing(Supplier::getName))
+                        .map(s -> new NamedResourceResponse(s.getId(), s.getCode(), s.getName())).toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WarehouseVoucherResponse> getImports(Long warehouseId) {
+        requireGrant("WAREHOUSE_IMPORT", "WAREHOUSE_APPROVE", "WAREHOUSE_ADJUST");
+        if (warehouseId != null) requireWarehouse(warehouseId);
+        List<WarehouseVoucher> rows = voucherRepository.searchVouchers(warehouseId, null, null, null);
+        Set<Long> importIds = rows.stream().filter(v -> v.getType() == WarehouseVoucherType.IMPORT)
+                .filter(v -> mayAccessWarehouse(v.getWarehouse().getId())).map(WarehouseVoucher::getId).collect(Collectors.toSet());
+        return rows.stream()
+                .filter(v -> importIds.contains(v.getId()) || (v.getType() == WarehouseVoucherType.ADJUSTMENT && importIds.contains(v.getReferenceVoucherId())))
+                .filter(v -> mayAccessWarehouse(v.getWarehouse().getId())).map(this::mapToVoucherResponse).toList();
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // 1. OPTIONS & DANH SÁCH NHANH
@@ -818,6 +875,10 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public WarehouseVoucherResponse importGoods(WarehouseVoucherRequest request, String username) {
+        requireGrant("WAREHOUSE_IMPORT");
+        if (request != null && !Boolean.TRUE.equals(request.getDraft()) && !"DRAFT".equalsIgnoreCase(request.getStatus())) {
+            requireGrant("WAREHOUSE_APPROVE");
+        }
         return recordVoucher(request, WarehouseVoucherType.IMPORT, username);
     }
 
@@ -845,6 +906,7 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new IllegalArgumentException("Phiếu kho phải có ít nhất 1 sản phẩm");
         }
         Warehouse warehouse = resolveWarehouse(request.getWarehouseId());
+        if (type == WarehouseVoucherType.IMPORT) lockVoucherWarehouse(warehouse);
 
         String voucherCode = request.getVoucherCode();
         if (voucherCode == null || voucherCode.isBlank()) {
@@ -853,7 +915,10 @@ public class WarehouseServiceImpl implements WarehouseService {
                 case EXPORT -> "PXK";
                 case ADJUSTMENT -> "PDC";
             };
-            voucherCode = prefix + "-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+            voucherCode = prefix + "-" + UUID.randomUUID().toString();
+        }
+        if (voucherCode.length() > 50 || voucherRepository.existsByVoucherCode(voucherCode.trim())) {
+            throw new IllegalArgumentException("Mã phiếu quá dài hoặc đã tồn tại");
         }
 
         // Kiểm tra nhà cung cấp nếu có cung cấp
@@ -869,6 +934,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         String initialStatus = isDraft ? "DRAFT" : "RECORDED";
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime voucherDate = request.getVoucherDate() != null ? request.getVoucherDate() : now;
+        if (type == WarehouseVoucherType.IMPORT && !isDraft) validateImportHeader(supplier, request.getDocumentNumber(), request.getVoucherDate());
 
         WarehouseVoucher voucher = WarehouseVoucher.builder()
                 .voucherCode(voucherCode)
@@ -957,7 +1023,7 @@ public class WarehouseServiceImpl implements WarehouseService {
             // CHỈ CỘNG TỒN KHO KHI XÁC NHẬN / GHI SỔ, PHIẾU NHÁP KHÔNG ẢNH HƯỞNG TỒN (S5-04)
             if (!isDraft) {
                 WarehouseInventory inventory = inventoryRepository
-                        .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
+                        .findByWarehouseIdAndProductIdForUpdate(warehouse.getId(), product.getId())
                         .orElseGet(() -> WarehouseInventory.builder()
                                 .warehouse(warehouse)
                                 .product(product)
@@ -1000,6 +1066,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                                     .baseQuantity(BigDecimal.ZERO)
                                     .baseUnit(product.getUnit())
                                     .build());
+                    requireSameLotDates(lotInv, expiryDate, mfgDate);
                     if (type == WarehouseVoucherType.IMPORT) {
                         lotInv.addBaseQuantity(baseQty);
                     } else if (type == WarehouseVoucherType.EXPORT) {
@@ -1025,8 +1092,10 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public WarehouseVoucherResponse confirmVoucher(Long id, String username) {
-        WarehouseVoucher voucher = voucherRepository.findById(id)
+        requireGrant("WAREHOUSE_APPROVE");
+        WarehouseVoucher voucher = voucherRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho với ID: " + id));
+        requireWarehouse(voucher.getWarehouse().getId());
 
         if (!"DRAFT".equalsIgnoreCase(voucher.getStatus())) {
             throw new IllegalStateException("Chỉ có thể xác nhận phiếu ở trạng thái Nháp (DRAFT). Trạng thái hiện tại: " + voucher.getStatus());
@@ -1040,6 +1109,12 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (voucher.getItems() == null || voucher.getItems().isEmpty()) {
             throw new IllegalArgumentException("Phiếu kho không có sản phẩm để xác nhận");
         }
+
+        warehouse = lockVoucherWarehouse(warehouse);
+        final Warehouse postingWarehouse = warehouse;
+        if (voucher.getType() != WarehouseVoucherType.IMPORT) throw new IllegalArgumentException("Chỉ xác nhận phiếu nhập kho qua chức năng này");
+        validateImportHeader(voucher.getSupplier(), voucher.getDocumentNumber(), voucher.getVoucherDate());
+        voucher.getItems().sort(Comparator.comparing(i -> i.getProduct().getId()));
 
         for (WarehouseVoucherItem item : voucher.getItems()) {
             Product product = item.getProduct();
@@ -1057,13 +1132,18 @@ public class WarehouseServiceImpl implements WarehouseService {
                 }
             }
 
-            BigDecimal baseQty = item.getBaseQuantity();
+            // A draft is a preview, not a frozen accounting entry. Freeze the current conversion at posting.
+            BigDecimal factor = unitConversionService.getConversionFactor(product, item.getUnit());
+            BigDecimal baseQty = item.getQuantity().multiply(factor);
+            item.setConversionFactor(factor);
+            item.setBaseUnit(product.getUnit());
+            item.setBaseQuantity(baseQty);
 
             // Cập nhật sổ sách tồn kho tổng
             WarehouseInventory inventory = inventoryRepository
-                    .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
+                    .findByWarehouseIdAndProductIdForUpdate(warehouse.getId(), product.getId())
                     .orElseGet(() -> WarehouseInventory.builder()
-                            .warehouse(warehouse)
+                            .warehouse(postingWarehouse)
                             .product(product)
                             .baseQuantity(BigDecimal.ZERO)
                             .baseUnit(product.getUnit())
@@ -1089,7 +1169,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 WarehouseLotInventory lotInv = lotInventoryRepository
                         .findByWarehouseIdAndProductIdAndLotNumber(warehouse.getId(), product.getId(), item.getLotNumber())
                         .orElseGet(() -> WarehouseLotInventory.builder()
-                                .warehouse(warehouse)
+                                .warehouse(postingWarehouse)
                                 .product(product)
                                 .lotNumber(item.getLotNumber())
                                 .expiryDate(item.getExpiryDate())
@@ -1097,6 +1177,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                                 .baseQuantity(BigDecimal.ZERO)
                                 .baseUnit(product.getUnit())
                                 .build());
+                requireSameLotDates(lotInv, item.getExpiryDate(), item.getManufacturingDate());
                 if (voucher.getType() == WarehouseVoucherType.IMPORT) {
                     lotInv.addBaseQuantity(baseQty);
                 } else if (voucher.getType() == WarehouseVoucherType.EXPORT) {
@@ -1123,8 +1204,14 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public WarehouseVoucherResponse updateVoucher(Long id, WarehouseVoucherRequest request, String username) {
-        WarehouseVoucher voucher = voucherRepository.findById(id)
+        requireGrant("WAREHOUSE_IMPORT");
+        WarehouseVoucher voucher = voucherRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho với ID: " + id));
+        requireWarehouse(voucher.getWarehouse().getId());
+        if (voucher.getType() != WarehouseVoucherType.IMPORT) throw new IllegalArgumentException("Chỉ sửa nháp phiếu nhập kho");
+        if (request.getVersion() != null && !Objects.equals(request.getVersion(), voucher.getVersion())) {
+            throw new IllegalStateException("Phiếu đã được cập nhật ở phiên khác. Hãy tải lại trước khi sửa.");
+        }
 
         // Phiếu đã xác nhận không sửa được, chỉ lập phiếu điều chỉnh (S5-04)
         if ("CONFIRMED".equalsIgnoreCase(voucher.getStatus()) || "RECORDED".equalsIgnoreCase(voucher.getStatus()) || "ADJUSTED".equalsIgnoreCase(voucher.getStatus())) {
@@ -1135,6 +1222,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         }
 
         if (request.getWarehouseId() != null) {
+            requireWarehouse(request.getWarehouseId());
             voucher.setWarehouse(resolveWarehouse(request.getWarehouseId()));
         }
 
@@ -1221,15 +1309,20 @@ public class WarehouseServiceImpl implements WarehouseService {
             }
         }
 
-        WarehouseVoucher saved = voucherRepository.save(voucher);
+        WarehouseVoucher saved = voucherRepository.saveAndFlush(voucher);
         return mapToVoucherResponse(saved);
     }
 
     @Override
     @Transactional
     public void deleteVoucher(Long id, String username) {
-        WarehouseVoucher voucher = voucherRepository.findById(id)
+        requireGrant("WAREHOUSE_IMPORT");
+        WarehouseVoucher voucher = voucherRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho với ID: " + id));
+        requireWarehouse(voucher.getWarehouse().getId());
+        if (voucher.getType() != WarehouseVoucherType.IMPORT || !"DRAFT".equalsIgnoreCase(voucher.getStatus())) {
+            throw new IllegalStateException("Chỉ được xóa phiếu nhập nháp, phiếu đã xác nhận chỉ lập phiếu điều chỉnh");
+        }
 
         // Phiếu đã xác nhận không thể xóa, chỉ lập phiếu điều chỉnh (S5-04)
         if ("CONFIRMED".equalsIgnoreCase(voucher.getStatus()) || "RECORDED".equalsIgnoreCase(voucher.getStatus()) || "ADJUSTED".equalsIgnoreCase(voucher.getStatus())) {
@@ -1249,7 +1342,8 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public WarehouseVoucherResponse adjustVoucher(Long id, WarehouseVoucherRequest request, String username) {
-        WarehouseVoucher originalVoucher = voucherRepository.findById(id)
+        requireGrant("WAREHOUSE_ADJUST");
+        WarehouseVoucher originalVoucher = voucherRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho gốc với ID: " + id));
 
         if (!"CONFIRMED".equalsIgnoreCase(originalVoucher.getStatus()) && !"RECORDED".equalsIgnoreCase(originalVoucher.getStatus()) && !"ADJUSTED".equalsIgnoreCase(originalVoucher.getStatus())) {
@@ -1260,13 +1354,21 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new IllegalArgumentException("Không được để trống nội dung phiếu điều chỉnh");
         }
 
+        if (request.getAdjustmentReason() == null || request.getAdjustmentReason().isBlank()) {
+            throw new IllegalArgumentException("Bắt buộc nhập lý do điều chỉnh");
+        }
+        if (request.getWarehouseId() != null && !request.getWarehouseId().equals(originalVoucher.getWarehouse().getId())) {
+            throw new IllegalArgumentException("Phiếu điều chỉnh phải cùng kho với phiếu gốc");
+        }
+        lockVoucherWarehouse(originalVoucher.getWarehouse());
+
         Warehouse warehouse = request.getWarehouseId() != null
                 ? resolveWarehouse(request.getWarehouseId())
                 : originalVoucher.getWarehouse();
 
         String voucherCode = request.getVoucherCode();
         if (voucherCode == null || voucherCode.isBlank()) {
-            voucherCode = "PDC-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+            voucherCode = "PDC-" + UUID.randomUUID();
         }
 
         String reason = request.getAdjustmentReason() != null && !request.getAdjustmentReason().isBlank()
@@ -1295,8 +1397,12 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new IllegalArgumentException("Phiếu điều chỉnh phải có ít nhất 1 sản phẩm");
         }
 
+        Set<String> adjustedKeys = new HashSet<>();
         for (WarehouseVoucherItemRequest itemReq : itemRequests) {
             Product product = resolveProduct(itemReq);
+            if (!Boolean.TRUE.equals(product.getActive())) throw new IllegalArgumentException("Sản phẩm đã ngừng kinh doanh");
+            String key = product.getId() + ":" + Objects.toString(itemReq.getLotNumber(), "").trim();
+            if (!adjustedKeys.add(key)) throw new IllegalArgumentException("Không lặp cùng mặt hàng/lô trong phiếu điều chỉnh");
 
             String inputUnit = itemReq.getUnit();
             if (inputUnit == null || inputUnit.isBlank()) {
@@ -1312,6 +1418,10 @@ public class WarehouseServiceImpl implements WarehouseService {
             String lotNumber = itemReq.getLotNumber() != null ? itemReq.getLotNumber().trim() : null;
             LocalDate expiryDate = itemReq.getExpiryDate();
             LocalDate mfgDate = itemReq.getManufacturingDate();
+
+            if (Boolean.TRUE.equals(product.getManageLot()) && (lotNumber == null || lotNumber.isBlank() || expiryDate == null)) {
+                throw new IllegalArgumentException("Mặt hàng quản lý lô phải có số lô và hạn sử dụng");
+            }
 
             BigDecimal price = itemReq.getPrice() != null ? itemReq.getPrice() : product.getPrice();
             BigDecimal totalAmount = price != null ? price.multiply(qty) : BigDecimal.ZERO;
@@ -1336,7 +1446,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
             // Cập nhật tồn kho theo delta hoặc số lượng điều chỉnh
             WarehouseInventory inventory = inventoryRepository
-                    .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
+                    .findByWarehouseIdAndProductIdForUpdate(warehouse.getId(), product.getId())
                     .orElseGet(() -> WarehouseInventory.builder()
                             .warehouse(warehouse)
                             .product(product)
@@ -1346,16 +1456,8 @@ public class WarehouseServiceImpl implements WarehouseService {
 
             BigDecimal quantityBefore = inventory.getBaseQuantity() == null ? BigDecimal.ZERO : inventory.getBaseQuantity();
 
-            if (request.getDelta() != null) {
-                BigDecimal deltaBase = request.getDelta().multiply(factor);
-                inventory.addBaseQuantity(deltaBase);
-            } else {
-                inventory.setBaseQuantity(baseQty);
-            }
-
-            inventoryRepository.save(inventory);
-
             // Cập nhật tồn kho lô nếu có
+            BigDecimal movement;
             if (lotNumber != null && !lotNumber.isBlank()) {
                 WarehouseLotInventory lotInv = lotInventoryRepository
                         .findByWarehouseIdAndProductIdAndLotNumber(warehouse.getId(), product.getId(), lotNumber)
@@ -1368,14 +1470,25 @@ public class WarehouseServiceImpl implements WarehouseService {
                                 .baseQuantity(BigDecimal.ZERO)
                                 .baseUnit(product.getUnit())
                                 .build());
-                if (request.getDelta() != null) {
-                    BigDecimal deltaBase = request.getDelta().multiply(factor);
-                    lotInv.addBaseQuantity(deltaBase);
-                } else {
-                    lotInv.setBaseQuantity(baseQty);
-                }
+                requireSameLotDates(lotInv, expiryDate, mfgDate);
+                movement = request.getDelta() != null ? request.getDelta().multiply(factor) : baseQty.subtract(lotInv.getBaseQuantity());
+                BigDecimal newLotQty = lotInv.getBaseQuantity().add(movement);
+                if (newLotQty.signum() < 0) throw new IllegalArgumentException("Điều chỉnh làm âm tồn lô");
+                lotInv.setBaseQuantity(newLotQty);
                 lotInventoryRepository.save(lotInv);
+            } else {
+                movement = request.getDelta() != null ? request.getDelta().multiply(factor) : baseQty.subtract(quantityBefore);
             }
+            BigDecimal newQuantity = quantityBefore.add(movement);
+            BigDecimal reserved = inventory.getReservedQuantity() == null ? BigDecimal.ZERO : inventory.getReservedQuantity();
+            if (newQuantity.signum() < 0 || newQuantity.compareTo(reserved) < 0) {
+                throw new IllegalArgumentException("Điều chỉnh không được làm âm tồn hoặc giảm dưới số lượng đang giữ chỗ");
+            }
+            inventory.setBaseQuantity(newQuantity);
+            inventoryRepository.save(inventory);
+            // The adjustment line records the signed movement, not a misleading positive target.
+            item.setBaseQuantity(movement);
+            item.setQuantity(movement.divide(factor, 4, RoundingMode.HALF_UP));
 
             auditLogService.logAction(
                     "INVENTORY",
@@ -1446,21 +1559,38 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional(readOnly = true)
     public List<WarehouseVoucherResponse> getVouchers(Long warehouseId, WarehouseVoucherType type, String status, Long supplierId) {
+        requireGrant("WAREHOUSE_VIEW");
+        if (warehouseId != null) requireWarehouse(warehouseId);
         List<WarehouseVoucher> vouchers = voucherRepository.searchVouchers(warehouseId, type, status, supplierId);
-        return vouchers.stream().map(this::mapToVoucherResponse).collect(Collectors.toList());
+        return vouchers.stream().filter(v -> mayAccessWarehouse(v.getWarehouse().getId()))
+                .map(this::mapToVoucherResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public WarehouseVoucherResponse getVoucherById(Long id) {
+        requireGrant("WAREHOUSE_VIEW");
         WarehouseVoucher voucher = voucherRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kho với ID: " + id));
+        requireWarehouse(voucher.getWarehouse().getId());
         return mapToVoucherResponse(voucher);
     }
 
     // ═══════════════════════════════════════════════════════════════
     // HELPER & MAPPING METHODS
     // ═══════════════════════════════════════════════════════════════
+
+    private void validateImportHeader(Supplier supplier, String documentNumber, LocalDateTime date) {
+        if (supplier == null || !Boolean.TRUE.equals(supplier.getActive())) throw new IllegalArgumentException("Vui lòng chọn nhà cung cấp đang hoạt động");
+        if (documentNumber == null || documentNumber.isBlank()) throw new IllegalArgumentException("Vui lòng nhập số chứng từ");
+        if (date == null) throw new IllegalArgumentException("Vui lòng chọn ngày nhập kho");
+    }
+
+    private void requireSameLotDates(WarehouseLotInventory lot, LocalDate expiry, LocalDate manufacturing) {
+        if (!Objects.equals(lot.getExpiryDate(), expiry) || (manufacturing != null && !Objects.equals(lot.getManufacturingDate(), manufacturing))) {
+            throw new IllegalArgumentException("Số lô đã có ngày sản xuất/hạn sử dụng khác. Vui lòng kiểm tra lại lô hàng.");
+        }
+    }
 
     private Warehouse resolveWarehouse(Long warehouseId) {
         if (warehouseId != null) {
@@ -1626,6 +1756,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
         return WarehouseVoucherResponse.builder()
                 .id(voucher.getId())
+                .version(voucher.getVersion())
                 .voucherCode(voucher.getVoucherCode())
                 .documentNumber(voucher.getDocumentNumber())
                 .voucherDate(voucher.getVoucherDate())

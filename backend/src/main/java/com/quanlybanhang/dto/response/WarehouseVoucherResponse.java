@@ -28,6 +28,8 @@ public class WarehouseVoucherResponse {
     private Long referenceVoucherId;
     private String referenceVoucherCode;
     private String adjustmentReason;
+    private Boolean overrideExpiredLot;
+    private String expiredLotOverrideReason;
     private String note;
     private String createdBy;
     private LocalDateTime recordedAt;

@@ -61,6 +61,17 @@ public class WarehouseVoucherRequest {
      */
     private String adjustmentReason;
 
+    /**
+     * Xác nhận ghi đè xuất lô đã quá hạn (S6-01).
+     * Chỉ Quản lý kho (ROLE_ADMIN hoặc quyền WAREHOUSE_APPROVE / WAREHOUSE_MANAGE) mới được phép ghi đè.
+     */
+    private Boolean overrideExpiredLot;
+
+    /**
+     * Lý do ghi đè xuất lô đã quá hạn (S6-01). Bắt buộc nếu overrideExpiredLot = true.
+     */
+    private String expiredLotOverrideReason;
+
     private String note;
 
     private List<@NotNull @Valid WarehouseVoucherItemRequest> items;

@@ -120,6 +120,21 @@ public class ProductController {
         return ApiResponse.success(msg, response);
     }
 
+    /**
+     * API bật/tắt quản lý lô và cập nhật ngưỡng cảnh báo hạn sử dụng theo từng SKU (S6-01).
+     */
+    @PatchMapping("/{id}/manage-lot")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCT_EDIT', 'WAREHOUSE_MANAGE')")
+    public ApiResponse toggleManageLot(
+            @PathVariable Long id,
+            @Valid @RequestBody com.quanlybanhang.dto.request.ManageLotToggleRequest request) {
+        ProductResponse response = productService.toggleManageLot(id, request.getManageLot(), request.getExpiryWarningDays());
+        String msg = Boolean.TRUE.equals(request.getManageLot())
+                ? "Đã bật quản lý lô cho sản phẩm"
+                : "Đã tắt quản lý lô cho sản phẩm";
+        return ApiResponse.success(msg, response);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_DELETE'))")
     public ApiResponse deleteProduct(@PathVariable Long id) {

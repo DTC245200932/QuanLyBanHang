@@ -81,6 +81,16 @@ public interface WarehouseService {
     WarehouseVoucherResponse adjustVoucher(Long id, WarehouseVoucherRequest request, String username);
 
     List<com.quanlybanhang.dto.response.WarehouseLotInventoryResponse> getLotInventory(Long warehouseId, Long productId);
+
+    List<com.quanlybanhang.dto.response.WarehouseLotInventoryResponse> getLotInventory(
+            Long warehouseId, Long productId, String status, Integer thresholdDays, String keyword);
+
+    com.quanlybanhang.dto.response.LotExpiryAlertResponse getLotExpiryAlerts(
+            Long warehouseId, Long productId, Integer customThresholdDays, String status);
+
+    List<com.quanlybanhang.dto.response.LotThresholdResponse> getLotThresholds(String keyword);
+
+    com.quanlybanhang.dto.response.LotThresholdResponse updateLotThreshold(Long productId, Integer thresholdDays, String username);
     // Phiếu chuyển kho nội bộ (S5-07)
     WarehouseTransferResponse createTransfer(com.quanlybanhang.dto.request.WarehouseTransferRequest request, String username);
 

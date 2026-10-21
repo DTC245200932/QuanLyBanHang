@@ -20,7 +20,7 @@ Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message":
 | Nhập sản phẩm Excel | Preview/import cần cả PRODUCT_CREATE + PRODUCT_EDIT vì file có thể chứa SKU tạo mới và cập nhật; template cần một trong hai |
 | Bảng giá / chiết khấu | Đọc: một trong PRODUCT_VIEW/PRODUCT_EDIT/ORDER_CREATE; ghi: PRODUCT_EDIT; lấy bảng hiệu lực/tính chiết khấu để đặt đơn: ORDER_CREATE |
 | Nhà cung cấp / đơn vị quy đổi | Nhà cung cấp đọc: WAREHOUSE_VIEW/MANAGE, ghi: WAREHOUSE_MANAGE. Đơn vị đọc hỗ trợ quyền tham chiếu của sản phẩm/đặt đơn/kho; ghi: WAREHOUSE_MANAGE |
-| Kho | Nhập: WAREHOUSE_IMPORT; xuất: WAREHOUSE_EXPORT; xác nhận phiếu: WAREHOUSE_APPROVE; điều chỉnh: WAREHOUSE_ADJUST; chuyển: WAREHOUSE_TRANSFER; danh mục kho/vị trí ghi: WAREHOUSE_MANAGE |
+| Kho | Nhập: WAREHOUSE_IMPORT; xuất: WAREHOUSE_EXPORT; xác nhận phiếu: WAREHOUSE_APPROVE; điều chỉnh/chốt kiểm kê: WAREHOUSE_ADJUST; xem/lập kiểm kê: WAREHOUSE_VIEW; chuyển: WAREHOUSE_TRANSFER; danh mục kho/vị trí ghi: WAREHOUSE_MANAGE |
 | Vòng đời đơn / giao hàng | WAREHOUSE_EXPORT; chỉ WAREHOUSE_IMPORT không cho phép xuất/chuyển vòng đời đơn. Giữ các kiểm tra phạm vi kho, thứ tự trạng thái và điều kiện hủy |
 | Sao chép đơn / đơn gần nhất | Cả ORDER_CREATE + ORDER_VIEW, áp dụng cho `/orders/{id}/copy`, `/copy-to-draft`, `/orders/dealer/{dealerId}/last-order-to-draft` và đường tương ứng dưới `/dealers` |
 | Giá vốn / lợi nhuận / công nợ | FINANCE_VIEW_COST_PRICE / FINANCE_VIEW_PROFIT_MARGIN / FINANCE_VIEW_DEBT; thay đổi hạn mức hoặc ngày nợ cần FINANCE_MANAGE, kể cả gửi trường này qua POST/PUT hồ sơ đại lý |
@@ -496,6 +496,41 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | GET | `/warehouse/inventory/lots` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Xem danh sách tồn kho chi tiết theo từng Số lô và Hạn sử dụng (S5-04) |
 | GET | `/warehouse/vouchers` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Danh sách phiếu kho (hỗ trợ lọc theo `warehouseId`, `type`, `status`: DRAFT/CONFIRMED/ADJUSTED, `supplierId`) |
 | GET | `/warehouse/vouchers/{id}` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Chi tiết phiếu kho kèm thông tin NCC, số chứng từ, số lô, HSD và đóng băng quy đổi |
+| GET | `/warehouse/stock-counts/options` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Tùy chọn kiểm kê (kho trong phạm vi, nhóm hàng, trạng thái, canAdjust) |
+| GET | `/warehouse/stock-counts` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Danh sách phiếu kiểm kê (lọc theo warehouseId, categoryId, status, keyword; phân trang) |
+| GET | `/warehouse/stock-counts/{id}` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Chi tiết phiếu kiểm kê kèm danh sách sản phẩm, tồn sổ, số thực đếm, chênh lệch |
+| POST | `/warehouse/stock-counts` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Tạo phiếu kiểm kê kho (theo kho hoặc theo nhóm hàng, chốt tồn sổ tại thời điểm tạo) |
+| PUT | `/warehouse/stock-counts/{id}/items` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Cập nhật số đếm thực tế cho các dòng sản phẩm, tự động tính chênh lệch từng dòng |
+| POST | `/warehouse/stock-counts/{id}/complete` | **`WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` (CHỈ Quản lý kho)** | Chốt kiểm kê, điều chỉnh tồn sổ về số thực đếm và bắt buộc nhập lý do |
+| POST | `/warehouse/stock-counts/{id}/cancel` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Hủy phiếu kiểm kê ở trạng thái mới tạo (DRAFT) |
+
+### Kiểm kê kho và ghi nhận chênh lệch (S5-08)
+
+Dành cho vai trò **Quản lý kho (`ROLE_WAREHOUSE_MANAGER`)** và Thủ kho (`ROLE_WAREHOUSE_STAFF`):
+1. **Tạo phiếu kiểm kê theo kho hoặc theo nhóm hàng**:
+   - `warehouseId` (bắt buộc): Kho cần kiểm kê.
+   - `categoryId` (tùy chọn): Nhóm hàng cần kiểm kê. Nếu để trống, hệ thống đưa toàn bộ sản phẩm đang hoạt động trong kho vào danh sách kiểm kê.
+   - `code` (tùy chọn): Mã phiếu kiểm kê (tự sinh `PKK-yyyyMMddHHmmssSSS` nếu để trống).
+   - `note` (tùy chọn): Ghi chú phiếu kiểm kê.
+   - **Chốt tồn sổ sách tại thời điểm tạo**: Hệ thống tự động snapshot số lượng tồn sổ sách hiện tại (`bookQuantity`) theo đơn vị cơ sở cho từng sản phẩm. Trạng thái ban đầu là `DRAFT`.
+2. **Nhập số đếm thực tế & Tự động tính chênh lệch từng dòng**:
+   - Nhân viên kiểm đếm nhập `actualQuantity` (số lượng thực tế theo đơn vị cơ sở, >= 0) cho từng sản phẩm.
+   - Hệ thống tự động tính `differenceQuantity = actualQuantity - bookQuantity`:
+     - Giá trị dương (> 0): Thừa thực tế so với sổ sách.
+     - Giá trị âm (< 0): Thiếu thực tế so với sổ sách (hao hụt, mất mát...).
+     - Bằng 0: Số thực tế khớp hoàn toàn với sổ sách.
+   - Cho phép nhập ghi chú riêng cho từng dòng sản phẩm để giải trình chênh lệch cục bộ.
+3. **Chốt kiểm kê và Điều chỉnh tồn kho về số thực đếm**:
+   - **Bắt buộc nhập lý do giải trình** (`reason` không được để trống).
+   - Kiểm tra tất cả sản phẩm trong phiếu đã có số thực đếm.
+   - Hệ thống tự động cập nhật số lượng tồn kho `WarehouseInventory.baseQuantity = actualQuantity`.
+   - Ghi nhận nhật ký thao tác `AuditLog` cho từng sản phẩm bị điều chỉnh lệch tồn và cho toàn bộ phiếu kiểm kê.
+   - Chuyển trạng thái phiếu sang `COMPLETED`, lưu người chốt và thời điểm chốt.
+4. **Phân quyền ma trận và Giới hạn quyền chốt kiểm kê**:
+   - **Chỉ Quản lý kho (`WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN`)** mới được quyền chốt kiểm kê (`POST /api/warehouse/stock-counts/{id}/complete`).
+   - Thủ kho (`ROLE_WAREHOUSE_STAFF`) chỉ có quyền xem, tạo phiếu và nhập số đếm thực tế, nếu gọi API chốt kiểm kê sẽ bị từ chối `403 Forbidden`.
+   - Thu hồi quyền `WAREHOUSE_ADJUST` khỏi vai trò Quản lý kho trong ma trận phân quyền sẽ lập tức vô hiệu hóa khả năng chốt kiểm kê ở request kế tiếp (không fallback theo role cứng).
+   - Kiểm tra phạm vi kho: Người dùng chỉ được kiểm kê trên các kho được gán.
 
 ### Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (S5-04)
 

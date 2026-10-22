@@ -1,4 +1,4 @@
-# Trạng thái phát triển — QuanLyBanHang
+# Trạng thái sprint 1–7
 
 ## S7-01 — Phát hành hoá đơn bán hàng từ phiếu đã giao (Backend) — 22/10/2026
 
@@ -20,6 +20,246 @@ Kiểm chứng: **30 test backend mới qua 100%**:
 4. `InvoiceIntegrationTest` (2 tests): Kiểm thử tích hợp toàn diện trên HTTP/JWT/JPA/H2 MySQL mode: toàn trình tạo đơn, giao hàng thiếu số lượng, xem trước và phát hành hóa đơn theo lượng thực giao, chặn sửa/xóa, lập chứng từ điều chỉnh, tải PDF hợp lệ (`%PDF-`), và thu hồi quyền `INVOICE_CREATE` động trên token JWT hiện tại lập tức trả 403 Forbidden.
 Đã cập nhật hợp đồng tại `backend/API_DOCUMENTATION.md`.
 
+---
+
+
+## S6-02 — Frontend thẻ kho, kết nối API và sửa số dư (22/10/2026)
+
+**Trạng thái mới nhất; phần “chỉ backend” phía dưới là lịch sử.** Nhánh `feature/S6-02-xem_the_kho_cua_mot_san_pham`. Đã đọc AGENTS.md và hai skill SKILLS; không tự commit/push/merge. Không ghi vào DB thật, không khởi động lại backend thật.
+
+| Tiêu chí trong ảnh / hạng mục | Backend | Frontend | Đã nối đúng | Quyền / kết quả |
+|---|:---:|:---:|:---:|---|
+| Toàn bộ nhập, xuất, chuyển, điều chỉnh theo thời gian | Có | Có | Có | Menu Kho hàng → Thẻ kho sản phẩm (`/warehouse/stock-card`); WAREHOUSE_VIEW hoặc ADMIN. Bảng theo thời gian server, biến động có dấu/đơn vị đóng băng. Nối cả đơn đã xuất, kiểm kê đã chốt, nhập trả chuyến giao và chuyển kho nhận/hủy; không lấy nháp hoặc đếm giữ chỗ thành xuất. |
+| Tồn sau phát sinh, tồn trước trang và phân trang | Có | Có | Có | Tính toàn bộ lịch sử trước khi lọc thời gian/phân trang. Đối chiếu tồn đầu lịch sử từ tồn vật lý hiện tại trong scope, không tạo phiếu giả. Sửa openingBalance trang đầu/lọc ngày/page bị chặn về trang cuối/khoảng không phát sinh. Sửa phiếu điều chỉnh mới lưu chênh lệch có dấu thay vì lượng đích. |
+| Liên kết chứng từ gốc từng dòng | Có | Có | Có | Mã chứng từ là liên kết mở bản xem chỉ đọc các phát sinh của SKU trong chứng từ gốc; permalink giữ SKU/kho/ngày/page/size/source. API kiểm lại loại/ID chứng từ, đúng SKU và phạm vi kho; không đọc toàn bộ giá bán/khách hàng hay cho sửa/hủy. Có trạng thái tải/lỗi; đóng hộp thoại bỏ phản hồi đến muộn. |
+| Lọc theo kho và khoảng thời gian | Có | Có | Có | Bộ chọn từ API riêng, không buộc PRODUCT_VIEW. Chọn SKU, kho, từ/đến ngày bao gồm cả hai ngày; from > to trả 400; kho ngoài scope trả 403. Bộ lọc lưu trong URL để tải lại, không lưu dữ liệu nghiệp vụ trong browser storage. |
+| Ma trận quyền và bố cục chung | Có | Có | Có | Cấp/thu hồi trên JWT cũ, không role fallback, ADMIN toàn quyền; mất quyền đóng dialog/xóa dữ liệu/ẩn menu, không phục hồi phản hồi cũ. Tồn kho có link chọn sẵn SKU và kho. Dùng shell/content frame chung; bảng cuộn nội bộ trên mobile. |
+
+Kiểm thử cuối: **806/806 test backend qua** (`mvn clean test`), gồm 4 test tích hợp S6-02 mới qua HTTP/JWT/JPA/H2: options/grant-revoke, filter/page/seed/source/scope, kiểm kê + đơn xuất một lần + chuyển đa kho, điều chỉnh âm lưu đúng dấu; service có thêm test nhập trả chuyến và số dư qua lọc ngày. **144 test JavaScript và 10 test định tuyến qua**. Chrome S6-02 qua bộ chọn/lọc ngày bao gồm cả ngày, phân trang server/tồn trước trang, tải lại/permalink chứng từ, lỗi không giữ số cũ, XSS, revoke khi đang tải source rồi grant lại, 6 kích thước. Hồi quy sổ tồn và điều hướng click/Back/Forward/Reload/mobile/reduced-motion qua, sidebar giữ scroll 552 → 552. Bố cục chung **162 kiểm tra trên 27 trang × 6 kích thước** qua; đã xem ảnh desktop và dialog mobile. `git diff --check` sạch. Backend chạy trong bản sao tạm với H2; Chrome dùng HTTP fixtures, không phải ảnh minh chứng dữ liệu thật. Hai skill của repo định hướng dùng khung chung và để tính toán/quyền/dữ liệu nghiệp vụ ở server, không tự dựng bộ số tồn trong JS.
+
+Giới hạn: chưa nghiệm thu MySQL thật. Dữ liệu seed/migration/chỉnh trực tiếp DB chỉ đối chiếu tồn đầu, không tự tạo lịch sử. Phiếu điều chỉnh tuyệt đối **cũ** chưa lưu số biến động có dấu cần đối soát/migration riêng; không đoán dấu hoặc tự sửa dữ liệu lịch sử. Bản xem chứng từ chủ ý chỉ hiển thị phần liên quan SKU/scope (không phải toàn bộ chứng từ bán hàng). Không đổi schema. Cần build/chạy lại backend và server frontend để nhận API/route mới.
+
+## Ghi chú triển khai backend S6-02 trước đây (lịch sử)
+
+Cập nhật **22/10/2026**, hoàn thành tính năng **S6-02 — Thẻ kho (Stock Card)** (backend); không merge hoặc lấy code từ nhánh khác.
+
+## S6-02 — Thẻ kho sản phẩm (Stock Card backend) — 22/10/2026
+
+Nguồn tiêu chí: User story S6-02 (*"Là Nhân viên kho, tôi muốn xem thẻ kho của một sản phẩm, để truy nguyên được từ phiếu nào làm số tồn bị lệch."*). Phạm vi chỉ làm **backend** theo yêu cầu người dùng, tuân thủ `AGENTS.md` và ma trận phân quyền.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Danh sách toàn bộ phát sinh theo thứ tự thời gian | API `GET /api/warehouse/stock-card/{productId}` hợp nhất tất cả các loại phát sinh: nhập kho (`IMPORT`), xuất kho (`EXPORT`), điều chỉnh kho (`ADJUSTMENT`), xuất chuyển kho (`TRANSFER_DISPATCH`), nhận chuyển kho (`TRANSFER_RECEIVE`), hủy chuyển kho hoàn tồn (`TRANSFER_CANCEL`). Dữ liệu được sắp xếp thứ tự thời gian tăng dần (`eventTime` ASC, sau đó `sourceId` ASC) | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Quyền `WAREHOUSE_VIEW` hoặc `ROLE_ADMIN`; kiểm tra phân quyền trực tiếp qua ma trận DB, không fallback role. `ROLE_ADMIN` luôn được phép |
+| Tồn sau phát sinh (running balance) và liên kết chứng từ gốc | Mỗi dòng trả về `baseQuantityChange` (số lượng có dấu theo đơn vị cơ sở), `runningBaseBalance` (tồn tích lũy sau phát sinh theo đơn vị cơ sở), `baseUnit`, `displayQuantity` & `displayUnit` (số lượng và đơn vị hiển thị trên chứng từ), cùng liên kết chứng từ gốc qua `sourceType` (`VOUCHER`/`TRANSFER`), `sourceId` và `sourceCode` | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Tính toán chuẩn xác ở tầng service; hỗ trợ chuyển kho đa trạng thái (IN_TRANSIT, COMPLETED, CANCELLED) phản ánh đúng từng mốc xuất và nhận |
+| Lọc theo kho và khoảng thời gian | Hỗ trợ tham số truy vấn `warehouseId`, `fromDate` (ISO 8601), `toDate` (ISO 8601). Kiểm tra phạm vi kho phân công: nếu người dùng truy cập kho ngoài phạm vi được phân công sẽ bị chặn `403 Forbidden` | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Phạm vi kho lấy từ cấu hình phân công kho trong DB (`StockLedgerService.visibleWarehousesFor("WAREHOUSE_VIEW")`); tài khoản không được phân công kho nào sẽ trả thẻ kho rỗng |
+| Phân trang và tồn đầu kỳ (Opening balance) | Hỗ trợ phân trang server-side (`page`, `size` tối đa 500). Đánh số thứ tự liên tục `rowNumber`. Với `page > 0`, trả về `openingBalance` (số dư tồn kho trước dòng đầu tiên của trang hiện tại) để frontend duy trì tính liên tục của số dư | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Kiểm tra tính hợp lệ tham số phân trang (`page >= 0`, `size` từ 1 đến 500); `productId` hợp lệ; từ chối tham số sai bằng `400 Bad Request` |
+
+Kiểm chứng cuối: **649 test backend qua**, bao gồm 11 test service `StockCardServiceTest` và 5 test controller `StockCardControllerTest`. Kiểm chứng đầy đủ:
+- Thứ tự thời gian và tồn lũy kế running balance cho nhập, xuất, điều chỉnh.
+- Chuyển kho nội bộ sinh đúng sự kiện DISPATCH (giảm kho đi) và RECEIVE (tăng kho đến khi hoàn thành).
+- Phiếu chuyển kho bị hủy (CANCELLED) sinh sự kiện DISPATCH và CANCEL (hoàn tồn lại kho đi kèm lý do hủy).
+- Phiếu chuyển kho đang chuyển (IN_TRANSIT) chỉ sinh sự kiện DISPATCH.
+- Lọc theo khoảng thời gian (`fromDate`, `toDate`) chính xác.
+- Phân trang server-side và tính `openingBalance` chuẩn xác từ trang 1 trở đi.
+- Thu hồi quyền `WAREHOUSE_VIEW` trên token JWT lập tức trả `403 Forbidden` mà không fallback role.
+- Cố tình xem kho ngoài phạm vi phân công lập tức trả `403 Forbidden`.
+- Người dùng chưa đăng nhập trả `401 Unauthorized`.
+- `ROLE_ADMIN` luôn có toàn quyền xem thẻ kho của bất kỳ sản phẩm và kho nào.
+Đã cập nhật hợp đồng tại `backend/API_DOCUMENTATION.md`. Không có bất kỳ thay đổi nào ở frontend hay schema DB.
+
+
+# Trạng thái phát triển — QuanLyBanHang
+
+## S6-01 — Frontend lô & hạn sử dụng, nối API và sửa lỗi backend (22/10/2026)
+
+**Cập nhật mới nhất cho S6-01; mục “chỉ backend” bên dưới là lịch sử.** Nhánh `feature/S6-01-frontend-theo_doi_lo_va_han_su_dung`. Đã đọc AGENTS.md và hai skill trong SKILLS. Không tự commit/push/merge.
+
+| Yêu cầu trong ảnh | Backend | Frontend | Đã kết nối | Quyền / hành vi |
+|---|:---:|:---:|:---:|---|
+| Bật/tắt quản lý lô theo từng SKU | Có | Có | Có | Tab Cấu hình theo SKU, PATCH `/products/{id}/manage-lot`; PRODUCT_EDIT hoặc WAREHOUSE_MANAGE. Ngưỡng lưu DB. Không tắt khi còn tồn lô dương; sửa thông tin sản phẩm không gửi manageLot phải giữ cấu hình cũ. |
+| Số lô, NSX, HSD, số lượng còn lại | Có | Có | Có | Menu Kho hàng → Lô & hạn sử dụng (`/warehouse/lots`); VIEW hoặc MANAGE. API chỉ trả lô trong phạm vi kho được phân công; kho ngoài phạm vi trả 403. Lọc kho/SKU/từ khóa/trạng thái, phân trang hiển thị. Bổ sung ô NSX trên phiếu nhập, giữ ngày qua lưu nháp/tải lại. Ngày chưa khai báo ở dữ liệu cũ hiển thị rõ, không tự bịa ngày. |
+| Cảnh báo sắp hết hạn với ngưỡng khai báo được | Có | Có | Có | Ngưỡng từng SKU từ DB; số đếm/cờ quá hạn và ngày đối chiếu lấy từ server, không tự tính theo đồng hồ trình duyệt. Ngưỡng xem nhanh không sửa cấu hình. Cảnh báo chỉ đếm lô còn tồn dương. |
+| Chặn xuất quá hạn; xác nhận ghi đè kèm lý do | Có | Có | Có | EXPORT để xuất; thêm APPROVE hoặc MANAGE để ghi đè. Checkbox xác nhận và lý do bắt buộc, tối đa 255 ký tự; ADMIN cũng phải nhập. Hạn dùng đọc từ lô DB, bỏ ngày client giả mạo. Lô thiếu HSD không xuất. Phiếu/tồn/lô/audit cùng transaction. |
+| Ma trận và bố cục chung | Có | Có | Có | Không role fallback, ADMIN luôn được phép; cấp/thu hồi trên phiên cũ; giao diện đóng dialog, xóa dữ liệu cũ và ẩn hành động khi mất quyền. Dùng app shell/content frame chung, bảng tự cuộn; không tạo shell riêng. |
+
+Sửa backend trong phạm vi: bổ sung `/warehouse/lots/options` trả kho/SKU, trạng thái, giới hạn ngưỡng và khả năng thao tác; chặn đọc lô xuyên phạm vi; chặn giả ngày HSD; kiểm lô cho SKU legacy tắt quản lý nhưng còn tồn; tên hành động ghi đè đổi thành `EXPIRED_LOT_OVERRIDE` vừa cột audit 20 ký tự, entity ID dùng ID kho/SKU + số lô để không vượt 100 ký tự. Không thay schema DB.
+
+Kiểm thử cuối: `mvn clean test` **785/785 qua**, gồm 11 test tích hợp xuất lô (5 test S6-01 mới: scope/options/grant-revoke, giả HSD/ghi đè/audit, biên ngày/ngưỡng, toggle/giữ cấu hình qua sửa sản phẩm, SKU legacy/thiếu HSD). **137 test Node, 10 test router qua**. Chrome S6-01 qua đọc/cấu hình/lưu lỗi/ghi đè/quyền/XSS và 6 kích thước; hồi quy nhập kho (bao gồm NSX lưu/tải lại), kiểm kê, sổ tồn và điều hướng qua. Bố cục chung **156 kiểm tra trên 26 trang × 6 kích thước** qua; một lượt chạy thiếu bộ nhớ máy đã được chạy lại thành công sau khi backend tests kết thúc. `git diff --check` sạch. Hai skill của repo định hướng dùng shell chung và kiểm quyền/dữ liệu server, không tạo bố cục hay bộ quy tắc nghiệp vụ riêng trong JS.
+
+Giới hạn: test backend thực hiện trong bản sao tạm, H2 in-memory; Chrome dùng HTTP fixtures rõ ràng, không phải dữ liệu nghiệp vụ thật. Chưa nghiệm thu S6-01 trên MySQL thật. Không tạo/sửa/xóa đơn, phiếu hoặc ma trận trên DB thật, không restart backend thật. Muốn chạy bản mới cần build/khởi động lại backend và server frontend để nạp API/route mới.
+
+## S5-06 — Đồng bộ develop và hoàn thiện giữ chỗ tồn kho (2026-10-22)
+
+**Đây là trạng thái nghiệm thu mới; các mục phía dưới là lịch sử.** Nhánh làm việc: `feature/S5-06-chuc-nang-giu-cho-ton-kho(frontend)`. Đã đồng bộ `origin/develop` tại `43b842e` (commit đồng bộ hiện có `91bdcc9`). Không gộp vào develop; phần sửa/kiểm thử bên dưới chưa được trợ lý commit hoặc push.
+
+| Yêu cầu / luồng | Backend | Frontend | Kết nối đúng | Kiểm chứng / quyền |
+|---|:---:|:---:|:---:|---|
+| Đơn chờ duyệt chưa giữ; được duyệt giữ đúng lượng theo đơn vị cơ sở | ✅ | ✅ | ✅ | Khóa dòng đơn trước, tồn theo SKU tăng dần; `RECORDED` tăng reserved, không trừ vật lý. API `ORDER_APPROVE`; trang duyệt cần thêm `ORDER_VIEW`. Không role fallback; ADMIN luôn được phép. |
+| Không bán lượng đã giữ cho đơn khác | ✅ | ✅ | ✅ | Hai đơn cạnh tranh không cùng vượt tồn; tạo đơn đọc `/orders/check-inventory`, không cộng từ danh sách đơn có thể thiếu/trễ. Chỉ cần `ORDER_CREATE`, không buộc thêm `ORDER_VIEW`. |
+| Hủy nhả đúng lượng giữ một lần | ✅ | ✅ | ✅ | `ORDER_CANCEL` + phạm vi kho/đại lý; có lý do; đã xuất không hủy. Hủy lặp/hủy cùng lúc hết hạn không làm mất phần giữ của đơn khác. |
+| Tự nhả khi quá hạn | ✅ | ✅ | ✅ | Scheduler mặc định mỗi 60 giây, từng đơn một giao dịch mới, đọc lại dưới khóa; `EXPIRED`. UI đọc cờ server; quá hạn nhưng server chưa nhả vẫn ghi chờ hệ thống, không tự sửa tồn bằng giờ trình duyệt. |
+| Giao dịch nguyên tử, lỗi rollback | ✅ | ✅ | ✅ | Cùng transaction cho đơn + tồn + lịch sử + audit; lỗi thiếu SKU, audit hoặc hạn giữ không hợp lệ không để lại giữ chỗ/trạng thái nửa chừng. UI giữ ghi chú khi API lỗi, không báo duyệt thành công. |
+| Xuất kho không nhả/lấy phần giữ của đơn khác | ✅ | ✅ | ✅ | Khóa cùng dòng đơn; xuất giảm vật lý và phần giữ của đơn; scheduler sau xuất không nhả lần nữa. Tracking trả cờ và thời điểm giữ/hết hạn. |
+| Ma trận quyền thay đổi trên phiên đang dùng | ✅ | ✅ | ✅ | JWT thật của non-admin: cấp quyền hoạt động, thu hồi trả 403, không cần đăng nhập lại; UI đóng/ẩn/vô hiệu hóa hành động và bỏ phản hồi chi tiết cũ. Quyền không vượt phạm vi kho. |
+| Tương thích sổ tồn/kiểm kê S5-08 sau đồng bộ | ✅ | ✅ | ✅ | Giữ chỗ qua JPA tăng phiên bản tồn; kiểm kê không đè giữ chỗ. Sửa thêm việc refresh số đếm sau khi chờ khóa phiếu, tránh chốt bằng số cũ khi lưu số đếm đồng thời. |
+| Sửa lỗi rollback-only khi mở Đơn vị tính (yêu cầu bổ sung) | ✅ | ✅ | ✅ | Trang units không tải `/orders`; lịch sử bán chỉ tải khi mở sổ cái và có `ORDER_VIEW`. Đã mở web thật, hiện 8 SKU và không có toast lỗi; không ghi đơn/phiếu. |
+| Sửa gốc rollback-only ở cấu hình công nợ | ✅ | — | ✅ | `getOrCreateConfig` không còn tự INSERT khi đọc bảng cấu hình rỗng, không nuốt lỗi truy vấn DB. Quyền GET/PUT giữ theo ma trận hiện có. Test GET config/đơn/công nợ không tạo cấu hình; chỉ PUT có quyền mới lưu. Đã khởi động lại backend theo cho phép của người dùng; cả ba API thật trả 200. |
+
+### Lưu ý triển khai
+
+- Khôi phục các trường kho, tính giá, DTO kiểm tra tồn và cập nhật hồ sơ từ develop bị nhánh cũ làm mất; không đưa lại phân quyền role cứng hoặc tính giữ chỗ nghiệp vụ trên trình duyệt.
+- Bổ sung `orders.version BIGINT NOT NULL DEFAULT 0`. Khởi động lại backend để `ddl-auto=update` bổ sung cột trên môi trường phát triển; môi trường dùng migration phải thêm cột trước khi triển khai. Không xóa/reset DB.
+- Giữ bố cục/app shell hiện có theo `SKILLS/SKILL_frontend_design.md`; không tạo layout riêng. Nút gợi ý số lượng tối đa không bị mất cú bấm vì blur; phản hồi tồn cũ bị bỏ ngay trong thời gian debounce.
+- Lỗi toast bổ sung đã xác minh bằng API thật: `/orders`, `/dealers/1/debt`, `/finance/debt/config` trả rollback-only; lookup sản phẩm/tồn/đơn vị quy đổi trả 200. Truy vấn MySQL bằng kết nối read-only xác nhận bảng `debt_risk_configs` tồn tại, đủ cột và có 0 dòng. Không thêm dòng thủ công hoặc reset DB để né lỗi; sửa logic đọc/ghi trong code. Đăng nhập phát sinh xử lý phiên thông thường, sau đó chỉ gọi GET và SELECT; không tạo/sửa/hủy nghiệp vụ thật.
+- Sau khi người dùng cho phép, đã khởi động lại đúng backend 8080 bằng mã hiện tại, tắt seed demo/users cho tiến trình đó. Web thật `localhost:5500/warehouse/units?tab=ledger` hiển thị 8 SKU và 21 dòng sổ cái, không có toast lỗi; `/orders`, `/dealers/1/debt`, `/finance/debt/config` đều HTTP 200. Sau kiểm tra, bảng cấu hình vẫn 0 dòng và không có đơn quá hạn giữ chỗ cần nhả. Backend 8080 và frontend 5500 của người dùng được giữ chạy; server fixture tạm 5538 đã dừng.
+
+### Kiểm thử nghiệm thu
+
+- JavaScript: **130/130**; Python routing: **10/10**.
+- Chrome API fixtures (không ghi DB thật): S5-06, nhập kho S5-04, kiểm kê S5-08, luồng S4, thông báo ma trận, units khi orders lỗi và hồi phục ledger; bố cục **150 kiểm tra / 25 trang / 6 kích thước** và navigation click/back/forward/reload/mobile/reduced motion đều đã qua. Các bài nghiệp vụ dùng reduced motion để tách khỏi việc Chrome hủy native ViewTransition khi teardown; bài navigation riêng kiểm tra native animation bình thường.
+- Backend: **780/780**, `mvn clean test` trên bản sao với H2 cách ly; không dùng lớp test cũ từ incremental build. Bao gồm 15 ca HTTP/JWT/JPA S5-06, 20 ca hardening kiểm kê (có ca điều khiển khóa đọc số đếm vừa commit), và kiểm tra đọc config/đơn/công nợ không tự ghi DB. Không chạy bộ test nghiệp vụ trên MySQL người dùng.
+
+## Lịch sử S5-06 của nhánh trước đồng bộ (không phải kết quả nghiệm thu hiện tại)
+> Cập nhật lần cuối: 2026-10-20
+
+## Bảng theo dõi kết nối Ma trận phân quyền & Tính năng
+
+| Mã tính năng | Tên tính năng | Backend | Frontend | Đã kết nối đúng? | Ghi chú quyền & Phân quyền |
+|---|---|:---:|:---:|:---:|---|
+| **S5-04** | Phiếu nhập kho (Voucher Nhập kho, NCC, Lô, HSD, Nháp) | ✅ | ✅ | ✅ | Quyền `WAREHOUSE_IMPORT`, `WAREHOUSE_VIEW` cho `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` |
+| **S5-06** | Giữ chỗ tồn kho khi đơn được duyệt (Inventory Reservation) | ✅ | ✅ | ✅ | Quyền `ORDER_CREATE`, `ORDER_VIEW`, `ORDER_APPROVE` cho `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` |
+
+---
+
+## Chi tiết tính năng S5-06: Giữ chỗ tồn kho khi đơn được duyệt
+
+### 1. Nghiệp vụ đã triển khai (Frontend)
+
+| # | Hạng mục nghiệp vụ | Backend | Frontend | Kết nối đúng? | Mô tả chi tiết |
+|---|-------------------|:-------:|:--------:|:-------------:|----------------|
+| 1 | Giữ chỗ tồn kho ngay khi đơn chuyển sang Đã duyệt (`APPROVED` / `RECORDED`) | ✅ | ✅ | ✅ | Đơn được duyệt lập tức đưa vào tập `HOLDING_ORDER_STATUSES`, tính vào `reservedBase`, làm giảm tồn khả dụng của SKU để hàng không bị người khác bán mất. |
+| 2 | Tự động nhả tồn khi đơn bị huỷ (`CANCELLED`) hoặc từ chối (`REJECTED`) | ✅ | ✅ | ✅ | Đơn chuyển trạng thái huỷ hoặc từ chối sẽ tự động loại khỏi tập giữ chỗ, trả lại tồn khả dụng cho kho. |
+| 3 | Tự động nhả tồn khi đơn quá hạn giữ chỗ (`reservationExpiresAt <= now`) | ✅ | ✅ | ✅ | Kiểm tra mốc thời gian giữ chỗ; nếu đã hết hạn, hệ thống tự động nhả tồn mà không cần thao tác thủ công. |
+| 4 | Hiển thị cột Tồn khả dụng trên bảng tạo đơn hàng | — | ✅ | ✅ | Bổ sung cột thứ 4 trong bảng dòng hàng (`col-stock`), hiển thị tồn khả dụng theo đơn vị tính đã chọn kèm chi tiết (Thực tế / Giữ chỗ). |
+| 5 | Chặn đặt vượt tồn khả dụng & Gợi ý số lượng tối đa | — | ✅ | ✅ | Cảnh báo trực quan khi nhập vượt tồn, cung cấp nút **"Đặt tối đa"** để nhanh chóng điều chỉnh số lượng hợp lệ, chặn xác nhận đơn nếu vượt tồn. |
+| 6 | Tự động xác định kho phục vụ cho đại lý theo thứ tự ưu tiên | — | ✅ | ✅ | Tự động nạp kho gắn với đại lý -> kho phụ trách của nhân viên -> kho mặc định đầu tiên; tự tải tồn kho thực tế và đơn hàng. |
+| 7 | Phát hiện xung đột đồng thời tránh âm tồn | ✅ | ✅ | ✅ | Kiểm tra tồn tức thời trước khi gửi đơn, phát hiện trường hợp hai người cùng chốt đơn khi tồn sắp hết để chặn không làm âm kho. |
+| 8 | Hiển thị trạng thái giữ chỗ trên modal chi tiết đơn duyệt | — | ✅ | ✅ | Modal chi tiết đơn duyệt hiển thị rõ ràng: "Đang giữ chỗ tồn kho", "Chờ duyệt (Chưa giữ chỗ)", hoặc "Đã nhả tồn". |
+
+### 2. Ma trận phân quyền (Permission Matrix)
+
+| Hành động | Quyền (Permission) | Roles cho phép | Kiểm tra Frontend | Kiểm tra Backend |
+|-----------|--------------------|----------------|:-----------------:|:----------------:|
+| Tạo đơn hàng & Kiểm tra tồn giữ chỗ | `ORDER_CREATE` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | ✅ `Auth.hasAnyRole` & `OrderInventory` | ✅ `@PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', ...)")` |
+| Xem danh sách đơn & Tồn khả dụng | `ORDER_VIEW` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER` | ✅ Menu-config & role guard | ✅ `@PreAuthorize` |
+| Phê duyệt đơn hàng (kích hoạt giữ chỗ tồn) | `ORDER_APPROVE` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | ✅ Role guard `order-approval.js` | ✅ `PUT /orders/{id}/approve` (`hasAnyRole('SALES_MANAGER', 'ADMIN')`) |
+| Huỷ đơn hàng (kích hoạt nhả tồn tự động) | `ORDER_CANCEL` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | ✅ Action menu | ✅ `PUT /orders/{id}/cancel` |
+
+### 3. Kết quả Unit Tests (50/50 Tests Passed)
+
+- `tests/order-reservation-s5-06.test.cjs`: 6/6 tests pass (bao gồm giữ chỗ khi duyệt, nhả tồn khi huỷ, tự động nhả tồn khi quá hạn, quy đổi theo đơn vị tính, xung đột đồng thời).
+- `tests/order-inventory.test.cjs`: 7/7 tests pass.
+- `tests/create-order-debt.test.cjs`: 4/4 tests pass.
+- `tests/warehouse-import-voucher.test.cjs`: 3/3 tests pass.
+- `tests/menu-config.test.cjs`: 13/13 tests pass.
+- `tests/dealer-transactions.test.cjs`: 5/5 tests pass.
+- `tests/password-reset.test.cjs`: 7/7 tests pass.
+- `tests/products-import.test.cjs`: 5/5 tests pass.
+- Tất cả unit tests đều chạy thành công 100%.
+
+## Lịch sử trạng thái từ develop
+## S7-04 — Hệ thống tự cảnh báo và khoá bán công nợ (Backend) — 22/10/2026
+
+Nhánh: `feature/S7-04-he--thong-tu-canh-bao-BE`.
+Nguồn tiêu chí: User story S7-04 (*"Hệ thống tự cảnh báo và khoá bán công nợ"*):
+1. **Đại lý vượt hạn mức tiền hoặc có khoản quá số ngày nợ cho phép được gắn cờ tự động**.
+2. **Đại lý bị gắn cờ thì đơn mới bị chặn hoặc chuyển sang cần duyệt, theo cấu hình**.
+3. **Tác vụ đánh giá lại chạy mỗi ngày một lần và chạy lại sau mỗi lần ghi nhận thu tiền**.
+Phạm vi thực hiện: **Chỉ làm Backend (BE)** theo đúng yêu cầu người dùng, tuân thủ nghiêm ngặt `AGENTS.md` và ma trận phân quyền database-backed.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| **AC1: Tự động gắn cờ đại lý vi phạm công nợ** (vượt hạn mức tiền hoặc quá số ngày nợ cho phép) | **Đã hoàn thành**: Mở rộng `Dealer` lưu cờ vi phạm: `debtFlagged`, `debtFlagType` (`NONE`, `DEBT_LIMIT_EXCEEDED`, `OVERDUE`, `BOTH`), `debtFlagReason`, `debtFlaggedAt`, `lastDebtEvaluatedAt`. Đánh giá công nợ theo FIFO (thu tiền trừ nợ đơn cũ trước): vượt `debtLimit` hoặc quá `maxDebtDays` sẽ được tự động gắn cờ kèm lý do chi tiết; nếu an toàn sẽ tự động gỡ cờ (`debtFlagged = false`, `debtFlagType = NONE`). | **Chưa triển khai** (Theo yêu cầu: "chỉ làm BE") | API `GET /api/finance/debt/flagged-dealers` sẵn sàng kết nối. Yêu cầu quyền `FINANCE_VIEW_DEBT` hoặc `FINANCE_MANAGE` hoặc `ROLE_ADMIN` từ ma trận DB. Thu hồi quyền trả 403 ngay lập tức. |
+| **AC2: Chặn (BLOCK) hoặc chuyển cần duyệt (REQUIRE_APPROVAL) đơn mới khi đại lý bị gắn cờ** | **Đã hoàn thành**: Entity `DebtRiskConfig` lưu cấu hình hệ thống (`limitExceededAction`, `overdueAction`, `defaultAction`, `autoFlagEnabled`). Hỗ trợ cấu hình riêng cho từng đại lý qua `Dealer.debtActionConfig` (`DEFAULT`, `BLOCK`, `REQUIRE_APPROVAL`). Khi đại lý bị gắn cờ: nếu action là `BLOCK` thì chặn hoàn toàn tạo đơn hàng (`DealerDebtBlockedException` -> HTTP 400 Bad Request kèm lý do và mã đại lý); nếu action là `REQUIRE_APPROVAL` thì đơn mới được phép ghi nhận nhưng tự động chuyển sang `PENDING_APPROVAL`, `orderRequiresApproval = true`, bổ sung cảnh báo công nợ vào chi tiết đơn để Quản lý kinh doanh phê duyệt. | **Chưa triển khai** (Theo yêu cầu: "chỉ làm BE") | Quyền tạo đơn `ORDER_CREATE` kiểm tra tự động trạng thái cờ công nợ của đại lý tại `OrderServiceImpl`. Quyền cấu hình hành vi công nợ (`PUT /api/finance/debt/config`, `PUT /api/finance/debt/{dealerId}/action-config`) bắt buộc `FINANCE_MANAGE` hoặc `ROLE_ADMIN`. |
+| **AC3: Tác vụ đánh giá lại chạy định kỳ mỗi ngày một lần và chạy lại tự động sau khi thu tiền** | **Đã hoàn thành**: Scheduler `DebtAssessmentScheduler` chạy định kỳ mỗi ngày một lần vào 01:00 AM (`@Scheduled(cron = "${app.debt.evaluation.cron:0 0 1 * * ?}")`) quét toàn bộ đại lý để gắn cờ hoặc gỡ cờ. Entity `DebtPayment` và API `POST /api/finance/debt-payments` ghi nhận phiếu thu tiền công nợ; ngay sau khi lưu phiếu thu, hệ thống tự động kích hoạt tác vụ đánh giá lại công nợ ngay lập tức cho đại lý đó, gỡ cờ tự động nếu công nợ đã về mức an toàn. Hỗ trợ kích hoạt đánh giá thủ công qua `POST /api/finance/debt/evaluate` và `POST /api/finance/debt/{dealerId}/evaluate`. | **Chưa triển khai** (Theo yêu cầu: "chỉ làm BE") | Ghi nhận thu tiền và kích hoạt đánh giá yêu cầu quyền `FINANCE_MANAGE` hoặc `ROLE_ADMIN`. Tra cứu lịch sử thu tiền yêu cầu `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ROLE_ADMIN`. |
+| **Phân quyền ma trận DB & Không fallback vai trò** | **Đã hoàn thành**: Toàn bộ 8 endpoints S7-04 kết nối chặt chẽ với ma trận phân quyền database-backed (`RolePermissionConfig`), không sử dụng role-based fallback. Thu hồi quyền trên cùng một token JWT lập tức trả về `403 Forbidden` trên request kế tiếp mà không cần đăng nhập lại. Tài khoản `ROLE_ADMIN` luôn có toàn quyền truy cập. | **Chưa triển khai** (Frontend sẽ ẩn/hiện menu, nút cấu hình và nút thu tiền tương ứng theo ma trận quyền khi phát triển FE) | Đã kiểm chứng qua bộ test bảo mật `DebtRiskSecurityTest` và kiểm thử tích hợp `DebtRiskIntegrationTest`: 401 khi chưa đăng nhập, 403 khi thiếu quyền hoặc bị thu hồi quyền động, 200/201 khi có quyền, ADMIN full access. |
+
+### Kiểm chứng Backend S7-04
+
+Đã triển khai và vượt qua **42/42 tests tự động (100% PASS)**:
+1. `DealerDebtServiceTest` (**18/18 tests passed**): Kiểm thử toàn bộ nghiệp vụ đánh giá công nợ, tính nợ theo FIFO, tự động gắn cờ `DEBT_LIMIT_EXCEEDED`, `OVERDUE`, `BOTH`, xử lý `BLOCK` ném ngoại lệ `DealerDebtBlockedException`, xử lý `REQUIRE_APPROVAL` cho phép tạo đơn, tự động gỡ cờ sau khi ghi nhận phiếu thu tiền, cấu hình hệ thống và cấu hình riêng đại lý.
+2. `DebtAssessmentSchedulerTest` (**2/2 tests passed**): Kiểm thử tác vụ định kỳ tự động chạy đánh giá công nợ toàn bộ đại lý và xử lý khi cấu hình tắt tự động đánh giá.
+3. `FinanceControllerTest` (**13/13 tests passed**): Kiểm thử REST APIs cho cấu hình rủi ro công nợ, cấu hình riêng đại lý, danh sách đại lý gắn cờ, kích hoạt đánh giá thủ công, ghi nhận thu tiền, tra cứu lịch sử thu tiền phân trang.
+4. `DebtRiskSecurityTest` (**6/6 tests passed**): Kiểm thử ma trận phân quyền động, xác minh mã lỗi 401 khi chưa đăng nhập, 403 khi thiếu quyền `FINANCE_VIEW_DEBT` / `FINANCE_MANAGE` (không fallback theo role), 200/201 khi được cấp quyền, xác minh `ROLE_ADMIN` toàn quyền.
+5. `DebtRiskIntegrationTest` (**3/3 tests passed**): Kiểm thử tích hợp toàn trình HTTP/JWT/JPA/H2:
+   - Luồng vượt hạn mức: Tự gắn cờ `DEBT_LIMIT_EXCEEDED` -> Chặn tạo đơn hàng (400 Bad Request) khi action `BLOCK` -> Đổi action sang `REQUIRE_APPROVAL` -> Tạo đơn thành công với trạng thái `PENDING_APPROVAL` -> Ghi nhận thu nợ `DebtPayment` -> Tự động đánh giá lại và gỡ cờ thành công.
+   - Luồng nợ quá hạn: Tự gắn cờ `OVERDUE` khi có đơn vượt `maxDebtDays` -> Thu nợ cấn trừ đúng đơn nợ cũ -> Tự động gỡ cờ.
+   - Luồng ma trận phân quyền: Thu hồi quyền tức thì trả về 403 Forbidden trên cùng token JWT hiện tại; cấp lại quyền hoạt động bình thường; Admin luôn được phép.
+
+Đã cập nhật chi tiết hợp đồng API tại `backend/API_DOCUMENTATION.md`.
+
+---
+
+## S6-07 — Theo dõi hàng đã xuất nhưng chưa giao xong & Tiền hàng trên đường (Backend) — 22/10/2026
+
+Nhánh: `S6-07/theo-doi-hang-da-xuat-nhung-chua-giao-xong-BE`. Nguồn tiêu chí: User story S6-07 (*"Là Quản lý kho, tôi muốn theo dõi hàng đã xuất nhưng chưa giao xong, để biết đang có bao nhiêu tiền hàng nằm trên đường"*). Phạm vi thực hiện: **chỉ làm Backend** theo đúng yêu cầu người dùng, tuân thủ nghiêm ngặt `AGENTS.md` và ma trận phân quyền database-backed.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Danh sách chuyến giao đang chạy kèm số điểm đã giao và còn lại | Đã hoàn thành: `GET /api/warehouse/delivery-trips`, trả danh sách chuyến phân trang, tính toán tự động `totalPoints`, `deliveredPoints`, `remainingPoints` (số điểm còn lại chưa giao xong), `failedPoints`, `pendingPoints`; lọc theo `warehouseId`, `status` (mặc định hoặc lọc `IN_PROGRESS`), `keyword` | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; phạm vi dữ liệu cách ly theo các kho được gán (`user.getWarehouses()`), truy cập kho ngoài phạm vi trả 403 |
+| Theo dõi tổng tiền hàng đang nằm trên đường | Đã hoàn thành: `GET /api/warehouse/delivery-trips/summary` và trường `remainingValue` trong từng chuyến (`remainingValue = totalValue - deliveredValue`, bao gồm giá trị hàng tại các điểm chờ giao và các điểm chưa giao được); tổng hợp `totalValueOnRoad` cho Quản lý kho biết chính xác đang có bao nhiêu tiền hàng trên đường | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; tính toán hoàn toàn phía server từ DB, không tin client |
+| Hàng chưa giao được vẫn thuộc trách nhiệm chuyến, KHÔNG tự về kho | Đã hoàn thành: `PUT /api/warehouse/delivery-trips/{id}/stops/{stopId}/status` cập nhật `FAILED`, bắt buộc lý do `failedReason`; cờ `returnedToWarehouse = false`; **tuyệt đối KHÔNG tự động cộng lại tồn kho** `WarehouseInventory`; hàng vẫn nằm trên xe/chuyến giao và tính trong tiền hàng trên đường; chỉ nhập kho khi gọi API hoàn trả tường minh `POST /stops/{stopId}/return-to-warehouse` | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; chặn 403 nếu thiếu quyền; ghi nhận AuditLog chi tiết hành vi giao thất bại kèm lý do |
+| Cảnh báo chuyến quá thời gian dự kiến | Đã hoàn thành: So sánh thời điểm hiện tại với `expectedCompletionTime` khi chuyến ở trạng thái `IN_PROGRESS`; tự động bật cờ `isOverdue = true`, tính số phút quá hạn `overdueMinutes`, trả chuỗi cảnh báo trực quan `overdueWarning`; hỗ trợ lọc nhanh chuyến trễ hẹn bằng query `isOverdue=true`; thống kê `totalOverdueTrips` trong summary | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` |
+| Quản lý vòng đời chuyến giao và điểm dừng | Đã hoàn thành: `POST /api/warehouse/delivery-trips` (tạo chuyến từ đơn hàng đã xuất hoặc điểm tùy chỉnh), `POST /{id}/complete` (hoàn tất chuyến), `POST /{id}/cancel` (hủy chuyến bắt buộc lý do, chặn hủy khi đã giao điểm nào), `GET /{id}` (chi tiết chuyến), `GET /options`, `GET /eligible-orders` | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Thao tác ghi bắt buộc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; xem bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` |
+| Phân quyền ma trận DB, cách ly kho và thu hồi động | Đã hoàn thành: Kiểm tra quyền động qua `SecurityContext` dựa trên ma trận phân quyền DB; thu hồi quyền trên phiên JWT hiện tại lập tức trả 403 Forbidden không fallback theo role; giới hạn dữ liệu kho theo `user.getWarehouses()`; `ROLE_ADMIN` luôn toàn quyền | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Không dùng fallback vai trò; nguồn sự thật duy nhất là ma trận phân quyền database-backed |
+
+Kiểm chứng: **32 test backend mới qua 100%**:
+1. `DeliveryTripServiceTest` (13 tests): Nghiệp vụ tạo chuyến, tính số điểm đã giao / còn lại, tính tiền hàng trên đường, bất biến hàng chưa giao được không tự về kho, nhập kho trả hàng tường minh, cảnh báo quá thời gian dự kiến, thống kê summary và giới hạn kho.
+2. `DeliveryTripControllerTest` (8 tests): REST Endpoints, validation DTO, HTTP status, phân trang, serialize JSON.
+3. `DeliveryTripSecurityTest` (7 tests): Phân quyền ma trận, chặn 401 khi chưa đăng nhập, 403 khi thiếu quyền, chặn vai trò kho không có quyền xuất kho (không fallback role), cho phép tài khoản có quyền hoặc admin, kiểm tra các thao tác ghi/đọc.
+4. `DeliveryTripIntegrationTest` (4 tests): Kiểm thử tích hợp toàn diện trên HTTP/JWT/JPA/H2 MySQL mode, kiểm tra luồng vòng đời chuyến giao, tính chính xác tiền hàng trên đường, bất biến tồn kho không tăng khi giao thất bại, cảnh báo quá thời gian dự kiến, cách ly dữ liệu kho và thu hồi quyền động có hiệu lực ngay trên JWT hiện tại.
+Đã cập nhật tài liệu hợp đồng API tại `backend/API_DOCUMENTATION.md`.
+
+---
+
+## S6-04 — Gợi ý lô xuất theo nguyên tắc hạn dùng gần nhất trước (FEFO) — 22/10/2026
+
+Nhánh: `S6-04/he-thong-goi-y-lo-xuat-theo-nguyen-tac`.
+Đối chiếu 3 tiêu chí trong backlog người dùng yêu cầu:
+1. Mặc định gợi ý lô có hạn sử dụng gần nhất còn đủ số lượng.
+2. Thủ kho chọn lô khác được nhưng phải nhập lý do.
+3. Xuất kho trừ đúng tồn của lô đã chọn.
+Theo yêu cầu người dùng: **chỉ triển khai Backend (BE)**.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| **AC1: Gợi ý lô theo FEFO (hạn dùng gần nhất còn đủ số lượng)** | **Đã xong**: Thêm API `GET /api/warehouse/export/suggest-lot` và `POST /api/warehouse/export/suggest-lots`. Sắp xếp lô theo FEFO (ưu tiên lô chưa hết hạn, ngày hết hạn sớm nhất lên đầu, tiếp đến ngày sản xuất cũ hơn). Tự động tìm lô đầu tiên có tồn `>= requestedBaseQuantity`. Nếu không có lô đủ, trả về `hasSufficientStock = false`, `suggestedLot = null` và toàn bộ danh sách `availableLots` sắp xếp theo FEFO để thủ kho lựa chọn. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Quyền `WAREHOUSE_EXPORT` hoặc `WAREHOUSE_VIEW` từ ma trận DB (hoặc `ROLE_ADMIN`). Giới hạn phạm vi kho được phân công; thu hồi quyền trả 403 ngay lập tức. |
+| **AC2: Chọn lô khác phải nhập lý do** | **Đã xong**: Trong `POST /api/warehouse/export`, nếu không truyền `lotNumber`, hệ thống tự áp dụng lô FEFO gợi ý (không cần lý do). Nếu thủ kho chủ động chọn đúng lô gợi ý: thành công không cần lý do. Nếu thủ kho chọn lô khác với lô gợi ý: **bắt buộc nhập lý do** qua `overrideReason` / `lotReason` / `note`. Nếu để trống lý do: chặn và trả lỗi 400 Bad Request. Lưu `suggestedLotNumber` và `overrideReason` vào `WarehouseVoucherItem`. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Quyền `WAREHOUSE_EXPORT` từ ma trận DB (hoặc `ROLE_ADMIN`). Khi gửi lô khác thiếu lý do, server trả thông báo rõ ràng: `"Thủ kho chọn lô '...' khác với lô gợi ý hạn dùng gần nhất ('...'), bắt buộc phải nhập lý do"`. |
+| **AC3: Trừ đúng tồn của lô đã chọn & chặn âm kho** | **Đã xong**: Khi ghi sổ phiếu xuất kho, hệ thống khóa dòng tồn kho và trừ chính xác số lượng xuất quy đổi cơ sở vào tồn của lô đã chọn (`WarehouseLotInventory.baseQuantity`). Chặn xuất vượt quá tồn lô đã chọn (trả 400 nếu `lotInv.baseQuantity < baseQty`), chặn chọn lô không tồn tại hoặc đã hết hàng. Cập nhật đồng bộ tồn tổng và ghi `AuditLog`. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Kiểm tra quyền `WAREHOUSE_EXPORT` tại cả Controller và Service. Toàn bộ thao tác trừ tồn kho tổng và tồn lô nằm trong một `@Transactional`, lỗi bất kỳ điểm nào đều rollback toàn bộ. |
+| **Ma trận phân quyền & Giới hạn phạm vi kho** | **Đã xong**: Quyền lấy trực tiếp từ database-backed permission matrix trên request hiện tại qua `RolePermissionConfig`, không dùng role fallback hay default permission. Thu hồi quyền trên phiên đang dùng có hiệu lực ngay lập tức (trả 403). `ROLE_ADMIN` luôn có toàn quyền. Giới hạn phạm vi kho theo phân công tài khoản (`requireWarehouse`), tài khoản ngoài phạm vi trả 403. | **Chưa làm** (Frontend hiển thị/ẩn nút xuất kho và modal chọn lô theo ma trận sẽ được triển khai ở task FE) | Đã kiểm chứng: Thu hồi `WAREHOUSE_EXPORT` trả 403 ngay lập tức; cấp lại trả 200; gọi kho ngoài phạm vi trả 403; Admin luôn thành công. |
+
+### Kiểm chứng Backend S6-04
+- **Unit Tests**: `WarehouseExportLotSuggestionTest` (**9/9 passed**)
+  1. `suggestLot_Need10_SkipsLotA_SuggestsLotB`: Bỏ qua lô A không đủ hàng, gợi ý lô B có HSD gần nhất trong các lô đủ hàng.
+  2. `suggestLot_Need3_SuggestsLotA`: Khi cần 3 hộp, lô A đủ hàng và date gần nhất -> gợi ý lô A.
+  3. `suggestLot_Need100_NoSingleLotSufficient`: Không có lô đơn lẻ nào đủ -> `suggestedLot = null`, `hasSufficientStock = false`, trả toàn bộ danh sách FEFO.
+  4. `exportGoods_NoLotNumberProvided_AutoPicksFefoLot`: Không truyền lô -> tự động chọn lô FEFO và trừ đúng tồn lô đó.
+  5. `exportGoods_SelectSameAsSuggestedLot_SuccessWithoutReason`: Chọn đúng lô gợi ý -> thành công không cần lý do.
+  6. `exportGoods_SelectDifferentLotWithoutReason_ThrowsException`: Chọn lô khác không có lý do -> ném ngoại lệ yêu cầu lý do.
+  7. `exportGoods_SelectDifferentLotWithReason_SuccessAndRecordsReason`: Chọn lô khác có lý do -> thành công, lưu `suggestedLotNumber` và `overrideReason`, trừ đúng tồn lô đã chọn.
+  8. `exportGoods_ExceedLotStock_ThrowsException`: Xuất vượt tồn lô đã chọn -> ném ngoại lệ không đủ tồn.
+  9. `exportGoods_NonExistentLot_ThrowsException`: Chọn lô không có trong kho -> ném ngoại lệ.
+- **Integration Tests**: `WarehouseExportLotIntegrationTest` (**6/6 passed**)
+  1. `suggestLot_FEFO_ReturnsLotWithNearestExpiryAndSufficientStock`: Gọi GET `/api/warehouse/export/suggest-lot` trả 200 OK và đúng lô FEFO.
+  2. `suggestLots_Batch_ReturnsSuggestions`: Gọi POST `/api/warehouse/export/suggest-lots` trả 200 OK danh sách gợi ý hàng loạt.
+  3. `exportGoods_SelectDifferentLotWithoutReason_Returns400`: Chọn lô khác không có lý do trả 400 Bad Request.
+  4. `exportGoods_SelectDifferentLotWithReason_SuccessAndDeductsSelectedLot`: Chọn lô khác có lý do trả 200 OK và trừ đúng tồn lô đã chọn.
+  5. `permissionMatrix_RevokeAndGrant_ImmediateEnforcement`: Thu hồi `WAREHOUSE_EXPORT` trả 403 Forbidden ngay lập tức trên token cũ; cấp lại trả 200 OK.
+  6. `warehouseScope_OutsideWarehouse_Forbidden`: Truy cập kho ngoài phạm vi trả 403 Forbidden; ADMIN được phép.
+- **Toàn bộ bộ test kho liên quan**: `Warehouse*Test` (**78/78 passed**).
+- **Tài liệu API**: Đã cập nhật đầy đủ hợp đồng API tại `backend/API_DOCUMENTATION.md`.
+
+---
 
 ## S5-04 — Hoàn thiện frontend và backend — 22/10/2026
 
@@ -94,6 +334,23 @@ Kiểm chứng tích hợp: **118 test JavaScript qua**, bao gồm 5 test nhập
 - `tests/warehouse-import-voucher.test.cjs` — 3 unit tests
 
 ## Trạng thái sprint 1–5 từ develop đã đồng bộ
+
+## S6-01 — Theo dõi Lô và Hạn sử dụng của Hàng hoá (Backend) — 22/10/2026
+
+Nguồn yêu cầu: Ảnh user story S6-01 người dùng cung cấp trong chat (*"Là Nhân viên kho, tôi muốn theo dõi lô và hạn sử dụng của hàng hoá, để không giao nhầm hàng sắp hết hạn cho đại lý"*). Phạm vi thực hiện: **chỉ làm BE** theo chỉ đạo trực tiếp của người dùng, tuân thủ AGENTS.md và ma trận phân quyền.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Bật hoặc tắt quản lý lô theo từng SKU | Đã hoàn thành: `PATCH /api/products/{id}/manage-lot` (và `PUT /api/products/{id}`), hỗ trợ bật/tắt cờ `manageLot` và cấu hình `expiryWarningDays`; mặc định 30 ngày nếu không khai báo cụ thể | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quyền `PRODUCT_EDIT` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN`; ma trận database-backed, thu hồi quyền lập tức trả 403 không fallback role |
+| Mỗi lô có số lô, ngày sản xuất, hạn sử dụng và số lượng còn lại | Đã hoàn thành: `GET /api/warehouse/inventory/lots`, trả về đầy đủ `lotNumber`, `manufacturingDate`, `expiryDate`, `baseQuantity` (số lượng còn lại), `baseUnit`, `daysUntilExpiry`, `status` ("EXPIRED", "EXPIRING_SOON", "ACTIVE"), `warningThresholdDays`, `isExpired`, `isExpiringSoon` | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quyền `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` |
+| Cảnh báo lô sắp hết hạn theo ngưỡng khai báo được | Đã hoàn thành: `GET /api/warehouse/lot-expiry-alerts` (thống kê tổng cảnh báo, số lô quá hạn, số lô sắp hết hạn kèm danh sách chi tiết các lô có tồn > 0 sắp hết hạn theo ngưỡng SKU hoặc ngưỡng tùy chọn `thresholdDays`), `GET /api/warehouse/lot-thresholds` (xem danh sách ngưỡng theo SKU), `PUT /api/warehouse/lot-thresholds/{productId}` (khai báo ngưỡng ngày cảnh báo cho SKU) | Chưa triển khai (chỉ làm backend theo yêu cầu) | Xem cảnh báo & ngưỡng: `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN`; Khai báo/sửa ngưỡng: `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` |
+| Không cho xuất lô đã quá hạn, trừ khi Quản lý kho xác nhận ghi đè kèm lý do | Đã hoàn thành: `POST /api/warehouse/export` và `POST /api/warehouse/vouchers/{id}/confirm`. Tự động kiểm tra hạn sử dụng của lô khi xuất. Nếu quá hạn: Nhân viên kho bình thường bị chặn 403 Forbidden; Quản lý kho bắt buộc phải bật cờ `overrideExpiredLot = true` và nhập lý do `expiredLotOverrideReason` không rỗng; lưu vết phiếu kho, chi tiết dòng và AuditLog `OVERRIDE_EXPIRED_EXPORT` | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quản lý kho: `WAREHOUSE_APPROVE` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN`. Thu hồi quyền `WAREHOUSE_APPROVE` trên phiên JWT lập tức chặn xuất lô quá hạn với lỗi 403, không fallback role |
+
+Kiểm chứng: **24 test backend mới qua toàn bộ**, bao gồm:
+- 11 test service `WarehouseLotExpiryServiceTest`: xem tồn theo lô đầy đủ số lượng/NSX/HSD, cảnh báo sắp hết hạn theo ngưỡng SKU và ngưỡng tùy chọn, cập nhật ngưỡng cảnh báo SKU, chặn xuất lô quá hạn đối với nhân viên kho (403 AccessDenied), chặn Quản lý kho nếu thiếu cờ ghi đè hoặc thiếu lý do, cho phép Quản lý kho xuất kèm lý do và ghi audit log, chặn xuất vượt quá tồn lô.
+- 9 test bảo mật `WarehouseLotSecurityTest`: ma trận phân quyền database-backed, chặn 401 khi chưa đăng nhập, chặn 403 khi thiếu quyền xem kho, cho phép Thủ kho có `WAREHOUSE_VIEW` xem tồn lô và cảnh báo, chặn Thủ kho sửa ngưỡng (403), cho phép Quản lý kho có `WAREHOUSE_MANAGE` sửa ngưỡng (200), chặn Thủ kho xuất lô quá hạn (403), cho phép Quản lý kho xuất có lý do (200), thu hồi `WAREHOUSE_APPROVE` lập tức chặn 403, `ROLE_ADMIN` luôn có toàn quyền.
+- 4 test controller `ProductManageLotControllerTest`: bật/tắt quản lý lô và cập nhật ngưỡng theo SKU qua PATCH API với quyền `PRODUCT_EDIT` / `WAREHOUSE_MANAGE`.
+- Hồi quy toàn bộ kho: 60/60 test liên quan đến kho và kiểm kê đều pass.
 
 Cập nhật **21/10/2026**: hoàn thiện S5-08 trên nhánh `feature/S5-08-chuc-nang-kiem-ke-chenh-lech(frontend)`, sau khi người dùng đồng bộ develop tại merge commit `5d9008c`. Các mục phía dưới giữ lịch sử những đợt triển khai trước; trạng thái S5-08 mới nhất nằm ở bảng ngay dưới đây. Đợt sửa này không tự commit, merge vào develop hoặc push.
 
@@ -455,6 +712,20 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 | S5-07 | Chuyển kho, đang đi, nhận chênh lệch | Có | Có | Đã nối tạo/danh sách/chi tiết/nhận/hủy; xem phần cập nhật S5-07 đầu file | WAREHOUSE_TRANSFER để ghi, VIEW hoặc TRANSFER để đọc; kiểm scope kho và thu hồi quyền, ADMIN luôn được phép | Đã kiểm khóa đồng thời, bảo vệ tồn đã giữ, nhận/hủy lặp, lý do chênh lệch và rollback. Chưa nghiệm thu MySQL thật. |
 | S5-08 | Kiểm kê, chốt chênh lệch | Có | Có | Đã nối API `/warehouse/stock-counts`, phiếu/snapshot/số đếm lưu DB; xem cập nhật S5-08 đầu file | VIEW hoặc ADJUST để đọc/tạo/đếm, ADJUST để chốt; ADMIN luôn được phép; kiểm phạm vi kho và grant/revoke | Đã kiểm 4 tiêu chí ảnh backlog theo xác nhận quyền từ người dùng, khóa cạnh tranh, snapshot cũ, tồn giữ chỗ và rollback; chưa nghiệm thu MySQL thật. |
 | S5-09 | Tồn tối thiểu và cảnh báo | Có | Có | Đã nối cấu hình, cảnh báo sổ tồn và dashboard; xem cập nhật S5-09 đầu file | WAREHOUSE_MANAGE để khai báo, WAREHOUSE_VIEW để xem; ma trận DB ở cả BE/FE, thu hồi trên phiên cũ, kiểm phạm vi kho | Đã triển khai hai AC; cảnh báo dựa trên tồn khả dụng, bằng ngưỡng không cảnh báo. Có bảng DB mới; chưa nghiệm thu MySQL thật. |
+
+## Sprint 6 — Quản lý nâng cao và hạn sử dụng
+
+| Task | Tính năng | Backend | Frontend | BE ↔ FE | Quyền BE / FE | Nghiệm thu / còn thiếu |
+|---|---|---|---|---|---|---|
+| S6-01 | Theo dõi lô và hạn sử dụng hàng hoá | Có | Có | Đã nối API thực; xem cập nhật S6-01 đầu file | VIEW/MANAGE xem; PRODUCT_EDIT/MANAGE cấu hình; EXPORT + APPROVE/MANAGE ghi đè quá hạn có xác nhận/lý do; ADMIN toàn quyền | Đã triển khai 4 tiêu chí trong ảnh, sửa scope kho/HSD DB/audit; nghiệm thu H2 và Chrome fixtures, chưa nghiệm thu MySQL thật. |
+| S6-04 | Gợi ý lô xuất theo FEFO và xuất kho theo lô | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: `WAREHOUSE_EXPORT`/`WAREHOUSE_VIEW` gợi ý lô; `WAREHOUSE_EXPORT` xuất kho theo lô & bắt buộc nhập lý do khi chọn lô khác; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 3 tiêu chí trong ảnh mô tả. Đã kiểm thử 15 test (unit, service, security MockMvc). Chưa làm frontend theo chỉ đạo "chỉ làm BE". |
+
+## Sprint 7 — Kế toán công nợ và hoá đơn
+
+| Task | Tính năng | Backend | Frontend | BE ↔ FE | Quyền BE / FE | Nghiệm thu / còn thiếu |
+|---|---|---|---|---|---|---|
+| S7-01 | Phát hành hoá đơn bán hàng từ phiếu đã giao | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: INVOICE_VIEW, INVOICE_CREATE, INVOICE_ADJUST từ ma trận DB; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 5 tiêu chí user story. Sinh theo thực giao, số nhảy liên tục, gộp phiếu giao cùng đại lý, hóa đơn bất biến chỉ lập điều chỉnh, xuất PDF và HTML print preview. Đã kiểm thử 30 test mới (unit, controller, security, integration). Chưa làm FE theo yêu cầu. |
+| S7-04 | Hệ thống tự cảnh báo và khoá bán công nợ | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | FINANCE_VIEW_DEBT, FINANCE_MANAGE từ ma trận DB; ADMIN toàn quyền | Đã hoàn thành 100% backend: tự gắn cờ đại lý quá hạn/vượt hạn mức, chặn/cần duyệt khi tạo đơn, scheduler đánh giá hàng ngày và sau thu tiền. 24 test mới. Chưa làm FE theo yêu cầu. |
 
 ## Việc cần làm tiếp
 

@@ -66,6 +66,18 @@ public class WarehouseVoucherRequest {
     @jakarta.validation.constraints.Size(max = 500)
     private String adjustmentReason;
 
+    /**
+     * Xác nhận ghi đè xuất lô đã quá hạn (S6-01).
+     * Chỉ Quản lý kho (ROLE_ADMIN hoặc quyền WAREHOUSE_APPROVE / WAREHOUSE_MANAGE) mới được phép ghi đè.
+     */
+    private Boolean overrideExpiredLot;
+
+    /**
+     * Lý do ghi đè xuất lô đã quá hạn (S6-01). Bắt buộc nếu overrideExpiredLot = true.
+     */
+    @jakarta.validation.constraints.Size(max = 255)
+    private String expiredLotOverrideReason;
+
     @jakarta.validation.constraints.Size(max = 500)
     private String note;
 

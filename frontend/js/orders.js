@@ -838,6 +838,7 @@
       PICKING: 'Đang soạn hàng', PROCESSING: 'Đang soạn hàng', EXPORTED: 'Đã xuất kho',
       SHIPPED: 'Đã xuất kho', DELIVERED: 'Đã giao hàng', CLOSED: 'Đóng', COMPLETED: 'Đóng',
       CANCELLED: 'Đã huỷ', REJECTED: 'Từ chối duyệt',
+      EXPIRED: 'Hết hạn giữ chỗ', RETURNED: 'Trả lại sửa',
     };
     return labels[String(status || '').toUpperCase()] || status || '—';
   }
@@ -845,7 +846,7 @@
   function renderLifecycleTracking(tracking) {
     const status = String(tracking.currentStatus || '').toUpperCase();
     $('ord-lifecycle-summary').textContent = `Hiện tại: ${lifecycleStatusLabel(status)}${tracking.expectedDeliveryDate ? ` · Giao dự kiến ${formatDateShort(tracking.expectedDeliveryDate)}` : ''}`;
-    $('ord-lifecycle-reservation').textContent = tracking.inventoryReserved ? 'Đang giữ chỗ tồn kho' : '';
+    $('ord-lifecycle-reservation').textContent = OrderReservation.describe(tracking).label;
 
     const steps = Array.isArray(tracking.steps) ? tracking.steps : [];
     $('ord-lifecycle-steps').innerHTML = steps.length ? steps.map((step) => `

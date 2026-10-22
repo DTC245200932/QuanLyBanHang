@@ -197,8 +197,26 @@ const MenuConfig = (() => {
       label: "Sổ cái kho",
       icon: '<path d="M4 3h16v18H4zM8 7h8M8 12h8M8 17h5"/>',
       href: "/warehouse/units?tab=ledger",
-      permission: "WAREHOUSE_VIEW",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_APPROVE", "WAREHOUSE_ADJUST"],
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_VIEWER"],
+    },
+    {
+      id: "warehouse-stocktake",
+      section: "Kho hàng",
+      label: "Kiểm kê kho",
+      icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+      href: "/warehouse/units?tab=stocktake",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_ADJUST"],
+      roles: ALL_ROLES,
+    },
+    {
+      id: "warehouse-lots",
+      section: "Kho hàng",
+      label: "Lô & hạn sử dụng",
+      icon: '<path d="M4 4h16v17H4zM8 2v4M16 2v4M4 9h16M9 14h6M12 11v6"/>',
+      href: "/warehouse/lots",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_MANAGE"],
+      roles: ALL_ROLES,
     },
     {
       id: "stock-minimums",
@@ -288,7 +306,7 @@ const MenuConfig = (() => {
       return menuItems.find(item => item.id === "warehouse");
     }
     if (pathname === "/warehouse/units") {
-      const validTabs = ["units", "receipts", "ledger", "inventory"];
+      const validTabs = ["units", "receipts", "ledger", "inventory", "stocktake"];
       if (!validTabs.includes(query.get("tab"))) query.set("tab", "units");
     }
 

@@ -8,6 +8,40 @@ const source = fs.readFileSync(path.join(__dirname, '../frontend/js/menu-config.
 const menu = vm.runInNewContext(`${source}\nMenuConfig;`, { URLSearchParams });
 const ids = user => Array.from(menu.getMenuForUser(user), item => item.id);
 
+test('S6-01 menu grants/revocations follow VIEW or MANAGE, never warehouse role fallback', () => {
+  for(const role of ['ROLE_VIEWER','ROLE_WAREHOUSE_MANAGER','ROLE_WAREHOUSE_STAFF']) {
+    assert.ok(!ids({roles:[role],permissions:[]}).includes('warehouse-lots'));
+    for(const permission of ['WAREHOUSE_VIEW','WAREHOUSE_MANAGE'])
+      assert.ok(ids({roles:[role],permissions:[permission]}).includes('warehouse-lots'));
+  }
+  assert.ok(ids({roles:['ROLE_ADMIN'],permissions:[]}).includes('warehouse-lots'));
+});
+
+test('S5-08 merge preserves stocktaking, stock minimums and warehouse transfers as distinct menus', () => {
+  const pages = [
+    ['warehouse-lots', '/warehouse/lots'],
+    ['warehouse-stocktake', '/warehouse/units?tab=stocktake'],
+    ['stock-minimums', '/warehouse/minimums'],
+    ['warehouse-transfers', '/warehouse/transfers'],
+  ];
+  const adminMenu = ids({ roles: ['ROLE_ADMIN'], permissions: [] });
+  for (const [id, href] of pages) {
+    assert.equal(menu.menuItems.filter(item => item.id === id).length, 1, id);
+    assert.ok(adminMenu.includes(id), id);
+    assert.equal(menu.getPageForLocation(new URL(href, 'http://localhost')).id, id);
+  }
+});
+
+test('merged stocktaking menu follows VIEW or ADJUST grants and revocations without role fallback', () => {
+  for (const role of ['ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF', 'ROLE_VIEWER', 'ROLE_SALES']) {
+    for (const permission of ['WAREHOUSE_VIEW', 'WAREHOUSE_ADJUST']) {
+      assert.ok(ids({ roles: [role], permissions: [permission] }).includes('warehouse-stocktake'), `${role}: ${permission}`);
+    }
+    assert.ok(!ids({ roles: [role], permissions: [] }).includes('warehouse-stocktake'), role);
+  }
+  assert.ok(ids({ roles: ['ROLE_ADMIN'], permissions: [] }).includes('warehouse-stocktake'));
+});
+
 test('admin can reach implemented account, audit and catalog pages', () => {
   const visible = ids({roles:['ROLE_ADMIN'], permissions:['USER_VIEW', 'PRODUCT_VIEW', 'WAREHOUSE_VIEW', 'WAREHOUSE_IMPORT']});
   for (const id of ['dashboard', 'profile', 'users', 'audit-logs', 'products', 'product-groups', 'suppliers', 'price-lists', 'discount-policies', 'orders', 'order-approval']) assert.ok(visible.includes(id));

@@ -29,6 +29,10 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version;
+
     @Column(name = "order_code", nullable = false, length = 50, unique = true)
     private String orderCode;
 

@@ -41,11 +41,14 @@ class FinanceControllerTest {
     @Mock
     private Authentication authentication;
 
+    @Mock
+    private com.quanlybanhang.service.DealerDebtService dealerDebtService;
+
     private FinanceController financeController;
 
     @BeforeEach
     void setUp() {
-        financeController = new FinanceController(dealerRepository, auditLogService, productRepository);
+        financeController = new FinanceController(dealerRepository, auditLogService, productRepository, dealerDebtService);
     }
 
     @Test
@@ -182,5 +185,105 @@ class FinanceControllerTest {
         when(productRepository.findAll()).thenReturn(List.of(product));
         Map<String, Object> margin = ((List<Map<String, Object>>) financeController.getProfitMargin().getData()).get(0);
         assertNull(margin.get("marginPercent"));
+    }
+
+    @Test
+    @DisplayName("S7-04: API lay cau hinh kiem soat rui ro cong no")
+    void getDebtRiskConfig_returnsConfig() {
+        com.quanlybanhang.dto.response.DebtRiskConfigResponse config = com.quanlybanhang.dto.response.DebtRiskConfigResponse.builder()
+                .defaultAction(com.quanlybanhang.model.DebtFlagAction.BLOCK)
+                .overdueAction(com.quanlybanhang.model.DebtFlagAction.BLOCK)
+                .limitExceededAction(com.quanlybanhang.model.DebtFlagAction.REQUIRE_APPROVAL)
+                .autoFlagEnabled(true)
+                .build();
+        when(dealerDebtService.getDebtRiskConfig()).thenReturn(config);
+
+        ApiResponse response = financeController.getDebtRiskConfig();
+
+        assertEquals(true, response.isSuccess());
+        assertEquals(config, response.getData());
+    }
+
+    @Test
+    @DisplayName("S7-04: API cap nhat cau hinh kiem soat rui ro cong no")
+    void updateDebtRiskConfig_callsService() {
+        com.quanlybanhang.dto.request.DebtRiskConfigRequest req = com.quanlybanhang.dto.request.DebtRiskConfigRequest.builder()
+                .defaultAction(com.quanlybanhang.model.DebtFlagAction.REQUIRE_APPROVAL)
+                .build();
+        com.quanlybanhang.dto.response.DebtRiskConfigResponse res = com.quanlybanhang.dto.response.DebtRiskConfigResponse.builder()
+                .defaultAction(com.quanlybanhang.model.DebtFlagAction.REQUIRE_APPROVAL)
+                .build();
+        when(authentication.getName()).thenReturn("accountant1");
+        when(dealerDebtService.updateDebtRiskConfig(req, "accountant1")).thenReturn(res);
+
+        ApiResponse response = financeController.updateDebtRiskConfig(req, authentication);
+
+        assertEquals(true, response.isSuccess());
+        assertEquals(res, response.getData());
+    }
+
+    @Test
+    @DisplayName("S7-04: API lay danh sach dai ly bi gan co rui ro")
+    void getFlaggedDealers_returnsList() {
+        com.quanlybanhang.dto.response.FlaggedDealerResponse flagged = com.quanlybanhang.dto.response.FlaggedDealerResponse.builder()
+                .dealerId(1L)
+                .dealerCode("DL001")
+                .debtFlagType(com.quanlybanhang.model.DebtFlagType.DEBT_LIMIT_EXCEEDED)
+                .debtFlagReason("Vuot han muc no")
+                .build();
+        when(dealerDebtService.getFlaggedDealers()).thenReturn(List.of(flagged));
+
+        ApiResponse response = financeController.getFlaggedDealers();
+
+        assertEquals(true, response.isSuccess());
+        assertEquals(1, ((List<?>) response.getData()).size());
+    }
+
+    @Test
+    @DisplayName("S7-04: API danh gia lai cong no toan bo dai ly")
+    void evaluateAllDealersDebt_callsService() {
+        com.quanlybanhang.dto.response.DebtEvaluationSummaryResponse summary = com.quanlybanhang.dto.response.DebtEvaluationSummaryResponse.builder()
+                .totalEvaluated(5)
+                .totalFlagged(1)
+                .build();
+        when(dealerDebtService.evaluateAllDealersDebt()).thenReturn(summary);
+
+        ApiResponse response = financeController.evaluateAllDealersDebt();
+
+        assertEquals(true, response.isSuccess());
+        assertEquals(summary, response.getData());
+    }
+
+    @Test
+    @DisplayName("S7-04: API ghi nhan thu tien cong no va tra ve HTTP 201 Created")
+    void recordDebtPayment_returnsCreated() {
+        com.quanlybanhang.dto.request.DebtPaymentRequest req = com.quanlybanhang.dto.request.DebtPaymentRequest.builder()
+                .dealerId(1L)
+                .amount(new BigDecimal("10000000"))
+                .build();
+        com.quanlybanhang.dto.response.DebtPaymentResponse res = com.quanlybanhang.dto.response.DebtPaymentResponse.builder()
+                .paymentCode("PT-20261022-0001")
+                .amount(new BigDecimal("10000000"))
+                .dealerStillFlagged(false)
+                .build();
+        when(authentication.getName()).thenReturn("accountant1");
+        when(dealerDebtService.recordPayment(req, "accountant1")).thenReturn(res);
+
+        var responseEntity = financeController.recordDebtPayment(req, authentication);
+
+        assertEquals(org.springframework.http.HttpStatus.CREATED, responseEntity.getStatusCode());
+        assertEquals(true, responseEntity.getBody().isSuccess());
+        assertEquals(res, responseEntity.getBody().getData());
+    }
+
+    @Test
+    @DisplayName("S7-04: API lay danh sach phieu thu tien co phan trang")
+    void getDebtPayments_returnsPagedList() {
+        org.springframework.data.domain.Page<com.quanlybanhang.dto.response.DebtPaymentResponse> paged = org.springframework.data.domain.Page.empty();
+        when(dealerDebtService.getPayments(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.any())).thenReturn(paged);
+
+        ApiResponse response = financeController.getDebtPayments(1L, 0, 10);
+
+        assertEquals(true, response.isSuccess());
     }
 }

@@ -40,6 +40,19 @@ public class StockCountService {
     private final UserRepository users;
     private final AuditLogService audit;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
+    private WarehouseStockCount lockedCount(Long id) {
+        WarehouseStockCount count = stockCounts.findByIdForUpdate(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kiểm kê #" + id));
+        // A joined locking query can hydrate children before it waits for the header lock.
+        // Refresh after acquiring the lock so completion sees the last committed counts.
+        // CascadeType.ALL on items includes REFRESH. Pure Mockito unit tests have no EntityManager.
+        if (entityManager != null) entityManager.refresh(count, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return count;
+    }
+
     private record Scope(boolean global, boolean canAdjust, Set<Long> ids) {
         boolean contains(Long id) {
             return global || (id != null && ids.contains(id));
@@ -212,8 +225,7 @@ public class StockCountService {
     @Transactional
     public StockCountResponse updateItems(Long id, StockCountUpdateItemsRequest request, String username) {
         Scope access = scope(false);
-        WarehouseStockCount sc = stockCounts.findByIdForUpdate(id)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kiểm kê #" + id));
+        WarehouseStockCount sc = lockedCount(id);
         access.require(sc.getWarehouse().getId());
 
         if (sc.getStatus() != StockCountStatus.DRAFT) {
@@ -241,8 +253,7 @@ public class StockCountService {
     @Transactional
     public StockCountResponse complete(Long id, StockCountCompleteRequest request, String username) {
         Scope access = scope(true); // Enforce WAREHOUSE_ADJUST or ADMIN
-        WarehouseStockCount sc = stockCounts.findByIdForUpdate(id)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kiểm kê #" + id));
+        WarehouseStockCount sc = lockedCount(id);
         access.require(sc.getWarehouse().getId());
 
         if (sc.getStatus() != StockCountStatus.DRAFT) {
@@ -340,8 +351,7 @@ public class StockCountService {
     @Transactional
     public StockCountResponse cancel(Long id, StockCountCancelRequest request, String username) {
         Scope access = scope(false);
-        WarehouseStockCount sc = stockCounts.findByIdForUpdate(id)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy phiếu kiểm kê #" + id));
+        WarehouseStockCount sc = lockedCount(id);
         access.require(sc.getWarehouse().getId());
 
         if (sc.getStatus() != StockCountStatus.DRAFT) {

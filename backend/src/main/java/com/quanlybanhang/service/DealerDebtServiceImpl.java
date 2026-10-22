@@ -670,17 +670,12 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         if (debtRiskConfigRepository == null) {
             return defaultConfig;
         }
-        try {
-            var opt = debtRiskConfigRepository.findFirstByOrderByIdAsc();
-            if (opt != null && opt.isPresent()) {
-                return opt.get();
-            }
-            defaultConfig.setUpdatedBy("SYSTEM");
-            var saved = debtRiskConfigRepository.save(defaultConfig);
-            return saved != null ? saved : defaultConfig;
-        } catch (Exception e) {
-            return defaultConfig;
-        }
+        // This helper is also called by read-only debt/order/config queries. Never INSERT
+        // defaults from a read: MySQL rejects the write, marks the enclosing transaction
+        // rollback-only, and catching that failure only hides the original cause.
+        // Persist defaults/overrides only through updateDebtRiskConfig's write transaction.
+        var opt = debtRiskConfigRepository.findFirstByOrderByIdAsc();
+        return opt != null && opt.isPresent() ? opt.get() : defaultConfig;
     }
 
     private DebtRiskConfigResponse toConfigResponse(DebtRiskConfig config) {

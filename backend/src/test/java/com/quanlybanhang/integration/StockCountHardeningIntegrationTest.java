@@ -334,6 +334,33 @@ class StockCountHardeningIntegrationTest {
     }
 
     @Test
+    void completionWaitingForHeaderReloadsLastCommittedChildCounts() throws Exception {
+        long id = draft();
+        call(HttpMethod.PUT, API + "/" + id + "/items", token, Map.of("items", lines(90, 45)), 200);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch locked = new CountDownLatch(1), release = new CountDownLatch(1);
+        try {
+            Future<?> writer = pool.submit(() -> tx.executeWithoutResult(status -> {
+                WarehouseStockCount count = counts.findByIdForUpdate(id).orElseThrow();
+                count.getItems().forEach(item -> {
+                    item.setActualQuantity(new BigDecimal(item.getProduct().getId().equals(first.getId()) ? "80" : "40"));
+                    item.calculateDifference();
+                });
+                counts.flush(); locked.countDown(); await(release);
+            }));
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<ResponseEntity<JsonNode>> completion = pool.submit(() -> exchange(HttpMethod.POST,
+                    API + "/" + id + "/complete", token, Map.of("reason", "Read counts committed while waiting")));
+            assertThatThrownBy(() -> completion.get(400, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown(); writer.get(10, TimeUnit.SECONDS);
+            assertThat(completion.get(10, TimeUnit.SECONDS).getStatusCode().value()).isEqualTo(200);
+            assertThat(stock(first).getBaseQuantity()).isEqualByComparingTo("80");
+            assertThat(stock(second).getBaseQuantity()).isEqualByComparingTo("40");
+            assertThat(detail(id).get("status").asText()).isEqualTo("COMPLETED");
+        } finally { release.countDown(); pool.shutdownNow(); }
+    }
+
+    @Test
     void updateAndCancelWaitForCountHeaderAndCannotChangeCompletedDraft() throws Exception {
         long id = draft();
         ExecutorService pool = Executors.newFixedThreadPool(3);

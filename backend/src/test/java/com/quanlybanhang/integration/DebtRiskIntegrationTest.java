@@ -385,6 +385,21 @@ class DebtRiskIntegrationTest {
         call(post("/api/finance/debt/evaluate"), adminToken, null, 200);
     }
 
+    @Test
+    void readingOrdersDebtAndMissingConfigDoesNotCreateConfigInsideReadOnlyTransactions() throws Exception {
+        debtRiskConfigs.deleteAll();
+        call(get("/api/finance/debt/config"), adminToken, null, 200);
+        call(get("/api/dealers/" + dealer.getId() + "/debt"), adminToken, null, 200);
+        orders.save(Order.builder().orderCode("READONLY-" + UUID.randomUUID()).dealer(dealer).warehouse(warehouse)
+                .status("PENDING_APPROVAL").customerName("Read-only fixture").totalAmount(BigDecimal.TEN).build());
+        call(get("/api/orders"), adminToken, null, 200);
+        assertThat(debtRiskConfigs.count()).isZero();
+        call(put("/api/finance/debt/config"), adminToken, Map.of("defaultAction", "REQUIRE_APPROVAL"), 200);
+        assertThat(debtRiskConfigs.count()).isEqualTo(1);
+        assertThat(call(get("/api/finance/debt/config"), adminToken, null, 200).get("data").get("defaultAction").asText())
+                .isEqualTo("REQUIRE_APPROVAL");
+    }
+
     private String login(String username) throws Exception {
         return call(post("/api/auth/login"), null, Map.of("username", username, "password", "DebtRiskTest2026"), 200)
                 .get("accessToken").asText();

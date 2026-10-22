@@ -61,6 +61,23 @@ class DealerDebtServiceTest {
     private User salesUser2;
     private Dealer dealer;
 
+    @Test
+    void readingMissingRiskConfigReturnsDefaultsWithoutWriting() {
+        when(debtRiskConfigRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.empty());
+        var result = dealerDebtService.getDebtRiskConfig();
+        assertThat(result.getDefaultAction()).isEqualTo(DebtFlagAction.BLOCK);
+        assertThat(result.getId()).isNull();
+        org.mockito.Mockito.verify(debtRiskConfigRepository, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void configReadDatabaseFailuresAreNotReplacedWithInventedDefaults() {
+        when(debtRiskConfigRepository.findFirstByOrderByIdAsc()).thenThrow(new org.springframework.dao.DataAccessResourceFailureException("Database unavailable"));
+        assertThatThrownBy(() -> dealerDebtService.getDebtRiskConfig())
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class).hasMessage("Database unavailable");
+        org.mockito.Mockito.verify(debtRiskConfigRepository, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
     @BeforeEach
     void setUp() {
         Role salesRole = Role.builder().id(1L).name(ERole.ROLE_SALES).build();

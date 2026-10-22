@@ -1,5 +1,85 @@
 # Trạng thái phát triển — QuanLyBanHang
 
+## S5-06 — Đồng bộ develop và hoàn thiện giữ chỗ tồn kho (2026-10-22)
+
+**Đây là trạng thái nghiệm thu mới; các mục phía dưới là lịch sử.** Nhánh làm việc: `feature/S5-06-chuc-nang-giu-cho-ton-kho(frontend)`. Đã đồng bộ `origin/develop` tại `43b842e` (commit đồng bộ hiện có `91bdcc9`). Không gộp vào develop; phần sửa/kiểm thử bên dưới chưa được trợ lý commit hoặc push.
+
+| Yêu cầu / luồng | Backend | Frontend | Kết nối đúng | Kiểm chứng / quyền |
+|---|:---:|:---:|:---:|---|
+| Đơn chờ duyệt chưa giữ; được duyệt giữ đúng lượng theo đơn vị cơ sở | ✅ | ✅ | ✅ | Khóa dòng đơn trước, tồn theo SKU tăng dần; `RECORDED` tăng reserved, không trừ vật lý. API `ORDER_APPROVE`; trang duyệt cần thêm `ORDER_VIEW`. Không role fallback; ADMIN luôn được phép. |
+| Không bán lượng đã giữ cho đơn khác | ✅ | ✅ | ✅ | Hai đơn cạnh tranh không cùng vượt tồn; tạo đơn đọc `/orders/check-inventory`, không cộng từ danh sách đơn có thể thiếu/trễ. Chỉ cần `ORDER_CREATE`, không buộc thêm `ORDER_VIEW`. |
+| Hủy nhả đúng lượng giữ một lần | ✅ | ✅ | ✅ | `ORDER_CANCEL` + phạm vi kho/đại lý; có lý do; đã xuất không hủy. Hủy lặp/hủy cùng lúc hết hạn không làm mất phần giữ của đơn khác. |
+| Tự nhả khi quá hạn | ✅ | ✅ | ✅ | Scheduler mặc định mỗi 60 giây, từng đơn một giao dịch mới, đọc lại dưới khóa; `EXPIRED`. UI đọc cờ server; quá hạn nhưng server chưa nhả vẫn ghi chờ hệ thống, không tự sửa tồn bằng giờ trình duyệt. |
+| Giao dịch nguyên tử, lỗi rollback | ✅ | ✅ | ✅ | Cùng transaction cho đơn + tồn + lịch sử + audit; lỗi thiếu SKU, audit hoặc hạn giữ không hợp lệ không để lại giữ chỗ/trạng thái nửa chừng. UI giữ ghi chú khi API lỗi, không báo duyệt thành công. |
+| Xuất kho không nhả/lấy phần giữ của đơn khác | ✅ | ✅ | ✅ | Khóa cùng dòng đơn; xuất giảm vật lý và phần giữ của đơn; scheduler sau xuất không nhả lần nữa. Tracking trả cờ và thời điểm giữ/hết hạn. |
+| Ma trận quyền thay đổi trên phiên đang dùng | ✅ | ✅ | ✅ | JWT thật của non-admin: cấp quyền hoạt động, thu hồi trả 403, không cần đăng nhập lại; UI đóng/ẩn/vô hiệu hóa hành động và bỏ phản hồi chi tiết cũ. Quyền không vượt phạm vi kho. |
+| Tương thích sổ tồn/kiểm kê S5-08 sau đồng bộ | ✅ | ✅ | ✅ | Giữ chỗ qua JPA tăng phiên bản tồn; kiểm kê không đè giữ chỗ. Sửa thêm việc refresh số đếm sau khi chờ khóa phiếu, tránh chốt bằng số cũ khi lưu số đếm đồng thời. |
+| Sửa lỗi rollback-only khi mở Đơn vị tính (yêu cầu bổ sung) | ✅ | ✅ | ✅ | Trang units không tải `/orders`; lịch sử bán chỉ tải khi mở sổ cái và có `ORDER_VIEW`. Đã mở web thật, hiện 8 SKU và không có toast lỗi; không ghi đơn/phiếu. |
+| Sửa gốc rollback-only ở cấu hình công nợ | ✅ | — | ✅ | `getOrCreateConfig` không còn tự INSERT khi đọc bảng cấu hình rỗng, không nuốt lỗi truy vấn DB. Quyền GET/PUT giữ theo ma trận hiện có. Test GET config/đơn/công nợ không tạo cấu hình; chỉ PUT có quyền mới lưu. Đã khởi động lại backend theo cho phép của người dùng; cả ba API thật trả 200. |
+
+### Lưu ý triển khai
+
+- Khôi phục các trường kho, tính giá, DTO kiểm tra tồn và cập nhật hồ sơ từ develop bị nhánh cũ làm mất; không đưa lại phân quyền role cứng hoặc tính giữ chỗ nghiệp vụ trên trình duyệt.
+- Bổ sung `orders.version BIGINT NOT NULL DEFAULT 0`. Khởi động lại backend để `ddl-auto=update` bổ sung cột trên môi trường phát triển; môi trường dùng migration phải thêm cột trước khi triển khai. Không xóa/reset DB.
+- Giữ bố cục/app shell hiện có theo `SKILLS/SKILL_frontend_design.md`; không tạo layout riêng. Nút gợi ý số lượng tối đa không bị mất cú bấm vì blur; phản hồi tồn cũ bị bỏ ngay trong thời gian debounce.
+- Lỗi toast bổ sung đã xác minh bằng API thật: `/orders`, `/dealers/1/debt`, `/finance/debt/config` trả rollback-only; lookup sản phẩm/tồn/đơn vị quy đổi trả 200. Truy vấn MySQL bằng kết nối read-only xác nhận bảng `debt_risk_configs` tồn tại, đủ cột và có 0 dòng. Không thêm dòng thủ công hoặc reset DB để né lỗi; sửa logic đọc/ghi trong code. Đăng nhập phát sinh xử lý phiên thông thường, sau đó chỉ gọi GET và SELECT; không tạo/sửa/hủy nghiệp vụ thật.
+- Sau khi người dùng cho phép, đã khởi động lại đúng backend 8080 bằng mã hiện tại, tắt seed demo/users cho tiến trình đó. Web thật `localhost:5500/warehouse/units?tab=ledger` hiển thị 8 SKU và 21 dòng sổ cái, không có toast lỗi; `/orders`, `/dealers/1/debt`, `/finance/debt/config` đều HTTP 200. Sau kiểm tra, bảng cấu hình vẫn 0 dòng và không có đơn quá hạn giữ chỗ cần nhả. Backend 8080 và frontend 5500 của người dùng được giữ chạy; server fixture tạm 5538 đã dừng.
+
+### Kiểm thử nghiệm thu
+
+- JavaScript: **130/130**; Python routing: **10/10**.
+- Chrome API fixtures (không ghi DB thật): S5-06, nhập kho S5-04, kiểm kê S5-08, luồng S4, thông báo ma trận, units khi orders lỗi và hồi phục ledger; bố cục **150 kiểm tra / 25 trang / 6 kích thước** và navigation click/back/forward/reload/mobile/reduced motion đều đã qua. Các bài nghiệp vụ dùng reduced motion để tách khỏi việc Chrome hủy native ViewTransition khi teardown; bài navigation riêng kiểm tra native animation bình thường.
+- Backend: **780/780**, `mvn clean test` trên bản sao với H2 cách ly; không dùng lớp test cũ từ incremental build. Bao gồm 15 ca HTTP/JWT/JPA S5-06, 20 ca hardening kiểm kê (có ca điều khiển khóa đọc số đếm vừa commit), và kiểm tra đọc config/đơn/công nợ không tự ghi DB. Không chạy bộ test nghiệp vụ trên MySQL người dùng.
+
+## Lịch sử S5-06 của nhánh trước đồng bộ (không phải kết quả nghiệm thu hiện tại)
+> Cập nhật lần cuối: 2026-10-20
+
+## Bảng theo dõi kết nối Ma trận phân quyền & Tính năng
+
+| Mã tính năng | Tên tính năng | Backend | Frontend | Đã kết nối đúng? | Ghi chú quyền & Phân quyền |
+|---|---|:---:|:---:|:---:|---|
+| **S5-04** | Phiếu nhập kho (Voucher Nhập kho, NCC, Lô, HSD, Nháp) | ✅ | ✅ | ✅ | Quyền `WAREHOUSE_IMPORT`, `WAREHOUSE_VIEW` cho `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_WAREHOUSE_STAFF` |
+| **S5-06** | Giữ chỗ tồn kho khi đơn được duyệt (Inventory Reservation) | ✅ | ✅ | ✅ | Quyền `ORDER_CREATE`, `ORDER_VIEW`, `ORDER_APPROVE` cho `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` |
+
+---
+
+## Chi tiết tính năng S5-06: Giữ chỗ tồn kho khi đơn được duyệt
+
+### 1. Nghiệp vụ đã triển khai (Frontend)
+
+| # | Hạng mục nghiệp vụ | Backend | Frontend | Kết nối đúng? | Mô tả chi tiết |
+|---|-------------------|:-------:|:--------:|:-------------:|----------------|
+| 1 | Giữ chỗ tồn kho ngay khi đơn chuyển sang Đã duyệt (`APPROVED` / `RECORDED`) | ✅ | ✅ | ✅ | Đơn được duyệt lập tức đưa vào tập `HOLDING_ORDER_STATUSES`, tính vào `reservedBase`, làm giảm tồn khả dụng của SKU để hàng không bị người khác bán mất. |
+| 2 | Tự động nhả tồn khi đơn bị huỷ (`CANCELLED`) hoặc từ chối (`REJECTED`) | ✅ | ✅ | ✅ | Đơn chuyển trạng thái huỷ hoặc từ chối sẽ tự động loại khỏi tập giữ chỗ, trả lại tồn khả dụng cho kho. |
+| 3 | Tự động nhả tồn khi đơn quá hạn giữ chỗ (`reservationExpiresAt <= now`) | ✅ | ✅ | ✅ | Kiểm tra mốc thời gian giữ chỗ; nếu đã hết hạn, hệ thống tự động nhả tồn mà không cần thao tác thủ công. |
+| 4 | Hiển thị cột Tồn khả dụng trên bảng tạo đơn hàng | — | ✅ | ✅ | Bổ sung cột thứ 4 trong bảng dòng hàng (`col-stock`), hiển thị tồn khả dụng theo đơn vị tính đã chọn kèm chi tiết (Thực tế / Giữ chỗ). |
+| 5 | Chặn đặt vượt tồn khả dụng & Gợi ý số lượng tối đa | — | ✅ | ✅ | Cảnh báo trực quan khi nhập vượt tồn, cung cấp nút **"Đặt tối đa"** để nhanh chóng điều chỉnh số lượng hợp lệ, chặn xác nhận đơn nếu vượt tồn. |
+| 6 | Tự động xác định kho phục vụ cho đại lý theo thứ tự ưu tiên | — | ✅ | ✅ | Tự động nạp kho gắn với đại lý -> kho phụ trách của nhân viên -> kho mặc định đầu tiên; tự tải tồn kho thực tế và đơn hàng. |
+| 7 | Phát hiện xung đột đồng thời tránh âm tồn | ✅ | ✅ | ✅ | Kiểm tra tồn tức thời trước khi gửi đơn, phát hiện trường hợp hai người cùng chốt đơn khi tồn sắp hết để chặn không làm âm kho. |
+| 8 | Hiển thị trạng thái giữ chỗ trên modal chi tiết đơn duyệt | — | ✅ | ✅ | Modal chi tiết đơn duyệt hiển thị rõ ràng: "Đang giữ chỗ tồn kho", "Chờ duyệt (Chưa giữ chỗ)", hoặc "Đã nhả tồn". |
+
+### 2. Ma trận phân quyền (Permission Matrix)
+
+| Hành động | Quyền (Permission) | Roles cho phép | Kiểm tra Frontend | Kiểm tra Backend |
+|-----------|--------------------|----------------|:-----------------:|:----------------:|
+| Tạo đơn hàng & Kiểm tra tồn giữ chỗ | `ORDER_CREATE` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | ✅ `Auth.hasAnyRole` & `OrderInventory` | ✅ `@PreAuthorize("hasAnyRole('SALES', 'SALES_MANAGER', 'ADMIN', ...)")` |
+| Xem danh sách đơn & Tồn khả dụng | `ORDER_VIEW` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN`, `ROLE_WAREHOUSE_MANAGER` | ✅ Menu-config & role guard | ✅ `@PreAuthorize` |
+| Phê duyệt đơn hàng (kích hoạt giữ chỗ tồn) | `ORDER_APPROVE` | `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | ✅ Role guard `order-approval.js` | ✅ `PUT /orders/{id}/approve` (`hasAnyRole('SALES_MANAGER', 'ADMIN')`) |
+| Huỷ đơn hàng (kích hoạt nhả tồn tự động) | `ORDER_CANCEL` | `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | ✅ Action menu | ✅ `PUT /orders/{id}/cancel` |
+
+### 3. Kết quả Unit Tests (50/50 Tests Passed)
+
+- `tests/order-reservation-s5-06.test.cjs`: 6/6 tests pass (bao gồm giữ chỗ khi duyệt, nhả tồn khi huỷ, tự động nhả tồn khi quá hạn, quy đổi theo đơn vị tính, xung đột đồng thời).
+- `tests/order-inventory.test.cjs`: 7/7 tests pass.
+- `tests/create-order-debt.test.cjs`: 4/4 tests pass.
+- `tests/warehouse-import-voucher.test.cjs`: 3/3 tests pass.
+- `tests/menu-config.test.cjs`: 13/13 tests pass.
+- `tests/dealer-transactions.test.cjs`: 5/5 tests pass.
+- `tests/password-reset.test.cjs`: 7/7 tests pass.
+- `tests/products-import.test.cjs`: 5/5 tests pass.
+- Tất cả unit tests đều chạy thành công 100%.
+
+## Lịch sử trạng thái từ develop
 ## S7-04 — Hệ thống tự cảnh báo và khoá bán công nợ (Backend) — 22/10/2026
 
 Nhánh: `feature/S7-04-he--thong-tu-canh-bao-BE`.

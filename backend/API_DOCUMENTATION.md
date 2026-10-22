@@ -662,7 +662,8 @@ Dùng quyền từ ma trận phân quyền, không dùng tên vai trò để c�
    - Bổ sung `warehouse_inventories.version` (`BIGINT NOT NULL DEFAULT 0`, JPA `@Version`) và `warehouse_stock_count_items.snapshot_captured` (`BOOLEAN NOT NULL DEFAULT FALSE`), `snapshot_inventory_id`, `snapshot_inventory_version` (BIGINT nullable). Đây là metadata nội bộ, không thêm trường bắt buộc vào DTO.
    - Mở rộng `warehouse_stock_count_items.note` lên `VARCHAR(500)` để thống nhất giới hạn ghi chú toàn tính năng.
    - Các phiếu cũ có `snapshot_captured = false` vẫn xem/hủy được nhưng không chốt được: cần hủy và kiểm kê lại. Không backfill snapshot cũ bằng tồn hiện tại vì sẽ bỏ qua chuyển động sau khi lập phiếu.
-   - Phiên bản tăng cho thay đổi tồn qua JPA (kể cả giữ chỗ/đang chuyển được cập nhật qua JPA), nên có thể cần kiểm kê lại dù lượng vật lý bằng cũ. Câu cập nhật giữ chỗ có điều kiện `reserveIfAvailable` vẫn chỉ sửa reserved; completion đọc reserved mới dưới khóa để bảo vệ lượng giữ chỗ. Không dùng SQL ngoài ứng dụng để sửa tồn mà bỏ qua phiên bản.
+   - Phiên bản tăng cho thay đổi tồn qua JPA (kể cả giữ chỗ/đang chuyển được cập nhật qua JPA), nên có thể cần kiểm kê lại dù lượng vật lý bằng cũ. Luồng giữ chỗ S5-06 dùng cập nhật JPA dưới khóa để tăng phiên bản; completion vẫn đọc reserved mới dưới khóa để bảo vệ lượng giữ chỗ. Không dùng SQL ngoài ứng dụng để sửa tồn mà bỏ qua phiên bản.
+   - Sau khi lấy khóa phiếu kiểm kê, refresh lại header và các dòng trước khi lưu/chốt/hủy. Truy vấn join có thể đã đọc số đếm trước lúc phải đợi khóa; không dùng bản số đếm cũ đó để chốt tồn. Kiểm thử điều khiển khóa xác minh completion đang chờ phải lấy số đếm vừa commit.
 
 ### Lập phiếu nhập kho từ nhà cung cấp & Quản lý lô, hạn sử dụng (S5-04)
 
@@ -824,7 +825,7 @@ Trạng thái dùng `active`, không dùng chuỗi `status`; người liên hệ
 | GET | `/orders/{id}/tracking` | `ORDER_VIEW` | Theo dõi vòng đời đơn hàng (7 bước chính và nhánh Huỷ, timeline lịch sử, người thực hiện, lý do huỷ/từ chối; áp dụng RLS theo người phụ trách/kho) |
 | PUT | `/orders/{id}/status` | `WAREHOUSE_IMPORT` hoặc `WAREHOUSE_EXPORT` | Cập nhật từng bước kế tiếp của vòng đời đơn hàng; chỉ nhận `PICKING`, `EXPORTED`, `DELIVERED`, `CLOSED`, giới hạn theo kho được gán và tự động trừ tồn kho/giải phóng giữ chỗ khi chuyển sang `EXPORTED` |
 | PUT | `/orders/{id}/delivery` | `WAREHOUSE_EXPORT` | Cập nhật thực giao; chỉ chuyển `EXPORTED` sang `DELIVERED`, không được bỏ qua bước vòng đời và không dùng role fallback |
-| PUT | `/orders/{id}/approve` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xác nhận đơn cổng được phân công | Phê duyệt đơn hàng (chuyển trạng thái sang `RECORDED`) và giữ chỗ tồn kho sau khi kiểm quyền |
+| PUT | `/orders/{id}/approve` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Phê duyệt đơn hàng (chuyển trạng thái sang `RECORDED`) và giữ chỗ tồn kho sau khi kiểm quyền/phạm vi kho; xác nhận đơn cổng dùng endpoint `/confirm` với `ORDER_CONFIRM`, không dùng `ORDER_CREATE` để thay quyền duyệt |
 | PUT | `/orders/{id}/reject?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN`; `ORDER_CREATE` chỉ cho NVKD xử lý đơn cổng được phân công | Từ chối đơn hàng với lý do bắt buộc (chuyển trạng thái sang `REJECTED`) |
 | PUT | `/orders/{id}/return?reason={ly_do}` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Trả lại đơn để sửa với lý do bắt buộc (chuyển trạng thái sang `RETURNED`) |
 | PATCH | `/orders/{id}/status` | `ORDER_APPROVE` hoặc `ROLE_ADMIN` | Duyệt, từ chối hoặc trả lại đơn trên màn hình S4-05 |
@@ -1659,13 +1660,13 @@ Hỗ trợ Nhân viên kinh doanh (`ROLE_SALES`) nhìn thấy tồn khả dụng
      + Nếu tồn khả dụng bằng 0: Thông báo rõ *"Mặt hàng '...' đã hết tồn khả dụng trong kho phục vụ '...'. Số lượng tối đa có thể đặt là 0 ...".*
 
 4. **Giữ chỗ và Giải phóng tồn kho (Vòng đời đơn hàng)**:
-   - **Khi tạo đơn thành công**: Hệ thống tự động tăng `reservedQuantity` của sản phẩm tại kho phục vụ tương ứng với số lượng cơ sở của đơn, đồng thời đánh dấu `inventoryReserved = true` trên đơn hàng.
-   - **Khi xuất kho thực tế** (`POST /api/warehouse/export`): Hệ thống trừ tồn thực tế (`baseQuantity`) và hoàn trừ tương ứng `reservedQuantity` (nếu `reservedQuantity > 0`).
+   - **Khi tạo đơn hợp lệ ghi nhận ngay (`RECORDED`)**: tăng `reservedQuantity` và đánh dấu `inventoryReserved = true`. Đơn chờ duyệt (`PENDING_APPROVAL`) chưa giữ chỗ; lúc được duyệt phải kiểm tra lại tồn và giữ chỗ nguyên tử (xem S5-06).
+   - **Khi xuất đơn** (`PUT /api/orders/{id}/status` với `EXPORTED`, sau `PICKING`): trừ tồn thực tế và lượng giữ riêng của đơn trong cùng giao dịch; không lấy lượng giữ của đơn khác. Phiếu xuất thủ công phải kiểm tra tồn khả dụng, không phải đường để nhả giữ chỗ của đơn.
    - **Khi huỷ đơn** (`PUT /api/orders/{id}/cancel`) hoặc **từ chối đơn** (`PUT /api/orders/{id}/reject`): Nếu đơn đã được giữ chỗ (`inventoryReserved = true`), hệ thống tự động hoàn trả lại tồn giữ chỗ (`reservedQuantity = reservedQuantity - baseQuantity`) và cập nhật `inventoryReserved = false`.
 
 5. **Chống Race Condition / Bán âm kho khi chốt đơn đồng thời (Concurrency Safety)**:
    - Sử dụng cơ chế khóa bi quan `LockModeType.PESSIMISTIC_WRITE` (`SELECT ... FOR UPDATE`) trên bảng `warehouse_inventories`.
-   - Các dòng sản phẩm được khóa theo thứ tự `productId` tăng dần (`sorted productIds`) để triệt tiêu nguy cơ xảy ra Deadlock giữa nhiều giao dịch đồng thời.
+   - Khóa dòng đơn trước, sau đó các dòng sản phẩm theo thứ tự `productId` tăng dần để giảm nguy cơ deadlock giữa các luồng giữ/nhả/xuất tồn.
    - Khi 2 người dùng (hoặc 2 tiến trình) cùng chốt đơn mặt hàng sắp hết: Người chốt trước giữ chỗ thành công (HTTP 201 Created), người chốt sau ngay lập tức bị chặn với HTTP 400 Bad Request, tồn kho thực tế và tồn khả dụng tuyệt đối không bao giờ bị âm (`acceptedOrders <= 1`).
 
 6. **Phân quyền theo ma trận quyền**:
@@ -1869,31 +1870,38 @@ Hỗ trợ Nhân viên kinh doanh có tồn được giữ chỗ ngay khi đơn 
 #### Quy tắc nghiệp vụ cốt lõi:
 1. **Giữ chỗ tồn kho ngay khi đơn được duyệt (`approveOrder`)**:
    - Khi đơn hàng tạo ở trạng thái Chờ duyệt (`PENDING_APPROVAL`, ví dụ do bán dưới giá sàn hoặc vượt hạn mức công nợ), tồn kho chưa bị trừ và chưa bị giữ chỗ (`inventoryReserved = false`).
-   - Khi Quản lý kinh doanh (`ROLE_SALES_MANAGER`) hoặc Quản trị viên (`ROLE_ADMIN`) phê duyệt đơn (`PUT /api/orders/{id}/approve`):
-     - Hệ thống thực hiện kiểm tra tồn khả dụng tại kho phục vụ với cơ chế khóa bi quan (`LockModeType.PESSIMISTIC_WRITE` trên `warehouse_inventories`, khóa sắp xếp theo thứ tự `productId` tăng dần để tránh Deadlock).
+   - Khi người dùng được cấp `ORDER_APPROVE` từ ma trận DB hoặc Quản trị viên (`ROLE_ADMIN`) phê duyệt đơn (`PUT /api/orders/{id}/approve`, hoặc `PATCH /api/orders/{id}/status` với `APPROVED`):
+     - Khóa ghi dòng đơn hàng trước, sau đó khóa các dòng tồn tại kho phục vụ theo `productId` tăng dần. Duyệt, hủy, hết hạn và xuất kho cùng khóa dòng đơn nên không giữ/nhả hai lần khi chạy đồng thời. Vai trò không thay thế quyền; người được gán kho chỉ thao tác trong kho được gán.
      - Nếu tồn khả dụng không đủ: ném ngoại lệ `IllegalArgumentException` kèm thông báo chi tiết, giao dịch `@Transactional` tự động hoàn lại (rollback) toàn bộ, không thay đổi trạng thái đơn và không giữ chỗ tồn kho.
      - Nếu tồn khả dụng đủ: hệ thống tự động tăng `reservedQuantity` tại kho tương ứng với số lượng cơ sở của đơn hàng, chuyển trạng thái đơn sang `RECORDED` (Đã duyệt / Đã ghi sổ), đánh dấu `inventoryReserved = true`, gán thời điểm giữ chỗ `reservedAt` và thời điểm hết hạn giữ chỗ `reservationExpiresAt`.
-     - Cho phép truyền tùy chọn tham số `reservationHours` (số giờ giữ chỗ, ví dụ `?reservationHours=24` hoặc `?reservationHours=48`, mặc định cấu hình `app.order.default-reservation-hours: 24`).
+     - `reservationHours` phải lớn hơn 0 (ví dụ `?reservationHours=24`). Nếu không truyền: dùng cuối ngày giao dự kiến khi còn ở tương lai, nếu không thì 48 giờ. Không có cấu hình `app.order.default-reservation-hours`. Ngày hết hạn tường minh khi tạo đơn phải ở tương lai.
 
 2. **Giao dịch `@Transactional` nguyên tử (Atomic Transaction & Rollback)**:
    - Toàn bộ thao tác kiểm tra tồn kho, tăng tồn giữ chỗ (`reservedQuantity`), cập nhật trạng thái đơn hàng (`RECORDED`), và ghi nhật ký kiểm toán (`AuditLog`) diễn ra trong cùng một transaction `@Transactional`.
    - Bất kỳ lỗi nào xảy ra giữa chừng đều làm toàn bộ giao dịch rollback, đảm bảo tính toàn vẹn dữ liệu tuyệt đối (không có tình trạng đơn đã duyệt nhưng chưa giữ chỗ, hoặc ngược lại).
 
 3. **Tự động giải phóng tồn kho khi huỷ hoặc từ chối đơn**:
-   - Khi huỷ đơn (`PUT /api/orders/{id}/cancel`) hoặc từ chối đơn (`PUT /api/orders/{id}/reject`): Nếu đơn đã được giữ chỗ (`inventoryReserved = true`), hệ thống khóa bi quan dòng tồn kho, hoàn trả chính xác số lượng tồn giữ chỗ (`reservedQuantity = max(0, reservedQuantity - reqBase)`), chuyển `inventoryReserved = false`, xóa `reservationExpiresAt` và ghi nhật ký kiểm toán.
+   - Khi huỷ đơn (`PUT /api/orders/{id}/cancel`, bắt buộc lý do) hoặc từ chối đơn chờ duyệt (`PUT /api/orders/{id}/reject`): khóa dòng đơn và tồn, chỉ trừ chính xác lượng đã giữ của đơn. Nếu sổ giữ chỗ không khớp, từ chối và rollback thay vì ép về 0 làm mất giữ chỗ của đơn khác. Cập nhật `inventoryReserved = false`, xóa `reservationExpiresAt` trong cùng giao dịch; đã xuất kho không được hủy. Giữ chỗ không giảm tồn vật lý; xuất kho mới giảm tồn vật lý và lượng giữ tương ứng.
 
 4. **Tự động quét và nhả tồn khi đơn quá hạn giữ chỗ (Background Scheduler)**:
    - Background Task (`OrderReservationScheduler`) chạy định kỳ (mặc định mỗi phút một lần qua cấu hình `app.order.reservation-check-interval-ms:60000`).
    - Scheduler tự động tìm tất cả các đơn hàng có `inventoryReserved = true` và `reservationExpiresAt <= now()`.
    - Với mỗi đơn quá hạn: hệ thống tự động giải phóng tồn giữ chỗ (`reservedQuantity`), chuyển trạng thái đơn hàng sang `EXPIRED`, xóa cờ giữ chỗ, ghi chú tự động lý do hết hạn và lưu vết nhật ký kiểm toán (`AuditLog`).
-   - Cung cấp thêm API thủ công/chủ động: `POST /api/orders/release-expired-reservations` cho Quản lý kho, Quản lý kinh doanh và Admin kích hoạt kiểm tra và nhả tồn tức thì.
+   - Quét ID rồi xử lý từng đơn bằng giao dịch riêng (`REQUIRES_NEW`), đọc lại cờ/hạn/trạng thái sau khi khóa; worker khác, hủy hoặc xuất đã xử lý thì bỏ qua. Không gom khóa nhiều dòng đơn vào một giao dịch quét dài. Thời gian trong ghi chú là hạn gốc trước khi xóa.
+   - API thủ công `POST /api/orders/release-expired-reservations` kiểm quyền DB và phạm vi kho/đại lý của người gọi; không nhả đơn ngoài phạm vi. Scheduler nội bộ tự xử lý toàn hệ thống. Lỗi giao dịch giữ nguyên đơn/tồn của đơn lỗi; các đơn đã xử lý ở giao dịch riêng không bị hoàn lại.
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
-| PUT | `/orders/{id}/approve?reservationHours={hours}` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Phê duyệt đơn hàng chờ duyệt, giữ chỗ tồn kho tức thì và thiết lập thời hạn giữ chỗ |
-| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL`, `ROLE_SALES`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Huỷ đơn hàng; tự động hoàn trả tồn kho đang giữ chỗ nếu đơn đã giữ chỗ |
-| PUT | `/orders/{id}/reject` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_ADMIN` | Từ chối đơn hàng chờ duyệt; giải phóng tồn giữ chỗ nếu có |
-| POST | `/orders/release-expired-reservations` | `ORDER_APPROVE`, `ROLE_SALES_MANAGER`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Quét và tự động giải phóng tồn giữ chỗ cho các đơn hàng đã quá hạn giữ chỗ |
+| PUT | `/orders/{id}/approve?reservationHours={hours}` | `ORDER_APPROVE` hoặc ADMIN | Phê duyệt đơn hàng chờ duyệt trong phạm vi, giữ chỗ và thiết lập thời hạn; HTTP 200 |
+| PATCH | `/orders/{id}/status` | `ORDER_APPROVE` hoặc ADMIN | Body `{"status":"APPROVED","comment":"..."}`; dùng cùng nghiệp vụ giữ chỗ như PUT approve |
+| PUT | `/orders/{id}/confirm` | `ORDER_CONFIRM` hoặc ADMIN | Xác nhận đơn cổng không vi phạm của đại lý được phân công; cũng giữ chỗ nguyên tử |
+| PUT | `/orders/{id}/cancel` | `ORDER_CANCEL` hoặc ADMIN | Huỷ đơn trong phạm vi; nhả giữ chỗ chính xác một lần |
+| PUT | `/orders/{id}/reject` | `ORDER_APPROVE` hoặc ADMIN | Từ chối đơn hàng chờ duyệt; không cho từ chối lại đơn đã duyệt |
+| POST | `/orders/release-expired-reservations` | Một trong `ORDER_APPROVE`, `ORDER_CANCEL`, `WAREHOUSE_APPROVE`, hoặc ADMIN | Quét và nhả các đơn quá hạn trong phạm vi người gọi |
+
+Frontend: trang Duyệt đơn cần cả `ORDER_VIEW` và `ORDER_APPROVE`; tạo đơn chỉ cần `ORDER_CREATE`, đọc tồn qua `/orders/check-inventory`, không tải danh sách đơn để tự cộng giữ chỗ. Chi tiết và tracking đọc `inventoryReserved`, `reservedAt`, `reservationExpiresAt` từ server. Hạn đã qua nhưng cờ còn true hiển thị “Quá hạn — chờ hệ thống nhả tồn”; đồng hồ trình duyệt không sửa tồn hoặc tự báo đã nhả. Thu hồi quyền vô hiệu hóa/ẩn hành động và bỏ phản hồi cũ, backend từ chối JWT hiện có ở request kế tiếp. ADMIN luôn được phép.
+
+Schema bổ sung `orders.version BIGINT NOT NULL DEFAULT 0` để tránh cập nhật cũ ghi đè thao tác đồng thời. Cấu hình phát triển `ddl-auto=update` thêm cột khi khởi động lại backend; môi trường quản lý migration phải thêm cột tương đương trước khi triển khai. Không xóa/reset DB. Dòng tồn được cập nhật qua JPA dưới khóa, nên tăng `warehouse_inventories.version` và vô hiệu hóa snapshot kiểm kê cũ đúng cách.
 
 #### Ví dụ Response phê duyệt đơn hàng kèm giữ chỗ tồn kho (`PUT /api/orders/1/approve?reservationHours=24`):
 ```json
@@ -3039,6 +3047,7 @@ Tài liệu hợp đồng API phục vụ Bộ phận Kế toán - Tài chính v
      - `overdueAction`: Hành vi mặc định khi có nợ quá hạn (`BLOCK` hoặc `REQUIRE_APPROVAL`).
      - `defaultAction`: Hành vi dự phòng chung (`BLOCK` hoặc `REQUIRE_APPROVAL`).
      - `autoFlagEnabled`: Bật/tắt tính năng tự động gắn cờ.
+     - Khi bảng chưa có bản ghi, các API GET/đọc đơn/đọc công nợ chỉ trả cấu hình mặc định trong bộ nhớ (`id = null`), **không INSERT trong giao dịch read-only**. Chỉ `PUT /api/finance/debt/config` với `FINANCE_MANAGE` hoặc ADMIN mới lưu cấu hình. Mặc định chưa lưu: `BLOCK`/`BLOCK`/`REQUIRE_APPROVAL`/`true` theo thứ tự default/overdue/limit/autoFlag. Lỗi truy vấn DB phải được ném ra, không nuốt lỗi rồi dựng cấu hình thành công.
    - **Cấu hình riêng biệt cho từng đại lý (`Dealer.debtActionConfig`)**:
      - `DEFAULT`: Áp dụng theo cấu hình hệ thống tương ứng với loại vi phạm.
      - `BLOCK`: Khóa bán hoàn toàn. Nhân viên kinh doanh / đại lý tạo đơn mới sẽ bị chặn ngay lập tức, API trả về `400 Bad Request` kèm thông báo chi tiết lý do bị khóa và mã đại lý.
@@ -3062,7 +3071,7 @@ Tài liệu hợp đồng API phục vụ Bộ phận Kế toán - Tài chính v
 
 | Method | Endpoint | Quyền yêu cầu | Mô tả |
 |---|---|---|---|
-| `GET` | `/api/finance/debt/config` | `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ADMIN` | Lấy cấu hình kiểm soát rủi ro công nợ toàn hệ thống |
+| `GET` | `/api/finance/debt/config` | `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ADMIN` | Đọc cấu hình, không tạo bản ghi khi bảng còn rỗng; tránh lỗi rollback-only của MySQL do ghi trong giao dịch chỉ đọc |
 | `PUT` | `/api/finance/debt/config` | `FINANCE_MANAGE` hoặc `ADMIN` | Cập nhật cấu hình rủi ro công nợ hệ thống (hành vi khi vượt hạn mức, khi quá hạn, bật/tắt tự động) |
 | `PUT` | `/api/finance/debt/{dealerId}/action-config` | `FINANCE_MANAGE` hoặc `ADMIN` | Cập nhật hành vi xử lý công nợ riêng biệt cho một đại lý (`DEFAULT`, `BLOCK`, `REQUIRE_APPROVAL`) |
 | `GET` | `/api/finance/debt/flagged-dealers` | `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ADMIN` | Lấy danh sách các đại lý đang bị gắn cờ cảnh báo công nợ |

@@ -91,6 +91,18 @@ public class WarehouseVoucherItem {
     @Column(name = "manufacturing_date")
     private LocalDate manufacturingDate;
 
+    /**
+     * Số lô hệ thống gợi ý theo FEFO (S6-04).
+     */
+    @Column(name = "suggested_lot_number", length = 50)
+    private String suggestedLotNumber;
+
+    /**
+     * Lý do thủ kho chọn lô khác với lô gợi ý FEFO (S6-04).
+     */
+    @Column(name = "override_reason", length = 255)
+    private String overrideReason;
+
     @Column(length = 255)
     private String note;
 

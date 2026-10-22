@@ -1,5 +1,6 @@
 package com.quanlybanhang.controller;
 
+import com.quanlybanhang.dto.request.BatchLotSuggestionRequest;
 import com.quanlybanhang.dto.request.ProductLocationRequest;
 import com.quanlybanhang.dto.request.WarehouseLocationRequest;
 import com.quanlybanhang.dto.request.WarehouseRequest;
@@ -20,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.security.Principal;
 import java.util.List;
 import java.util.Map;
@@ -375,6 +377,32 @@ public class WarehouseController {
     }
 
     /**
+     * API gợi ý lô xuất theo nguyên tắc FEFO (Hạn dùng gần nhất trước - S6-04).
+     * Mặc định gợi ý lô có hạn sử dụng gần nhất còn đủ số lượng.
+     */
+    @GetMapping("/export/suggest-lot")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_EXPORT', 'WAREHOUSE_VIEW'))")
+    public ApiResponse suggestLotForExport(
+            @RequestParam Long warehouseId,
+            @RequestParam Long productId,
+            @RequestParam(required = false, defaultValue = "1") BigDecimal quantity,
+            @RequestParam(required = false) String unit) {
+        LotSuggestionResponse response = warehouseService.suggestLotForExport(warehouseId, productId, quantity, unit);
+        return ApiResponse.success("Gợi ý lô xuất kho theo FEFO", response);
+    }
+
+    /**
+     * API gợi ý lô xuất hàng loạt cho nhiều sản phẩm theo FEFO (S6-04).
+     */
+    @PostMapping("/export/suggest-lots")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_EXPORT', 'WAREHOUSE_VIEW'))")
+    public ApiResponse suggestLotsForExport(
+            @Valid @RequestBody BatchLotSuggestionRequest request) {
+        List<LotSuggestionResponse> response = warehouseService.suggestLotsForExport(request);
+        return ApiResponse.success("Gợi ý lô xuất kho hàng loạt theo FEFO", response);
+    }
+
+    /**
      * API xuất kho — Thủ kho, Quản lý kho, Quản trị viên.
      * Tự động quy đổi từ đơn vị xuất (thùng, lốc) về đơn vị cơ sở (lon) khi ghi sổ.
      */
@@ -412,8 +440,12 @@ public class WarehouseController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Integer thresholdDays,
             @RequestParam(required = false) String keyword) {
-        List<WarehouseLotInventoryResponse> stock = warehouseService.getLotInventory(
-                warehouseId, productId, status, thresholdDays, keyword);
+        List<WarehouseLotInventoryResponse> stock;
+        if (status == null && thresholdDays == null && keyword == null) {
+            stock = warehouseService.getLotInventory(warehouseId, productId);
+        } else {
+            stock = warehouseService.getLotInventory(warehouseId, productId, status, thresholdDays, keyword);
+        }
         return ApiResponse.success("Danh sách tồn kho theo lô", stock);
     }
 

@@ -607,7 +607,9 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | PUT | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc ADMIN | Chỉ sửa phiếu nhập DRAFT, gửi `version` từ lần đọc gần nhất để chặn ghi đè phiên khác |
 | DELETE | `/warehouse/vouchers/{id}` | `WAREHOUSE_IMPORT` hoặc ADMIN | Chỉ xóa phiếu nhập DRAFT |
 | POST | `/warehouse/vouchers/{id}/adjust` | `WAREHOUSE_ADJUST` hoặc ADMIN | Cùng kho phiếu gốc; bắt buộc lý do; không âm tồn/lô hoặc giảm dưới tồn giữ chỗ; giữ nguyên dòng phiếu gốc |
-| POST | `/warehouse/export` | `WAREHOUSE_EXPORT` hoặc `ROLE_WAREHOUSE_STAFF`, `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Lập phiếu xuất kho (quy về đơn vị cơ sở và kiểm tra tồn kho theo đơn vị cơ sở) |
+| POST | `/warehouse/export` | `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` | Lập phiếu xuất kho (quy về đơn vị cơ sở, gợi ý/áp dụng lô FEFO, trừ đúng tồn của lô đã chọn và kiểm tra tồn kho theo đơn vị cơ sở) (S6-04) |
+| GET | `/warehouse/export/suggest-lot` | `WAREHOUSE_EXPORT` hoặc `WAREHOUSE_VIEW` hoặc `ROLE_ADMIN` | Gợi ý lô xuất theo FEFO (hạn dùng gần nhất còn đủ số lượng) cho sản phẩm tại kho (S6-04) |
+| POST | `/warehouse/export/suggest-lots` | `WAREHOUSE_EXPORT` hoặc `WAREHOUSE_VIEW` hoặc `ROLE_ADMIN` | Gợi ý lô xuất hàng loạt theo FEFO cho danh sách sản phẩm tại kho (S6-04) |
 | POST | `/warehouse/adjust` | `WAREHOUSE_ADJUST` hoặc `ROLE_WAREHOUSE_MANAGER`, `ROLE_ADMIN` | Điều chỉnh tồn kho trực tiếp |
 | GET | `/warehouse/inventory` | `ORDER_CREATE` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền (`ROLE_ADMIN` luôn được phép) | Xem tồn kho sổ sách theo đơn vị cơ sở kèm bảng quy đổi tương đương theo thùng, lốc |
 | GET | `/warehouse/inventory/lots` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Xem danh sách tồn kho chi tiết theo từng Số lô và Hạn sử dụng (S5-04) |
@@ -2651,6 +2653,136 @@ Quy tắc nhất quán khi tính/tạo đơn:
 - Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
 - Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.
 
+### Gợi ý lô xuất theo nguyên tắc FEFO và Xuất kho theo lô (S6-04)
+
+Hệ thống hỗ trợ quản lý xuất kho theo phương pháp FEFO (First Expired, First Out - Hạn sử dụng gần nhất trước), giúp hàng cũ được ưu tiên xuất trước, giảm thiểu tình trạng hàng hóa hết hạn phải tiêu hủy.
+
+#### 1. Nguyên tắc gợi ý lô (FEFO Suggestion)
+- **Mặc định gợi ý lô có hạn sử dụng gần nhất còn đủ số lượng**:
+  - Khi cần xuất một số lượng hàng hóa (quy đổi về đơn vị cơ sở `baseQuantity`), hệ thống rà soát tất cả các lô còn tồn kho (`baseQuantity > 0`) của sản phẩm tại kho chỉ định.
+  - Các lô chưa hết hạn (`expiryDate >= today`) được ưu tiên sắp xếp trước theo thứ tự `expiryDate` tăng dần (ngày hết hạn sớm nhất lên đầu). Nếu cùng hạn sử dụng, ưu tiên lô có ngày sản xuất (`manufacturingDate`) cũ hơn.
+  - Lô đầu tiên có tồn kho đáp ứng đủ số lượng yêu cầu (`lot.baseQuantity >= requestedBaseQuantity`) được chọn làm lô gợi ý mặc định (`suggestedLot`).
+  - Nếu không có lô đơn lẻ nào đủ số lượng yêu cầu, `suggestedLot` trả về `null`, cờ `hasSufficientStock = false`, và `availableLots` trả về toàn bộ danh sách các lô còn hàng sắp xếp theo FEFO để người dùng tham khảo chia dòng hoặc xuất theo từng phần.
+
+#### 2. Quyền chọn lô khác và Bắt buộc nhập lý do
+- Thủ kho có thể chủ động chọn một lô khác (ví dụ: khách hàng yêu cầu lấy lô date xa, hoặc chọn lô gần cửa bốc dỡ):
+  - **Trường hợp chọn đúng lô gợi ý** (hoặc không truyền `lotNumber` để hệ thống tự áp dụng lô gợi ý): Không bắt buộc nhập lý do.
+  - **Trường hợp chọn lô khác với lô gợi ý**: Thủ kho **bắt buộc phải nhập lý do** (qua trường `overrideReason`, bí danh `lotReason`, hoặc `note`). Nếu để trống lý do, hệ thống sẽ từ chối tạo phiếu xuất kho và trả lỗi `400 Bad Request` (`"Thủ kho chọn lô '...' khác với lô gợi ý hạn dùng gần nhất ('...'), bắt buộc phải nhập lý do"`).
+  - Lý do chọn lô và mã lô gợi ý ban đầu được ghi nhận vào dòng phiếu kho (`WarehouseVoucherItem.suggestedLotNumber`, `WarehouseVoucherItem.overrideReason`) để phục vụ kiểm toán và báo cáo.
+
+#### 3. Xuất kho trừ đúng tồn của lô đã chọn & Chặn âm kho
+- Khi ghi sổ phiếu xuất kho (`POST /api/warehouse/export`):
+  - Hệ thống kiểm tra số lượng tồn của lô đã chọn trong bảng `warehouse_lot_inventories`.
+  - Trừ chính xác số lượng xuất quy đổi cơ sở vào tồn của lô đó (`lotInv.subtractBaseQuantity(baseQty)`).
+  - Nếu lô được chọn không đủ tồn (`lotInv.baseQuantity < baseQty`) hoặc lô không tồn tại trong kho: Hệ thống từ chối giao dịch, quăng lỗi `400 Bad Request` và rollback toàn bộ thay đổi.
+  - Đồng thời cập nhật giảm số lượng tồn kho tổng thể của sản phẩm tại kho (`warehouse_inventories.baseQuantity`).
+
+#### 4. Chi tiết Request / Response API Gợi ý lô
+
+##### `GET /api/warehouse/export/suggest-lot`
+- **Quyền**: `WAREHOUSE_EXPORT` hoặc `WAREHOUSE_VIEW` từ ma trận phân quyền, hoặc `ROLE_ADMIN`. Kiểm tra phạm vi kho phân công.
+- **Query Params**:
+  - `warehouseId` (Long, bắt buộc): ID kho xuất hàng.
+  - `productId` (Long, bắt buộc): ID sản phẩm cần xuất.
+  - `quantity` (BigDecimal, tùy chọn, mặc định 1): Số lượng cần xuất.
+  - `unit` (String, tùy chọn): Đơn vị tính (nếu bỏ trống dùng đơn vị cơ sở).
+
+**Ví dụ Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "message": "Gợi ý lô xuất kho theo FEFO",
+  "data": {
+    "warehouseId": 1,
+    "warehouseCode": "KHO-HCM",
+    "warehouseName": "Kho Hồ Chí Minh",
+    "productId": 10,
+    "productCode": "SP-SUA-100",
+    "productName": "Sữa tươi tiệt trùng 1L",
+    "manageLot": true,
+    "requestedQuantity": 10.0,
+    "requestedUnit": "lon",
+    "requestedBaseQuantity": 10.0,
+    "baseUnit": "lon",
+    "suggestedLot": {
+      "lotId": 2,
+      "lotNumber": "LOT-2026-B",
+      "expiryDate": "2026-11-20",
+      "manufacturingDate": "2026-10-10",
+      "availableQuantity": 20.0,
+      "baseUnit": "lon",
+      "isExpired": false,
+      "daysUntilExpiry": 29,
+      "sufficientForRequest": true
+    },
+    "availableLots": [
+      {
+        "lotId": 1,
+        "lotNumber": "LOT-2026-A",
+        "expiryDate": "2026-11-01",
+        "manufacturingDate": "2026-09-20",
+        "availableQuantity": 5.0,
+        "baseUnit": "lon",
+        "isExpired": false,
+        "daysUntilExpiry": 10,
+        "sufficientForRequest": false
+      },
+      {
+        "lotId": 2,
+        "lotNumber": "LOT-2026-B",
+        "expiryDate": "2026-11-20",
+        "manufacturingDate": "2026-10-10",
+        "availableQuantity": 20.0,
+        "baseUnit": "lon",
+        "isExpired": false,
+        "daysUntilExpiry": 29,
+        "sufficientForRequest": true
+      }
+    ],
+    "hasSufficientStock": true,
+    "message": "Gợi ý xuất lô 'LOT-2026-B' (hạn dùng gần nhất còn đủ số lượng)"
+  }
+}
+```
+
+##### `POST /api/warehouse/export/suggest-lots`
+- **Quyền**: `WAREHOUSE_EXPORT` hoặc `WAREHOUSE_VIEW` hoặc `ROLE_ADMIN`.
+- **Request Body**:
+```json
+{
+  "warehouseId": 1,
+  "items": [
+    {
+      "productId": 10,
+      "quantity": 10,
+      "unit": "lon"
+    }
+  ]
+}
+```
+- **Response**: Trả về danh sách `List<LotSuggestionResponse>` cho từng mặt hàng.
+
+##### `POST /api/warehouse/export`
+- **Quyền**: `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`. Kiểm tra phạm vi kho phân công.
+- **Request Body** (Ví dụ khi thủ kho chọn lô khác và nhập lý do):
+```json
+{
+  "warehouseId": 1,
+  "type": "EXPORT",
+  "voucherCode": "PXK-202610-001",
+  "note": "Xuất hàng giao đại lý",
+  "items": [
+    {
+      "productId": 10,
+      "quantity": 10,
+      "unit": "lon",
+      "lotNumber": "LOT-2026-C",
+      "overrideReason": "Khách hàng yêu cầu date xa để vận chuyển tỉnh"
+    }
+  ]
+}
+```
+- **Response**: Trả về `WarehouseVoucherResponse` chứa `suggestedLotNumber` và `overrideReason` trên từng dòng sản phẩm.
 
 ### S6-01 - Theo dõi Lô và Hạn sử dụng của Hàng hoá (Backend) - 22/10/2026
 

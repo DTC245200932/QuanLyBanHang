@@ -6,7 +6,7 @@
  * 2. Gửi file lên backend để kiểm tra và xem trước từng dòng.
  * 3. Xác nhận một lần để backend tạo mới/cập nhật các dòng hợp lệ.
  */
-(() => {
+(async () => {
   "use strict";
 
   const $ = (id) => document.getElementById(id);
@@ -119,7 +119,7 @@
   }
 
   function openModal() {
-    if (!Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN")) return;
+    if (!Auth.hasPermission("PRODUCT_CREATE") || !Auth.hasPermission("PRODUCT_EDIT")) return;
     state.previousFocus = document.activeElement;
     state.previousOverflow = document.body.style.overflow;
     resetFlow();
@@ -390,7 +390,7 @@
   function init() {
     if (initialized || !$("import-excel-modal")) return;
     initialized = true;
-    $("btn-import-excel").hidden = !Auth.hasAnyRole("ROLE_SALES_MANAGER", "ROLE_ADMIN");
+    $("btn-import-excel").hidden = !Auth.hasPermission("PRODUCT_CREATE") || !Auth.hasPermission("PRODUCT_EDIT");
     wireEvents();
     setStep("upload");
   }

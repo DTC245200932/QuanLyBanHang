@@ -1,15 +1,19 @@
 /** S3-05: tra cứu và khai báo hạn mức công nợ theo đại lý. */
-(() => {
+ (async () => {
   "use strict";
   if (new URLSearchParams(location.search).get("view") !== "debt-limits") return;
   if (!Auth.requireLogin()) return;
+  // Quyền có thể vừa được cập nhật trong ma trận khi tab này vẫn đang mở.
+  // Đồng bộ phiên trước khi kiểm tra menu và quyền khai báo để tránh hiện giao diện
+  // nhưng gọi API bằng permissions cũ.
+  await Auth.refreshPermissions();
   if (!MenuConfig.getMenuForUser(Auth.getUser()).some(item => item.id === "debt-limits")) {
     location.href = "/error?status=403";
     return;
   }
 
   // Quản trị viên có toàn quyền theo ma trận quyền và backend FinanceController.
-  const canDeclare = Auth.hasPermission("FINANCE_MANAGE");
+  let canDeclare = Auth.hasPermission("FINANCE_MANAGE");
   const $ = id => document.getElementById(id);
   const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -286,4 +290,10 @@
     }
   });
   loadLimits();
+window.addEventListener("auth:permissions-changed", () => {
+    canDeclare = Auth.hasPermission("FINANCE_MANAGE");
+    $("debt-limits-readonly").hidden = canDeclare;
+    if (!canDeclare) closeDeclaration();
+    render();
+  });
 })();

@@ -120,7 +120,8 @@ public class DemoDataSeeder {
                 new DemoUser("warehouse.manager", "Quản lý kho Demo", ERole.ROLE_WAREHOUSE_MANAGER),
                 new DemoUser("warehouse.demo", "Thủ kho Demo", ERole.ROLE_WAREHOUSE_STAFF),
                 new DemoUser("accountant.demo", "Kế toán Demo", ERole.ROLE_ACCOUNTANT),
-                new DemoUser("viewer.demo", "Người xem Demo", ERole.ROLE_VIEWER));
+                new DemoUser("viewer.demo", "Người xem Demo", ERole.ROLE_VIEWER),
+                new DemoUser("dealer.demo", "Đại lý Minh Phát Demo", ERole.ROLE_DEALER));
         for (DemoUser account : accounts) {
             if (users.existsByUsername(account.username())) continue;
             Role role = roles.findByName(account.role())
@@ -237,6 +238,10 @@ public class DemoDataSeeder {
             deliveryPoint(dealer, dealer.getName(), dealer.getAddress(), "0900000001");
         }
         deliveryPoint(customers.get("cap1"), "Kho phụ Minh Phát (Demo)", "50 Võ Văn Kiệt, TP.HCM (Demo)", "0900000002");
+        users.findByUsername("dealer.demo").ifPresent(dealerUser -> {
+            dealerUser.setDealer(customers.get("cap1"));
+            users.save(dealerUser);
+        });
         return customers;
     }
 
@@ -351,11 +356,19 @@ public class DemoDataSeeder {
 
     private void importStock(String code, Warehouse warehouse, Supplier supplier, List<WarehouseVoucherItemRequest> items) {
         if (vouchers.existsByVoucherCode(code)) return;
-        WarehouseVoucherResponse response = warehouseService.importGoods(WarehouseVoucherRequest.builder()
-                .voucherCode(code).warehouseId(warehouse.getId()).note(NOTE).items(items).build(), ACTOR);
-        WarehouseVoucher voucher = vouchers.findById(response.getId()).orElseThrow();
-        voucher.setSupplier(supplier);
-        vouchers.save(voucher);
+        // The opt-in startup job uses an explicit bootstrap context, never an API permission fallback.
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var bootstrap = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        bootstrap.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                ACTOR, "", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        try {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(bootstrap);
+            warehouseService.importGoods(WarehouseVoucherRequest.builder().voucherCode(code).warehouseId(warehouse.getId())
+                    .supplierId(supplier.getId()).documentNumber(code).voucherDate(LocalDateTime.now())
+                    .note(NOTE).items(items).build(), ACTOR);
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(previous);
+        }
     }
 
     private void createOrders(Scope scope, Catalog catalog, Map<String, Dealer> customers, Map<CustomerGroup, PriceList> prices) {
@@ -386,6 +399,22 @@ public class DemoDataSeeder {
 
     private void seedOrder(String code, Dealer dealer, Map<CustomerGroup, PriceList> prices,
                            List<OrderItemRequest> items, String outcome, Warehouse warehouse) {
+        // Trusted startup-only seed, never an HTTP authorization fallback.
+        // Give bootstrap its explicit ADMIN context and always restore the caller.
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var bootstrap = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        bootstrap.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                ACTOR, "", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        try {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(bootstrap);
+            seedOrderAsBootstrap(code, dealer, prices, items, outcome, warehouse);
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.setContext(previous);
+        }
+    }
+
+    private void seedOrderAsBootstrap(String code, Dealer dealer, Map<CustomerGroup, PriceList> prices,
+                                     List<OrderItemRequest> items, String outcome, Warehouse warehouse) {
         // Chỉ chuyển trạng thái/ghi phiếu xuất trong lần tạo đầu tiên.
         if (orders.existsByOrderCode(code)) return;
         if (!Boolean.TRUE.equals(dealer.getActive()) || Boolean.TRUE.equals(dealer.getLocked())) return;

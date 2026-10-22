@@ -29,6 +29,14 @@ public class DealerResponse {
     private String territoryCode;
     private String territoryName;
 
+    // Warehouse info (S4-03 & S5-03: kho phục vụ mặc định)
+    private Long warehouseId;
+    private String warehouseCode;
+    private String warehouseName;
+    private Long defaultWarehouseId;
+    private String defaultWarehouseCode;
+    private String defaultWarehouseName;
+
     // Assigned User info
     private Long assignedUserId;
     private String assignedUsername;
@@ -45,6 +53,14 @@ public class DealerResponse {
     private Boolean hasOverdueDebt;
     private Boolean isBlockedDueToDebt;
     private Integer maxOverdueDays;
+
+    /** Thông tin gắn cờ rủi ro công nợ tự động (S7-04). */
+    private Boolean debtFlagged;
+    private com.quanlybanhang.model.DebtFlagType debtFlagType;
+    private String debtFlagReason;
+    private LocalDateTime debtFlaggedAt;
+    private LocalDateTime lastDebtEvaluatedAt;
+    private com.quanlybanhang.model.DebtFlagAction debtActionConfig;
 
     /** Trạng thái khoá giao dịch (S3-07): true = Bị khoá, false = Đang mở */
     private Boolean locked;
@@ -65,4 +81,3 @@ public class DealerResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

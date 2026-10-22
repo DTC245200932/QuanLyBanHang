@@ -65,6 +65,9 @@ class PriceListControllerTest {
     @MockBean
     private JwtUtils jwtUtils;
 
+    @MockBean
+    private com.quanlybanhang.repository.UserRepository userRepository;
+
     @BeforeEach
     void setUp() throws Exception {
         objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
@@ -84,7 +87,7 @@ class PriceListControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("GET /api/price-lists trả về danh sách bảng giá cho Sales -> 200 OK")
     void getAllPriceLists_Authenticated_Returns200() throws Exception {
         PriceListResponse resp = PriceListResponse.builder()
@@ -104,7 +107,7 @@ class PriceListControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("POST /api/price-lists bởi Quản lý kinh doanh -> 201 Created")
     void createPriceList_SalesManager_Returns201() throws Exception {
         PriceListRequest req = PriceListRequest.builder()
@@ -145,7 +148,7 @@ class PriceListControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_user", roles = "SALES")
+    @WithMockUser(username = "sales_user", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("POST /api/price-lists bởi Nhân viên kinh doanh -> 403 Forbidden (chỉ Sales Manager & Admin)")
     void createPriceList_Sales_Returns403() throws Exception {
         PriceListRequest req = PriceListRequest.builder()
@@ -163,7 +166,7 @@ class PriceListControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("PUT /api/price-lists/{id} khi bảng giá đã phát sinh đơn -> 400 Bad Request (PriceListLockedException)")
     void updatePriceList_WhenLocked_Returns400() throws Exception {
         PriceListRequest req = PriceListRequest.builder()
@@ -186,7 +189,7 @@ class PriceListControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales_mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales_mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("POST /api/price-lists/{id}/new-version tạo phiên bản mới thành công -> 201 Created")
     void createNewVersion_SalesManager_Returns201() throws Exception {
         PriceListNewVersionRequest req = PriceListNewVersionRequest.builder().build();

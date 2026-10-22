@@ -14,23 +14,18 @@
  *   GET  /dealers/{id}/purchase-history?months=3  → lịch sử mua 3 tháng
  *   GET  /dealers/active                       → đại lý đang hoạt động
  *   GET  /dealers/{id}/delivery-points         → điểm giao hàng của đại lý
- *   GET  /products?search={q}&active=true      → tìm sản phẩm
+ *   GET  /products/lookup?search={q}&active=true → tìm sản phẩm tham chiếu
  *   GET  /products/{id}/unit-conversions       → đơn vị tính quy đổi
  *   GET  /price-lists/effective                → bảng giá hiệu lực theo nhóm đại lý
  *   POST /orders/calculate                     → áp giá và tính chiết khấu toàn bộ đơn
+ *   POST /orders/check-inventory               → kiểm tra tồn khả dụng theo dòng hàng (S4-03)
  *   POST /orders                               → tạo đơn hàng
  */
-(() => {
+ (async () => {
   /* ── Auth guard ─────────────────────────────────────────── */
   if (!Auth.requireLogin()) return;
+  await Auth.refreshPermissions();
 
-  if (!Auth.hasAnyRole(
-    'ROLE_ADMIN', 'ROLE_SALES_MANAGER', 'ROLE_SALES',
-    'ROLE_WAREHOUSE_MANAGER', 'ROLE_WAREHOUSE_STAFF',
-  )) {
-    location.href = '/error?status=403';
-    return;
-  }
   if (!Auth.hasPermission('ORDER_CREATE')) {
     location.href = '/error?status=403';
     return;
@@ -57,11 +52,7 @@
     dealers: [],        // list of active dealers
     deliveryPoints: [], // list of delivery points for selected dealer
     selectedDealer: null,
-    warehouseOptions: [], // danh sách kho hoạt động (S5-06)
-    selectedWarehouseId: null, // kho phục vụ đang chọn
-    inventoryMap: new Map(), // productId → { physicalBase, reservedBase, availableBase, baseUnit }
-    inventoryLoading: false,
-    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, floorPrice, manualPrice, discountAmount }
+    items: [],          // { productId, sku, name, unitConversions, selectedUnit, qty, unitPrice, floorPrice, manualPrice, discountAmount, inventory }
     productCache: {},   // productId → { unitConversions }
     priceList: null,    // bảng giá hiệu lực theo nhóm đại lý
     priceListError: '', // lý do không thể áp giá cho đại lý hiện tại
@@ -75,6 +66,8 @@
   };
 
   let pricingRequestId = 0;
+  let debtCheckRequestId = 0;
+  let debtCheckTimer = null;
 
   /* ── Layout: Sidebar ─────────────────────────────────────── */
   (function initLayout() {
@@ -156,80 +149,6 @@
     });
   }
 
-  /* ── Warehouse & Inventory (S5-06) ───────────────────────── */
-  async function loadWarehouseOptions() {
-    const sel = $('co-warehouse');
-    if (!sel) return;
-    if (typeof OrderInventory === 'undefined' || !OrderInventory.fetchWarehouseOptions) return;
-    try {
-      const warehouses = await OrderInventory.fetchWarehouseOptions();
-      state.warehouseOptions = Array.isArray(warehouses) ? warehouses : [];
-      populateWarehouseSelect();
-    } catch {
-      state.warehouseOptions = [];
-    }
-  }
-
-  function populateWarehouseSelect() {
-    const sel = $('co-warehouse');
-    if (!sel) return;
-    const currentVal = sel.value;
-    sel.innerHTML = '<option value="">— Chọn kho phục vụ —</option>';
-    state.warehouseOptions.forEach((w) => {
-      const opt = document.createElement('option');
-      opt.value = w.id;
-      opt.textContent = `${w.code ? w.code + ' — ' : ''}${w.name}`;
-      sel.appendChild(opt);
-    });
-    if (currentVal) sel.value = currentVal;
-  }
-
-  async function selectServingWarehouse(warehouseId) {
-    state.selectedWarehouseId = warehouseId ? Number(warehouseId) : null;
-    const sel = $('co-warehouse');
-    if (sel && warehouseId) sel.value = String(warehouseId);
-
-    const badge = $('co-dealer-warehouse-badge');
-    if (badge) {
-      if (warehouseId) {
-        const found = state.warehouseOptions.find((w) => Number(w.id) === Number(warehouseId));
-        badge.textContent = `Kho: ${found ? found.name : `Kho #${warehouseId}`}`;
-        badge.hidden = false;
-      } else {
-        badge.hidden = true;
-      }
-    }
-
-    if (state.selectedWarehouseId) {
-      await loadWarehouseInventory(state.selectedWarehouseId);
-    } else {
-      state.inventoryMap = new Map();
-      renderItems();
-    }
-  }
-
-  async function loadWarehouseInventory(warehouseId) {
-    if (typeof OrderInventory === 'undefined') return;
-    state.inventoryLoading = true;
-    try {
-      const [inventoryList, ordersList] = await Promise.all([
-        OrderInventory.fetchWarehouseInventory(warehouseId),
-        OrderInventory.fetchActiveOrders(),
-      ]);
-      state.inventoryMap = OrderInventory.buildInventoryMap(inventoryList, ordersList);
-    } catch {
-      state.inventoryMap = new Map();
-    } finally {
-      state.inventoryLoading = false;
-      renderItems();
-    }
-  }
-
-  $('co-warehouse')?.addEventListener('change', async (e) => {
-    const val = e.target.value;
-    await selectServingWarehouse(val ? Number(val) : null);
-  });
-
   /* ── Dealer selection ────────────────────────────────────── */
   $('co-dealer').addEventListener('change', selectDealer);
 
@@ -246,7 +165,6 @@
       infoStrip.hidden = false;
     } else {
       infoStrip.hidden = true;
-      $('co-dealer-warehouse-badge').hidden = true;
       // Hide purchase history when no dealer is selected
       $('co-history-section').hidden = true;
       $('btn-add-all-history').hidden = true;
@@ -262,6 +180,8 @@
     state.debtInfo = null;
     state.debtBlocked = false;
     state.debtNeedsApproval = false;
+    debtCheckRequestId += 1;
+    clearTimeout(debtCheckTimer);
     $('co-debt-panel').hidden = true;
     state.debtError = '';
     state.priceListError = '';
@@ -271,28 +191,18 @@
     state.dealerLoading = true;
 
     if (dealerData) {
-      const user = Auth.getUser?.() ?? null;
-      let servingWarehouse = null;
-      if (typeof OrderInventory !== 'undefined' && OrderInventory.resolveServingWarehouse) {
-        servingWarehouse = OrderInventory.resolveServingWarehouse(dealerData, user, state.warehouseOptions);
-      }
-      const warehouseIdToUse = servingWarehouse?.id || dealerData.warehouseId || state.selectedWarehouseId;
-
       await Promise.all([
         loadDeliveryPoints(dealerData.id),
         loadEffectivePriceList(dealerData.customerGroup),
         loadDebtInfo(dealerData.id),
         loadPurchaseHistory(dealerData.id),
-        warehouseIdToUse ? selectServingWarehouse(warehouseIdToUse) : Promise.resolve(),
       ]);
-    } else {
-      state.inventoryMap = new Map();
-      renderItems();
     }
     if (state.selectedDealer?.id !== dealerData?.id) return;
     state.dealerLoading = false;
     syncItemPrices();
     await refreshPricingPreview();
+    await refreshInventoryPreview();
   }
 
   async function loadDeliveryPoints(dealerId) {
@@ -385,7 +295,7 @@
     }
   }
 
-  function updateDebtPanel() {
+  function updateDebtPanel({ recalculateApproval = true } = {}) {
     const panel = $('co-debt-panel');
     const alertEl = $('co-debt-alert');
     const info = state.debtInfo;
@@ -426,8 +336,8 @@
     // Quá hạn quá số ngày cho phép → chặn hoàn toàn
     state.debtBlocked = Boolean(info.isBlocked || info.hasOverdueDebt);
 
-    // Kiểm tra cần duyệt
-    checkDebtApproval();
+    // Khi chưa có kết quả server mới nhất, dùng phép tính tạm thời để phản hồi ngay.
+    if (recalculateApproval) checkDebtApproval();
 
     // Cập nhật thông báo
     if (state.debtBlocked) {
@@ -468,10 +378,64 @@
   }
 
   function syncBlockedState() {
-    const blocked = state.debtBlocked;
-    $('co-product-search').disabled = blocked;
-    $('btn-save-draft').disabled = blocked;
-    $('btn-submit-order').disabled = blocked;
+    const inventoryBlocked = state.items.some((item) =>
+      item.inventoryLoading || item.inventoryError || item.inventory?.valid === false);
+    $('co-product-search').disabled = state.debtBlocked;
+    $('btn-save-draft').disabled = state.debtBlocked;
+    $('btn-submit-order').disabled = state.debtBlocked || inventoryBlocked;
+  }
+
+  function getCurrentOrderTotal() {
+    return state.items.reduce((total, item) => total
+      + Math.max(0, item.qty * item.unitPrice - (item.discountAmount || 0)), 0);
+  }
+
+  function scheduleDebtCheck() {
+    clearTimeout(debtCheckTimer);
+    if (!state.selectedDealer || !state.debtInfo || state.debtError || state.debtBlocked) return;
+    debtCheckTimer = setTimeout(() => refreshDebtCheck(), 250);
+  }
+
+  async function refreshDebtCheck() {
+    const dealerId = state.selectedDealer?.id;
+    if (!dealerId || !state.debtInfo || state.debtError || state.debtBlocked) return;
+
+    const requestId = ++debtCheckRequestId;
+    try {
+      const res = await Auth.apiFetch('/orders/check-debt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dealerId: Number(dealerId),
+          orderAmount: getCurrentOrderTotal(),
+        }),
+      });
+      const result = await res.json().catch(() => null);
+      if (requestId !== debtCheckRequestId || state.selectedDealer?.id !== dealerId) return;
+      if (!res.ok || !result?.success || !result.data) {
+        throw new Error(result?.message || 'Không kiểm tra được hạn mức công nợ. Vui lòng thử lại.');
+      }
+
+      const check = result.data;
+      state.debtInfo = {
+        ...state.debtInfo,
+        currentDebt: check.currentDebt,
+        debtLimit: check.debtLimit,
+        remainingLimit: check.remainingLimit,
+        hasOverdueDebt: check.hasOverdueDebt,
+        isBlocked: check.isBlocked,
+        blockReason: check.blockReason,
+      };
+      state.debtNeedsApproval = Boolean(check.requiresApproval || check.exceedsLimit);
+      state.debtError = '';
+      updateDebtPanel({ recalculateApproval: false });
+    } catch (error) {
+      if (requestId !== debtCheckRequestId || state.selectedDealer?.id !== dealerId) return;
+      // Không cho chốt đơn khi chưa xác nhận được trạng thái công nợ từ server.
+      state.debtError = error.message || 'Không kiểm tra được hạn mức công nợ. Vui lòng thử lại.';
+      state.debtBlocked = true;
+      updateDebtPanel({ recalculateApproval: false });
+    }
   }
 
   /* ── Group badge ─────────────────────────────────────────── */
@@ -502,6 +466,13 @@
     const body = $('co-history-body');
     const addAllBtn = $('btn-add-all-history');
 
+    if (!Auth.hasPermission('ORDER_VIEW')) {
+      section.hidden = true;
+      body.innerHTML = '';
+      addAllBtn.hidden = true;
+      historyItems = [];
+      return;
+    }
     section.hidden = false;
     addAllBtn.hidden = true;
     historyItems = [];
@@ -510,7 +481,7 @@
     try {
       const res = await Auth.apiFetch(`/dealers/${dealerId}/purchase-history?months=3`);
       // Guard: dealer changed while fetching
-      if (state.selectedDealer?.id !== dealerId) return;
+      if (state.selectedDealer?.id !== dealerId || !Auth.hasPermission('ORDER_VIEW')) return;
 
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Không tải được lịch sử mua hàng');
@@ -568,7 +539,7 @@
     });
 
     // Show "add all" button only if there's anything not yet added
-    const hasUnadded = historyItems.some((i) => !currentProductIds.has(i.productId));
+    const hasUnadded = historyItems.some((i) => i.inLastOrder && !currentProductIds.has(i.productId));
     addAllBtn.hidden = !hasUnadded;
   }
 
@@ -577,59 +548,29 @@
    * Uses avgQty (rounded, min 1) as default quantity suggestion.
    */
   async function addHistoryProduct(hItem) {
-    // If already in order, just bump qty by avg
-    const existing = state.items.find((it) => it.productId === hItem.productId);
-    if (existing) {
-      const bump = Math.max(1, Math.round(hItem.avgQty || 1));
-      existing.qty += bump;
-      renderItems();
-      updateSummary();
-      refreshPricingPreview();
-      showToast(`Đã tăng số lượng «${hItem.name}» lên ${existing.qty}.`, 'success');
-      return;
-    }
-
-    // Fetch product details + unit conversions
     try {
-      const [prodRes, unitsRes] = await Promise.all([
-        Auth.apiFetch(`/products/${hItem.productId}`),
-        Auth.apiFetch(`/products/${hItem.productId}/unit-conversions`),
-      ]);
-      const [prodResult, unitsResult] = await Promise.all([
-        prodRes.json(),
-        unitsRes.json(),
-      ]);
-
-      if (!prodRes.ok || !prodResult.success) throw new Error('Không tải được thông tin sản phẩm');
-
-      const product = prodResult.data;
-      let units = [{ id: null, unitName: product.unit || 'cái', conversionFactor: 1 }];
-      if (unitsRes.ok && unitsResult.success && Array.isArray(unitsResult.data) && unitsResult.data.length) {
-        units = unitsResult.data;
-        state.productCache[product.id] = units;
+      const res = await Auth.apiFetch(`/products/lookup/${hItem.productId}`);
+      const result = await res.json();
+      if (!res.ok || !result.success || result.data.active === false) {
+        throw new Error(result.message || 'Sản phẩm đã ngừng kinh doanh');
       }
-
-      const suggestedQty = Math.max(1, Math.round(hItem.avgQty || 1));
-      const item = {
-        _key: ++itemSeq,
-        productId: product.id,
-        sku: product.sku || product.code || '',
-        name: product.name,
-        unitConversions: units,
-        selectedUnit: units[0],
-        qty: suggestedQty,
-        basePrice: Number(product.sellingPrice || product.price || 0),
-        unitPrice: 0,
-        discountAmount: 0,
-      };
+      const existing = state.items.find((item) => item.productId === hItem.productId);
+      const previousQuantity = existing?.qty || 0;
+      await addItem(result.data);
+      const item = state.items.find((line) => line.productId === hItem.productId);
+      if (!item) return;
+      const historicalUnit = hItem.lastOrderUnit || hItem.unit;
+      const unit = item.unitConversions.find((value) => value.unitName === historicalUnit);
+      if (!existing && unit) item.selectedUnit = unit;
+      item.qty = previousQuantity + Math.max(1, Number(hItem.lastOrderQuantity || hItem.avgQty || 1));
       item.unitPrice = getUnitPrice(item);
-      state.items.push(item);
+      item.floorPrice = getUnitFloorPrice(item);
       renderItems();
       updateSummary();
-      refreshPricingPreview();
-      showToast(`Đã thêm «${product.name}» (SL: ${suggestedQty}) vào đơn.`, 'success');
-    } catch (err) {
-      showToast(err.message || 'Không thêm được sản phẩm từ lịch sử.', 'error');
+      scheduleInventoryCheck(item, true);
+      await refreshPricingPreview();
+    } catch (error) {
+      showToast(error.message, 'error');
     }
   }
 
@@ -638,7 +579,7 @@
     const btn = $('btn-add-all-history');
     btn.disabled = true;
     const currentIds = new Set(state.items.map((it) => it.productId));
-    const toAdd = historyItems.filter((i) => !currentIds.has(i.productId));
+    const toAdd = historyItems.filter((i) => i.inLastOrder && !currentIds.has(i.productId));
     for (const hItem of toAdd) {
       await addHistoryProduct(hItem);
     }
@@ -688,7 +629,7 @@
     dropdown.hidden = false;
     dropdown.innerHTML = '<div class="co-dropdown-loading">Đang tìm…</div>';
     try {
-      const res = await Auth.apiFetch(`/products?search=${encodeURIComponent(q)}&active=true&size=30`);
+      const res = await Auth.apiFetch(`/products/lookup?search=${encodeURIComponent(q)}&active=true&size=30`);
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Lỗi tìm kiếm');
       const products = Array.isArray(result.data)
@@ -757,6 +698,7 @@
       renderItems();
       updateSummary();
       refreshPricingPreview();
+      scheduleInventoryCheck(existing);
       showToast(`Đã tăng số lượng «${product.name}» lên ${existing.qty}.`, 'success');
       return;
     }
@@ -798,6 +740,7 @@
     renderItems();
     updateSummary();
     refreshPricingPreview();
+    scheduleInventoryCheck(item);
   }
 
   function removeItem(key) {
@@ -835,44 +778,6 @@
 
       const lineTotal = calcLineTotal(item);
 
-      // Tính thông tin tồn khả dụng cho sản phẩm và đơn vị hiện tại (S5-06)
-      let stockHtml = '<td class="col-stock" style="text-align:right"><span class="co-stock-badge co-stock-badge--ok">—</span></td>';
-      let isOverStock = false;
-      let stockInfo = null;
-
-      if (typeof OrderInventory !== 'undefined' && OrderInventory.getProductStockInfo) {
-        const factor = Number(item.selectedUnit?.conversionFactor ?? item.selectedUnit?.conversionRate ?? 1) || 1;
-        stockInfo = OrderInventory.getProductStockInfo(state.inventoryMap, item.productId, factor);
-
-        let badgeClass = 'co-stock-badge--ok';
-        let stockLabel = `${stockInfo.availableInUnit} ${escHtml(item.selectedUnit?.unitName || 'cái')}`;
-        if (stockInfo.isOutOfStock) {
-          badgeClass = 'co-stock-badge--out';
-          stockLabel = 'Hết hàng (0)';
-        } else if (stockInfo.isLowStock) {
-          badgeClass = 'co-stock-badge--low';
-        }
-
-        const detailText = `Thực tế: ${stockInfo.physicalBase} | Giữ chỗ: ${stockInfo.reservedBase} ${escHtml(stockInfo.baseUnit)}`;
-
-        stockHtml = `
-          <td class="col-stock" style="text-align:right">
-            <div class="co-stock-display">
-              <span class="co-stock-badge ${badgeClass}" title="Tồn khả dụng">${stockLabel}</span>
-              <span class="co-stock-detail">${detailText}</span>
-            </div>
-          </td>
-        `;
-
-        if (state.selectedWarehouseId && item.qty > stockInfo.availableInUnit) {
-          isOverStock = true;
-        }
-      }
-
-      if (isOverStock) {
-        row.classList.add('co-item-row--overstock');
-      }
-
       row.innerHTML = `
         <td><span class="co-sku-badge">${escHtml(item.sku)}</span></td>
         <td style="min-width:160px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(item.name)}</td>
@@ -881,15 +786,14 @@
             ${unitOptions}
           </select>
         </td>
-        ${stockHtml}
+        <td data-stock>
+          <div class="co-stock-display">
+            <span class="co-stock-detail">Đang kiểm tra…</span>
+          </div>
+        </td>
         <td class="co-qty-cell" style="text-align:right">
           <input class="co-qty-input" type="number" data-field="qty" min="1" step="1" value="${item.qty}" />
-          ${isOverStock ? `
-            <div class="co-qty-alert">
-              <span class="co-qty-alert__msg">Vượt tồn (còn ${stockInfo.availableInUnit})</span>
-              <button type="button" class="btn-suggest-max" data-action="set-max" data-key="${item._key}">Đặt tối đa ${stockInfo.availableInUnit}</button>
-            </div>
-          ` : ''}
+          <div class="co-qty-alert" data-qty-alert hidden></div>
         </td>
         <td style="text-align:right">
           <input class="co-price-input" type="number" data-field="price" data-price min="0" step="1" value="${escHtml(item.unitPrice)}" aria-label="Đơn giá ${escHtml(item.name)}" />
@@ -909,44 +813,27 @@
       // Delete
       row.querySelector('.co-del-btn').addEventListener('click', () => removeItem(item._key));
 
-      // Nút đặt số lượng tối đa còn đặt được
-      row.querySelector('.btn-suggest-max')?.addEventListener('click', () => {
-        if (stockInfo) {
-          item.qty = Math.max(1, stockInfo.availableInUnit);
-          const qtyInput = row.querySelector('[data-field="qty"]');
-          if (qtyInput) qtyInput.value = item.qty;
-          refreshRowTotal(row, item);
-          updateSummary();
-          updateApprovalNotice();
-          saveDraftSilently();
-          refreshPricingPreview();
-          renderItems();
-        }
-      });
-
       // Qty
       row.querySelector('[data-field="qty"]').addEventListener('input', (e) => {
         const quantity = Number(e.target.value);
         if (!e.target.value || !Number.isFinite(quantity) || quantity <= 0) return;
         item.qty = quantity;
         refreshRowTotal(row, item);
+        scheduleInventoryCheck(item);
         updateSummary();
         updateApprovalNotice();
         saveDraftSilently();
         refreshPricingPreview();
-        if (stockInfo) {
-          row.classList.toggle('co-item-row--overstock', item.qty > stockInfo.availableInUnit);
-        }
       });
       row.querySelector('[data-field="qty"]').addEventListener('change', (e) => {
         item.qty = Math.max(1, Number(e.target.value) || 1);
         e.target.value = item.qty;
         refreshRowTotal(row, item);
+        scheduleInventoryCheck(item, true);
         updateSummary();
         updateApprovalNotice();
         saveDraftSilently();
         refreshPricingPreview();
-        renderItems();
       });
 
       // Cho phép sửa giá thủ công; backend sẽ đánh dấu đơn chờ duyệt nếu thấp hơn giá sàn.
@@ -982,15 +869,152 @@
           item.unitPrice = getUnitPrice(item);
           item.floorPrice = getUnitFloorPrice(item);
           refreshRowTotal(row, item);
+          scheduleInventoryCheck(item, true);
           updateSummary();
           refreshPricingPreview();
-          renderItems();
         }
         saveDraftSilently();
       });
 
+      renderInventoryState(row, item);
       tbody.insertBefore(row, emptyRow);
     });
+  }
+
+  function formatQuantity(value) {
+    return Number(value || 0).toLocaleString('vi-VN', {
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function getInventoryUnit(item) {
+    return item.selectedUnit?.unitName || item.selectedUnit?.unit || 'cái';
+  }
+
+  function renderInventoryState(row, item) {
+    const stockCell = row?.querySelector('[data-stock]');
+    const qtyInput = row?.querySelector('[data-field="qty"]');
+    const alert = row?.querySelector('[data-qty-alert]');
+    if (!stockCell || !qtyInput || !alert) return;
+
+    let stockMarkup = '<div class="co-stock-display"><span class="co-stock-detail">Chưa kiểm tra</span></div>';
+    const inventory = item.inventory;
+    const isOverstock = Boolean(inventory && inventory.valid === false);
+
+    if (item.inventoryLoading) {
+      stockMarkup = '<div class="co-stock-display"><span class="co-stock-detail">Đang kiểm tra…</span></div>';
+    } else if (item.inventoryError) {
+      stockMarkup = `<div class="co-stock-display"><span class="co-stock-detail">${escHtml(item.inventoryError)}</span></div>`;
+    } else if (inventory) {
+      const available = Number(inventory.availableInUnit ?? 0);
+      const badgeClass = available <= 0
+        ? 'co-stock-badge--out'
+        : (isOverstock ? 'co-stock-badge--low' : 'co-stock-badge--ok');
+      const unit = inventory.unit || getInventoryUnit(item);
+      stockMarkup = `
+        <div class="co-stock-display">
+          <span class="co-stock-badge ${badgeClass}">${formatQuantity(available)} ${escHtml(unit)}</span>
+          <span class="co-stock-detail">Thực tế ${formatQuantity(inventory.physicalQuantity)} · Giữ chỗ ${formatQuantity(inventory.reservedQuantity)}</span>
+        </div>
+      `;
+    }
+
+    stockCell.innerHTML = stockMarkup;
+    row.classList.toggle('co-item-row--overstock', isOverstock);
+    syncBlockedState();
+    qtyInput.classList.toggle('co-qty-input--error', isOverstock);
+    alert.hidden = !isOverstock;
+    alert.innerHTML = '';
+
+    if (isOverstock) {
+      const maxAllowed = Math.max(0, Number(inventory.maxAllowedInUnit || 0));
+      const message = inventory.message || `Vượt tồn khả dụng. Tối đa ${formatQuantity(maxAllowed)} ${getInventoryUnit(item)}.`;
+      alert.innerHTML = `<span class="co-qty-alert__msg">${escHtml(message)}</span>`;
+      if (maxAllowed > 0) {
+        const suggestButton = document.createElement('button');
+        suggestButton.type = 'button';
+        suggestButton.className = 'btn-suggest-max';
+        suggestButton.textContent = `Đặt tối đa ${formatQuantity(maxAllowed)}`;
+        suggestButton.addEventListener('click', () => {
+          item.qty = maxAllowed;
+          qtyInput.value = maxAllowed;
+          refreshRowTotal(row, item);
+          updateSummary();
+          saveDraftSilently();
+          scheduleInventoryCheck(item, true);
+          refreshPricingPreview();
+        });
+        alert.appendChild(suggestButton);
+      }
+    }
+  }
+
+  function scheduleInventoryCheck(item, immediate = false) {
+    clearTimeout(item.inventoryTimer);
+    item.inventory = null;
+    item.inventoryError = '';
+    item.inventoryLoading = true;
+
+    const row = $('co-items-body').querySelector(`[data-key="${item._key}"]`);
+    if (row) renderInventoryState(row, item);
+
+    const run = () => checkItemInventory(item);
+    if (immediate) return run();
+    item.inventoryTimer = setTimeout(run, 280);
+    return Promise.resolve(true);
+  }
+
+  async function checkItemInventory(item) {
+    const requestId = (item.inventoryRequestId || 0) + 1;
+    item.inventoryRequestId = requestId;
+    item.inventoryLoading = true;
+    item.inventoryError = '';
+    const row = $('co-items-body').querySelector(`[data-key="${item._key}"]`);
+    if (row) renderInventoryState(row, item);
+
+    try {
+      const res = await Auth.apiFetch('/orders/check-inventory', {
+        method: 'POST',
+        body: JSON.stringify({
+          dealerId: state.selectedDealer?.id ? Number(state.selectedDealer.id) : null,
+          productId: Number(item.productId),
+          unit: getInventoryUnit(item),
+          quantity: Number(item.qty),
+        }),
+      });
+      const result = await res.json().catch(() => null);
+      if (!res.ok || !result?.success || !result.data) {
+        throw new Error(result?.message || 'Không kiểm tra được tồn khả dụng.');
+      }
+      if (item.inventoryRequestId !== requestId) return false;
+      item.inventory = result.data;
+      return result.data.valid !== false;
+    } catch (error) {
+      if (item.inventoryRequestId !== requestId) return false;
+      item.inventory = null;
+      item.inventoryError = error.message || 'Không kiểm tra được tồn khả dụng.';
+      return false;
+    } finally {
+      if (item.inventoryRequestId === requestId) {
+        item.inventoryLoading = false;
+        const currentRow = $('co-items-body').querySelector(`[data-key="${item._key}"]`);
+        if (currentRow) renderInventoryState(currentRow, item);
+      }
+    }
+  }
+
+  async function refreshInventoryPreview() {
+    if (!state.items.length || !state.selectedDealer) return true;
+    const results = await Promise.all(state.items.map((item) => checkItemInventory(item)));
+    if (results.every(Boolean)) return true;
+
+    const invalidItem = state.items.find((item) => item.inventory?.valid === false);
+    if (invalidItem) {
+      showToast(invalidItem.inventory.message || `Sản phẩm ${invalidItem.name} vượt tồn khả dụng.`, 'error');
+    } else {
+      showToast('Chưa kiểm tra được tồn khả dụng. Vui lòng thử lại.', 'error');
+    }
+    return false;
   }
 
   function refreshRowTotal(row, item) {
@@ -1072,6 +1096,7 @@
     // S4-02: kiểm tra lại trạng thái công nợ khi tổng đơn thay đổi
     checkDebtApproval();
     updateDebtPanel();
+    scheduleDebtCheck();
   }
 
   async function refreshPricingPreview() {
@@ -1243,7 +1268,7 @@
       itemSeq = draft._seq || 0;
       state.items = await Promise.all((draft.items || []).map(async (it) => {
         const [productResponse, unitsResponse] = await Promise.all([
-          Auth.apiFetch(`/products/${it.productId}`),
+          Auth.apiFetch(`/products/lookup/${it.productId}`),
           Auth.apiFetch(`/products/${it.productId}/unit-conversions`),
         ]);
         const [productResult, unitsResult] = await Promise.all([
@@ -1377,6 +1402,7 @@
         showToast('Chưa xác định được tổng tiền. Vui lòng cập nhật chiết khấu và thử lại.', 'error');
         return;
       }
+      if (!await refreshInventoryPreview()) return;
       openConfirmModal();
     } finally {
       button.disabled = false;
@@ -1395,11 +1421,6 @@
     if (!$('co-dealer').value) {
       showToast('Vui lòng chọn đại lý.', 'warning');
       $('co-dealer').focus();
-      return false;
-    }
-    if ($('co-warehouse') && !$('co-warehouse').value && state.warehouseOptions.length > 0) {
-      showToast('Vui lòng chọn kho phục vụ.', 'warning');
-      $('co-warehouse').focus();
       return false;
     }
     if (!$('co-delivery-date').value) {
@@ -1426,19 +1447,6 @@
       showToast(`Có sản phẩm chưa có trong bảng giá hiệu lực: ${missingPriceLines.map((item) => item.sku || item.name).join(', ')}.`, 'error');
       return false;
     }
-
-    // Kiểm tra vượt tồn khả dụng (S5-06)
-    if (typeof OrderInventory !== 'undefined' && OrderInventory.getProductStockInfo && state.selectedWarehouseId) {
-      for (const item of state.items) {
-        const factor = Number(item.selectedUnit?.conversionFactor ?? item.selectedUnit?.conversionRate ?? 1) || 1;
-        const stockInfo = OrderInventory.getProductStockInfo(state.inventoryMap, item.productId, factor);
-        if (item.qty > stockInfo.availableInUnit) {
-          showToast(`Sản phẩm "${item.name}" vượt tồn khả dụng trong kho phục vụ (tồn còn: ${stockInfo.availableInUnit} ${item.selectedUnit?.unitName || 'cái'}).`, 'error');
-          return false;
-        }
-      }
-    }
-
     return true;
   }
 
@@ -1502,9 +1510,10 @@
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Không tạo được đơn hàng');
 
+      const createdOrder = result.data;
+
       closeConfirmModal();
-      clearDraft();
-      showToast('Đơn hàng đã được tạo thành công!', 'success');
+      await clearDraft();
 
       // Reset form
       $('order-form').reset();
@@ -1525,6 +1534,10 @@
       $('co-pricing-status').hidden = true;
       renderItems();
       updateSummary();
+
+      showToast(`Đã tạo đơn ${createdOrder.orderCode || createdOrder.id}.`, 'success');
+      // Đơn đã được lưu; lỗi tải PDF không được biến thành lỗi tạo đơn.
+      OrderPdf.open(createdOrder).catch((error) => showToast(error.message, 'error'));
     } catch (err) {
       const msgEl = $('confirm-msg');
       msgEl.textContent = err.message || 'Lỗi không xác định. Vui lòng thử lại.';
@@ -1534,16 +1547,15 @@
     }
   });
 
+
   function buildOrderPayload() {
     const dealerId = $('co-dealer').value;
-    const warehouseId = $('co-warehouse')?.value || state.selectedWarehouseId;
     const deliveryPointId = $('co-delivery-point').value || null;
     const deliveryDate = $('co-delivery-date').value || null;
     const note = $('co-note').value.trim() || null;
 
     return {
       dealerId: Number(dealerId),
-      warehouseId: warehouseId ? Number(warehouseId) : null,
       deliveryPointId: deliveryPointId ? Number(deliveryPointId) : null,
       expectedDeliveryDate: deliveryDate || null,
       priceListId: state.priceList?.id || null,
@@ -1580,14 +1592,28 @@
   async function init() {
     const today = todayInputValue();
     $('co-delivery-date').min = today;
-    await loadWarehouseOptions();
     await loadDealers();
 
-    // Show draft banner if draft exists
-    if (await hasDraft()) {
+    const searchString = typeof window !== 'undefined' && window.location ? window.location.search : (typeof location !== 'undefined' ? location.search : '');
+    const query = typeof URLSearchParams !== 'undefined' ? new URLSearchParams(searchString || '') : { get: () => null };
+    const copiedDraft = query.get('copied') === '1';
+
+    if (copiedDraft) {
+      // A copied order is already saved in the database as a draft.
+      // Loading it also recalculates current prices and discounts in selectDealer().
+      if (await loadDraft()) {
+        showToast('Đã sao chép đơn cũ thành bản nháp. Giá và chiết khấu đã được tính lại.', 'success');
+      } else {
+        showToast('Không tải được bản sao đơn hàng. Vui lòng thử lại.', 'error');
+      }
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (await hasDraft()) {
       showDraftBanner();
     }
   }
 
+  globalThis.addEventListener?.('auth:permissions-changed', () => {
+    if (state.selectedDealer) loadPurchaseHistory(state.selectedDealer.id);
+  });
   init();
 })();

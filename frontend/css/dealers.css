@@ -699,6 +699,25 @@ button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
   width: min(640px, calc(100% - 32px));
 }
 
+/* S4-06: theo dõi vòng đời đơn trong hồ sơ đại lý */
+.dealer-tracking-summary { margin: 0 0 16px; color: var(--ink-700); }
+.dealer-tracking-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 0; margin: 0 0 18px; list-style: none; }
+.dealer-tracking-step { min-width: 0; }
+.dealer-tracking-step__marker { display: block; width: 12px; height: 12px; margin-bottom: 7px; border: 2px solid var(--line); border-radius: 50%; background: var(--surface); }
+.dealer-tracking-step--completed .dealer-tracking-step__marker { border-color: var(--teal); background: var(--teal); }
+.dealer-tracking-step--current .dealer-tracking-step__marker { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-soft); }
+.dealer-tracking-step--cancelled .dealer-tracking-step__marker { border-color: var(--danger); background: var(--danger); }
+.dealer-tracking-step strong, .dealer-tracking-step span, .dealer-tracking-step small, .dealer-tracking-history strong, .dealer-tracking-history span, .dealer-tracking-history small { display: block; font-size: .78rem; line-height: 1.45; }
+.dealer-tracking-step span, .dealer-tracking-step small, .dealer-tracking-history span, .dealer-tracking-history small { color: var(--ink-500); }
+.dealer-tracking-history { border-top: 1px solid var(--line-light); }
+.dealer-tracking-history > div { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-light); }
+.dealer-tracking-state { color: var(--ink-500); }
+.dealer-tracking-error { color: var(--danger); }
+@media (max-width: 768px) {
+  .dealer-tracking-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dealer-tracking-history > div { grid-template-columns: 1fr; gap: 2px; }
+}
+
 .delivery-points-modal {
   width: min(760px, calc(100% - 32px));
 }

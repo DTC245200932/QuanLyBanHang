@@ -71,3 +71,13 @@ Treat failure and emptiness as moments for direction, not mood. Explain what wen
 Keep the tone conversational: plain verbs, sentence case, no filler, with tone matched to the brand and the audience. Let each written element do exactly one job.
 
 No emojis.
+
+## Shared layout consistency — mandatory
+
+- Reuse the existing shared app shell and content container for every sidebar page.
+- Use the shared layout rules and tokens in frontend/css/app-navigation.css as the source of truth for content width, gutters, and page spacing.
+- Do not introduce page-specific outer max-width, margins, padding, or overrides of shared layout tokens. Page styles may control only the layout inside the shared content frame.
+- Keep content centered with equal left/right spacing. Preserve the existing sidebar and topbar.
+- Before building a new page on any branch, inspect an existing compliant page and reuse its structure. Do not create a separate page shell.
+- If the shared layout needs changing, update the common component/styles instead of patching individual pages. Verify other pages before committing.
+- Test desktop, tablet, and mobile: consistent content edges, no full-page horizontal overflow, and wide tables scrolling inside their own containers.

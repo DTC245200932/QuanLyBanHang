@@ -54,5 +54,13 @@ public class DealerDebtResponse {
 
     /** Lý do chặn tạo đơn (nếu isBlocked = true). */
     private String blockReason;
+
+    private BigDecimal totalPaid;
+    private Boolean isDebtFlagged;
+    private com.quanlybanhang.model.DebtFlagType debtFlagType;
+    private String debtFlagReason;
+    private java.time.LocalDateTime debtFlaggedAt;
+    private java.time.LocalDateTime lastDebtEvaluatedAt;
+    private com.quanlybanhang.model.DebtFlagAction effectiveAction;
 }
 

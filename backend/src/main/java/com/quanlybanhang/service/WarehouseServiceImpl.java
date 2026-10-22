@@ -1202,6 +1202,8 @@ public class WarehouseServiceImpl implements WarehouseService {
                     } else {
                         inventory.setBaseQuantity(baseQty);
                     }
+                    // A stock-card adjustment is the signed movement, not its target balance.
+                    item.setBaseQuantity(inventory.getBaseQuantity().subtract(quantityBefore));
                 }
 
                 inventoryRepository.save(inventory);

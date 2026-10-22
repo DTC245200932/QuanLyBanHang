@@ -49,6 +49,10 @@ class WarehouseExportLotIntegrationTest {
     @Autowired PasswordEncoder passwords;
     @Autowired RolePermissionConfig matrix;
     @Autowired AuditLogRepository auditLogs;
+    @Autowired WarehouseStockCountRepository stockCounts;
+    @Autowired OrderRepository stockOrders;
+    @Autowired OrderStatusHistoryRepository stockHistories;
+    @Autowired WarehouseTransferRepository stockTransfers;
 
     Warehouse warehouse, outsideWarehouse;
     Product product;
@@ -348,6 +352,86 @@ class WarehouseExportLotIntegrationTest {
         lotA.setExpiryDate(null);lots.save(lotA);
         call(HttpMethod.POST,"/api/warehouse/export",adminToken,body,400);
         assertThat(lots.findById(lotA.getId()).orElseThrow().getBaseQuantity()).isEqualByComparingTo("5");
+    }
+
+    @Test
+    void s602_optionsAndBothReadEndpointsFollowLiveMatrixWithoutProductView() {
+        JsonNode options=call(HttpMethod.GET,"/api/warehouse/stock-card/options",staffToken,null,200).get("data");
+        assertThat(options.get("warehouses").size()).isEqualTo(1);
+        assertThat(options.at("/warehouses/0/id").asLong()).isEqualTo(warehouse.getId());
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF,Set.of());
+        call(HttpMethod.GET,"/api/warehouse/stock-card/options",staffToken,null,403);
+        call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId(),staffToken,null,403);
+        call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId()+"/sources/VOUCHER/1",staffToken,null,403);
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF,Set.of(Permission.WAREHOUSE_VIEW));
+        call(HttpMethod.GET,"/api/warehouse/stock-card/options",staffToken,null,200);
+        call(HttpMethod.GET,"/api/warehouse/stock-card/options",adminToken,null,200);
+    }
+
+    @Test
+    void s602_dateFilterAndPaginationDoNotResetOpeningStockAndSourcesAreScoped() {
+        var t=java.time.LocalDateTime.of(2026,1,1,10,0);
+        var incoming=stockVoucher(WarehouseVoucherType.IMPORT,"CONFIRMED",20,t,warehouse);
+        var outgoing=stockVoucher(WarehouseVoucherType.EXPORT,"RECORDED",5,t.plusDays(1),warehouse);
+        stockVoucher(WarehouseVoucherType.IMPORT,"DRAFT",999,t.plusDays(2),warehouse);
+        var inv=inventories.findByWarehouseIdAndProductId(warehouse.getId(),product.getId()).orElseThrow();inv.setBaseQuantity(new BigDecimal("90"));inventories.save(inv);
+        String path="/api/warehouse/stock-card/"+product.getId();
+        JsonNode first=call(HttpMethod.GET,path+"?size=1",staffToken,null,200).get("data");
+        assertThat(first.get("totalElements").asInt()).isEqualTo(2);assertThat(first.get("openingBalance").decimalValue()).isEqualByComparingTo("75");
+        assertThat(first.at("/entries/0/runningBaseBalance").decimalValue()).isEqualByComparingTo("95");
+        JsonNode second=call(HttpMethod.GET,path+"?page=999&size=1",staffToken,null,200).get("data");
+        assertThat(second.get("currentPage").asInt()).isEqualTo(1);assertThat(second.get("openingBalance").decimalValue()).isEqualByComparingTo("95");
+        JsonNode filtered=call(HttpMethod.GET,path+"?fromDate=2026-01-02T00:00:00&toDate=2026-01-02T23:59:59.999999999",staffToken,null,200).get("data");
+        assertThat(filtered.get("openingBalance").decimalValue()).isEqualByComparingTo("95");assertThat(filtered.at("/entries/0/runningBaseBalance").decimalValue()).isEqualByComparingTo("90");
+        JsonNode original=call(HttpMethod.GET,path+"/sources/VOUCHER/"+outgoing.getId(),staffToken,null,200).get("data");
+        assertThat(original.get("sourceCode").asText()).isEqualTo(outgoing.getVoucherCode());assertThat(original.has("price")).isFalse();
+        var outside=stockVoucher(WarehouseVoucherType.IMPORT,"CONFIRMED",2,t,outsideWarehouse);
+        call(HttpMethod.GET,path+"?warehouseId="+outsideWarehouse.getId(),staffToken,null,403);
+        call(HttpMethod.GET,path+"/sources/VOUCHER/"+outside.getId(),staffToken,null,403);
+        call(HttpMethod.GET,path+"?fromDate=2026-02-01T00:00:00&toDate=2026-01-01T00:00:00",staffToken,null,400);
+        JsonNode before=call(HttpMethod.GET,path+"?toDate=2025-01-01T00:00:00",staffToken,null,200).get("data");
+        assertThat(before.get("entries").size()).isZero();assertThat(before.get("openingBalance").decimalValue()).isEqualByComparingTo("75");
+    }
+
+    @Test
+    void s602_stockCountOrderExportAndTransferAllAppearOnceWithSignedChanges() {
+        var t=java.time.LocalDateTime.of(2026,2,1,10,0);
+        var count=WarehouseStockCount.builder().code("COUNT-"+UUID.randomUUID()).warehouse(warehouse).status(StockCountStatus.COMPLETED).completedAt(t).adjustmentReason("Thiếu thực tế").build();
+        count.addItem(WarehouseStockCountItem.builder().product(product).baseUnit("lon").bookQuantity(new BigDecimal("75")).actualQuantity(new BigDecimal("70")).differenceQuantity(new BigDecimal("-5")).build());stockCounts.save(count);
+        var order=Order.builder().orderCode("ORDER-"+UUID.randomUUID()).warehouse(warehouse).status("EXPORTED").build();
+        var item=OrderItem.builder().product(product).unit("thùng").quantity(BigDecimal.ONE).conversionFactor(new BigDecimal("6")).baseUnit("lon").baseQuantity(new BigDecimal("6")).build();item.setOrder(order);order.getItems().add(item);stockOrders.save(order);
+        stockHistories.save(OrderStatusHistory.builder().order(order).newStatus("EXPORTED").changedAt(t.plusHours(1)).build());
+        stockHistories.save(OrderStatusHistory.builder().order(order).newStatus("EXPORTED").changedAt(t.plusHours(2)).build());
+        var transfer=WarehouseTransfer.builder().transferCode("TR-"+UUID.randomUUID()).fromWarehouse(warehouse).toWarehouse(outsideWarehouse).status(WarehouseTransferStatus.COMPLETED).dispatchedAt(t.plusHours(3)).receivedAt(t.plusHours(4)).build();
+        transfer.addItem(WarehouseTransferItem.builder().product(product).unit("lon").quantity(new BigDecimal("3")).conversionFactor(BigDecimal.ONE).baseQuantity(new BigDecimal("3")).baseUnit("lon").receivedQuantity(new BigDecimal("3")).receivedBaseQuantity(new BigDecimal("3")).build());stockTransfers.save(transfer);
+        var inv=inventories.findByWarehouseIdAndProductId(warehouse.getId(),product.getId()).orElseThrow();inv.setBaseQuantity(new BigDecimal("61"));inventories.save(inv);
+        JsonNode card=call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId(),staffToken,null,200).get("data");
+        assertThat(card.get("entries").size()).isEqualTo(3);
+        assertThat(card.at("/entries/0/baseQuantityChange").decimalValue()).isEqualByComparingTo("-5");
+        assertThat(card.at("/entries/1/baseQuantityChange").decimalValue()).isEqualByComparingTo("-6");
+        assertThat(card.at("/entries/2/runningBaseBalance").decimalValue()).isEqualByComparingTo("61");
+        call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId()+"/sources/STOCK_COUNT/"+count.getId(),staffToken,null,200);
+        call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId()+"/sources/ORDER/"+order.getId(),staffToken,null,200);
+        call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId()+"/sources/TRANSFER/"+transfer.getId(),staffToken,null,200);
+        JsonNode admin=call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId(),adminToken,null,200).get("data");
+        assertThat(admin.get("entries").size()).isEqualTo(4); // source and destination each carry their own transfer event
+    }
+
+    @Test
+    void s602_adjustToTargetPersistsActualNegativeMovementRatherThanTarget() {
+        product.setManageLot(false);products.save(product);
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF,Set.of(Permission.WAREHOUSE_VIEW,Permission.WAREHOUSE_ADJUST));
+        JsonNode result=call(HttpMethod.POST,"/api/warehouse/adjust",staffToken,Map.of("warehouseId",warehouse.getId(),"productId",product.getId(),"quantity",70,"unit","lon"),200);
+        assertThat(result.at("/data/items/0/baseQuantity").decimalValue()).isEqualByComparingTo("-5");
+        JsonNode card=call(HttpMethod.GET,"/api/warehouse/stock-card/"+product.getId(),staffToken,null,200).get("data");
+        assertThat(card.at("/entries/0/baseQuantityChange").decimalValue()).isEqualByComparingTo("-5");
+        assertThat(card.at("/entries/0/runningBaseBalance").decimalValue()).isEqualByComparingTo("70");
+    }
+
+    private WarehouseVoucher stockVoucher(WarehouseVoucherType type,String status,int quantity,java.time.LocalDateTime time,Warehouse target) {
+        var v=WarehouseVoucher.builder().voucherCode("CARD-"+UUID.randomUUID()).type(type).status(status).warehouse(target).voucherDate(time).recordedAt(time).build();
+        v.addItem(WarehouseVoucherItem.builder().product(product).unit("lon").quantity(new BigDecimal(quantity)).baseUnit("lon").conversionFactor(BigDecimal.ONE).baseQuantity(new BigDecimal(quantity)).build());
+        return vouchers.save(v);
     }
 
     private void patchSettings(String token, boolean enabled, int days, int status) throws Exception {

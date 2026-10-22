@@ -25,7 +25,7 @@ public interface WarehouseTransferItemRepository extends JpaRepository<Warehouse
             "JOIN FETCH t.toWarehouse tw " +
             "JOIN FETCH i.product p " +
             "WHERE i.product.id = :productId " +
-            "AND (:warehouseIds IS NULL OR fw.id IN :warehouseIds OR tw.id IN :warehouseIds) " +
+            "AND (fw.id IN :warehouseIds OR tw.id IN :warehouseIds) " +
             "AND (:fromDate IS NULL OR t.dispatchedAt >= :fromDate " +
             "   OR (t.receivedAt IS NOT NULL AND t.receivedAt >= :fromDate) " +
             "   OR (t.cancelledAt IS NOT NULL AND t.cancelledAt >= :fromDate)) " +

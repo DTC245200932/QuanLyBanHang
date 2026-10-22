@@ -41,7 +41,8 @@ public record StockCardResponse(
         /**
          * Tồn kho (đơn vị cơ sở) trước dòng đầu tiên của trang này
          * — dùng để frontend hiển thị số dư liên tục khi phân trang.
-         * Null nếu đây là trang đầu (balance trước trang = 0 hoặc chưa có phát sinh).
+         * Null chỉ khi trang đầu, không lọc từ ngày, và tồn đầu bằng 0.
+         * Khi lọc ngày hoặc có tồn nhập ban đầu, trang đầu cũng trả số dư thật.
          */
         BigDecimal openingBalance,
 

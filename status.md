@@ -1,5 +1,23 @@
 # Trạng thái sprint 1–6
 
+## S6-02 — Frontend thẻ kho, kết nối API và sửa số dư (22/10/2026)
+
+**Trạng thái mới nhất; phần “chỉ backend” phía dưới là lịch sử.** Nhánh `feature/S6-02-xem_the_kho_cua_mot_san_pham`. Đã đọc AGENTS.md và hai skill SKILLS; không tự commit/push/merge. Không ghi vào DB thật, không khởi động lại backend thật.
+
+| Tiêu chí trong ảnh / hạng mục | Backend | Frontend | Đã nối đúng | Quyền / kết quả |
+|---|:---:|:---:|:---:|---|
+| Toàn bộ nhập, xuất, chuyển, điều chỉnh theo thời gian | Có | Có | Có | Menu Kho hàng → Thẻ kho sản phẩm (`/warehouse/stock-card`); WAREHOUSE_VIEW hoặc ADMIN. Bảng theo thời gian server, biến động có dấu/đơn vị đóng băng. Nối cả đơn đã xuất, kiểm kê đã chốt, nhập trả chuyến giao và chuyển kho nhận/hủy; không lấy nháp hoặc đếm giữ chỗ thành xuất. |
+| Tồn sau phát sinh, tồn trước trang và phân trang | Có | Có | Có | Tính toàn bộ lịch sử trước khi lọc thời gian/phân trang. Đối chiếu tồn đầu lịch sử từ tồn vật lý hiện tại trong scope, không tạo phiếu giả. Sửa openingBalance trang đầu/lọc ngày/page bị chặn về trang cuối/khoảng không phát sinh. Sửa phiếu điều chỉnh mới lưu chênh lệch có dấu thay vì lượng đích. |
+| Liên kết chứng từ gốc từng dòng | Có | Có | Có | Mã chứng từ là liên kết mở bản xem chỉ đọc các phát sinh của SKU trong chứng từ gốc; permalink giữ SKU/kho/ngày/page/size/source. API kiểm lại loại/ID chứng từ, đúng SKU và phạm vi kho; không đọc toàn bộ giá bán/khách hàng hay cho sửa/hủy. Có trạng thái tải/lỗi; đóng hộp thoại bỏ phản hồi đến muộn. |
+| Lọc theo kho và khoảng thời gian | Có | Có | Có | Bộ chọn từ API riêng, không buộc PRODUCT_VIEW. Chọn SKU, kho, từ/đến ngày bao gồm cả hai ngày; from > to trả 400; kho ngoài scope trả 403. Bộ lọc lưu trong URL để tải lại, không lưu dữ liệu nghiệp vụ trong browser storage. |
+| Ma trận quyền và bố cục chung | Có | Có | Có | Cấp/thu hồi trên JWT cũ, không role fallback, ADMIN toàn quyền; mất quyền đóng dialog/xóa dữ liệu/ẩn menu, không phục hồi phản hồi cũ. Tồn kho có link chọn sẵn SKU và kho. Dùng shell/content frame chung; bảng cuộn nội bộ trên mobile. |
+
+Kiểm thử cuối: **806/806 test backend qua** (`mvn clean test`), gồm 4 test tích hợp S6-02 mới qua HTTP/JWT/JPA/H2: options/grant-revoke, filter/page/seed/source/scope, kiểm kê + đơn xuất một lần + chuyển đa kho, điều chỉnh âm lưu đúng dấu; service có thêm test nhập trả chuyến và số dư qua lọc ngày. **144 test JavaScript và 10 test định tuyến qua**. Chrome S6-02 qua bộ chọn/lọc ngày bao gồm cả ngày, phân trang server/tồn trước trang, tải lại/permalink chứng từ, lỗi không giữ số cũ, XSS, revoke khi đang tải source rồi grant lại, 6 kích thước. Hồi quy sổ tồn và điều hướng click/Back/Forward/Reload/mobile/reduced-motion qua, sidebar giữ scroll 552 → 552. Bố cục chung **162 kiểm tra trên 27 trang × 6 kích thước** qua; đã xem ảnh desktop và dialog mobile. `git diff --check` sạch. Backend chạy trong bản sao tạm với H2; Chrome dùng HTTP fixtures, không phải ảnh minh chứng dữ liệu thật. Hai skill của repo định hướng dùng khung chung và để tính toán/quyền/dữ liệu nghiệp vụ ở server, không tự dựng bộ số tồn trong JS.
+
+Giới hạn: chưa nghiệm thu MySQL thật. Dữ liệu seed/migration/chỉnh trực tiếp DB chỉ đối chiếu tồn đầu, không tự tạo lịch sử. Phiếu điều chỉnh tuyệt đối **cũ** chưa lưu số biến động có dấu cần đối soát/migration riêng; không đoán dấu hoặc tự sửa dữ liệu lịch sử. Bản xem chứng từ chủ ý chỉ hiển thị phần liên quan SKU/scope (không phải toàn bộ chứng từ bán hàng). Không đổi schema. Cần build/chạy lại backend và server frontend để nhận API/route mới.
+
+## Ghi chú triển khai backend S6-02 trước đây (lịch sử)
+
 Cập nhật **22/10/2026**, hoàn thành tính năng **S6-02 — Thẻ kho (Stock Card)** (backend); không merge hoặc lấy code từ nhánh khác.
 
 ## S6-02 — Thẻ kho sản phẩm (Stock Card backend) — 22/10/2026

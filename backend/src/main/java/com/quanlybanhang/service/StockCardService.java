@@ -23,13 +23,39 @@ import java.util.*;
  */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
 public class StockCardService {
 
     private final WarehouseVoucherItemRepository voucherItemRepo;
     private final WarehouseTransferItemRepository transferItemRepo;
     private final ProductRepository productRepo;
     private final StockLedgerService ledgerService; // dùng lại visibleWarehousesFor()
+    private final WarehouseInventoryRepository inventoryRepo;
+    private final WarehouseStockCountItemRepository countItemRepo;
+    private final OrderItemRepository orderItemRepo;
+    private final OrderStatusHistoryRepository historyRepo;
+    private final DeliveryTripStopItemRepository returnItemRepo;
+
+    public Map<String,Object> options() {
+        var warehouses=ledgerService.visibleWarehousesFor("WAREHOUSE_VIEW");
+        return Map.of("warehouses",warehouses.stream().map(w->Map.of("id",w.getId(),"code",w.getCode(),"name",w.getName())).toList(),
+                "products",productRepo.findAll().stream().sorted(Comparator.comparing(Product::getCode)).map(p->Map.of("id",p.getId(),"code",p.getCode(),"name",p.getName())).toList(),
+                "pageSizes",List.of(20,50,100),"defaultPageSize",50);
+    }
+
+    /** Warehouse-scoped, read-only original-document projection for the selected SKU. No sales prices/PII. */
+    public Map<String,Object> source(Long productId,String sourceType,Long sourceId,Long warehouseId) {
+        if(sourceId==null || sourceId<1 || !Set.of("VOUCHER","TRANSFER","STOCK_COUNT","ORDER","DELIVERY_RETURN").contains(sourceType))
+            throw new IllegalArgumentException("Chứng từ không hợp lệ");
+        var scope=ledgerService.visibleWarehousesFor("WAREHOUSE_VIEW").stream().map(Warehouse::getId).toList();
+        if(warehouseId!=null && !scope.contains(warehouseId))throw new AccessDeniedException("Kho ngoài phạm vi");
+        var product=productRepo.findById(productId).orElseThrow(()->new IllegalArgumentException("Không tìm thấy sản phẩm"));
+        var entries=scope.isEmpty()?List.<StockCardEntryResponse>of():buildAllEntries(product,warehouseId==null?scope:List.of(warehouseId),null,null).stream()
+                .filter(e->sourceType.equals(e.sourceType()) && sourceId.equals(e.sourceId())).toList();
+        if(entries.isEmpty())throw new AccessDeniedException("Không có chứng từ của SKU này trong phạm vi kho");
+        return Map.of("sourceType",sourceType,"sourceId",sourceId,"sourceCode",entries.get(0).sourceCode(),
+                "productCode",product.getCode(),"productName",product.getName(),"entries",entries);
+    }
 
     /**
      * Lấy thẻ kho phân trang của một sản phẩm.
@@ -50,6 +76,7 @@ public class StockCardService {
             throw new IllegalArgumentException("Trang phải không âm; số dòng mỗi trang từ 1 đến 500");
         if (warehouseId != null && warehouseId < 1)
             throw new IllegalArgumentException("warehouseId không hợp lệ");
+        if(fromDate!=null && toDate!=null && fromDate.isAfter(toDate))throw new IllegalArgumentException("Từ ngày không được sau đến ngày");
 
         // Permission + phạm vi kho
         List<Warehouse> allowed = ledgerService.visibleWarehousesFor("WAREHOUSE_VIEW");
@@ -66,7 +93,10 @@ public class StockCardService {
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm: " + productId));
 
         // Thu thập tất cả sự kiện
-        List<StockCardEntryResponse> allEntries = buildAllEntries(product, scopeIds, fromDate, toDate);
+        List<StockCardEntryResponse> history = buildAllEntries(product, scopeIds, null, null);
+        List<StockCardEntryResponse> allEntries = history.stream()
+                .filter(e->fromDate==null || !e.eventTime().isBefore(fromDate))
+                .filter(e->toDate==null || !e.eventTime().isAfter(toDate)).toList();
 
         // Tính tổng phân trang
         int total = allEntries.size();
@@ -74,10 +104,11 @@ public class StockCardService {
         int safePageIndex = Math.min(page, Math.max(0, totalPages - 1));
 
         // Balance trước trang hiện tại (opening balance)
-        BigDecimal openingBalance = BigDecimal.ZERO;
-        for (int i = 0; i < safePageIndex * size && i < allEntries.size(); i++) {
-            openingBalance = allEntries.get(i).runningBaseBalance();
-        }
+        BigDecimal openingBalance = allEntries.isEmpty()
+                ? history.stream().filter(e->toDate==null || !e.eventTime().isAfter(toDate)).reduce((a,b)->b).map(StockCardEntryResponse::runningBaseBalance)
+                    .orElseGet(()->history.isEmpty()?inventoryRepo.findByProductId(productId).stream().filter(i->scopeIds.contains(i.getWarehouse().getId())).map(WarehouseInventory::getBaseQuantity).reduce(BigDecimal.ZERO,BigDecimal::add)
+                        :history.get(0).runningBaseBalance().subtract(history.get(0).baseQuantityChange()))
+                : allEntries.get(safePageIndex*size).runningBaseBalance().subtract(allEntries.get(safePageIndex*size).baseQuantityChange());
 
         // Lấy trang
         int fromIdx = safePageIndex * size;
@@ -100,7 +131,7 @@ public class StockCardService {
         return new StockCardResponse(
                 product.getId(), product.getCode(), product.getName(), product.getUnit(),
                 numbered, total, totalPages, safePageIndex, size,
-                page == 0 ? null : openingBalance, fromDate, toDate);
+                safePageIndex == 0 && fromDate==null && openingBalance.signum()==0 ? null : openingBalance, fromDate, toDate);
     }
 
     // -------------------------------------------------------------------------
@@ -128,6 +159,25 @@ public class StockCardService {
         // 1. Lấy sự kiện từ phiếu kho
         List<RawEntry> raw = new ArrayList<>();
 
+        for(var i:countItemRepo.findForStockCard(product.getId(),scopeIds)){
+            var c=i.getStockCount();var w=c.getWarehouse();
+            if(c.getCompletedAt()!=null && scopeIds.contains(w.getId()))raw.add(new RawEntry(c.getCompletedAt(),"ADJUSTMENT","Điều chỉnh kiểm kê",
+                    i.getDifferenceQuantity(),i.getBaseUnit(),i.getDifferenceQuantity(),i.getBaseUnit(),w.getId(),w.getCode(),w.getName(),"STOCK_COUNT",c.getId(),c.getCode(),c.getAdjustmentReason()));
+        }
+        Map<Long,List<OrderStatusHistory>> histories=new HashMap<>();
+        for(var i:orderItemRepo.findForStockCard(product.getId(),scopeIds)){
+            var o=i.getOrder();var w=o.getWarehouse();
+            var export=histories.computeIfAbsent(o.getId(),id->historyRepo.findByOrderIdOrderByChangedAtAsc(id)).stream()
+                    .filter(h->Set.of("EXPORTED","SHIPPED").contains(h.getNewStatus().toUpperCase(Locale.ROOT))).findFirst();
+            if(export.isPresent() && scopeIds.contains(w.getId()))raw.add(new RawEntry(export.get().getChangedAt(),"EXPORT","Xuất theo đơn hàng",
+                    i.getBaseQuantity().negate(),i.getBaseUnit(),i.getQuantity(),i.getUnit(),w.getId(),w.getCode(),w.getName(),"ORDER",o.getId(),o.getOrderCode(),export.get().getNote()));
+        }
+        for(var i:returnItemRepo.findForStockCard(product.getId(),scopeIds)){
+            var s=i.getStop();var t=s.getTrip();var w=t.getWarehouse();
+            if(scopeIds.contains(w.getId()))raw.add(new RawEntry(s.getReturnedAt(),"IMPORT","Nhập trả chuyến giao",
+                    i.getQuantity(),product.getUnit(),i.getQuantity(),product.getUnit(),w.getId(),w.getCode(),w.getName(),"DELIVERY_RETURN",s.getId(),t.getTripCode(),s.getNote()));
+        }
+
         List<WarehouseVoucherItem> voucherItems =
                 voucherItemRepo.findForStockCard(product.getId(), scopeIds, null, null);
         for (WarehouseVoucherItem vi : voucherItems) {
@@ -146,10 +196,7 @@ public class StockCardService {
                 case IMPORT -> { change = vi.getBaseQuantity(); eventType = "IMPORT"; label = "Nhập kho"; }
                 case EXPORT -> { change = vi.getBaseQuantity().negate(); eventType = "EXPORT"; label = "Xuất kho"; }
                 case ADJUSTMENT -> {
-                    // Điều chỉnh: baseQuantity trong item là giá trị tuyệt đối được truyền;
-                    // dấu lấy từ audit log nhưng để đơn giản ta dùng giá trị dương (thẻ kho
-                    // hiển thị theo chứng từ, dấu cụ thể sẽ thể hiện qua running balance).
-                    change = vi.getBaseQuantity(); // dương — service gốc recordVoucher luôn cộng/đặt giá trị này
+                    change = vi.getBaseQuantity(); // Signed adjustment movement, including negative differences.
                     eventType = "ADJUSTMENT"; label = "Điều chỉnh";
                 }
                 default -> { change = vi.getBaseQuantity(); eventType = "VOUCHER"; label = "Phiếu kho"; }
@@ -245,7 +292,11 @@ public class StockCardService {
                 .thenComparing(RawEntry::eventType));
 
         // Tính tồn tích lũy (running balance)
-        BigDecimal balance = BigDecimal.ZERO;
+        // Reconcile opening stock (seed/migrated balances) against the current physical stock.
+        // Never invent a synthetic voucher or let a date filter reset the balance.
+        var stocks=inventoryRepo.findByProductId(product.getId()).stream().filter(i->scopeIds.contains(i.getWarehouse().getId())).toList();
+        BigDecimal balance = stocks.isEmpty()?BigDecimal.ZERO:stocks.stream().map(WarehouseInventory::getBaseQuantity).reduce(BigDecimal.ZERO,BigDecimal::add)
+                .subtract(raw.stream().map(RawEntry::change).reduce(BigDecimal.ZERO,BigDecimal::add));
         List<StockCardEntryResponse> result = new ArrayList<>(raw.size());
         for (RawEntry e : raw) {
             balance = balance.add(e.change());

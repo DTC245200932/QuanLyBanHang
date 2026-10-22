@@ -210,6 +210,15 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "warehouse-stock-card",
+      section: "Kho hàng",
+      label: "Thẻ kho sản phẩm",
+      icon: '<path d="M4 3h16v18H4zM8 8h8M8 12h8M8 16h5"/>',
+      href: "/warehouse/stock-card",
+      permissions: ["WAREHOUSE_VIEW"],
+      roles: ALL_ROLES,
+    },
+    {
       id: "warehouse-lots",
       section: "Kho hàng",
       label: "Lô & hạn sử dụng",

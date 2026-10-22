@@ -8,6 +8,15 @@ const source = fs.readFileSync(path.join(__dirname, '../frontend/js/menu-config.
 const menu = vm.runInNewContext(`${source}\nMenuConfig;`, { URLSearchParams });
 const ids = user => Array.from(menu.getMenuForUser(user), item => item.id);
 
+test('S6-02 stock card is VIEW only, ADMIN allowed, no hardcoded warehouse role grant',()=>{
+  for(const role of ['ROLE_VIEWER','ROLE_SALES','ROLE_WAREHOUSE_MANAGER','ROLE_WAREHOUSE_STAFF']){
+    assert.ok(!ids({roles:[role],permissions:[]}).includes('warehouse-stock-card'));
+    assert.ok(ids({roles:[role],permissions:['WAREHOUSE_VIEW']}).includes('warehouse-stock-card'));
+  }
+  assert.ok(ids({roles:['ROLE_ADMIN'],permissions:[]}).includes('warehouse-stock-card'));
+  assert.equal(menu.getPageForLocation(new URL('http://test/warehouse/stock-card?productId=2')).id,'warehouse-stock-card');
+});
+
 test('S6-01 menu grants/revocations follow VIEW or MANAGE, never warehouse role fallback', () => {
   for(const role of ['ROLE_VIEWER','ROLE_WAREHOUSE_MANAGER','ROLE_WAREHOUSE_STAFF']) {
     assert.ok(!ids({roles:[role],permissions:[]}).includes('warehouse-lots'));

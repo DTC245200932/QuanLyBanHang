@@ -189,6 +189,7 @@ class DemoDataSeederTest {
     }
 
     @Test
+    @org.springframework.security.test.context.support.WithMockUser(username = "admin", roles = "ADMIN")
     void rerunPreservesEditedAccountsCatalogPricingOrdersAndStock() {
         seeder.seed(true, true, "first-password");
         User sales = users.findByUsername("sales.demo").orElseThrow();

@@ -102,9 +102,13 @@
                   <option value="">Tất cả trạng thái</option>
                   <option value="PENDING_APPROVAL">Chờ duyệt</option>
                   <option value="APPROVED">Đã duyệt</option>
-                  <option value="RECORDED">Đã ghi sổ</option>
+                  <option value="RECORDED">Đã duyệt (đã giữ chỗ)</option>
+                  <option value="PICKING">Đang soạn</option>
+                  <option value="EXPORTED">Đã xuất kho</option>
                   <option value="SHIPPING">Đang giao</option>
                   <option value="DELIVERED">Đã giao</option>
+                  <option value="CLOSED">Đã đóng</option>
+                  <option value="EXPIRED">Hết hạn giữ chỗ</option>
                   <option value="CANCELLED">Đã huỷ</option>
                 </select>
               </label>
@@ -240,7 +244,7 @@
                   <strong id="reorder-summary-qty">0</strong>
                 </div>
                 <div class="dealer-reorder-summary__row dealer-reorder-summary__row--total">
-                  <span>Tổng tiền (áp theo giá hiện hành):</span>
+                  <span>Tạm tính trước chiết khấu (giá được kiểm tra lại khi đặt):</span>
                   <strong id="reorder-summary-total">0 đ</strong>
                 </div>
               </div>

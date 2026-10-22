@@ -847,6 +847,24 @@ public class OrderServiceImpl implements OrderService {
 
         checkWarehouseAuthorizationForOrder(order, "cập nhật giao hàng");
 
+        if (request.getItems() != null) {
+            Set<Long> seen = new HashSet<>();
+            Map<Long, OrderItem> existing = order.getItems().stream()
+                    .collect(Collectors.toMap(OrderItem::getId, item -> item));
+            for (var line : request.getItems()) {
+                if (line == null || line.getOrderItemId() == null || !seen.add(line.getOrderItemId())
+                        || !existing.containsKey(line.getOrderItemId())) {
+                    throw new IllegalArgumentException("Dòng thực giao phải thuộc đơn hàng và không được trùng lặp");
+                }
+                BigDecimal delivered = line.getDeliveredQuantity();
+                if (delivered == null || delivered.signum() < 0
+                        || delivered.stripTrailingZeros().scale() > 4
+                        || delivered.compareTo(existing.get(line.getOrderItemId()).getQuantity()) > 0) {
+                    throw new IllegalArgumentException("Số lượng thực giao phải từ 0 đến số lượng đặt, tối đa 4 số thập phân");
+                }
+            }
+        }
+
         String oldStatus = order.getStatus();
         String requestedStatus = request.getStatus() != null && !request.getStatus().isBlank()
                 ? normalizeLifecycleStatus(request.getStatus()) : null;
@@ -1590,6 +1608,7 @@ public class OrderServiceImpl implements OrderService {
                 .warehouseName(order.getWarehouse() != null ? order.getWarehouse().getName() : null)
                 .expectedDeliveryDate(order.getExpectedDeliveryDate())
                 .actualDeliveryDate(order.getActualDeliveryDate())
+                .canUpdateDelivery(canUpdateDelivery(order))
                 .deliveryNote(order.getDeliveryNote())
                 .hasShortage(hasShortage)
                 .totalLineItems(items.size())
@@ -2992,6 +3011,15 @@ public class OrderServiceImpl implements OrderService {
                 throw new IllegalArgumentException("Công nợ hiện tại đã vượt hạn mức, cần người có quyền Duyệt đơn hàng xử lý");
             }
         }
+    }
+
+    private boolean canUpdateDelivery(Order order) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || order.getStatus() == null) return false;
+        String status = normalizeLifecycleStatus(order.getStatus());
+        if (!Set.of("EXPORTED", "DELIVERED").contains(status)) return false;
+        try { checkWarehouseAuthorizationForOrder(order, "cập nhật giao hàng"); return true; }
+        catch (AccessDeniedException denied) { return false; }
     }
 
     private String nextLifecycleStatus(Order order) {

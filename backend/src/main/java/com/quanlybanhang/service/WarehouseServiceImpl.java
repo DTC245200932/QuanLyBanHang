@@ -898,6 +898,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public WarehouseVoucherResponse adjustInventory(WarehouseVoucherRequest request, String username) {
+        requireGrant("WAREHOUSE_ADJUST");
         return recordVoucher(request, WarehouseVoucherType.ADJUSTMENT, username);
     }
 
@@ -930,7 +931,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         Warehouse warehouse = resolveWarehouse(request.getWarehouseId());
         if (type == WarehouseVoucherType.IMPORT) {
             lockVoucherWarehouse(warehouse);
-        } else if (type == WarehouseVoucherType.EXPORT) {
+        } else {
             requireWarehouse(warehouse.getId());
         }
 
@@ -1189,19 +1190,19 @@ public class WarehouseServiceImpl implements WarehouseService {
                 if (type == WarehouseVoucherType.IMPORT) {
                     inventory.addBaseQuantity(baseQty);
                 } else if (type == WarehouseVoucherType.EXPORT) {
-                    if (inventory.getBaseQuantity().compareTo(baseQty) < 0) {
+                    if (inventory.getAvailableQuantity().compareTo(baseQty) < 0) {
                         throw new IllegalArgumentException("Không đủ tồn kho để xuất cho sản phẩm '" + product.getName() +
-                                "'. Tồn hiện tại: " + inventory.getBaseQuantity() + " " + product.getUnit() +
+                                "'. Tồn khả dụng hiện tại: " + inventory.getAvailableQuantity() + " " + product.getUnit() +
                                 ", yêu cầu xuất: " + baseQty + " " + product.getUnit() + " (" + qty + " " + inputUnit + ")");
                     }
                     inventory.subtractBaseQuantity(baseQty);
                 } else if (type == WarehouseVoucherType.ADJUSTMENT) {
-                    if (request.getDelta() != null) {
-                        BigDecimal deltaBase = request.getDelta().multiply(factor);
-                        inventory.addBaseQuantity(deltaBase);
-                    } else {
-                        inventory.setBaseQuantity(baseQty);
-                    }
+                    BigDecimal adjusted = request.getDelta() != null
+                            ? quantityBefore.add(request.getDelta().multiply(factor)) : baseQty;
+                    BigDecimal reserved = inventory.getReservedQuantity() == null ? BigDecimal.ZERO : inventory.getReservedQuantity();
+                    if (adjusted.signum() < 0 || adjusted.compareTo(reserved) < 0)
+                        throw new IllegalArgumentException("Điều chỉnh không được làm âm tồn hoặc giảm dưới số lượng đang giữ chỗ");
+                    inventory.setBaseQuantity(adjusted);
                     // A stock-card adjustment is the signed movement, not its target balance.
                     item.setBaseQuantity(inventory.getBaseQuantity().subtract(quantityBefore));
                 }

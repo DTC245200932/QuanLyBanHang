@@ -1,5 +1,11 @@
 # Chạy frontend và đường dẫn trang
 
+## S5 — tích hợp bản sửa 22/10/2026
+
+- `/orders` → Xem chi tiết → **Số lượng thực giao**: nhập ngày, số lượng từng dòng (kể cả 0), ghi chú; **Điền giao đủ** chỉ điền khi người dùng bấm. Nút chuyển sang Đã giao đưa tới form này. Chỉ được sửa nếu backend trả `canUpdateDelivery` và còn `WAREHOUSE_EXPORT`; người chỉ có quyền xem đọc được dữ liệu đã lưu.
+- `/dealer-orders` → **Đặt lại**: dùng `reorder-preview` và `/reorder` của đơn gốc; giá/mặt hàng/ngày mặc định do server cung cấp. Tạm tính hiển thị trước chiết khấu; server kiểm tra lại khi đặt. Chỉ cần `ORDER_VIEW` + `ORDER_CREATE`, không đòi `PRODUCT_VIEW` riêng.
+- Hai trang đóng form, chặn phản hồi cũ và cập nhật nút khi quyền được cấp/thu hồi trong phiên hiện tại; không dùng role thay quyền nghiệp vụ.
+
 Từ thư mục repo, chạy một trong hai lệnh:
 
 ```powershell

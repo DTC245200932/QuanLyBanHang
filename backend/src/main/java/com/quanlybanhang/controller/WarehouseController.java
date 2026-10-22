@@ -432,6 +432,12 @@ public class WarehouseController {
      * API xem danh sách tồn kho theo Lô & Hạn sử dụng (S5-04, S6-01).
      * Hỗ trợ lọc theo kho, sản phẩm, trạng thái hạn dùng (EXPIRED, EXPIRING_SOON, ACTIVE), ngưỡng cảnh báo, từ khóa.
      */
+    @GetMapping("/lots/options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('WAREHOUSE_VIEW','WAREHOUSE_MANAGE')")
+    public ApiResponse getLotManagementOptions() {
+        return ApiResponse.success("Bộ chọn lô và hạn sử dụng", warehouseService.getLotManagementOptions());
+    }
+
     @GetMapping("/inventory/lots")
     @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLotInventory(

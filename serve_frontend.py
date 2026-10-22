@@ -27,6 +27,7 @@ ROUTES = {
     "/warehouse/units": "warehouse/units.html",
     "/warehouse/inventory": "warehouse/inventory.html",
     "/warehouse/minimums": "warehouse/minimums.html",
+    "/warehouse/lots": "warehouse/lots.html",
     "/warehouse/transfers": "warehouse/transfers.html",
     "/warehouses": "warehouses.html",
     "/admin/users": "admin/users.html",

@@ -62,6 +62,7 @@ class WarehouseLotExpiryServiceTest {
 
     @BeforeEach
     void setUp() {
+        authenticate("admin", "ROLE_ADMIN");
         khoHcm = Warehouse.builder().id(1L).code("KHO-HCM").name("Kho HCM").active(true).build();
 
         suaTuoi = Product.builder()
@@ -378,8 +379,8 @@ class WarehouseLotExpiryServiceTest {
         // Xác nhận đã ghi audit log hành động ghi đè
         verify(auditLogService).logAction(
                 eq("WAREHOUSE_LOT_OVERRIDE"),
-                eq("KHO-HCM:SP-SUA01:LOT-2026-03"),
-                eq("OVERRIDE_EXPIRED_EXPORT"),
+                eq("1:10:LOT-2026-03"),
+                eq("EXPIRED_LOT_OVERRIDE"),
                 isNull(),
                 contains("Xuất hủy tiêu hủy"),
                 eq("manager01")

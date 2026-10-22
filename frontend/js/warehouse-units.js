@@ -894,7 +894,8 @@
             <input type="text" class="line-batch-input" data-index="${index}" maxlength="50" ${prod.manageLot ? 'required' : ''} placeholder="${prod.manageLot ? 'Số lô (bắt buộc)' : 'Số lô (nếu có)'}" value="${escapeHtml(line.batchNumber || '')}" />
           </td>
           <td>
-            <input type="date" class="line-expiry-input" data-index="${index}" ${prod.manageLot ? 'required' : ''} value="${escapeHtml(line.expiryDate || '')}" />
+            <label>Ngày sản xuất<input type="date" class="line-manufacturing-input" data-index="${index}" value="${escapeHtml(line.manufacturingDate || '')}" /></label>
+            <label>Hạn sử dụng<input type="date" class="line-expiry-input" data-index="${index}" ${prod.manageLot ? 'required' : ''} value="${escapeHtml(line.expiryDate || '')}" /></label>
           </td>
           <td>
             <div class="conversion-rate-cell">
@@ -972,6 +973,8 @@
       receiptState.lines[index].batchNumber = target.value.trim();
     } else if (target.classList.contains("line-expiry-input")) {
       receiptState.lines[index].expiryDate = target.value;
+    } else if (target.classList.contains("line-manufacturing-input")) {
+      receiptState.lines[index].manufacturingDate = target.value;
     }
   });
 
@@ -995,6 +998,8 @@
       receiptState.lines[index].batchNumber = target.value.trim();
     } else if (target.classList.contains("line-expiry-input")) {
       receiptState.lines[index].expiryDate = target.value;
+    } else if (target.classList.contains("line-manufacturing-input")) {
+      receiptState.lines[index].manufacturingDate = target.value;
     }
   });
 

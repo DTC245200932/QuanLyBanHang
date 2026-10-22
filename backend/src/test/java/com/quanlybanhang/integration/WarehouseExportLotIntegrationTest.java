@@ -48,6 +48,7 @@ class WarehouseExportLotIntegrationTest {
     @Autowired RoleRepository roles;
     @Autowired PasswordEncoder passwords;
     @Autowired RolePermissionConfig matrix;
+    @Autowired AuditLogRepository auditLogs;
 
     Warehouse warehouse, outsideWarehouse;
     Product product;
@@ -256,6 +257,107 @@ class WarehouseExportLotIntegrationTest {
     // ─────────────────────────────────────────────────────────────────────────
     // Helper Methods
     // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void s601_optionsAndAllLotsRespectAssignedWarehouseAndLiveMatrix() {
+        lots.save(WarehouseLotInventory.builder().warehouse(outsideWarehouse).product(product)
+                .lotNumber("PRIVATE").expiryDate(LocalDate.now().plusDays(5)).baseQuantity(BigDecimal.ONE).baseUnit("lon").build());
+        JsonNode options = call(HttpMethod.GET, "/api/warehouse/lots/options", staffToken, null, 200).get("data");
+        assertThat(options.get("warehouses").size()).isEqualTo(1);
+        assertThat(options.at("/warehouses/0/id").asLong()).isEqualTo(warehouse.getId());
+        assertThat(options.get("canConfigure").asBoolean()).isFalse();
+        JsonNode all = call(HttpMethod.GET, "/api/warehouse/inventory/lots", staffToken, null, 200).get("data");
+        for (JsonNode lot : all) assertThat(lot.get("warehouseId").asLong()).isEqualTo(warehouse.getId());
+        call(HttpMethod.GET, "/api/warehouse/inventory/lots?warehouseId=" + outsideWarehouse.getId(), staffToken, null, 403);
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, Set.of());
+        call(HttpMethod.GET, "/api/warehouse/lots/options", staffToken, null, 403);
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF, Set.of(Permission.WAREHOUSE_VIEW));
+        call(HttpMethod.GET, "/api/warehouse/lots/options", staffToken, null, 200);
+        call(HttpMethod.GET, "/api/warehouse/lots/options", adminToken, null, 200);
+    }
+
+    @Test
+    void s601_expiredLotCannotUseSpoofedClientDateAndOverrideRequiresGrantConfirmationReason() {
+        lotA.setExpiryDate(LocalDate.now().minusDays(1));lots.save(lotA);
+        Map<String,Object> body = new HashMap<>();body.put("warehouseId",warehouse.getId());
+        body.put("items",List.of(Map.of("productId",product.getId(),"quantity",1,"unit","lon",
+                "lotNumber",lotA.getLotNumber(),"expiryDate",LocalDate.now().plusYears(2).toString(),"overrideReason","Xử lý lô quá hạn")));
+        call(HttpMethod.POST,"/api/warehouse/export",staffToken,body,403);
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF,Set.of(Permission.WAREHOUSE_VIEW,Permission.WAREHOUSE_EXPORT,Permission.WAREHOUSE_APPROVE));
+        call(HttpMethod.POST,"/api/warehouse/export",staffToken,body,400);
+        body.put("overrideExpiredLot",true);
+        call(HttpMethod.POST,"/api/warehouse/export",staffToken,body,400);
+        assertThat(lots.findById(lotA.getId()).orElseThrow().getBaseQuantity()).isEqualByComparingTo("5");
+        body.put("expiredLotOverrideReason","Xuất xử lý hàng quá hạn");
+        JsonNode result=call(HttpMethod.POST,"/api/warehouse/export",staffToken,body,200);
+        assertThat(result.at("/data/overrideExpiredLot").asBoolean()).isTrue();
+        assertThat(result.at("/data/items/0/expiryDate").asText()).isEqualTo(LocalDate.now().minusDays(1).toString());
+        assertThat(lots.findById(lotA.getId()).orElseThrow().getBaseQuantity()).isEqualByComparingTo("4");
+        assertThat(auditLogs.findAll()).anySatisfy(log -> {
+            assertThat(log.getAction()).isEqualTo("EXPIRED_LOT_OVERRIDE");
+            assertThat(log.getEntityId()).isEqualTo(warehouse.getId()+":"+product.getId()+":"+lotA.getLotNumber());
+            assertThat(log.getNewValue()).contains("Xuất xử lý hàng quá hạn");
+        });
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF,Set.of(Permission.WAREHOUSE_VIEW,Permission.WAREHOUSE_EXPORT));
+        call(HttpMethod.POST,"/api/warehouse/export",staffToken,body,403);
+        assertThat(lots.findById(lotA.getId()).orElseThrow().getBaseQuantity()).isEqualByComparingTo("4");
+    }
+
+    @Test
+    void s601_todayIsNotExpiredAndSkuThresholdControlsAlerts() {
+        lotA.setExpiryDate(LocalDate.now());lots.save(lotA);
+        product.setExpiryWarningDays(1);products.save(product);
+        JsonNode data=call(HttpMethod.GET,"/api/warehouse/inventory/lots?productId="+product.getId(),staffToken,null,200).get("data");
+        JsonNode today=data.get(0);
+        assertThat(today.get("daysUntilExpiry").asLong()).isZero();
+        assertThat(today.get("isExpired").asBoolean()).isFalse();
+        assertThat(today.get("isExpiringSoon").asBoolean()).isTrue();
+        JsonNode alerts=call(HttpMethod.GET,"/api/warehouse/lot-expiry-alerts?productId="+product.getId(),staffToken,null,200).get("data");
+        assertThat(alerts.get("expiringSoonCount").asInt()).isEqualTo(1);
+        call(HttpMethod.GET,"/api/warehouse/inventory/lots?thresholdDays=0",staffToken,null,400);
+        call(HttpMethod.GET,"/api/warehouse/inventory/lots?status=WRONG",staffToken,null,400);
+    }
+
+    @Test
+    void s601_toggleStoresSettingsButCannotDisablePositiveLotStock() throws Exception {
+        patchSettings(staffToken,true,15,403);
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF,Set.of(Permission.WAREHOUSE_VIEW,Permission.PRODUCT_EDIT));
+        call(HttpMethod.PUT,"/api/products/"+product.getId(),staffToken,Map.of("code",product.getCode(),
+                "name",product.getName(),"categoryId",product.getCategory().getId(),"unit","lon","price",20000),200);
+        assertThat(products.findById(product.getId()).orElseThrow().getManageLot()).isTrue();
+        patchSettings(staffToken,true,15,200);
+        assertThat(products.findById(product.getId()).orElseThrow().getExpiryWarningDays()).isEqualTo(15);
+        patchSettings(staffToken,false,15,400);
+        patchSettings(staffToken,true,0,400);
+        for (WarehouseLotInventory lot : lots.findByWarehouseIdAndProductId(warehouse.getId(),product.getId())) {
+            lot.setBaseQuantity(BigDecimal.ZERO);lots.save(lot);
+        }
+        patchSettings(staffToken,false,7,200);
+        assertThat(products.findById(product.getId()).orElseThrow().getManageLot()).isFalse();
+        matrix.updateRolePermissions(ERole.ROLE_WAREHOUSE_STAFF,Set.of(Permission.WAREHOUSE_VIEW));
+        patchSettings(staffToken,true,7,403);
+    }
+
+    @Test
+    void s601_legacyDisabledSkuCannotBypassExpiryAndUnknownExpiryIsBlocked() {
+        product.setManageLot(false);products.save(product);
+        lotA.setExpiryDate(LocalDate.now().minusDays(1));lots.save(lotA);
+        Map<String,Object> body=Map.of("warehouseId",warehouse.getId(),"items",List.of(Map.of(
+                "productId",product.getId(),"quantity",1,"unit","lon","lotNumber",lotA.getLotNumber(),"overrideReason","Xử lý lô")));
+        call(HttpMethod.POST,"/api/warehouse/export",staffToken,body,403);
+        lotA.setExpiryDate(null);lots.save(lotA);
+        call(HttpMethod.POST,"/api/warehouse/export",adminToken,body,400);
+        assertThat(lots.findById(lotA.getId()).orElseThrow().getBaseQuantity()).isEqualByComparingTo("5");
+    }
+
+    private void patchSettings(String token, boolean enabled, int days, int status) throws Exception {
+        var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(http.getRootUri()+"/api/products/"+product.getId()+"/manage-lot"))
+                .timeout(java.time.Duration.ofSeconds(20))
+                .header("Authorization","Bearer "+token).header("Content-Type","application/json")
+                .method("PATCH",java.net.http.HttpRequest.BodyPublishers.ofString("{\"manageLot\":"+enabled+",\"expiryWarningDays\":"+days+"}")).build();
+        var response=java.net.http.HttpClient.newHttpClient().send(request,java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(status);
+    }
 
     private String login(String username, String password) {
         ResponseEntity<JsonNode> resp = exchange(HttpMethod.POST, "/api/auth/login", null,

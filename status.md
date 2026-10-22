@@ -1,5 +1,23 @@
 # Trạng thái phát triển — QuanLyBanHang
 
+## S6-01 — Frontend lô & hạn sử dụng, nối API và sửa lỗi backend (22/10/2026)
+
+**Cập nhật mới nhất cho S6-01; mục “chỉ backend” bên dưới là lịch sử.** Nhánh `feature/S6-01-frontend-theo_doi_lo_va_han_su_dung`. Đã đọc AGENTS.md và hai skill trong SKILLS. Không tự commit/push/merge.
+
+| Yêu cầu trong ảnh | Backend | Frontend | Đã kết nối | Quyền / hành vi |
+|---|:---:|:---:|:---:|---|
+| Bật/tắt quản lý lô theo từng SKU | Có | Có | Có | Tab Cấu hình theo SKU, PATCH `/products/{id}/manage-lot`; PRODUCT_EDIT hoặc WAREHOUSE_MANAGE. Ngưỡng lưu DB. Không tắt khi còn tồn lô dương; sửa thông tin sản phẩm không gửi manageLot phải giữ cấu hình cũ. |
+| Số lô, NSX, HSD, số lượng còn lại | Có | Có | Có | Menu Kho hàng → Lô & hạn sử dụng (`/warehouse/lots`); VIEW hoặc MANAGE. API chỉ trả lô trong phạm vi kho được phân công; kho ngoài phạm vi trả 403. Lọc kho/SKU/từ khóa/trạng thái, phân trang hiển thị. Bổ sung ô NSX trên phiếu nhập, giữ ngày qua lưu nháp/tải lại. Ngày chưa khai báo ở dữ liệu cũ hiển thị rõ, không tự bịa ngày. |
+| Cảnh báo sắp hết hạn với ngưỡng khai báo được | Có | Có | Có | Ngưỡng từng SKU từ DB; số đếm/cờ quá hạn và ngày đối chiếu lấy từ server, không tự tính theo đồng hồ trình duyệt. Ngưỡng xem nhanh không sửa cấu hình. Cảnh báo chỉ đếm lô còn tồn dương. |
+| Chặn xuất quá hạn; xác nhận ghi đè kèm lý do | Có | Có | Có | EXPORT để xuất; thêm APPROVE hoặc MANAGE để ghi đè. Checkbox xác nhận và lý do bắt buộc, tối đa 255 ký tự; ADMIN cũng phải nhập. Hạn dùng đọc từ lô DB, bỏ ngày client giả mạo. Lô thiếu HSD không xuất. Phiếu/tồn/lô/audit cùng transaction. |
+| Ma trận và bố cục chung | Có | Có | Có | Không role fallback, ADMIN luôn được phép; cấp/thu hồi trên phiên cũ; giao diện đóng dialog, xóa dữ liệu cũ và ẩn hành động khi mất quyền. Dùng app shell/content frame chung, bảng tự cuộn; không tạo shell riêng. |
+
+Sửa backend trong phạm vi: bổ sung `/warehouse/lots/options` trả kho/SKU, trạng thái, giới hạn ngưỡng và khả năng thao tác; chặn đọc lô xuyên phạm vi; chặn giả ngày HSD; kiểm lô cho SKU legacy tắt quản lý nhưng còn tồn; tên hành động ghi đè đổi thành `EXPIRED_LOT_OVERRIDE` vừa cột audit 20 ký tự, entity ID dùng ID kho/SKU + số lô để không vượt 100 ký tự. Không thay schema DB.
+
+Kiểm thử cuối: `mvn clean test` **785/785 qua**, gồm 11 test tích hợp xuất lô (5 test S6-01 mới: scope/options/grant-revoke, giả HSD/ghi đè/audit, biên ngày/ngưỡng, toggle/giữ cấu hình qua sửa sản phẩm, SKU legacy/thiếu HSD). **137 test Node, 10 test router qua**. Chrome S6-01 qua đọc/cấu hình/lưu lỗi/ghi đè/quyền/XSS và 6 kích thước; hồi quy nhập kho (bao gồm NSX lưu/tải lại), kiểm kê, sổ tồn và điều hướng qua. Bố cục chung **156 kiểm tra trên 26 trang × 6 kích thước** qua; một lượt chạy thiếu bộ nhớ máy đã được chạy lại thành công sau khi backend tests kết thúc. `git diff --check` sạch. Hai skill của repo định hướng dùng shell chung và kiểm quyền/dữ liệu server, không tạo bố cục hay bộ quy tắc nghiệp vụ riêng trong JS.
+
+Giới hạn: test backend thực hiện trong bản sao tạm, H2 in-memory; Chrome dùng HTTP fixtures rõ ràng, không phải dữ liệu nghiệp vụ thật. Chưa nghiệm thu S6-01 trên MySQL thật. Không tạo/sửa/xóa đơn, phiếu hoặc ma trận trên DB thật, không restart backend thật. Muốn chạy bản mới cần build/khởi động lại backend và server frontend để nạp API/route mới.
+
 ## S5-06 — Đồng bộ develop và hoàn thiện giữ chỗ tồn kho (2026-10-22)
 
 **Đây là trạng thái nghiệm thu mới; các mục phía dưới là lịch sử.** Nhánh làm việc: `feature/S5-06-chuc-nang-giu-cho-ton-kho(frontend)`. Đã đồng bộ `origin/develop` tại `43b842e` (commit đồng bộ hiện có `91bdcc9`). Không gộp vào develop; phần sửa/kiểm thử bên dưới chưa được trợ lý commit hoặc push.
@@ -629,7 +647,7 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 
 | Task | Tính năng | Backend | Frontend | BE ↔ FE | Quyền BE / FE | Nghiệm thu / còn thiếu |
 |---|---|---|---|---|---|---|
-| S6-01 | Theo dõi lô và hạn sử dụng hàng hoá | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: `PRODUCT_EDIT`/`WAREHOUSE_MANAGE` bật/tắt lô; `WAREHOUSE_VIEW` xem lô/cảnh báo; `WAREHOUSE_MANAGE` sửa ngưỡng; `WAREHOUSE_APPROVE` ghi đè xuất lô quá hạn kèm lý do; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 4 tiêu chí trong ảnh mô tả. Đã kiểm thử 24 test (unit, service, security MockMvc). Chưa làm frontend theo chỉ đạo "chỉ làm BE". |
+| S6-01 | Theo dõi lô và hạn sử dụng hàng hoá | Có | Có | Đã nối API thực; xem cập nhật S6-01 đầu file | VIEW/MANAGE xem; PRODUCT_EDIT/MANAGE cấu hình; EXPORT + APPROVE/MANAGE ghi đè quá hạn có xác nhận/lý do; ADMIN toàn quyền | Đã triển khai 4 tiêu chí trong ảnh, sửa scope kho/HSD DB/audit; nghiệm thu H2 và Chrome fixtures, chưa nghiệm thu MySQL thật. |
 | S6-04 | Gợi ý lô xuất theo FEFO và xuất kho theo lô | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: `WAREHOUSE_EXPORT`/`WAREHOUSE_VIEW` gợi ý lô; `WAREHOUSE_EXPORT` xuất kho theo lô & bắt buộc nhập lý do khi chọn lô khác; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 3 tiêu chí trong ảnh mô tả. Đã kiểm thử 15 test (unit, service, security MockMvc). Chưa làm frontend theo chỉ đạo "chỉ làm BE". |
 
 ## Việc cần làm tiếp

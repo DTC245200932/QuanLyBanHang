@@ -9,6 +9,9 @@ import java.util.Optional;
 
 @Repository
 public interface WarehouseLotInventoryRepository extends JpaRepository<WarehouseLotInventory, Long> {
+    boolean existsByProductIdAndBaseQuantityGreaterThan(Long productId, java.math.BigDecimal quantity);
+
+    boolean existsByWarehouseIdAndProductIdAndBaseQuantityGreaterThan(Long warehouseId, Long productId, java.math.BigDecimal quantity);
 
     Optional<WarehouseLotInventory> findByWarehouseIdAndProductIdAndLotNumber(Long warehouseId, Long productId, String lotNumber);
 

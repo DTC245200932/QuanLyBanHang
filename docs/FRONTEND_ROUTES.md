@@ -33,6 +33,7 @@ Backend vẫn chạy ở cổng 8080 theo cấu hình trong README.
 | Kiểm kê kho (S5-08) | `/warehouse/units?tab=stocktake` — VIEW hoặc ADJUST để xem/tạo/đếm, ADJUST để chốt; phiếu và số đếm lưu qua `/warehouse/stock-counts` |
 | Tồn kho | `/warehouse/inventory` (tab cũ `?tab=inventory` được chuyển tiếp) |
 | Ngưỡng tồn tối thiểu (S5-09) | `/warehouse/minimums` |
+| Lô & hạn sử dụng (S6-01) | `/warehouse/lots` — VIEW hoặc MANAGE để xem; PRODUCT_EDIT hoặc MANAGE cấu hình SKU; EXPORT để xuất; APPROVE hoặc MANAGE để ghi đè quá hạn kèm xác nhận và lý do. ADMIN luôn được phép. |
 | Tài khoản nhân sự | `/admin/users` |
 | Nhật ký thao tác | `/admin/audit-logs` |
 | Quên mật khẩu | `/forgot-password` |

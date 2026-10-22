@@ -93,6 +93,11 @@ public class ProductRequest {
     private Boolean manageLot = false;
 
     /**
+     * Ngưỡng cảnh báo sắp hết hạn (số ngày) (S6-01).
+     */
+    private Integer expiryWarningDays;
+
+    /**
      * Danh sách đơn vị quy đổi khai báo kèm sản phẩm (S2-07).
      * Ví dụ: lon (cơ sở), lốc (hệ số 6), thùng (hệ số 24).
      */

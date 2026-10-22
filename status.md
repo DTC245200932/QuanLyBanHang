@@ -20,7 +20,46 @@ Kiểm chứng: **32 test backend mới qua 100%**:
 4. `DeliveryTripIntegrationTest` (4 tests): Kiểm thử tích hợp toàn diện trên HTTP/JWT/JPA/H2 MySQL mode, kiểm tra luồng vòng đời chuyến giao, tính chính xác tiền hàng trên đường, bất biến tồn kho không tăng khi giao thất bại, cảnh báo quá thời gian dự kiến, cách ly dữ liệu kho và thu hồi quyền động có hiệu lực ngay trên JWT hiện tại.
 Đã cập nhật tài liệu hợp đồng API tại `backend/API_DOCUMENTATION.md`.
 
+---
 
+## S6-04 — Gợi ý lô xuất theo nguyên tắc hạn dùng gần nhất trước (FEFO) — 22/10/2026
+
+Nhánh: `S6-04/he-thong-goi-y-lo-xuat-theo-nguyen-tac`.
+Đối chiếu 3 tiêu chí trong backlog người dùng yêu cầu:
+1. Mặc định gợi ý lô có hạn sử dụng gần nhất còn đủ số lượng.
+2. Thủ kho chọn lô khác được nhưng phải nhập lý do.
+3. Xuất kho trừ đúng tồn của lô đã chọn.
+Theo yêu cầu người dùng: **chỉ triển khai Backend (BE)**.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| **AC1: Gợi ý lô theo FEFO (hạn dùng gần nhất còn đủ số lượng)** | **Đã xong**: Thêm API `GET /api/warehouse/export/suggest-lot` và `POST /api/warehouse/export/suggest-lots`. Sắp xếp lô theo FEFO (ưu tiên lô chưa hết hạn, ngày hết hạn sớm nhất lên đầu, tiếp đến ngày sản xuất cũ hơn). Tự động tìm lô đầu tiên có tồn `>= requestedBaseQuantity`. Nếu không có lô đủ, trả về `hasSufficientStock = false`, `suggestedLot = null` và toàn bộ danh sách `availableLots` sắp xếp theo FEFO để thủ kho lựa chọn. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Quyền `WAREHOUSE_EXPORT` hoặc `WAREHOUSE_VIEW` từ ma trận DB (hoặc `ROLE_ADMIN`). Giới hạn phạm vi kho được phân công; thu hồi quyền trả 403 ngay lập tức. |
+| **AC2: Chọn lô khác phải nhập lý do** | **Đã xong**: Trong `POST /api/warehouse/export`, nếu không truyền `lotNumber`, hệ thống tự áp dụng lô FEFO gợi ý (không cần lý do). Nếu thủ kho chủ động chọn đúng lô gợi ý: thành công không cần lý do. Nếu thủ kho chọn lô khác với lô gợi ý: **bắt buộc nhập lý do** qua `overrideReason` / `lotReason` / `note`. Nếu để trống lý do: chặn và trả lỗi 400 Bad Request. Lưu `suggestedLotNumber` và `overrideReason` vào `WarehouseVoucherItem`. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Quyền `WAREHOUSE_EXPORT` từ ma trận DB (hoặc `ROLE_ADMIN`). Khi gửi lô khác thiếu lý do, server trả thông báo rõ ràng: `"Thủ kho chọn lô '...' khác với lô gợi ý hạn dùng gần nhất ('...'), bắt buộc phải nhập lý do"`. |
+| **AC3: Trừ đúng tồn của lô đã chọn & chặn âm kho** | **Đã xong**: Khi ghi sổ phiếu xuất kho, hệ thống khóa dòng tồn kho và trừ chính xác số lượng xuất quy đổi cơ sở vào tồn của lô đã chọn (`WarehouseLotInventory.baseQuantity`). Chặn xuất vượt quá tồn lô đã chọn (trả 400 nếu `lotInv.baseQuantity < baseQty`), chặn chọn lô không tồn tại hoặc đã hết hàng. Cập nhật đồng bộ tồn tổng và ghi `AuditLog`. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Kiểm tra quyền `WAREHOUSE_EXPORT` tại cả Controller và Service. Toàn bộ thao tác trừ tồn kho tổng và tồn lô nằm trong một `@Transactional`, lỗi bất kỳ điểm nào đều rollback toàn bộ. |
+| **Ma trận phân quyền & Giới hạn phạm vi kho** | **Đã xong**: Quyền lấy trực tiếp từ database-backed permission matrix trên request hiện tại qua `RolePermissionConfig`, không dùng role fallback hay default permission. Thu hồi quyền trên phiên đang dùng có hiệu lực ngay lập tức (trả 403). `ROLE_ADMIN` luôn có toàn quyền. Giới hạn phạm vi kho theo phân công tài khoản (`requireWarehouse`), tài khoản ngoài phạm vi trả 403. | **Chưa làm** (Frontend hiển thị/ẩn nút xuất kho và modal chọn lô theo ma trận sẽ được triển khai ở task FE) | Đã kiểm chứng: Thu hồi `WAREHOUSE_EXPORT` trả 403 ngay lập tức; cấp lại trả 200; gọi kho ngoài phạm vi trả 403; Admin luôn thành công. |
+
+### Kiểm chứng Backend S6-04
+- **Unit Tests**: `WarehouseExportLotSuggestionTest` (**9/9 passed**)
+  1. `suggestLot_Need10_SkipsLotA_SuggestsLotB`: Bỏ qua lô A không đủ hàng, gợi ý lô B có HSD gần nhất trong các lô đủ hàng.
+  2. `suggestLot_Need3_SuggestsLotA`: Khi cần 3 hộp, lô A đủ hàng và date gần nhất -> gợi ý lô A.
+  3. `suggestLot_Need100_NoSingleLotSufficient`: Không có lô đơn lẻ nào đủ -> `suggestedLot = null`, `hasSufficientStock = false`, trả toàn bộ danh sách FEFO.
+  4. `exportGoods_NoLotNumberProvided_AutoPicksFefoLot`: Không truyền lô -> tự động chọn lô FEFO và trừ đúng tồn lô đó.
+  5. `exportGoods_SelectSameAsSuggestedLot_SuccessWithoutReason`: Chọn đúng lô gợi ý -> thành công không cần lý do.
+  6. `exportGoods_SelectDifferentLotWithoutReason_ThrowsException`: Chọn lô khác không có lý do -> ném ngoại lệ yêu cầu lý do.
+  7. `exportGoods_SelectDifferentLotWithReason_SuccessAndRecordsReason`: Chọn lô khác có lý do -> thành công, lưu `suggestedLotNumber` và `overrideReason`, trừ đúng tồn lô đã chọn.
+  8. `exportGoods_ExceedLotStock_ThrowsException`: Xuất vượt tồn lô đã chọn -> ném ngoại lệ không đủ tồn.
+  9. `exportGoods_NonExistentLot_ThrowsException`: Chọn lô không có trong kho -> ném ngoại lệ.
+- **Integration Tests**: `WarehouseExportLotIntegrationTest` (**6/6 passed**)
+  1. `suggestLot_FEFO_ReturnsLotWithNearestExpiryAndSufficientStock`: Gọi GET `/api/warehouse/export/suggest-lot` trả 200 OK và đúng lô FEFO.
+  2. `suggestLots_Batch_ReturnsSuggestions`: Gọi POST `/api/warehouse/export/suggest-lots` trả 200 OK danh sách gợi ý hàng loạt.
+  3. `exportGoods_SelectDifferentLotWithoutReason_Returns400`: Chọn lô khác không có lý do trả 400 Bad Request.
+  4. `exportGoods_SelectDifferentLotWithReason_SuccessAndDeductsSelectedLot`: Chọn lô khác có lý do trả 200 OK và trừ đúng tồn lô đã chọn.
+  5. `permissionMatrix_RevokeAndGrant_ImmediateEnforcement`: Thu hồi `WAREHOUSE_EXPORT` trả 403 Forbidden ngay lập tức trên token cũ; cấp lại trả 200 OK.
+  6. `warehouseScope_OutsideWarehouse_Forbidden`: Truy cập kho ngoài phạm vi trả 403 Forbidden; ADMIN được phép.
+- **Toàn bộ bộ test kho liên quan**: `Warehouse*Test` (**78/78 passed**).
+- **Tài liệu API**: Đã cập nhật đầy đủ hợp đồng API tại `backend/API_DOCUMENTATION.md`.
+
+---
 
 ## S5-04 — Hoàn thiện frontend và backend — 22/10/2026
 
@@ -95,6 +134,23 @@ Kiểm chứng tích hợp: **118 test JavaScript qua**, bao gồm 5 test nhập
 - `tests/warehouse-import-voucher.test.cjs` — 3 unit tests
 
 ## Trạng thái sprint 1–5 từ develop đã đồng bộ
+
+## S6-01 — Theo dõi Lô và Hạn sử dụng của Hàng hoá (Backend) — 22/10/2026
+
+Nguồn yêu cầu: Ảnh user story S6-01 người dùng cung cấp trong chat (*"Là Nhân viên kho, tôi muốn theo dõi lô và hạn sử dụng của hàng hoá, để không giao nhầm hàng sắp hết hạn cho đại lý"*). Phạm vi thực hiện: **chỉ làm BE** theo chỉ đạo trực tiếp của người dùng, tuân thủ AGENTS.md và ma trận phân quyền.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Bật hoặc tắt quản lý lô theo từng SKU | Đã hoàn thành: `PATCH /api/products/{id}/manage-lot` (và `PUT /api/products/{id}`), hỗ trợ bật/tắt cờ `manageLot` và cấu hình `expiryWarningDays`; mặc định 30 ngày nếu không khai báo cụ thể | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quyền `PRODUCT_EDIT` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN`; ma trận database-backed, thu hồi quyền lập tức trả 403 không fallback role |
+| Mỗi lô có số lô, ngày sản xuất, hạn sử dụng và số lượng còn lại | Đã hoàn thành: `GET /api/warehouse/inventory/lots`, trả về đầy đủ `lotNumber`, `manufacturingDate`, `expiryDate`, `baseQuantity` (số lượng còn lại), `baseUnit`, `daysUntilExpiry`, `status` ("EXPIRED", "EXPIRING_SOON", "ACTIVE"), `warningThresholdDays`, `isExpired`, `isExpiringSoon` | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quyền `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` |
+| Cảnh báo lô sắp hết hạn theo ngưỡng khai báo được | Đã hoàn thành: `GET /api/warehouse/lot-expiry-alerts` (thống kê tổng cảnh báo, số lô quá hạn, số lô sắp hết hạn kèm danh sách chi tiết các lô có tồn > 0 sắp hết hạn theo ngưỡng SKU hoặc ngưỡng tùy chọn `thresholdDays`), `GET /api/warehouse/lot-thresholds` (xem danh sách ngưỡng theo SKU), `PUT /api/warehouse/lot-thresholds/{productId}` (khai báo ngưỡng ngày cảnh báo cho SKU) | Chưa triển khai (chỉ làm backend theo yêu cầu) | Xem cảnh báo & ngưỡng: `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN`; Khai báo/sửa ngưỡng: `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` |
+| Không cho xuất lô đã quá hạn, trừ khi Quản lý kho xác nhận ghi đè kèm lý do | Đã hoàn thành: `POST /api/warehouse/export` và `POST /api/warehouse/vouchers/{id}/confirm`. Tự động kiểm tra hạn sử dụng của lô khi xuất. Nếu quá hạn: Nhân viên kho bình thường bị chặn 403 Forbidden; Quản lý kho bắt buộc phải bật cờ `overrideExpiredLot = true` và nhập lý do `expiredLotOverrideReason` không rỗng; lưu vết phiếu kho, chi tiết dòng và AuditLog `OVERRIDE_EXPIRED_EXPORT` | Chưa triển khai (chỉ làm backend theo yêu cầu) | Quản lý kho: `WAREHOUSE_APPROVE` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN`. Thu hồi quyền `WAREHOUSE_APPROVE` trên phiên JWT lập tức chặn xuất lô quá hạn với lỗi 403, không fallback role |
+
+Kiểm chứng: **24 test backend mới qua toàn bộ**, bao gồm:
+- 11 test service `WarehouseLotExpiryServiceTest`: xem tồn theo lô đầy đủ số lượng/NSX/HSD, cảnh báo sắp hết hạn theo ngưỡng SKU và ngưỡng tùy chọn, cập nhật ngưỡng cảnh báo SKU, chặn xuất lô quá hạn đối với nhân viên kho (403 AccessDenied), chặn Quản lý kho nếu thiếu cờ ghi đè hoặc thiếu lý do, cho phép Quản lý kho xuất kèm lý do và ghi audit log, chặn xuất vượt quá tồn lô.
+- 9 test bảo mật `WarehouseLotSecurityTest`: ma trận phân quyền database-backed, chặn 401 khi chưa đăng nhập, chặn 403 khi thiếu quyền xem kho, cho phép Thủ kho có `WAREHOUSE_VIEW` xem tồn lô và cảnh báo, chặn Thủ kho sửa ngưỡng (403), cho phép Quản lý kho có `WAREHOUSE_MANAGE` sửa ngưỡng (200), chặn Thủ kho xuất lô quá hạn (403), cho phép Quản lý kho xuất có lý do (200), thu hồi `WAREHOUSE_APPROVE` lập tức chặn 403, `ROLE_ADMIN` luôn có toàn quyền.
+- 4 test controller `ProductManageLotControllerTest`: bật/tắt quản lý lô và cập nhật ngưỡng theo SKU qua PATCH API với quyền `PRODUCT_EDIT` / `WAREHOUSE_MANAGE`.
+- Hồi quy toàn bộ kho: 60/60 test liên quan đến kho và kiểm kê đều pass.
 
 Cập nhật **21/10/2026**: hoàn thiện S5-08 trên nhánh `feature/S5-08-chuc-nang-kiem-ke-chenh-lech(frontend)`, sau khi người dùng đồng bộ develop tại merge commit `5d9008c`. Các mục phía dưới giữ lịch sử những đợt triển khai trước; trạng thái S5-08 mới nhất nằm ở bảng ngay dưới đây. Đợt sửa này không tự commit, merge vào develop hoặc push.
 
@@ -456,6 +512,13 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 | S5-07 | Chuyển kho, đang đi, nhận chênh lệch | Có | Có | Đã nối tạo/danh sách/chi tiết/nhận/hủy; xem phần cập nhật S5-07 đầu file | WAREHOUSE_TRANSFER để ghi, VIEW hoặc TRANSFER để đọc; kiểm scope kho và thu hồi quyền, ADMIN luôn được phép | Đã kiểm khóa đồng thời, bảo vệ tồn đã giữ, nhận/hủy lặp, lý do chênh lệch và rollback. Chưa nghiệm thu MySQL thật. |
 | S5-08 | Kiểm kê, chốt chênh lệch | Có | Có | Đã nối API `/warehouse/stock-counts`, phiếu/snapshot/số đếm lưu DB; xem cập nhật S5-08 đầu file | VIEW hoặc ADJUST để đọc/tạo/đếm, ADJUST để chốt; ADMIN luôn được phép; kiểm phạm vi kho và grant/revoke | Đã kiểm 4 tiêu chí ảnh backlog theo xác nhận quyền từ người dùng, khóa cạnh tranh, snapshot cũ, tồn giữ chỗ và rollback; chưa nghiệm thu MySQL thật. |
 | S5-09 | Tồn tối thiểu và cảnh báo | Có | Có | Đã nối cấu hình, cảnh báo sổ tồn và dashboard; xem cập nhật S5-09 đầu file | WAREHOUSE_MANAGE để khai báo, WAREHOUSE_VIEW để xem; ma trận DB ở cả BE/FE, thu hồi trên phiên cũ, kiểm phạm vi kho | Đã triển khai hai AC; cảnh báo dựa trên tồn khả dụng, bằng ngưỡng không cảnh báo. Có bảng DB mới; chưa nghiệm thu MySQL thật. |
+
+## Sprint 6 — Quản lý nâng cao và hạn sử dụng
+
+| Task | Tính năng | Backend | Frontend | BE ↔ FE | Quyền BE / FE | Nghiệm thu / còn thiếu |
+|---|---|---|---|---|---|---|
+| S6-01 | Theo dõi lô và hạn sử dụng hàng hoá | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: `PRODUCT_EDIT`/`WAREHOUSE_MANAGE` bật/tắt lô; `WAREHOUSE_VIEW` xem lô/cảnh báo; `WAREHOUSE_MANAGE` sửa ngưỡng; `WAREHOUSE_APPROVE` ghi đè xuất lô quá hạn kèm lý do; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 4 tiêu chí trong ảnh mô tả. Đã kiểm thử 24 test (unit, service, security MockMvc). Chưa làm frontend theo chỉ đạo "chỉ làm BE". |
+| S6-04 | Gợi ý lô xuất theo FEFO và xuất kho theo lô | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: `WAREHOUSE_EXPORT`/`WAREHOUSE_VIEW` gợi ý lô; `WAREHOUSE_EXPORT` xuất kho theo lô & bắt buộc nhập lý do khi chọn lô khác; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 3 tiêu chí trong ảnh mô tả. Đã kiểm thử 15 test (unit, service, security MockMvc). Chưa làm frontend theo chỉ đạo "chỉ làm BE". |
 
 ## Việc cần làm tiếp
 

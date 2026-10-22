@@ -1,5 +1,44 @@
 # Trạng thái phát triển — QuanLyBanHang
 
+## S6-04 — Gợi ý lô xuất theo nguyên tắc hạn dùng gần nhất trước (FEFO) — 22/10/2026
+
+Nhánh: `S6-04/he-thong-goi-y-lo-xuat-theo-nguyen-tac`.
+Đối chiếu 3 tiêu chí trong backlog người dùng yêu cầu:
+1. Mặc định gợi ý lô có hạn sử dụng gần nhất còn đủ số lượng.
+2. Thủ kho chọn lô khác được nhưng phải nhập lý do.
+3. Xuất kho trừ đúng tồn của lô đã chọn.
+Theo yêu cầu người dùng: **chỉ triển khai Backend (BE)**.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| **AC1: Gợi ý lô theo FEFO (hạn dùng gần nhất còn đủ số lượng)** | **Đã xong**: Thêm API `GET /api/warehouse/export/suggest-lot` và `POST /api/warehouse/export/suggest-lots`. Sắp xếp lô theo FEFO (ưu tiên lô chưa hết hạn, ngày hết hạn sớm nhất lên đầu, tiếp đến ngày sản xuất cũ hơn). Tự động tìm lô đầu tiên có tồn `>= requestedBaseQuantity`. Nếu không có lô đủ, trả về `hasSufficientStock = false`, `suggestedLot = null` và toàn bộ danh sách `availableLots` sắp xếp theo FEFO để thủ kho lựa chọn. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Quyền `WAREHOUSE_EXPORT` hoặc `WAREHOUSE_VIEW` từ ma trận DB (hoặc `ROLE_ADMIN`). Giới hạn phạm vi kho được phân công; thu hồi quyền trả 403 ngay lập tức. |
+| **AC2: Chọn lô khác phải nhập lý do** | **Đã xong**: Trong `POST /api/warehouse/export`, nếu không truyền `lotNumber`, hệ thống tự áp dụng lô FEFO gợi ý (không cần lý do). Nếu thủ kho chủ động chọn đúng lô gợi ý: thành công không cần lý do. Nếu thủ kho chọn lô khác với lô gợi ý: **bắt buộc nhập lý do** qua `overrideReason` / `lotReason` / `note`. Nếu để trống lý do: chặn và trả lỗi 400 Bad Request. Lưu `suggestedLotNumber` và `overrideReason` vào `WarehouseVoucherItem`. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Quyền `WAREHOUSE_EXPORT` từ ma trận DB (hoặc `ROLE_ADMIN`). Khi gửi lô khác thiếu lý do, server trả thông báo rõ ràng: `"Thủ kho chọn lô '...' khác với lô gợi ý hạn dùng gần nhất ('...'), bắt buộc phải nhập lý do"`. |
+| **AC3: Trừ đúng tồn của lô đã chọn & chặn âm kho** | **Đã xong**: Khi ghi sổ phiếu xuất kho, hệ thống khóa dòng tồn kho và trừ chính xác số lượng xuất quy đổi cơ sở vào tồn của lô đã chọn (`WarehouseLotInventory.baseQuantity`). Chặn xuất vượt quá tồn lô đã chọn (trả 400 nếu `lotInv.baseQuantity < baseQty`), chặn chọn lô không tồn tại hoặc đã hết hàng. Cập nhật đồng bộ tồn tổng và ghi `AuditLog`. | **Chưa làm** (yêu cầu người dùng: chỉ làm BE) | Kiểm tra quyền `WAREHOUSE_EXPORT` tại cả Controller và Service. Toàn bộ thao tác trừ tồn kho tổng và tồn lô nằm trong một `@Transactional`, lỗi bất kỳ điểm nào đều rollback toàn bộ. |
+| **Ma trận phân quyền & Giới hạn phạm vi kho** | **Đã xong**: Quyền lấy trực tiếp từ database-backed permission matrix trên request hiện tại qua `RolePermissionConfig`, không dùng role fallback hay default permission. Thu hồi quyền trên phiên đang dùng có hiệu lực ngay lập tức (trả 403). `ROLE_ADMIN` luôn có toàn quyền. Giới hạn phạm vi kho theo phân công tài khoản (`requireWarehouse`), tài khoản ngoài phạm vi trả 403. | **Chưa làm** (Frontend hiển thị/ẩn nút xuất kho và modal chọn lô theo ma trận sẽ được triển khai ở task FE) | Đã kiểm chứng: Thu hồi `WAREHOUSE_EXPORT` trả 403 ngay lập tức; cấp lại trả 200; gọi kho ngoài phạm vi trả 403; Admin luôn thành công. |
+
+### Kiểm chứng Backend S6-04
+- **Unit Tests**: `WarehouseExportLotSuggestionTest` (**9/9 passed**)
+  1. `suggestLot_Need10_SkipsLotA_SuggestsLotB`: Bỏ qua lô A không đủ hàng, gợi ý lô B có HSD gần nhất trong các lô đủ hàng.
+  2. `suggestLot_Need3_SuggestsLotA`: Khi cần 3 hộp, lô A đủ hàng và date gần nhất -> gợi ý lô A.
+  3. `suggestLot_Need100_NoSingleLotSufficient`: Không có lô đơn lẻ nào đủ -> `suggestedLot = null`, `hasSufficientStock = false`, trả toàn bộ danh sách FEFO.
+  4. `exportGoods_NoLotNumberProvided_AutoPicksFefoLot`: Không truyền lô -> tự động chọn lô FEFO và trừ đúng tồn lô đó.
+  5. `exportGoods_SelectSameAsSuggestedLot_SuccessWithoutReason`: Chọn đúng lô gợi ý -> thành công không cần lý do.
+  6. `exportGoods_SelectDifferentLotWithoutReason_ThrowsException`: Chọn lô khác không có lý do -> ném ngoại lệ yêu cầu lý do.
+  7. `exportGoods_SelectDifferentLotWithReason_SuccessAndRecordsReason`: Chọn lô khác có lý do -> thành công, lưu `suggestedLotNumber` và `overrideReason`, trừ đúng tồn lô đã chọn.
+  8. `exportGoods_ExceedLotStock_ThrowsException`: Xuất vượt tồn lô đã chọn -> ném ngoại lệ không đủ tồn.
+  9. `exportGoods_NonExistentLot_ThrowsException`: Chọn lô không có trong kho -> ném ngoại lệ.
+- **Integration Tests**: `WarehouseExportLotIntegrationTest` (**6/6 passed**)
+  1. `suggestLot_FEFO_ReturnsLotWithNearestExpiryAndSufficientStock`: Gọi GET `/api/warehouse/export/suggest-lot` trả 200 OK và đúng lô FEFO.
+  2. `suggestLots_Batch_ReturnsSuggestions`: Gọi POST `/api/warehouse/export/suggest-lots` trả 200 OK danh sách gợi ý hàng loạt.
+  3. `exportGoods_SelectDifferentLotWithoutReason_Returns400`: Chọn lô khác không có lý do trả 400 Bad Request.
+  4. `exportGoods_SelectDifferentLotWithReason_SuccessAndDeductsSelectedLot`: Chọn lô khác có lý do trả 200 OK và trừ đúng tồn lô đã chọn.
+  5. `permissionMatrix_RevokeAndGrant_ImmediateEnforcement`: Thu hồi `WAREHOUSE_EXPORT` trả 403 Forbidden ngay lập tức trên token cũ; cấp lại trả 200 OK.
+  6. `warehouseScope_OutsideWarehouse_Forbidden`: Truy cập kho ngoài phạm vi trả 403 Forbidden; ADMIN được phép.
+- **Toàn bộ bộ test kho liên quan**: `Warehouse*Test` (**78/78 passed**).
+- **Tài liệu API**: Đã cập nhật đầy đủ hợp đồng API tại `backend/API_DOCUMENTATION.md`.
+
+---
+
 ## S5-04 — Hoàn thiện frontend và backend — 22/10/2026
 
 Nhánh: `feature/S5-04-chuc-nang-lap-phieu-nhap-kho(frontend)`. Đối chiếu 5 tiêu chí trong ảnh backlog do người dùng cung cấp; phần này thay thế các ghi chú S5-04 chưa đầy đủ bên dưới.

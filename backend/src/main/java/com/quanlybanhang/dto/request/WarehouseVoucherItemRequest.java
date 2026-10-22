@@ -31,13 +31,15 @@ public class WarehouseVoucherItemRequest {
     private BigDecimal price;
 
     /**
-     * Số lô hàng (S5-04). Bắt buộc nếu sản phẩm có manageLot = true.
+     * Số lô hàng (S5-04). Bắt buộc nếu sản phẩm có manageLot = true khi nhập kho.
+     * Khi xuất kho (S6-04): nếu bỏ trống hệ thống tự áp dụng lô FEFO gợi ý;
+     * nếu chọn lô khác lô gợi ý thì bắt buộc nhập overrideReason.
      */
     @jakarta.validation.constraints.Size(max = 50)
     private String lotNumber;
 
     /**
-     * Hạn sử dụng (S5-04). Bắt buộc nếu sản phẩm có manageLot = true.
+     * Hạn sử dụng (S5-04).
      */
     private java.time.LocalDate expiryDate;
 
@@ -46,6 +48,34 @@ public class WarehouseVoucherItemRequest {
      */
     private java.time.LocalDate manufacturingDate;
 
+    /**
+     * Số lô hệ thống gợi ý theo FEFO (S6-04).
+     */
+    @jakarta.validation.constraints.Size(max = 50)
+    private String suggestedLotNumber;
+
+    /**
+     * Lý do chọn lô khác lô gợi ý FEFO (S6-04). Bắt buộc khi thủ kho chọn lô khác lô gợi ý.
+     */
+    @jakarta.validation.constraints.Size(max = 255)
+    private String overrideReason;
+
+    /**
+     * Bí danh của overrideReason để hỗ trợ linh hoạt tham số request (S6-04).
+     */
+    @jakarta.validation.constraints.Size(max = 255)
+    private String lotReason;
+
     @jakarta.validation.constraints.Size(max = 255)
     private String note;
+
+    public String getEffectiveOverrideReason() {
+        if (overrideReason != null && !overrideReason.isBlank()) {
+            return overrideReason.trim();
+        }
+        if (lotReason != null && !lotReason.isBlank()) {
+            return lotReason.trim();
+        }
+        return null;
+    }
 }

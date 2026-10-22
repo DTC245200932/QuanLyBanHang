@@ -58,6 +58,9 @@ import com.quanlybanhang.repository.WarehouseInventoryRepository;
 @Service
 public class OrderServiceImpl implements OrderService {
 
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager reservationTransactions;
+
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final DealerRepository dealerRepository;
@@ -1112,6 +1115,8 @@ public class OrderServiceImpl implements OrderService {
                 .canCancel(OrderStatus.canCancel(currentStatus))
                 .isExported(OrderStatus.isExportedOrLater(currentStatus))
                 .inventoryReserved(order.getInventoryReserved())
+                .reservedAt(order.getReservedAt())
+                .reservationExpiresAt(order.getReservationExpiresAt())
                 .cancelReason(order.getCancelReason())
                 .cancelledBy(order.getCancelledBy())
                 .cancelledAt(order.getCancelledAt())
@@ -1186,21 +1191,33 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional
     public int releaseExpiredReservations() {
         LocalDateTime now = LocalDateTime.now();
         List<Long> expiredIds = orderRepository.findExpiredReservationIds(now);
         int count = 0;
         for (Long id : expiredIds) {
+            if (reservationTransactions == null) {
+                // Unit-test constructors have no Spring transaction manager.
+                if (releaseExpiredReservation(id, now)) count++;
+            } else {
+                var transaction = new org.springframework.transaction.support.TransactionTemplate(reservationTransactions);
+                transaction.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                if (Boolean.TRUE.equals(transaction.execute(status -> releaseExpiredReservation(id, now)))) count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean releaseExpiredReservation(Long id, LocalDateTime now) {
             Order order = orderRepository.findByIdForUpdate(id).orElse(null);
             // Another cancellation, dispatch or worker may have completed while waiting for the header lock.
             if (order == null || !Boolean.TRUE.equals(order.getInventoryReserved())
                     || order.getReservationExpiresAt() == null || order.getReservationExpiresAt().isAfter(now)
-                    || OrderStatus.isExportedOrLater(order.getStatus())) continue;
+                    || OrderStatus.isExportedOrLater(order.getStatus())) return false;
             Authentication actor = SecurityContextHolder.getContext().getAuthentication();
             if (actor != null && actor.isAuthenticated() && !hasAuthority(actor, "ROLE_ADMIN")) {
                 try { checkReservationWarehouseScope(order); checkSalesAuthorizationForOrder(order, "nhả tồn"); }
-                catch (AccessDeniedException denied) { continue; }
+                catch (AccessDeniedException denied) { return false; }
             }
             String oldStatus = order.getStatus();
             LocalDateTime expiredAt = order.getReservationExpiresAt();
@@ -1215,9 +1232,7 @@ public class OrderServiceImpl implements OrderService {
             recordStatusHistory(order, oldStatus, "EXPIRED", noteMsg, "system");
             auditLogService.logAction("INVOICE", order.getOrderCode(), "EXPIRE_RESERVATION", oldStatus,
                     "Quá hạn giữ chỗ - tự động nhả tồn kho", "system");
-            count++;
-        }
-        return count;
+            return true;
     }
 
     @Override
@@ -1270,14 +1285,14 @@ public class OrderServiceImpl implements OrderService {
 
         Map<Long, BigDecimal> requestedBaseQtyByProduct = new HashMap<>();
         for (OrderItem item : items) {
-            if (item.getProduct() != null && item.getBaseQuantity() != null) {
-                if (item.getBaseQuantity().signum() <= 0) throw new IllegalArgumentException("Số lượng giữ chỗ phải lớn hơn 0");
-                requestedBaseQtyByProduct.merge(item.getProduct().getId(), item.getBaseQuantity(), BigDecimal::add);
-            }
+            if (item == null || item.getProduct() == null || item.getProduct().getId() == null || item.getBaseQuantity() == null)
+                throw new IllegalArgumentException("Mặt hàng thiếu sản phẩm hoặc số lượng cơ sở để giữ chỗ");
+            if (item.getBaseQuantity().signum() <= 0) throw new IllegalArgumentException("Số lượng giữ chỗ phải lớn hơn 0");
+            requestedBaseQtyByProduct.merge(item.getProduct().getId(), item.getBaseQuantity(), BigDecimal::add);
         }
 
         if (requestedBaseQtyByProduct.isEmpty()) {
-            return;
+            throw new IllegalArgumentException("Đơn hàng không có số lượng hợp lệ để giữ chỗ");
         }
 
         List<Long> sortedProductIds = requestedBaseQtyByProduct.keySet().stream().sorted().toList();
@@ -2800,40 +2815,6 @@ public class OrderServiceImpl implements OrderService {
         return warehouseRepository.findAll().stream().findFirst().orElse(null);
     }
 
-    private void reserveInventory(Order order) {
-        if (Boolean.TRUE.equals(order.getInventoryReserved())) {
-            return;
-        }
-        if (warehouseRepository == null || inventoryRepository == null) {
-            order.setInventoryReserved(true);
-            return;
-        }
-        Warehouse warehouse = order.getWarehouse();
-        if (warehouse == null) {
-            return;
-        }
-        if (warehouse != null && order.getItems() != null) {
-            for (OrderItem item : order.getItems()) {
-                if (item.getProduct() != null && item.getBaseQuantity() != null && item.getBaseQuantity().compareTo(BigDecimal.ZERO) > 0) {
-                    Product product = item.getProduct();
-                    BigDecimal baseQty = item.getBaseQuantity();
-                    WarehouseInventory inventory = inventoryRepository
-                            .findByWarehouseIdAndProductId(warehouse.getId(), product.getId())
-                            .orElseGet(() -> WarehouseInventory.builder()
-                                    .warehouse(order.getWarehouse())
-                                    .product(product)
-                                    .baseQuantity(BigDecimal.ZERO)
-                                    .reservedQuantity(BigDecimal.ZERO)
-                                    .baseUnit(product.getUnit())
-                                    .build());
-                    inventory.addReservedQuantity(baseQty);
-                    inventoryRepository.save(inventory);
-                }
-            }
-            order.setInventoryReserved(true);
-        }
-    }
-
     private void deductInventoryOnExport(Order order) {
         if (order.getWarehouse() == null || inventoryRepository == null) {
             throw new IllegalArgumentException("Đơn hàng chưa có kho xuất");
@@ -3080,17 +3061,13 @@ public class OrderServiceImpl implements OrderService {
 
     private void saveApprovalHistory(Order order, String action, String comment, String username) {
         if (orderApprovalHistoryRepository == null) return;
-        try {
-            orderApprovalHistoryRepository.save(OrderApprovalHistory.builder()
+        orderApprovalHistoryRepository.save(OrderApprovalHistory.builder()
                     .order(order)
                     .orderCode(order.getOrderCode())
                     .action(action)
                     .comment(comment)
                     .performedBy(username != null ? username : "system")
                     .build());
-        } catch (Exception ignored) {
-            // Lịch sử không được làm hỏng giao dịch chính nếu repository tuỳ chọn chưa có.
-        }
     }
 
     @Override

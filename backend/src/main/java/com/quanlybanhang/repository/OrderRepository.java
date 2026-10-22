@@ -11,6 +11,13 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select o from Order o where o.id = :id")
+    Optional<Order> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") Long id);
+
+    @org.springframework.data.jpa.repository.Query("select o.id from Order o where o.inventoryReserved = true and o.reservationExpiresAt is not null and o.reservationExpiresAt <= :now order by o.id")
+    List<Long> findExpiredReservationIds(@org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
+
     Optional<Order> findByOrderCode(String orderCode);
 
     boolean existsByOrderCode(String orderCode);

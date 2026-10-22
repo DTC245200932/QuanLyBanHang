@@ -39,6 +39,7 @@
     drafts: [],
     warehouses: [],
     loaded: false,
+    ordersLoaded: false,
     warehouseId: null,
     epoch: 0,
 
@@ -53,6 +54,7 @@
 
     async init() {
       const epoch = ++this.epoch;
+      const includeOrders = canViewOrders && document.querySelector('.nav-tab--active')?.dataset.tab === 'ledger-audit';
       this.loaded = false;
       const importOptions = canUseImports() ? await this.request("/warehouse/import/options") : null;
       const warehouses = importOptions?.warehouses || await this.request("/warehouse/options");
@@ -79,9 +81,9 @@
         this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/inventory?warehouseId=${this.warehouseId}`) : [],
         this.warehouseId && Auth.hasPermission("WAREHOUSE_VIEW") ? this.request(`/warehouse/vouchers?warehouseId=${this.warehouseId}`)
           : this.warehouseId && canUseImports() ? this.request(`/warehouse/imports?warehouseId=${this.warehouseId}`) : [],
-        // Đơn vị tính/tồn kho không yêu cầu ORDER_VIEW. Chỉ tải lịch sử đơn
-        // khi ma trận quyền cho phép, tránh mở trang bị 403 dù menu đã hiện.
-        canViewOrders ? this.request("/orders") : [],
+        // Sales history is only needed by the ledger tab. A broken/unavailable orders
+        // API must not prevent loading units, stock or receipt forms, even for ADMIN.
+        includeOrders ? this.request("/orders") : [],
         importOptions?.suppliers || [],
       ]);
       if (epoch !== this.epoch) return false;
@@ -158,6 +160,7 @@
         }
       }
       this.loaded = true;
+      this.ordersLoaded = includeOrders;
       return true;
     },
 
@@ -431,13 +434,15 @@
   let legacyLoad = null;
   function stocktakeIsActive() { return document.querySelector(".nav-tab--active")?.dataset.tab === "stocktake"; }
   function ensureLegacyData() {
-    if (Store.loaded) return Promise.resolve();
-    if (legacyLoad) return legacyLoad;
+    const needsOrders = canViewOrders && document.querySelector('.nav-tab--active')?.dataset.tab === 'ledger-audit';
+    if (Store.loaded && (!needsOrders || Store.ordersLoaded)) return Promise.resolve(true);
+    if (legacyLoad) return legacyLoad.then(applied => applied ? ensureLegacyData() : false);
     const loading = Store.init().then(applied => {
-      if (!applied) return;
+      if (!applied) return false;
       renderSkuTable(); updateMetrics(); prepareReceiptForm(); renderLedgerTable(); renderInventoryTable();
       if (stocktakeIsActive()) renderStocktakePanel();
-    }).catch(error => showToast(error.message || "Không tải được dữ liệu kho.", "error"))
+      return true;
+    }).catch(error => { showToast(error.message || "Không tải được dữ liệu kho.", "error"); return false; })
       .finally(() => { if (legacyLoad === loading) legacyLoad = null; });
     legacyLoad = loading;
     return loading;

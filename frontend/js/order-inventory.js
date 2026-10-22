@@ -1,6 +1,10 @@
 /**
  * order-inventory.js — Quản lý tồn khả dụng, giữ chỗ và kiểm soát vượt tồn (S4-03 / S5-06).
  *
+ * Tiện ích tương thích/kiểm thử mô phỏng; không nạp trên màn hình tạo đơn.
+ * Luồng thật phải dùng /orders/check-inventory và cờ giữ chỗ từ backend.
+ * Các phép suy luận cho dữ liệu cũ bên dưới không tạo/nhả giữ chỗ trong database.
+ *
  * Nghiệp vụ S5-06:
  * 1. Tồn khả dụng = Tồn thực tế − Tồn đang giữ chỗ cho các đơn hàng khác.
  * 2. Đơn chuyển sang Đã duyệt (APPROVED / RECORDED) thì tồn tương ứng được giữ chỗ ngay, không ai đặt được nữa.
@@ -10,7 +14,7 @@
  * 6. Kiểm tra tồn tức thời trước khi chốt đơn và xử lý xung đột đồng thời để tránh âm tồn.
  */
 const OrderInventory = (() => {
-  const HOLDING_ORDER_STATUSES = new Set(['RECORDED', 'PENDING_APPROVAL', 'APPROVED', 'PROCESSING']);
+  const HOLDING_ORDER_STATUSES = new Set(['RECORDED', 'APPROVED', 'PICKING', 'PROCESSING']);
 
   /**
    * Kiểm tra xem một đơn hàng có đang giữ chỗ tồn kho hợp lệ hay không (S5-06).
@@ -25,6 +29,7 @@ const OrderInventory = (() => {
     if (!order) return false;
     const status = String(order.status || '').toUpperCase();
     if (!HOLDING_ORDER_STATUSES.has(status)) return false;
+    if (typeof order.inventoryReserved === 'boolean') return order.inventoryReserved;
 
     // Cờ quá hạn giữ chỗ trực tiếp
     if (order.reservationExpired === true || order.isExpired === true) {
@@ -275,8 +280,9 @@ const OrderInventory = (() => {
         const baseUnit = item.baseUnit || 'cái';
         map.set(pId, {
           physicalBase: physical,
-          reservedBase: 0,
-          availableBase: physical,
+          reservedBase: item.reservedQuantity != null ? Math.max(0, Number(item.reservedQuantity) || 0) : 0,
+          availableBase: item.availableQuantity != null ? Math.max(0, Number(item.availableQuantity) || 0) : physical,
+          fromServer: item.reservedQuantity != null || item.availableQuantity != null,
           baseUnit,
         });
       }
@@ -298,6 +304,7 @@ const OrderInventory = (() => {
 
           if (Number.isFinite(baseQty) && baseQty > 0) {
             let record = map.get(pId);
+            if (record?.fromServer) continue;
             if (!record) {
               record = { physicalBase: 0, reservedBase: 0, availableBase: 0, baseUnit: it.baseUnit || 'cái' };
               map.set(pId, record);
@@ -310,7 +317,7 @@ const OrderInventory = (() => {
 
     // 3. Tính tồn khả dụng = thực tế - giữ chỗ (tối thiểu 0)
     for (const record of map.values()) {
-      record.availableBase = Math.max(0, record.physicalBase - record.reservedBase);
+      if (!record.fromServer) record.availableBase = Math.max(0, record.physicalBase - record.reservedBase);
     }
 
     return map;

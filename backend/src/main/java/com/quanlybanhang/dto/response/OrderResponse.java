@@ -30,6 +30,9 @@ public class OrderResponse {
     private String territoryCode;
     private String territoryName;
     private Long deliveryPointId;
+    private Long warehouseId;
+    private String warehouseCode;
+    private String warehouseName;
     private LocalDate expectedDeliveryDate;
     private Long priceListId;
     private String priceListCode;

@@ -19,6 +19,7 @@ public class ManageLotToggleRequest {
     /**
      * Ngưỡng cảnh báo sắp hết hạn (số ngày). Tùy chọn.
      */
+    @jakarta.validation.constraints.Min(value = 1, message = "Ngưỡng cảnh báo phải ít nhất 1 ngày")
     private Integer expiryWarningDays;
 }
 

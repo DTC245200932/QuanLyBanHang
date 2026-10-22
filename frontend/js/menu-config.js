@@ -210,6 +210,15 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "warehouse-lots",
+      section: "Kho hàng",
+      label: "Lô & hạn sử dụng",
+      icon: '<path d="M4 4h16v17H4zM8 2v4M16 2v4M4 9h16M9 14h6M12 11v6"/>',
+      href: "/warehouse/lots",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_MANAGE"],
+      roles: ALL_ROLES,
+    },
+    {
       id: "stock-minimums",
       section: "Kho hàng",
       label: "Ngưỡng tồn tối thiểu",

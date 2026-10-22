@@ -46,6 +46,7 @@ class FrontendRoutingTest(unittest.TestCase):
             "/admin/users": "Quản lý tài khoản",
             "/admin/audit-logs": "Nhật ký thao tác",
             "/warehouse/inventory": "Tồn kho theo SKU và kho",
+            "/warehouse/lots": "Lô & hạn sử dụng",
             "/warehouses": "Kho & vị trí lưu",
             "/products": "Sản phẩm",
             "/product-groups": "Nhóm hàng",

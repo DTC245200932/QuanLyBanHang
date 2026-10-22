@@ -2803,6 +2803,14 @@ Tất cả các endpoint dưới đây có prefix `/api`. Quyền được lấy
 
 #### Danh sách API Lô & Hạn sử dụng (S6-01):
 
+Cập nhật kết nối frontend 22/10/2026: trang `/warehouse/lots` dùng `GET /api/warehouse/lots/options` (WAREHOUSE_VIEW hoặc WAREHOUSE_MANAGE; ADMIN luôn được phép). Response envelope `data` gồm `warehouses` đang hoạt động trong phạm vi phân công, `products` gồm cả SKU bật/tắt lô (LotThresholdResponse), `statuses`, `minimumThresholdDays`, `maximumThresholdDays`, `asOfDate`, `canConfigure`, `canExport`, `canOverrideExpiredLot`. Các cờ là khả năng thực tế của phiên hiện tại; không thay thế kiểm quyền ở API ghi.
+
+`GET /inventory/lots` và `/lot-expiry-alerts` không có warehouseId chỉ trả lô trong phạm vi kho; chỉ định kho ngoài phạm vi trả 403. Ngưỡng xem nhanh phải >= 1; trạng thái danh sách không hợp lệ trả 400. Ngày hết hạn bằng hôm nay chưa quá hạn; quá hạn khi trước ngày server. Cảnh báo chỉ đếm lô còn số lượng dương.
+
+PATCH cấu hình SKU lưu `manageLot` và `expiryWarningDays` (số nguyên >=1). Không được tắt quản lý lô khi SKU còn lượng tồn lô dương; trả 400, không đổi cấu hình. Bảo vệ này cũng áp dụng khi cập nhật sản phẩm đầy đủ.
+
+Xuất hàng luôn đối chiếu hạn dùng/ngày sản xuất từ lô trong DB, không dùng ngày client gửi để vượt chặn quá hạn. SKU legacy tắt quản lý lô nhưng còn tồn lô vẫn bị kiểm tra lô khi xuất. Lô thiếu hạn dùng không được ghi sổ xuất. Ghi đè cần EXPORT và (APPROVE hoặc MANAGE), `overrideExpiredLot=true`, lý do không rỗng tối đa 255 ký tự; ADMIN vẫn phải xác nhận/lý do. Thiếu quyền trả 403; thiếu xác nhận/lý do trả 400. Phiếu/tồn/lô/nhật ký cùng transaction.
+
 | Method | Endpoint | Quyền ma trận | Mô tả |
 |---|---|---|---|
 | `PATCH` | `/products/{id}/manage-lot` | `PRODUCT_EDIT` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` | Bật/tắt quản lý lô theo từng SKU, có thể cấu hình kèm `expiryWarningDays` |
@@ -2912,7 +2920,7 @@ Tất cả các endpoint dưới đây có prefix `/api`. Quyền được lấy
     - Tài khoản không có quyền Quản lý kho (thiếu `WAREHOUSE_APPROVE`, `WAREHOUSE_MANAGE` và không phải `ROLE_ADMIN`): **Bị chặn 403 Forbidden** với thông điệp: `"Lô hàng '...' của sản phẩm '...' đã quá hạn sử dụng (...). Chỉ Quản lý kho mới có quyền xác nhận ghi đè xuất lô đã quá hạn."`
     - Tài khoản Quản lý kho nhưng chưa xác nhận cờ ghi đè (`overrideExpiredLot != true`): **Bị chặn 400 Bad Request** với thông điệp: `"Lô hàng '...' đã quá hạn sử dụng (...). Cần Quản lý kho xác nhận ghi đè để xuất hàng."`
     - Tài khoản Quản lý kho xác nhận ghi đè nhưng bỏ trống lý do: **Bị chặn 400 Bad Request** với thông điệp: `"Bắt buộc phải nhập lý do khi Quản lý kho xác nhận ghi đè xuất lô đã quá hạn '...'."`
-    - Tài khoản Quản lý kho xác nhận ghi đè (`overrideExpiredLot = true`) VÀ có lý do hợp lệ (`expiredLotOverrideReason` không rỗng): **Cho phép xuất hàng**. Phiếu kho và các dòng chi tiết ghi nhận `overrideExpiredLot = true`, lưu lại `expiredLotOverrideReason`, và ghi Audit Log hành động `OVERRIDE_EXPIRED_EXPORT`.
+    - Tài khoản Quản lý kho xác nhận ghi đè (`overrideExpiredLot = true`) VÀ có lý do hợp lệ (`expiredLotOverrideReason` không rỗng): **Cho phép xuất hàng**. Phiếu kho và các dòng chi tiết ghi nhận `overrideExpiredLot = true`, lưu lại `expiredLotOverrideReason`, và ghi Audit Log hành động `EXPIRED_LOT_OVERRIDE` (19 ký tự, phù hợp cột action 20 ký tự).
 - **Request Body mẫu ghi đè xuất lô quá hạn**:
 ```json
 {

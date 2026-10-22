@@ -95,6 +95,7 @@ public interface WarehouseService {
             Long warehouseId, Long productId, Integer customThresholdDays, String status);
 
     List<com.quanlybanhang.dto.response.LotThresholdResponse> getLotThresholds(String keyword);
+    java.util.Map<String, Object> getLotManagementOptions();
 
     com.quanlybanhang.dto.response.LotThresholdResponse updateLotThreshold(Long productId, Integer thresholdDays, String username);
 

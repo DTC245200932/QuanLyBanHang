@@ -77,6 +77,7 @@ public class WarehouseVoucherItemRequest {
     /**
      * Lý do ghi đè xuất lô đã quá hạn (S6-01).
      */
+    @jakarta.validation.constraints.Size(max = 255)
     private String expiredLotOverrideReason;
 
     public String getEffectiveOverrideReason() {

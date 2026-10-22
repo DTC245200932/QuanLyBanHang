@@ -1014,7 +1014,9 @@ public class WarehouseServiceImpl implements WarehouseService {
             BigDecimal baseQty = qty.multiply(factor);
 
             // Quản lý số lô và hạn sử dụng (S5-04, S6-01, S6-04)
-            boolean isLotManaged = Boolean.TRUE.equals(product.getManageLot());
+            boolean isLotManaged = Boolean.TRUE.equals(product.getManageLot())
+                    || type == WarehouseVoucherType.EXPORT && lotInventoryRepository.existsByWarehouseIdAndProductIdAndBaseQuantityGreaterThan(
+                            warehouse.getId(), product.getId(), BigDecimal.ZERO);
             String effectiveLotNumber = itemReq.getLotNumber() != null ? itemReq.getLotNumber().trim() : null;
             LocalDate effectiveExpiryDate = itemReq.getExpiryDate();
             LocalDate effectiveMfgDate = itemReq.getManufacturingDate();
@@ -1084,6 +1086,14 @@ public class WarehouseServiceImpl implements WarehouseService {
                                 ", yêu cầu xuất: " + baseQty + " " + product.getUnit());
                     }
 
+                    // The stored lot is authoritative: client dates cannot make an expired lot safe.
+                    if (existingLot != null) {
+                        effectiveExpiryDate = existingLot.getExpiryDate();
+                        effectiveMfgDate = existingLot.getManufacturingDate();
+                        if (!isDraft && effectiveExpiryDate == null) {
+                            throw new IllegalArgumentException("Lô chưa có hạn sử dụng trong dữ liệu kho, không thể xuất.");
+                        }
+                    }
                     // S6-01: Không cho xuất lô đã quá hạn, trừ khi Quản lý kho xác nhận ghi đè kèm lý do
                     boolean isExpired = effectiveExpiryDate != null && effectiveExpiryDate.isBefore(LocalDate.now());
                     if (isExpired) {
@@ -1113,8 +1123,8 @@ public class WarehouseServiceImpl implements WarehouseService {
 
                         auditLogService.logAction(
                                 "WAREHOUSE_LOT_OVERRIDE",
-                                warehouse.getCode() + ":" + product.getCode() + ":" + effectiveLotNumber,
-                                "OVERRIDE_EXPIRED_EXPORT",
+                                warehouse.getId() + ":" + product.getId() + ":" + effectiveLotNumber,
+                                "EXPIRED_LOT_OVERRIDE",
                                 null,
                                 "Xuất lô quá hạn: " + effectiveLotNumber + " (HSD: " + effectiveExpiryDate + "). Lý do: " + expiredOverrideReason,
                                 username != null ? username : "system"
@@ -1755,6 +1765,10 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Transactional(readOnly = true)
     public List<WarehouseLotInventoryResponse> getLotInventory(
             Long warehouseId, Long productId, String status, Integer thresholdDays, String keyword) {
+        if (warehouseId != null) requireWarehouse(warehouseId);
+        if (thresholdDays != null && thresholdDays < 1) throw new IllegalArgumentException("Ngưỡng cảnh báo phải ít nhất 1 ngày");
+        if (status != null && !status.isBlank() && !Set.of("ALL", "ACTIVE", "EXPIRING_SOON", "EXPIRED").contains(status.toUpperCase(Locale.ROOT)))
+            throw new IllegalArgumentException("Trạng thái hạn sử dụng không hợp lệ");
         List<WarehouseLotInventory> list;
         if (warehouseId != null && productId != null) {
             list = lotInventoryRepository.findByWarehouseIdAndProductId(warehouseId, productId);
@@ -1769,6 +1783,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         String kw = (keyword != null && !keyword.isBlank()) ? keyword.trim().toLowerCase() : null;
 
         return list.stream()
+                .filter(lot -> lot.getWarehouse() != null && mayAccessWarehouse(lot.getWarehouse().getId()))
                 .filter(lot -> {
                     if (kw == null) return true;
                     boolean matchLot = lot.getLotNumber() != null && lot.getLotNumber().toLowerCase().contains(kw);
@@ -1817,6 +1832,31 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .defaultThresholdDays(customThresholdDays != null ? customThresholdDays : 30)
                 .items(filteredItems)
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getLotManagementOptions() {
+        requireGrant("WAREHOUSE_VIEW", "WAREHOUSE_MANAGE");
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        Set<String> grants = auth.getAuthorities().stream().map(a -> a.getAuthority()).collect(Collectors.toSet());
+        boolean admin = grants.contains("ROLE_ADMIN");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("warehouses", warehouseRepository.findAllByActiveTrueOrderByNameAsc().stream()
+                .filter(w -> mayAccessWarehouse(w.getId())).map(w -> Map.of("id", w.getId(), "code", w.getCode(), "name", w.getName())).toList());
+        result.put("products", productRepository.findAll().stream().map(p -> LotThresholdResponse.builder()
+                .productId(p.getId()).productCode(p.getCode()).productName(p.getName()).unit(p.getUnit())
+                .manageLot(Boolean.TRUE.equals(p.getManageLot())).expiryWarningDays(p.getExpiryWarningDays())
+                .effectiveThresholdDays(p.getExpiryWarningDays() != null && p.getExpiryWarningDays() > 0 ? p.getExpiryWarningDays() : 30).build()).toList());
+        result.put("statuses", List.of(Map.of("value", "ACTIVE", "label", "Còn hạn"),
+                Map.of("value", "EXPIRING_SOON", "label", "Sắp hết hạn"), Map.of("value", "EXPIRED", "label", "Đã quá hạn")));
+        result.put("canConfigure", admin || grants.contains("WAREHOUSE_MANAGE") || grants.contains("PRODUCT_EDIT"));
+        result.put("canExport", admin || grants.contains("WAREHOUSE_EXPORT"));
+        result.put("canOverrideExpiredLot", canOverrideExpiredLot());
+        result.put("minimumThresholdDays", 1);
+        result.put("maximumThresholdDays", Integer.MAX_VALUE);
+        result.put("asOfDate", LocalDate.now());
+        return result;
     }
 
     @Override

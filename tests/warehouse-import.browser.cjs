@@ -75,6 +75,7 @@ const copy = value => JSON.parse(JSON.stringify(value));
     await s.page.locator('.line-qty-input').fill('2.5');
     await s.page.locator('.line-batch-input').fill('LOT-A');
     await s.page.locator('.line-expiry-input').fill('2027-10-21');
+    await s.page.locator('.line-manufacturing-input').fill('2026-10-21');
   }
   try {
     const s = await setup(['WAREHOUSE_IMPORT', 'WAREHOUSE_APPROVE', 'WAREHOUSE_ADJUST']);
@@ -89,10 +90,12 @@ const copy = value => JSON.parse(JSON.stringify(value));
     assert.equal(writes(s).length, 1); assert.equal(writes(s)[0].endpoint, '/warehouse/import/draft');
     assert.equal(writes(s)[0].body.documentNumber, 'HD-504'); assert.equal(writes(s)[0].body.supplierId, 5);
     assert.equal(writes(s)[0].body.items[0].lotNumber, 'LOT-A'); assert.equal(writes(s)[0].body.items[0].expiryDate, '2027-10-21');
+    assert.equal(writes(s)[0].body.items[0].manufacturingDate, '2026-10-21');
     await s.page.reload(); await s.page.locator('[data-edit-draft="PNK-SERVER-1"]').click();
     assert.equal(await s.page.locator('#receipt-code').inputValue(), 'PNK-SERVER-1');
     assert.equal(await s.page.locator('#receipt-doc-number').inputValue(), 'HD-504');
     assert.equal(await s.page.locator('.line-batch-input').inputValue(), 'LOT-A');
+    assert.equal(await s.page.locator('.line-manufacturing-input').inputValue(), '2026-10-21');
     await s.page.locator('.line-qty-input').fill('3.5'); await s.page.locator('#btn-save-draft-receipt').click();
     await s.page.locator('[data-view-receipt="PNK-SERVER-1"]').click();
     assert.equal(writes(s).at(-1).method, 'PUT'); assert.equal(writes(s).at(-1).endpoint, '/warehouse/vouchers/1');

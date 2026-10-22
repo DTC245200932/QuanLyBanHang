@@ -1,5 +1,27 @@
 # Trạng thái phát triển — QuanLyBanHang
 
+## S6-07 — Theo dõi hàng đã xuất nhưng chưa giao xong & Tiền hàng trên đường (Backend) — 22/10/2026
+
+Nhánh: `S6-07/theo-doi-hang-da-xuat-nhung-chua-giao-xong-BE`. Nguồn tiêu chí: User story S6-07 (*"Là Quản lý kho, tôi muốn theo dõi hàng đã xuất nhưng chưa giao xong, để biết đang có bao nhiêu tiền hàng nằm trên đường"*). Phạm vi thực hiện: **chỉ làm Backend** theo đúng yêu cầu người dùng, tuân thủ nghiêm ngặt `AGENTS.md` và ma trận phân quyền database-backed.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Danh sách chuyến giao đang chạy kèm số điểm đã giao và còn lại | Đã hoàn thành: `GET /api/warehouse/delivery-trips`, trả danh sách chuyến phân trang, tính toán tự động `totalPoints`, `deliveredPoints`, `remainingPoints` (số điểm còn lại chưa giao xong), `failedPoints`, `pendingPoints`; lọc theo `warehouseId`, `status` (mặc định hoặc lọc `IN_PROGRESS`), `keyword` | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; phạm vi dữ liệu cách ly theo các kho được gán (`user.getWarehouses()`), truy cập kho ngoài phạm vi trả 403 |
+| Theo dõi tổng tiền hàng đang nằm trên đường | Đã hoàn thành: `GET /api/warehouse/delivery-trips/summary` và trường `remainingValue` trong từng chuyến (`remainingValue = totalValue - deliveredValue`, bao gồm giá trị hàng tại các điểm chờ giao và các điểm chưa giao được); tổng hợp `totalValueOnRoad` cho Quản lý kho biết chính xác đang có bao nhiêu tiền hàng trên đường | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; tính toán hoàn toàn phía server từ DB, không tin client |
+| Hàng chưa giao được vẫn thuộc trách nhiệm chuyến, KHÔNG tự về kho | Đã hoàn thành: `PUT /api/warehouse/delivery-trips/{id}/stops/{stopId}/status` cập nhật `FAILED`, bắt buộc lý do `failedReason`; cờ `returnedToWarehouse = false`; **tuyệt đối KHÔNG tự động cộng lại tồn kho** `WarehouseInventory`; hàng vẫn nằm trên xe/chuyến giao và tính trong tiền hàng trên đường; chỉ nhập kho khi gọi API hoàn trả tường minh `POST /stops/{stopId}/return-to-warehouse` | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; chặn 403 nếu thiếu quyền; ghi nhận AuditLog chi tiết hành vi giao thất bại kèm lý do |
+| Cảnh báo chuyến quá thời gian dự kiến | Đã hoàn thành: So sánh thời điểm hiện tại với `expectedCompletionTime` khi chuyến ở trạng thái `IN_PROGRESS`; tự động bật cờ `isOverdue = true`, tính số phút quá hạn `overdueMinutes`, trả chuỗi cảnh báo trực quan `overdueWarning`; hỗ trợ lọc nhanh chuyến trễ hẹn bằng query `isOverdue=true`; thống kê `totalOverdueTrips` trong summary | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` |
+| Quản lý vòng đời chuyến giao và điểm dừng | Đã hoàn thành: `POST /api/warehouse/delivery-trips` (tạo chuyến từ đơn hàng đã xuất hoặc điểm tùy chỉnh), `POST /{id}/complete` (hoàn tất chuyến), `POST /{id}/cancel` (hủy chuyến bắt buộc lý do, chặn hủy khi đã giao điểm nào), `GET /{id}` (chi tiết chuyến), `GET /options`, `GET /eligible-orders` | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Thao tác ghi bắt buộc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`; xem bắt buộc `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` |
+| Phân quyền ma trận DB, cách ly kho và thu hồi động | Đã hoàn thành: Kiểm tra quyền động qua `SecurityContext` dựa trên ma trận phân quyền DB; thu hồi quyền trên phiên JWT hiện tại lập tức trả 403 Forbidden không fallback theo role; giới hạn dữ liệu kho theo `user.getWarehouses()`; `ROLE_ADMIN` luôn toàn quyền | Chưa triển khai (theo yêu cầu "chỉ làm BE") | Không dùng fallback vai trò; nguồn sự thật duy nhất là ma trận phân quyền database-backed |
+
+Kiểm chứng: **32 test backend mới qua 100%**:
+1. `DeliveryTripServiceTest` (13 tests): Nghiệp vụ tạo chuyến, tính số điểm đã giao / còn lại, tính tiền hàng trên đường, bất biến hàng chưa giao được không tự về kho, nhập kho trả hàng tường minh, cảnh báo quá thời gian dự kiến, thống kê summary và giới hạn kho.
+2. `DeliveryTripControllerTest` (8 tests): REST Endpoints, validation DTO, HTTP status, phân trang, serialize JSON.
+3. `DeliveryTripSecurityTest` (7 tests): Phân quyền ma trận, chặn 401 khi chưa đăng nhập, 403 khi thiếu quyền, chặn vai trò kho không có quyền xuất kho (không fallback role), cho phép tài khoản có quyền hoặc admin, kiểm tra các thao tác ghi/đọc.
+4. `DeliveryTripIntegrationTest` (4 tests): Kiểm thử tích hợp toàn diện trên HTTP/JWT/JPA/H2 MySQL mode, kiểm tra luồng vòng đời chuyến giao, tính chính xác tiền hàng trên đường, bất biến tồn kho không tăng khi giao thất bại, cảnh báo quá thời gian dự kiến, cách ly dữ liệu kho và thu hồi quyền động có hiệu lực ngay trên JWT hiện tại.
+Đã cập nhật tài liệu hợp đồng API tại `backend/API_DOCUMENTATION.md`.
+
+---
+
 ## S6-04 — Gợi ý lô xuất theo nguyên tắc hạn dùng gần nhất trước (FEFO) — 22/10/2026
 
 Nhánh: `S6-04/he-thong-goi-y-lo-xuat-theo-nguyen-tac`.

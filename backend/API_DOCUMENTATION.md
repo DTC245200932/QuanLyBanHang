@@ -2653,6 +2653,11 @@ Quy tắc nhất quán khi tính/tạo đơn:
 - Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
 - Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.
 
+
+
+- Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
+- Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.
+
 ### Gợi ý lô xuất theo nguyên tắc FEFO và Xuất kho theo lô (S6-04)
 
 Hệ thống hỗ trợ quản lý xuất kho theo phương pháp FEFO (First Expired, First Out - Hạn sử dụng gần nhất trước), giúp hàng cũ được ưu tiên xuất trước, giảm thiểu tình trạng hàng hóa hết hạn phải tiêu hủy.
@@ -2914,5 +2919,102 @@ Tất cả các endpoint dưới đây có prefix `/api`. Quyền được lấy
       "unit": "hộp"
     }
   ]
+}
+```
+
+---
+
+## S6-07 — Theo dõi hàng đã xuất nhưng chưa giao xong & Tiền hàng trên đường (22/10/2026)
+
+Tài liệu hợp đồng API phục vụ Quản lý kho theo dõi các chuyến giao hàng đang chạy, kiểm soát số điểm đã giao / còn lại, số tiền hàng đang nằm trên đường, và cảnh báo chuyến giao quá thời gian dự kiến.
+
+### 1. Nguyên tắc nghiệp vụ cốt lõi
+
+1. **Theo dõi tiền hàng trên đường**:
+   - `totalValue`: Tổng tiền hàng xuất phát của chuyến.
+   - `deliveredValue`: Giá trị hàng đã giao thành công tại các điểm `DELIVERED`.
+   - `remainingValue` (Tiền hàng trên đường): Bằng `totalValue - deliveredValue`. Bao gồm giá trị hàng tại các điểm chờ giao (`PENDING`) và các điểm chưa giao được (`FAILED`).
+2. **Quy tắc bất biến hàng chưa giao được**:
+   - Hàng tại điểm giao chưa giao được (`status = FAILED`) **vẫn thuộc trách nhiệm của chuyến/tài xế, tuyệt đối KHÔNG tự động hoàn về tồn kho**.
+   - `returnedToWarehouse` được khởi tạo là `false`. Tồn kho `WarehouseInventory` không đổi khi giao thất bại.
+   - Chỉ khi thực hiện thủ tục nhập kho trả hàng tường minh qua API `POST /stops/{stopId}/return-to-warehouse`, tồn kho mới được ghi nhận cộng lại.
+3. **Cảnh báo chuyến quá thời gian dự kiến**:
+   - Chuyến ở trạng thái `IN_PROGRESS` có thời điểm hiện tại vượt qua `expectedCompletionTime` sẽ được gắn cờ `isOverdue = true`, đi kèm số phút quá hạn `overdueMinutes` và thông báo cảnh báo `overdueWarning`.
+   - Hỗ trợ lọc nhanh danh sách chuyến quá hạn bằng tham số `isOverdue=true`.
+4. **Phân quyền ma trận (Database-backed Permission Matrix)**:
+   - Các API xem/tra cứu/thống kê (`GET`): Bắt buộc quyền `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`.
+   - Các API thao tác nghiệp vụ (tạo chuyến, cập nhật tiến trình, hoàn tất, hủy, nhập trả kho): Bắt buộc quyền `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN`.
+   - Thu hồi quyền trên phiên JWT hiện tại lập tức có hiệu lực và trả về `403 Forbidden` trên API request kế tiếp (không fallback theo role).
+   - Phân vùng dữ liệu kho (Warehouse Scoping): Tài khoản kho chỉ được thao tác và xem các chuyến giao thuộc kho được phân công (`user.getWarehouses()`). Truy cập kho ngoài phạm vi trả về `403 Forbidden`.
+
+### 2. Danh sách Endpoints (`/api/warehouse/delivery-trips`)
+
+| Method | Endpoint | Quyền yêu cầu | Mô tả |
+|---|---|---|---|
+| `GET` | `/options` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ADMIN` | Lấy danh sách kho trong phạm vi quyền, danh mục trạng thái chuyến và điểm giao |
+| `GET` | `` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ADMIN` | Tìm kiếm, lọc và phân trang danh sách chuyến giao hàng (`warehouseId`, `status`, `isOverdue`, `keyword`, `page`, `size`) |
+| `GET` | `/summary` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ADMIN` | Thống kê tổng hợp: số chuyến đang chạy, số chuyến quá hạn, tổng tiền hàng trên đường, tổng điểm đã giao/còn lại |
+| `GET` | `/{id}` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ADMIN` | Xem chi tiết chuyến giao hàng, danh sách điểm giao và các mặt hàng chi tiết |
+| `POST` | `` | `WAREHOUSE_EXPORT` hoặc `ADMIN` | Tạo mới chuyến giao hàng (từ danh sách `orderIds` hoặc `stops` tùy chỉnh) |
+| `PUT` | `/{id}/stops/{stopId}/status` | `WAREHOUSE_EXPORT` hoặc `ADMIN` | Cập nhật trạng thái điểm giao (`DELIVERED` hoặc `FAILED` kèm lý do). Hàng FAILED không tự về kho |
+| `POST` | `/{id}/complete` | `WAREHOUSE_EXPORT` hoặc `ADMIN` | Hoàn tất chuyến giao hàng. Cảnh báo nếu còn điểm chưa giao được |
+| `POST` | `/{id}/cancel` | `WAREHOUSE_EXPORT` hoặc `ADMIN` | Hủy chuyến giao hàng (bắt buộc lý do; chặn hủy nếu đã có điểm giao thành công) |
+| `POST` | `/{id}/stops/{stopId}/return-to-warehouse` | `WAREHOUSE_EXPORT` hoặc `ADMIN` | Thao tác tường minh: Nhập trả lại kho hàng chưa giao được của điểm giao thất bại |
+| `GET` | `/eligible-orders` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_EXPORT` hoặc `ADMIN` | Danh sách đơn hàng đã xuất kho (`EXPORTED`) thuộc kho sẵn sàng gán chuyến |
+
+### 3. Payload mẫu
+
+#### Tạo mới chuyến giao hàng (`POST /api/warehouse/delivery-trips`)
+
+```json
+{
+  "warehouseId": 1,
+  "tripCode": "CG-20261022-001",
+  "driverName": "Nguyễn Văn Lái",
+  "driverPhone": "0988123456",
+  "vehiclePlate": "29C-123.45",
+  "departureTime": "2026-10-22T08:00:00",
+  "expectedCompletionTime": "2026-10-22T12:00:00",
+  "note": "Giao hàng khu vực quận Hoàn Kiếm",
+  "stops": [
+    {
+      "orderCode": "DH-001",
+      "receiverName": "Đại lý Mai Linh",
+      "receiverPhone": "0912345678",
+      "deliveryAddress": "123 Phố Huế, Hoàn Kiếm, Hà Nội",
+      "deliveryAmount": 15000000.00,
+      "stopOrder": 1,
+      "items": [
+        {
+          "productId": 10,
+          "productCode": "BIA-HN",
+          "productName": "Bia Hà Nội Lon 330ml",
+          "unit": "thùng",
+          "quantity": 50,
+          "unitPrice": 300000.00
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Cập nhật trạng thái điểm giao (`PUT /api/warehouse/delivery-trips/{id}/stops/{stopId}/status`)
+
+```json
+{
+  "status": "FAILED",
+  "failedReason": "Cửa hàng đóng cửa, hẹn giao lại vào sáng mai",
+  "note": "Đã gọi điện xác nhận với chủ cửa hàng"
+}
+```
+*(Ghi chú: Khi `status` là `FAILED`, hàng vẫn ở trên xe thuộc trách nhiệm chuyến giao, không cộng lại tồn kho).*
+
+#### Nhập trả kho hàng chưa giao được (`POST /api/warehouse/delivery-trips/{id}/stops/{stopId}/return-to-warehouse`)
+
+```json
+{
+  "returnReason": "Thủ kho đã kiểm đếm và nhận lại 50 thùng hàng nguyên vẹn",
+  "note": "Biên bản hoàn trả số BB-0123"
 }
 ```

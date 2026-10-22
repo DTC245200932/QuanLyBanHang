@@ -47,5 +47,7 @@ public class WarehouseVoucherItemResponse {
     private java.time.LocalDate expiryDate;
     private java.time.LocalDate manufacturingDate;
     private Boolean manageLot;
+    private Boolean overrideExpiredLot;
+    private String expiredLotOverrideReason;
     private String note;
 }

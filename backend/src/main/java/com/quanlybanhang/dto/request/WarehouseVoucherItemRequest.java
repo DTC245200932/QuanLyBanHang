@@ -48,4 +48,14 @@ public class WarehouseVoucherItemRequest {
 
     @jakarta.validation.constraints.Size(max = 255)
     private String note;
+
+    /**
+     * Xác nhận ghi đè xuất lô đã quá hạn ở cấp độ dòng sản phẩm (S6-01).
+     */
+    private Boolean overrideExpiredLot;
+
+    /**
+     * Lý do ghi đè xuất lô đã quá hạn (S6-01).
+     */
+    private String expiredLotOverrideReason;
 }

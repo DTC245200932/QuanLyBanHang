@@ -2650,3 +2650,137 @@ Quy tắc nhất quán khi tính/tạo đơn:
 - Đơn có đại lý bắt buộc dùng kho phục vụ đang hoạt động gắn với đại lý. Gửi warehouseId khác trả 403; thiếu kho phục vụ trả 400, không chọn kho đầu tiên thay thế.
 - Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
 - Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.
+
+
+### S6-01 - Theo dõi Lô và Hạn sử dụng của Hàng hoá (Backend) - 22/10/2026
+
+Tất cả các endpoint dưới đây có prefix `/api`. Quyền được lấy từ ma trận phân quyền database-backed, không dùng vai trò cứng. `ROLE_ADMIN` luôn có toàn quyền.
+
+#### Danh sách API Lô & Hạn sử dụng (S6-01):
+
+| Method | Endpoint | Quyền ma trận | Mô tả |
+|---|---|---|---|
+| `PATCH` | `/products/{id}/manage-lot` | `PRODUCT_EDIT` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` | Bật/tắt quản lý lô theo từng SKU, có thể cấu hình kèm `expiryWarningDays` |
+| `GET` | `/warehouse/inventory/lots` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` | Danh sách tồn kho theo lô (hỗ trợ lọc `warehouseId`, `productId`, `status`: EXPIRED/EXPIRING_SOON/ACTIVE/ALL, `thresholdDays`, `keyword`) |
+| `GET` | `/warehouse/lot-expiry-alerts` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` | Danh sách cảnh báo lô sắp hết hạn / quá hạn kèm tổng hợp thống kê theo ngưỡng |
+| `GET` | `/warehouse/lot-thresholds` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` | Danh sách ngưỡng cảnh báo hạn dùng theo từng SKU có quản lý lô |
+| `PUT` | `/warehouse/lot-thresholds/{productId}` | `WAREHOUSE_MANAGE` hoặc `ROLE_ADMIN` | Khai báo / cập nhật ngưỡng cảnh báo hạn dùng (số ngày) cho SKU |
+| `POST` | `/warehouse/export` | `WAREHOUSE_EXPORT` hoặc `ROLE_ADMIN` | Lập phiếu xuất kho. Lô quá hạn BỊ CHẶN trừ khi Quản lý kho (`WAREHOUSE_APPROVE` / `WAREHOUSE_MANAGE` / `ROLE_ADMIN`) xác nhận ghi đè kèm lý do |
+| `POST` | `/warehouse/vouchers/{id}/confirm` | `WAREHOUSE_APPROVE` hoặc `ROLE_ADMIN` | Xác nhận phiếu kho nháp (nếu là phiếu xuất có lô quá hạn, bắt buộc đã được ghi đè kèm lý do) |
+
+#### 1. Bật hoặc tắt quản lý lô theo từng SKU
+- **Endpoint**: `PATCH /api/products/{id}/manage-lot`
+- **Request Body**:
+```json
+{
+  "manageLot": true,
+  "expiryWarningDays": 20
+}
+```
+- **Response**: Trả về `ProductResponse` với `manageLot: true`, `expiryWarningDays: 20`.
+- **Quy tắc**: Khi bật `manageLot = true`, khi nhập kho hoặc xuất kho bắt buộc phải chọn/nhập số lô. Ngưỡng cảnh báo hạn sử dụng mặc định là 30 ngày nếu không khai báo cụ thể.
+
+#### 2. Mỗi lô có số lô, ngày sản xuất, hạn sử dụng và số lượng còn lại
+- **Endpoint**: `GET /api/warehouse/inventory/lots`
+- **Query params**:
+  - `warehouseId` (tùy chọn)
+  - `productId` (tùy chọn)
+  - `status` (tùy chọn: `ALL`, `EXPIRED`, `EXPIRING_SOON`, `ACTIVE`)
+  - `thresholdDays` (tùy chọn: ghi đè ngưỡng cảnh báo khi tính `expiringSoon`)
+  - `keyword` (tùy chọn: tìm theo số lô, mã SKU, tên hàng)
+- **Response item**:
+```json
+{
+  "id": 102,
+  "warehouseId": 1,
+  "warehouseCode": "KHO-HCM",
+  "warehouseName": "Kho HCM",
+  "productId": 10,
+  "productCode": "SP-SUA01",
+  "productName": "Sữa tươi tiệt trùng 1L",
+  "lotNumber": "LOT-2026-02",
+  "manufacturingDate": "2026-09-02",
+  "expiryDate": "2026-10-29",
+  "baseQuantity": 50.0,
+  "baseUnit": "hộp",
+  "warningThresholdDays": 15,
+  "daysUntilExpiry": 7,
+  "isExpired": false,
+  "isExpiringSoon": true,
+  "status": "EXPIRING_SOON",
+  "updatedAt": "2026-10-22T00:00:00"
+}
+```
+
+#### 3. Cảnh báo lô sắp hết hạn theo ngưỡng khai báo được
+- **Endpoint**: `GET /api/warehouse/lot-expiry-alerts`
+- **Query params**: `warehouseId`, `productId`, `thresholdDays`, `status` (`ALL`, `EXPIRED`, `EXPIRING_SOON`)
+- **Response**:
+```json
+{
+  "success": true,
+  "message": "Danh sách cảnh báo hạn sử dụng lô",
+  "data": {
+    "totalAlerts": 2,
+    "expiredCount": 1,
+    "expiringSoonCount": 1,
+    "defaultThresholdDays": 30,
+    "items": [
+      {
+        "id": 103,
+        "lotNumber": "LOT-2026-03",
+        "expiryDate": "2026-10-19",
+        "daysUntilExpiry": -3,
+        "isExpired": true,
+        "isExpiringSoon": false,
+        "status": "EXPIRED",
+        "baseQuantity": 20.0,
+        "baseUnit": "hộp"
+      },
+      {
+        "id": 102,
+        "lotNumber": "LOT-2026-02",
+        "expiryDate": "2026-10-29",
+        "daysUntilExpiry": 7,
+        "isExpired": false,
+        "isExpiringSoon": true,
+        "status": "EXPIRING_SOON",
+        "baseQuantity": 50.0,
+        "baseUnit": "hộp"
+      }
+    ]
+  }
+}
+```
+- **Khai báo cấu hình ngưỡng SKU**: `PUT /api/warehouse/lot-thresholds/{productId}`
+```json
+{
+  "thresholdDays": 15
+}
+```
+
+#### 4. Không cho xuất lô đã quá hạn, trừ khi Quản lý kho xác nhận ghi đè kèm lý do
+- **Endpoint**: `POST /api/warehouse/export`
+- **Quy tắc chặn nghiêm ngặt**:
+  - Khi xuất hàng có chỉ định `lotNumber`, hệ thống tự động kiểm tra `expiryDate` của lô trong kho.
+  - Nếu lô hàng đã quá hạn sử dụng (`expiryDate < today`):
+    - Tài khoản không có quyền Quản lý kho (thiếu `WAREHOUSE_APPROVE`, `WAREHOUSE_MANAGE` và không phải `ROLE_ADMIN`): **Bị chặn 403 Forbidden** với thông điệp: `"Lô hàng '...' của sản phẩm '...' đã quá hạn sử dụng (...). Chỉ Quản lý kho mới có quyền xác nhận ghi đè xuất lô đã quá hạn."`
+    - Tài khoản Quản lý kho nhưng chưa xác nhận cờ ghi đè (`overrideExpiredLot != true`): **Bị chặn 400 Bad Request** với thông điệp: `"Lô hàng '...' đã quá hạn sử dụng (...). Cần Quản lý kho xác nhận ghi đè để xuất hàng."`
+    - Tài khoản Quản lý kho xác nhận ghi đè nhưng bỏ trống lý do: **Bị chặn 400 Bad Request** với thông điệp: `"Bắt buộc phải nhập lý do khi Quản lý kho xác nhận ghi đè xuất lô đã quá hạn '...'."`
+    - Tài khoản Quản lý kho xác nhận ghi đè (`overrideExpiredLot = true`) VÀ có lý do hợp lệ (`expiredLotOverrideReason` không rỗng): **Cho phép xuất hàng**. Phiếu kho và các dòng chi tiết ghi nhận `overrideExpiredLot = true`, lưu lại `expiredLotOverrideReason`, và ghi Audit Log hành động `OVERRIDE_EXPIRED_EXPORT`.
+- **Request Body mẫu ghi đè xuất lô quá hạn**:
+```json
+{
+  "warehouseId": 1,
+  "overrideExpiredLot": true,
+  "expiredLotOverrideReason": "Xuất hàng trả về nhà cung cấp để tiêu huỷ theo biên bản số 12/BB-TH",
+  "items": [
+    {
+      "productId": 10,
+      "lotNumber": "LOT-2026-03",
+      "quantity": 20,
+      "unit": "hộp"
+    }
+  ]
+}
+```

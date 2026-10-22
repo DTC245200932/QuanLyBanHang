@@ -401,15 +401,60 @@ public class WarehouseController {
     }
 
     /**
-     * API xem danh sách tồn kho theo Lô & Hạn sử dụng (S5-04).
+     * API xem danh sách tồn kho theo Lô & Hạn sử dụng (S5-04, S6-01).
+     * Hỗ trợ lọc theo kho, sản phẩm, trạng thái hạn dùng (EXPIRED, EXPIRING_SOON, ACTIVE), ngưỡng cảnh báo, từ khóa.
      */
     @GetMapping("/inventory/lots")
     @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
     public ApiResponse getLotInventory(
             @RequestParam(required = false) Long warehouseId,
-            @RequestParam(required = false) Long productId) {
-        List<WarehouseLotInventoryResponse> stock = warehouseService.getLotInventory(warehouseId, productId);
+            @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer thresholdDays,
+            @RequestParam(required = false) String keyword) {
+        List<WarehouseLotInventoryResponse> stock = warehouseService.getLotInventory(
+                warehouseId, productId, status, thresholdDays, keyword);
         return ApiResponse.success("Danh sách tồn kho theo lô", stock);
+    }
+
+    /**
+     * API cảnh báo các lô sắp hết hạn hoặc đã quá hạn theo ngưỡng khai báo được (S6-01).
+     */
+    @GetMapping("/lot-expiry-alerts")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
+    public ApiResponse getLotExpiryAlerts(
+            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) Integer thresholdDays,
+            @RequestParam(required = false) String status) {
+        LotExpiryAlertResponse alerts = warehouseService.getLotExpiryAlerts(
+                warehouseId, productId, thresholdDays, status);
+        return ApiResponse.success("Danh sách cảnh báo hạn sử dụng lô", alerts);
+    }
+
+    /**
+     * API xem danh sách ngưỡng cảnh báo hạn sử dụng theo từng SKU (S6-01).
+     */
+    @GetMapping("/lot-thresholds")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('WAREHOUSE_VIEW', 'WAREHOUSE_MANAGE'))")
+    public ApiResponse getLotThresholds(@RequestParam(required = false) String keyword) {
+        List<LotThresholdResponse> thresholds = warehouseService.getLotThresholds(keyword);
+        return ApiResponse.success("Danh sách ngưỡng cảnh báo hạn sử dụng", thresholds);
+    }
+
+    /**
+     * API Quản lý kho khai báo/cập nhật ngưỡng cảnh báo hạn sử dụng cho SKU (S6-01).
+     */
+    @PutMapping("/lot-thresholds/{productId}")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('WAREHOUSE_MANAGE'))")
+    public ApiResponse updateLotThreshold(
+            @PathVariable Long productId,
+            @Valid @RequestBody com.quanlybanhang.dto.request.LotThresholdRequest request,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        LotThresholdResponse response = warehouseService.updateLotThreshold(
+                productId, request.getThresholdDays(), username);
+        return ApiResponse.success("Cập nhật ngưỡng cảnh báo thành công", response);
     }
 
     /**

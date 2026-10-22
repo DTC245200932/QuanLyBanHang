@@ -1,3 +1,32 @@
+# Trạng thái sprint 1–6
+
+Cập nhật **22/10/2026**, hoàn thành tính năng **S6-02 — Thẻ kho (Stock Card)** (backend); không merge hoặc lấy code từ nhánh khác.
+
+## S6-02 — Thẻ kho sản phẩm (Stock Card backend) — 22/10/2026
+
+Nguồn tiêu chí: User story S6-02 (*"Là Nhân viên kho, tôi muốn xem thẻ kho của một sản phẩm, để truy nguyên được từ phiếu nào làm số tồn bị lệch."*). Phạm vi chỉ làm **backend** theo yêu cầu người dùng, tuân thủ `AGENTS.md` và ma trận phân quyền.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Danh sách toàn bộ phát sinh theo thứ tự thời gian | API `GET /api/warehouse/stock-card/{productId}` hợp nhất tất cả các loại phát sinh: nhập kho (`IMPORT`), xuất kho (`EXPORT`), điều chỉnh kho (`ADJUSTMENT`), xuất chuyển kho (`TRANSFER_DISPATCH`), nhận chuyển kho (`TRANSFER_RECEIVE`), hủy chuyển kho hoàn tồn (`TRANSFER_CANCEL`). Dữ liệu được sắp xếp thứ tự thời gian tăng dần (`eventTime` ASC, sau đó `sourceId` ASC) | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Quyền `WAREHOUSE_VIEW` hoặc `ROLE_ADMIN`; kiểm tra phân quyền trực tiếp qua ma trận DB, không fallback role. `ROLE_ADMIN` luôn được phép |
+| Tồn sau phát sinh (running balance) và liên kết chứng từ gốc | Mỗi dòng trả về `baseQuantityChange` (số lượng có dấu theo đơn vị cơ sở), `runningBaseBalance` (tồn tích lũy sau phát sinh theo đơn vị cơ sở), `baseUnit`, `displayQuantity` & `displayUnit` (số lượng và đơn vị hiển thị trên chứng từ), cùng liên kết chứng từ gốc qua `sourceType` (`VOUCHER`/`TRANSFER`), `sourceId` và `sourceCode` | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Tính toán chuẩn xác ở tầng service; hỗ trợ chuyển kho đa trạng thái (IN_TRANSIT, COMPLETED, CANCELLED) phản ánh đúng từng mốc xuất và nhận |
+| Lọc theo kho và khoảng thời gian | Hỗ trợ tham số truy vấn `warehouseId`, `fromDate` (ISO 8601), `toDate` (ISO 8601). Kiểm tra phạm vi kho phân công: nếu người dùng truy cập kho ngoài phạm vi được phân công sẽ bị chặn `403 Forbidden` | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Phạm vi kho lấy từ cấu hình phân công kho trong DB (`StockLedgerService.visibleWarehousesFor("WAREHOUSE_VIEW")`); tài khoản không được phân công kho nào sẽ trả thẻ kho rỗng |
+| Phân trang và tồn đầu kỳ (Opening balance) | Hỗ trợ phân trang server-side (`page`, `size` tối đa 500). Đánh số thứ tự liên tục `rowNumber`. Với `page > 0`, trả về `openingBalance` (số dư tồn kho trước dòng đầu tiên của trang hiện tại) để frontend duy trì tính liên tục của số dư | Chưa làm (giữ nguyên theo yêu cầu "chỉ làm backend") | Kiểm tra tính hợp lệ tham số phân trang (`page >= 0`, `size` từ 1 đến 500); `productId` hợp lệ; từ chối tham số sai bằng `400 Bad Request` |
+
+Kiểm chứng cuối: **649 test backend qua**, bao gồm 11 test service `StockCardServiceTest` và 5 test controller `StockCardControllerTest`. Kiểm chứng đầy đủ:
+- Thứ tự thời gian và tồn lũy kế running balance cho nhập, xuất, điều chỉnh.
+- Chuyển kho nội bộ sinh đúng sự kiện DISPATCH (giảm kho đi) và RECEIVE (tăng kho đến khi hoàn thành).
+- Phiếu chuyển kho bị hủy (CANCELLED) sinh sự kiện DISPATCH và CANCEL (hoàn tồn lại kho đi kèm lý do hủy).
+- Phiếu chuyển kho đang chuyển (IN_TRANSIT) chỉ sinh sự kiện DISPATCH.
+- Lọc theo khoảng thời gian (`fromDate`, `toDate`) chính xác.
+- Phân trang server-side và tính `openingBalance` chuẩn xác từ trang 1 trở đi.
+- Thu hồi quyền `WAREHOUSE_VIEW` trên token JWT lập tức trả `403 Forbidden` mà không fallback role.
+- Cố tình xem kho ngoài phạm vi phân công lập tức trả `403 Forbidden`.
+- Người dùng chưa đăng nhập trả `401 Unauthorized`.
+- `ROLE_ADMIN` luôn có toàn quyền xem thẻ kho của bất kỳ sản phẩm và kho nào.
+Đã cập nhật hợp đồng tại `backend/API_DOCUMENTATION.md`. Không có bất kỳ thay đổi nào ở frontend hay schema DB.
+
+
 # Trạng thái phát triển — QuanLyBanHang
 
 ## S6-01 — Frontend lô & hạn sử dụng, nối API và sửa lỗi backend (22/10/2026)

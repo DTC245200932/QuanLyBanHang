@@ -615,6 +615,7 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | GET | `/warehouse/inventory/lots` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Xem danh sách tồn kho chi tiết theo từng Số lô và Hạn sử dụng (S5-04) |
 | GET | `/warehouse/vouchers` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Danh sách phiếu kho (hỗ trợ lọc theo `warehouseId`, `type`, `status`: DRAFT/CONFIRMED/ADJUSTED, `supplierId`) |
 | GET | `/warehouse/vouchers/{id}` | `WAREHOUSE_VIEW` hoặc các vai trò có quyền xem kho | Chi tiết phiếu kho kèm thông tin NCC, số chứng từ, số lô, HSD và đóng băng quy đổi |
+| GET | `/warehouse/stock-card/{productId}` | `WAREHOUSE_VIEW` hoặc `ROLE_ADMIN` | Thẻ kho sản phẩm (S6-02): xem toàn bộ phát sinh nhập/xuất/điều chỉnh/chuyển kho theo thứ tự thời gian, tồn tích lũy và liên kết chứng từ gốc |
 | GET | `/warehouse/stock-counts/options` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Tùy chọn kiểm kê (kho trong phạm vi, nhóm hàng, trạng thái, canAdjust) |
 | GET | `/warehouse/stock-counts` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Danh sách phiếu kiểm kê (lọc theo warehouseId, categoryId, status, keyword; phân trang) |
 | GET | `/warehouse/stock-counts/{id}` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Chi tiết phiếu kiểm kê kèm danh sách sản phẩm, tồn sổ, số thực đếm, chênh lệch |
@@ -622,6 +623,38 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 | PUT | `/warehouse/stock-counts/{id}/items` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Cập nhật số đếm thực tế cho các dòng sản phẩm, tự động tính chênh lệch từng dòng |
 | POST | `/warehouse/stock-counts/{id}/complete` | `WAREHOUSE_ADJUST` từ ma trận hoặc `ROLE_ADMIN` | Chốt kiểm kê trong phạm vi kho, bắt buộc nhập lý do; không yêu cầu vai trò Quản lý kho |
 | POST | `/warehouse/stock-counts/{id}/cancel` | `WAREHOUSE_VIEW` hoặc `WAREHOUSE_ADJUST` hoặc `ROLE_ADMIN` | Hủy phiếu kiểm kê ở trạng thái mới tạo (DRAFT) |
+
+### Thẻ kho sản phẩm — Truy nguyên biến động tồn kho (S6-02)
+
+Dành cho **Nhân viên kho (`ROLE_WAREHOUSE_STAFF`)**, Quản lý kho và Quản trị viên (`ROLE_ADMIN`):
+- **User story**: *"Là Nhân viên kho, tôi muốn xem thẻ kho của một sản phẩm, để truy nguyên được từ phiếu nào làm số tồn bị lệch."*
+- **Endpoint**: `GET /api/warehouse/stock-card/{productId}`
+- **Quyền**: `WAREHOUSE_VIEW` hoặc `ROLE_ADMIN`. Phạm vi kho tự động giới hạn theo danh sách kho được phân công trong DB (không fallback role; ADMIN xem toàn bộ).
+- **Query parameters**:
+  - `warehouseId` (tùy chọn, `Long`): Lọc theo một kho cụ thể. Nếu truyền kho ngoài phạm vi được phân công, hệ thống trả về `403 Forbidden`.
+  - `fromDate` (tùy chọn, ISO 8601): Lọc biến động từ thời điểm này (bao gồm).
+  - `toDate` (tùy chọn, ISO 8601): Lọc biến động đến thời điểm này (bao gồm).
+  - `page` (tùy chọn, `int`, mặc định `0`): Chỉ số trang (0-based).
+  - `size` (tùy chọn, `int`, mặc định `50`, tối đa `500`): Số dòng mỗi trang.
+- **Dữ liệu trả về**:
+  - Thông tin sản phẩm: `productId`, `productCode`, `productName`, `baseUnit`.
+  - Danh sách dòng biến động `entries` được sắp xếp theo thời gian tăng dần (`eventTime` ASC, sau đó `sourceId` ASC):
+    - `rowNumber`: Số thứ tự dòng liên tục trong trang (1-based).
+    - `eventTime`: Thời điểm phát sinh sự kiện (thời điểm ghi sổ phiếu kho hoặc điều phối/nhận/hủy chuyển kho).
+    - `eventType`: Loại phát sinh (`IMPORT`, `EXPORT`, `ADJUSTMENT`, `TRANSFER_DISPATCH`, `TRANSFER_RECEIVE`, `TRANSFER_CANCEL`).
+    - `eventTypeLabel`: Nhãn hiển thị tiếng Việt ("Nhập kho", "Xuất kho", "Điều chỉnh", "Xuất chuyển kho", "Nhận chuyển kho", "Hủy chuyển kho (hoàn tồn)").
+    - `baseQuantityChange`: Số lượng biến động theo đơn vị cơ sở (có dấu: `+` khi tăng tồn, `-` khi giảm tồn).
+    - `runningBaseBalance`: Tồn kho lũy kế theo đơn vị cơ sở sau khi phát sinh sự kiện này.
+    - `baseUnit`: Đơn vị cơ sở của sản phẩm.
+    - `displayQuantity`: Số lượng theo đơn vị ghi trên chứng từ gốc.
+    - `displayUnit`: Đơn vị ghi trên chứng từ gốc.
+    - `warehouseId`, `warehouseCode`, `warehouseName`: Kho diễn ra phát sinh.
+    - `sourceType`: Loại chứng từ gốc (`VOUCHER` cho phiếu kho, `TRANSFER` cho phiếu chuyển kho).
+    - `sourceId`: ID chứng từ gốc (dùng để điều hướng mở chi tiết chứng từ).
+    - `sourceCode`: Mã chứng từ gốc (`voucherCode` hoặc `transferCode`).
+    - `note`: Ghi chú trên chứng từ hoặc dòng hàng / lý do hủy chuyển kho.
+  - Phân trang: `totalElements`, `totalPages`, `currentPage`, `pageSize`.
+  - `openingBalance`: Tồn kho đầu kỳ trước dòng đầu tiên của trang hiện tại (trang 0 trả `null`, từ trang 1 trở đi trả tồn tích lũy tại cuối trang trước giúp frontend hiển thị số dư lũy kế liên tục).
 
 ### Kiểm kê kho và ghi nhận chênh lệch (S5-08)
 

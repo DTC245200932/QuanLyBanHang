@@ -1,5 +1,37 @@
 # Trạng thái phát triển — QuanLyBanHang
 
+## S7-04 — Hệ thống tự cảnh báo và khoá bán công nợ (Backend) — 22/10/2026
+
+Nhánh: `feature/S7-04-he--thong-tu-canh-bao-BE`.
+Nguồn tiêu chí: User story S7-04 (*"Hệ thống tự cảnh báo và khoá bán công nợ"*):
+1. **Đại lý vượt hạn mức tiền hoặc có khoản quá số ngày nợ cho phép được gắn cờ tự động**.
+2. **Đại lý bị gắn cờ thì đơn mới bị chặn hoặc chuyển sang cần duyệt, theo cấu hình**.
+3. **Tác vụ đánh giá lại chạy mỗi ngày một lần và chạy lại sau mỗi lần ghi nhận thu tiền**.
+Phạm vi thực hiện: **Chỉ làm Backend (BE)** theo đúng yêu cầu người dùng, tuân thủ nghiêm ngặt `AGENTS.md` và ma trận phân quyền database-backed.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| **AC1: Tự động gắn cờ đại lý vi phạm công nợ** (vượt hạn mức tiền hoặc quá số ngày nợ cho phép) | **Đã hoàn thành**: Mở rộng `Dealer` lưu cờ vi phạm: `debtFlagged`, `debtFlagType` (`NONE`, `DEBT_LIMIT_EXCEEDED`, `OVERDUE`, `BOTH`), `debtFlagReason`, `debtFlaggedAt`, `lastDebtEvaluatedAt`. Đánh giá công nợ theo FIFO (thu tiền trừ nợ đơn cũ trước): vượt `debtLimit` hoặc quá `maxDebtDays` sẽ được tự động gắn cờ kèm lý do chi tiết; nếu an toàn sẽ tự động gỡ cờ (`debtFlagged = false`, `debtFlagType = NONE`). | **Chưa triển khai** (Theo yêu cầu: "chỉ làm BE") | API `GET /api/finance/debt/flagged-dealers` sẵn sàng kết nối. Yêu cầu quyền `FINANCE_VIEW_DEBT` hoặc `FINANCE_MANAGE` hoặc `ROLE_ADMIN` từ ma trận DB. Thu hồi quyền trả 403 ngay lập tức. |
+| **AC2: Chặn (BLOCK) hoặc chuyển cần duyệt (REQUIRE_APPROVAL) đơn mới khi đại lý bị gắn cờ** | **Đã hoàn thành**: Entity `DebtRiskConfig` lưu cấu hình hệ thống (`limitExceededAction`, `overdueAction`, `defaultAction`, `autoFlagEnabled`). Hỗ trợ cấu hình riêng cho từng đại lý qua `Dealer.debtActionConfig` (`DEFAULT`, `BLOCK`, `REQUIRE_APPROVAL`). Khi đại lý bị gắn cờ: nếu action là `BLOCK` thì chặn hoàn toàn tạo đơn hàng (`DealerDebtBlockedException` -> HTTP 400 Bad Request kèm lý do và mã đại lý); nếu action là `REQUIRE_APPROVAL` thì đơn mới được phép ghi nhận nhưng tự động chuyển sang `PENDING_APPROVAL`, `orderRequiresApproval = true`, bổ sung cảnh báo công nợ vào chi tiết đơn để Quản lý kinh doanh phê duyệt. | **Chưa triển khai** (Theo yêu cầu: "chỉ làm BE") | Quyền tạo đơn `ORDER_CREATE` kiểm tra tự động trạng thái cờ công nợ của đại lý tại `OrderServiceImpl`. Quyền cấu hình hành vi công nợ (`PUT /api/finance/debt/config`, `PUT /api/finance/debt/{dealerId}/action-config`) bắt buộc `FINANCE_MANAGE` hoặc `ROLE_ADMIN`. |
+| **AC3: Tác vụ đánh giá lại chạy định kỳ mỗi ngày một lần và chạy lại tự động sau khi thu tiền** | **Đã hoàn thành**: Scheduler `DebtAssessmentScheduler` chạy định kỳ mỗi ngày một lần vào 01:00 AM (`@Scheduled(cron = "${app.debt.evaluation.cron:0 0 1 * * ?}")`) quét toàn bộ đại lý để gắn cờ hoặc gỡ cờ. Entity `DebtPayment` và API `POST /api/finance/debt-payments` ghi nhận phiếu thu tiền công nợ; ngay sau khi lưu phiếu thu, hệ thống tự động kích hoạt tác vụ đánh giá lại công nợ ngay lập tức cho đại lý đó, gỡ cờ tự động nếu công nợ đã về mức an toàn. Hỗ trợ kích hoạt đánh giá thủ công qua `POST /api/finance/debt/evaluate` và `POST /api/finance/debt/{dealerId}/evaluate`. | **Chưa triển khai** (Theo yêu cầu: "chỉ làm BE") | Ghi nhận thu tiền và kích hoạt đánh giá yêu cầu quyền `FINANCE_MANAGE` hoặc `ROLE_ADMIN`. Tra cứu lịch sử thu tiền yêu cầu `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ROLE_ADMIN`. |
+| **Phân quyền ma trận DB & Không fallback vai trò** | **Đã hoàn thành**: Toàn bộ 8 endpoints S7-04 kết nối chặt chẽ với ma trận phân quyền database-backed (`RolePermissionConfig`), không sử dụng role-based fallback. Thu hồi quyền trên cùng một token JWT lập tức trả về `403 Forbidden` trên request kế tiếp mà không cần đăng nhập lại. Tài khoản `ROLE_ADMIN` luôn có toàn quyền truy cập. | **Chưa triển khai** (Frontend sẽ ẩn/hiện menu, nút cấu hình và nút thu tiền tương ứng theo ma trận quyền khi phát triển FE) | Đã kiểm chứng qua bộ test bảo mật `DebtRiskSecurityTest` và kiểm thử tích hợp `DebtRiskIntegrationTest`: 401 khi chưa đăng nhập, 403 khi thiếu quyền hoặc bị thu hồi quyền động, 200/201 khi có quyền, ADMIN full access. |
+
+### Kiểm chứng Backend S7-04
+
+Đã triển khai và vượt qua **42/42 tests tự động (100% PASS)**:
+1. `DealerDebtServiceTest` (**18/18 tests passed**): Kiểm thử toàn bộ nghiệp vụ đánh giá công nợ, tính nợ theo FIFO, tự động gắn cờ `DEBT_LIMIT_EXCEEDED`, `OVERDUE`, `BOTH`, xử lý `BLOCK` ném ngoại lệ `DealerDebtBlockedException`, xử lý `REQUIRE_APPROVAL` cho phép tạo đơn, tự động gỡ cờ sau khi ghi nhận phiếu thu tiền, cấu hình hệ thống và cấu hình riêng đại lý.
+2. `DebtAssessmentSchedulerTest` (**2/2 tests passed**): Kiểm thử tác vụ định kỳ tự động chạy đánh giá công nợ toàn bộ đại lý và xử lý khi cấu hình tắt tự động đánh giá.
+3. `FinanceControllerTest` (**13/13 tests passed**): Kiểm thử REST APIs cho cấu hình rủi ro công nợ, cấu hình riêng đại lý, danh sách đại lý gắn cờ, kích hoạt đánh giá thủ công, ghi nhận thu tiền, tra cứu lịch sử thu tiền phân trang.
+4. `DebtRiskSecurityTest` (**6/6 tests passed**): Kiểm thử ma trận phân quyền động, xác minh mã lỗi 401 khi chưa đăng nhập, 403 khi thiếu quyền `FINANCE_VIEW_DEBT` / `FINANCE_MANAGE` (không fallback theo role), 200/201 khi được cấp quyền, xác minh `ROLE_ADMIN` toàn quyền.
+5. `DebtRiskIntegrationTest` (**3/3 tests passed**): Kiểm thử tích hợp toàn trình HTTP/JWT/JPA/H2:
+   - Luồng vượt hạn mức: Tự gắn cờ `DEBT_LIMIT_EXCEEDED` -> Chặn tạo đơn hàng (400 Bad Request) khi action `BLOCK` -> Đổi action sang `REQUIRE_APPROVAL` -> Tạo đơn thành công với trạng thái `PENDING_APPROVAL` -> Ghi nhận thu nợ `DebtPayment` -> Tự động đánh giá lại và gỡ cờ thành công.
+   - Luồng nợ quá hạn: Tự gắn cờ `OVERDUE` khi có đơn vượt `maxDebtDays` -> Thu nợ cấn trừ đúng đơn nợ cũ -> Tự động gỡ cờ.
+   - Luồng ma trận phân quyền: Thu hồi quyền tức thì trả về 403 Forbidden trên cùng token JWT hiện tại; cấp lại quyền hoạt động bình thường; Admin luôn được phép.
+
+Đã cập nhật chi tiết hợp đồng API tại `backend/API_DOCUMENTATION.md`.
+
+---
+
 ## S6-07 — Theo dõi hàng đã xuất nhưng chưa giao xong & Tiền hàng trên đường (Backend) — 22/10/2026
 
 Nhánh: `S6-07/theo-doi-hang-da-xuat-nhung-chua-giao-xong-BE`. Nguồn tiêu chí: User story S6-07 (*"Là Quản lý kho, tôi muốn theo dõi hàng đã xuất nhưng chưa giao xong, để biết đang có bao nhiêu tiền hàng nằm trên đường"*). Phạm vi thực hiện: **chỉ làm Backend** theo đúng yêu cầu người dùng, tuân thủ nghiêm ngặt `AGENTS.md` và ma trận phân quyền database-backed.

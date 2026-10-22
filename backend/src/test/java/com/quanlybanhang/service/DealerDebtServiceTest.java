@@ -30,7 +30,10 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import com.quanlybanhang.dto.response.DebtPaymentResponse;
+import com.quanlybanhang.dto.response.FlaggedDealerResponse;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("DealerDebtService - Kiểm soát công nợ, hạn mức và chặn nợ quá hạn (S4-02)")
@@ -44,6 +47,12 @@ class DealerDebtServiceTest {
 
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private com.quanlybanhang.repository.DebtPaymentRepository debtPaymentRepository;
+    @Mock
+    private com.quanlybanhang.repository.DebtRiskConfigRepository debtRiskConfigRepository;
+    @Mock
+    private AuditLogService auditLogService;
 
     @InjectMocks
     private DealerDebtServiceImpl dealerDebtService;
@@ -255,6 +264,217 @@ class DealerDebtServiceTest {
         assertThatThrownBy(() -> dealerDebtService.getDealerDebtInfo(1L))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("chỉ có quyền xem đại lý do mình phụ trách");
+    }
+
+    @Test
+    @DisplayName("S7-04: Khấu trừ công nợ khi đã có phiếu ghi nhận thu tiền")
+    void getDealerDebtInfo_withPayments_reducesCurrentDebt() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("50000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(new BigDecimal("20000000"));
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of());
+
+        DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
+
+        assertThat(response.getCurrentDebt()).isEqualByComparingTo(new BigDecimal("30000000"));
+        assertThat(response.getTotalPaid()).isEqualByComparingTo(new BigDecimal("20000000"));
+        assertThat(response.getRemainingLimit()).isEqualByComparingTo(new BigDecimal("20000000"));
+    }
+
+    @Test
+    @DisplayName("S7-04: Phiếu thu tiền khấu trừ đơn cũ trước theo FIFO, gỡ nợ quá hạn")
+    void getDealerDebtInfo_withPayments_clearsOldestOverdueDebtUsingFifo() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("30000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(new BigDecimal("10000000"));
+
+        Order order1 = Order.builder()
+                .id(1L).orderCode("DH-OLD").totalAmount(new BigDecimal("10000000"))
+                .recordedAt(LocalDateTime.now().minusDays(45)).status("RECORDED").build();
+        Order order2 = Order.builder()
+                .id(2L).orderCode("DH-NEW").totalAmount(new BigDecimal("20000000"))
+                .recordedAt(LocalDateTime.now().minusDays(5)).status("RECORDED").build();
+
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of(order1, order2));
+
+        DealerDebtResponse response = dealerDebtService.getDealerDebtInfo(1L);
+
+        assertThat(response.getHasOverdueDebt()).isFalse();
+        assertThat(response.getOverdueAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getCurrentDebt()).isEqualByComparingTo(new BigDecimal("20000000"));
+    }
+
+    @Test
+    @DisplayName("S7-04: Đánh giá lại tự động gắn cờ DEBT_LIMIT_EXCEEDED khi công nợ vượt hạn mức")
+    void evaluateDealerDebt_whenExceedingDebtLimit_flagsDealerAutomatically() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("60000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of());
+
+        com.quanlybanhang.dto.response.FlaggedDealerResponse response = dealerDebtService.evaluateDealerDebt(1L);
+
+        assertThat(response.getDebtFlagType()).isEqualTo(DebtFlagType.DEBT_LIMIT_EXCEEDED);
+        assertThat(response.getDebtFlagReason()).contains("Vượt hạn mức nợ");
+        assertThat(dealer.getDebtFlagged()).isTrue();
+        assertThat(dealer.getDebtFlagType()).isEqualTo(DebtFlagType.DEBT_LIMIT_EXCEEDED);
+        verify(dealerRepository).save(dealer);
+    }
+
+    @Test
+    @DisplayName("S7-04: Đánh giá lại tự động gắn cờ OVERDUE khi có khoản nợ quá hạn ngày")
+    void evaluateDealerDebt_whenOverdue_flagsDealerAutomatically() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("20000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(BigDecimal.ZERO);
+
+        Order order = Order.builder()
+                .id(1L).orderCode("DH-OVERDUE").totalAmount(new BigDecimal("20000000"))
+                .recordedAt(LocalDateTime.now().minusDays(40)).status("RECORDED").build();
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of(order));
+
+        com.quanlybanhang.dto.response.FlaggedDealerResponse response = dealerDebtService.evaluateDealerDebt(1L);
+
+        assertThat(response.getDebtFlagType()).isEqualTo(DebtFlagType.OVERDUE);
+        assertThat(response.getDebtFlagReason()).contains("Nợ quá hạn 10 ngày");
+        assertThat(dealer.getDebtFlagged()).isTrue();
+        verify(dealerRepository).save(dealer);
+    }
+
+    @Test
+    @DisplayName("S7-04: Đánh giá lại tự động gắn cờ BOTH khi vừa vượt hạn mức vừa quá hạn")
+    void evaluateDealerDebt_whenBoth_flagsBoth() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("70000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(BigDecimal.ZERO);
+
+        Order order = Order.builder()
+                .id(1L).orderCode("DH-BOTH").totalAmount(new BigDecimal("70000000"))
+                .recordedAt(LocalDateTime.now().minusDays(50)).status("RECORDED").build();
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of(order));
+
+        com.quanlybanhang.dto.response.FlaggedDealerResponse response = dealerDebtService.evaluateDealerDebt(1L);
+
+        assertThat(response.getDebtFlagType()).isEqualTo(DebtFlagType.BOTH);
+        assertThat(response.getDebtFlagReason()).contains("Vượt hạn mức nợ").contains("Nợ quá hạn 20 ngày");
+        assertThat(dealer.getDebtFlagged()).isTrue();
+    }
+
+    @Test
+    @DisplayName("S7-04: Đánh giá lại tự động gỡ cờ khi đại lý không còn vi phạm")
+    void evaluateDealerDebt_whenResolved_unflagsDealerAutomatically() {
+        dealer.setDebtFlagged(true);
+        dealer.setDebtFlagType(DebtFlagType.DEBT_LIMIT_EXCEEDED);
+        dealer.setDebtFlagReason("Vượt hạn mức nợ cũ");
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("30000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of());
+
+        com.quanlybanhang.dto.response.FlaggedDealerResponse response = dealerDebtService.evaluateDealerDebt(1L);
+
+        assertThat(response.getDebtFlagType()).isEqualTo(DebtFlagType.NONE);
+        assertThat(dealer.getDebtFlagged()).isFalse();
+        assertThat(dealer.getDebtFlagReason()).isNull();
+        verify(dealerRepository).save(dealer);
+    }
+
+    @Test
+    @DisplayName("S7-04: Ghi nhận thu tiền tự động lưu phiếu và chạy lại đánh giá công nợ")
+    void recordPayment_savesAndAutoReEvaluates() {
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("50000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(new BigDecimal("30000000"));
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of());
+
+        com.quanlybanhang.dto.request.DebtPaymentRequest request = com.quanlybanhang.dto.request.DebtPaymentRequest.builder()
+                .dealerId(1L)
+                .amount(new BigDecimal("30000000"))
+                .paymentMethod("CHUYEN_KHOAN")
+                .referenceCode("UNC-999")
+                .note("Thu tiền đại lý Minh Phát")
+                .build();
+
+        DebtPaymentResponse res = dealerDebtService.recordPayment(request, "accountant1");
+
+        assertThat(res).isNotNull();
+        assertThat(res.getAmount()).isEqualByComparingTo(new BigDecimal("30000000"));
+        assertThat(res.getRemainingDebt()).isEqualByComparingTo(new BigDecimal("20000000"));
+        verify(debtPaymentRepository).save(org.mockito.ArgumentMatchers.any(DebtPayment.class));
+        verify(auditLogService).logAction(
+                org.mockito.ArgumentMatchers.eq("DEBT_PAYMENT"),
+                org.mockito.ArgumentMatchers.eq("1"),
+                org.mockito.ArgumentMatchers.eq("CREATE"),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.contains("30,000,000"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq("accountant1"));
+    }
+
+    @Test
+    @DisplayName("S7-04: Chặn tạo đơn mới khi đại lý bị gắn cờ và cấu hình là BLOCK")
+    void validateDealerCanCreateOrder_whenFlaggedAndBlockConfig_throwsBlockedException() {
+        dealer.setDebtFlagged(true);
+        dealer.setDebtFlagReason("Vượt hạn mức nợ 10tr");
+        dealer.setDebtActionConfig(DebtFlagAction.BLOCK);
+
+        assertThatThrownBy(() -> dealerDebtService.validateDealerCanCreateOrder(dealer))
+                .isInstanceOf(com.quanlybanhang.exception.DealerDebtBlockedException.class)
+                .hasMessageContaining("Đại lý 'Đại lý Minh Phát' (DL001) đang bị gắn cờ cảnh báo rủi ro công nợ")
+                .hasMessageContaining("chặn tạo đơn mới theo cấu hình");
+    }
+
+    @Test
+    @DisplayName("S7-04: Cho phép tạo đơn khi đại lý bị gắn cờ nhưng cấu hình là REQUIRE_APPROVAL")
+    void validateDealerCanCreateOrder_whenFlaggedAndRequireApprovalConfig_doesNotThrow() {
+        dealer.setDebtFlagged(true);
+        dealer.setDebtFlagReason("Vượt hạn mức nợ 10tr");
+        dealer.setDebtActionConfig(DebtFlagAction.REQUIRE_APPROVAL);
+
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("60000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of());
+
+        // Không ném exception
+        dealerDebtService.validateDealerCanCreateOrder(dealer);
+    }
+
+    @Test
+    @DisplayName("S7-04: Sơ bộ đơn mới yêu cầu duyệt khi đại lý bị gắn cờ và cấu hình REQUIRE_APPROVAL")
+    void checkOrderDebt_flaggedAndRequireApproval_requiresApproval() {
+        dealer.setDebtFlagged(true);
+        dealer.setDebtFlagReason("Vượt hạn mức công nợ");
+        dealer.setDebtActionConfig(DebtFlagAction.REQUIRE_APPROVAL);
+
+        when(dealerRepository.findById(1L)).thenReturn(Optional.of(dealer));
+        when(orderRepository.sumTotalAmountByDealerIdAndStatusIn(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(new BigDecimal("20000000"));
+        when(debtPaymentRepository.sumAmountByDealerId(1L)).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(1L, OrderStatus.debtBearingStatuses()))
+                .thenReturn(List.of());
+
+        OrderDebtCheckResponse response = dealerDebtService.checkOrderDebt(1L, new BigDecimal("5000000"));
+
+        assertThat(response.getRequiresApproval()).isTrue();
+        assertThat(response.getIsBlocked()).isFalse();
+        assertThat(response.getApprovalReason()).contains("Đại lý đang bị gắn cờ rủi ro công nợ");
     }
 }
 

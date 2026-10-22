@@ -512,6 +512,16 @@ public class OrderServiceImpl implements OrderService {
                     ? debtInfo.getDebtLimit()
                     : (dealer.getDebtLimit() != null ? dealer.getDebtLimit() : BigDecimal.ZERO);
 
+            if (debtInfo != null && Boolean.TRUE.equals(debtInfo.getIsDebtFlagged()) && debtInfo.getEffectiveAction() == com.quanlybanhang.model.DebtFlagAction.REQUIRE_APPROVAL) {
+                orderRequiresApproval = true;
+                belowFloorReasons.add(String.format("Đại lý bị gắn cờ rủi ro công nợ: %s (Hệ thống chuyển cần duyệt theo cấu hình)",
+                        debtInfo.getDebtFlagReason()));
+            }
+            if (debtInfo != null && Boolean.TRUE.equals(debtInfo.getHasOverdueDebt()) && debtInfo.getEffectiveAction() == com.quanlybanhang.model.DebtFlagAction.REQUIRE_APPROVAL) {
+                orderRequiresApproval = true;
+                belowFloorReasons.add(String.format("Đại lý có nợ quá hạn %d ngày (vượt quá giới hạn %d ngày), chuyển cần duyệt theo cấu hình",
+                        debtInfo.getMaxOverdueDays(), debtInfo.getMaxDebtDays()));
+            }
             if (dealerDebtService.checkProjectedDebtExceedsLimit(dealer, orderTotal, currentDebt)) {
                 orderRequiresApproval = true;
                 BigDecimal projectedDebt = currentDebt.add(orderTotal);

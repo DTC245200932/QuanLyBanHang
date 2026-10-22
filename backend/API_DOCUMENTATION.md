@@ -2706,11 +2706,6 @@ Quy tắc nhất quán khi tính/tạo đơn:
 - Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
 - Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.
 
-
-
-- Công nợ và quá hạn tính chung các trạng thái đã ghi nhận: APPROVED, RECORDED, PICKING, PROCESSING, EXPORTED, SHIPPED, DELIVERED, CLOSED, COMPLETED. Chuyển vòng đời không có nghĩa đã thu tiền. Hiện chưa có sổ thu tiền để đối trừ số dư, nên không tự xóa nợ khi giao/đóng đơn.
-- Luồng tạo dữ liệu demo nội bộ dùng SecurityContext bootstrap ADMIN riêng và khôi phục trong finally; service duyệt không còn chấp nhận lời gọi không xác thực.
-
 ### Gợi ý lô xuất theo nguyên tắc FEFO và Xuất kho theo lô (S6-04)
 
 Hệ thống hỗ trợ quản lý xuất kho theo phương pháp FEFO (First Expired, First Out - Hạn sử dụng gần nhất trước), giúp hàng cũ được ưu tiên xuất trước, giảm thiểu tình trạng hàng hóa hết hạn phải tiêu hủy.
@@ -3339,3 +3334,121 @@ Tài liệu hợp đồng API phục vụ Bộ phận Kế toán - Tài chính v
 }
 ```
 
+---
+
+## S7-01 — Phát hành hóa đơn bán hàng từ phiếu đã giao (22/10/2026)
+
+Tài liệu hợp đồng API phục vụ Kế toán công nợ phát hành hóa đơn bán hàng từ các phiếu giao hàng đã hoàn thành, xuất đúng số lượng thực giao thay vì số lượng đặt, quản lý dãy số hóa đơn liên tục không nhảy cóc, và hỗ trợ chứng từ điều chỉnh cho hóa đơn bất biến.
+
+### 1. Nguyên tắc nghiệp vụ cốt lõi
+
+1. **Hóa đơn sinh từ số lượng thực giao (Delivered Quantity)**:
+   - Số lượng xuất trên hóa đơn (`invoicedQuantity`) được lấy từ `deliveredQuantity` của từng dòng hàng trên phiếu giao đã hoàn tất (`status = DELIVERED`), không lấy theo `orderedQuantity`.
+   - Các dòng hàng có `deliveredQuantity == 0` hoặc chưa giao sẽ không được tính tiền vào hóa đơn.
+   - Thành tiền = `invoicedQuantity * unitPrice - discountAmount`.
+2. **Số hóa đơn tự sinh liên tục, không trùng và không nhảy cóc**:
+   - Sử dụng cơ chế khóa bi quan (`PESSIMISTIC_WRITE`) trên bảng `invoice_sequences` trong cùng transaction phát hành hóa đơn.
+   - Định dạng số 8 chữ số Ả Rập chuẩn: `00000001`, `00000002`... đi kèm mã hóa đơn `HD-00000001`.
+   - Nếu transaction gặp lỗi hoặc rollback, bộ đếm tự động rollback theo, đảm bảo tuyệt đối không có khoảng trống (không nhảy cóc) và không trùng số.
+3. **Gộp nhiều phiếu giao của cùng đại lý trong kỳ**:
+   - Hỗ trợ gộp 1 hoặc nhiều phiếu giao (`orderIds`) của cùng một đại lý (`dealerId`) thành một hóa đơn duy nhất.
+   - Ràng buộc kiểm tra nghiêm ngặt: Tất cả phiếu giao phải thuộc cùng đại lý và ở trạng thái `DELIVERED`.
+   - Chặn xuất hóa đơn lặp: Mỗi phiếu giao chỉ được xuất hóa đơn 1 lần duy nhất trong toàn hệ thống (ràng buộc unique `order_id` trên bảng `invoice_orders`).
+4. **Hóa đơn đã phát hành không sửa và không xóa**:
+   - Hóa đơn ở trạng thái `ISSUED` là bất biến. Mọi thao tác `PUT` hoặc `DELETE` trực tiếp vào hóa đơn đều bị chặn với mã lỗi `400 Bad Request`.
+   - Khi có sai sót, chỉ được lập **Chứng từ điều chỉnh** (`InvoiceAdjustment`):
+     - `INCREASE`: Điều chỉnh tăng tiền / số lượng.
+     - `DECREASE`: Điều chỉnh giảm tiền / số lượng / chiết khấu.
+     - `INFORMATION`: Điều chỉnh thông tin (tên đại lý, MST, địa chỉ...).
+     - `CANCEL`: Điều chỉnh hủy hóa đơn.
+   - Bắt buộc nhập lý do điều chỉnh (`adjustmentReason`). Hóa đơn sau khi điều chỉnh chuyển trạng thái `ADJUSTED` (hoặc `CANCELLED` nếu hủy).
+5. **In và xuất file PDF**:
+   - `GET /api/invoices/{id}/pdf`: Xuất file PDF hóa đơn chuẩn A4 theo thiết kế doanh nghiệp (OpenPDF).
+   - `GET /api/invoices/{id}/print-preview`: Trả về mẫu in HTML hỗ trợ in trực tiếp từ trình duyệt (`window.print`).
+   - `GET /api/invoices/{id}/adjustments/{adjustmentId}/pdf`: Xuất file PDF chứng từ điều chỉnh hóa đơn.
+6. **Phân quyền ma trận (Database-backed Permission Matrix)**:
+   - Các API xem/tra cứu/tải PDF (`GET`): Bắt buộc quyền `INVOICE_VIEW` hoặc `ROLE_ADMIN`.
+   - Các API phát hành hóa đơn / xem trước (`POST /api/invoices`, `POST /api/invoices/preview`): Bắt buộc quyền `INVOICE_CREATE` hoặc `ROLE_ADMIN`.
+   - API lập chứng từ điều chỉnh (`POST /api/invoices/{id}/adjustments`): Bắt buộc quyền `INVOICE_ADJUST` hoặc `ROLE_ADMIN`.
+   - Thu hồi quyền trên phiên JWT hiện tại lập tức có hiệu lực và trả về `403 Forbidden` trên request kế tiếp (không fallback theo role).
+
+### 2. Danh sách Endpoints (`/api/invoices`)
+
+| Method | Endpoint | Quyền yêu cầu | Mô tả |
+|---|---|---|---|
+| `GET` | `/dealers-with-eligible-orders` | `INVOICE_VIEW` hoặc `ADMIN` | Danh sách đại lý có phiếu giao hàng chưa xuất hóa đơn |
+| `GET` | `/eligible-orders` | `INVOICE_VIEW` hoặc `ADMIN` | Danh sách phiếu giao hàng hợp lệ sẵn sàng xuất hóa đơn của đại lý (`dealerId`, `startDate`, `endDate`) |
+| `POST` | `/preview` | `INVOICE_CREATE` hoặc `ADMIN` | Xem trước thông tin hóa đơn gộp trước khi phát hành chính thức |
+| `POST` | `` | `INVOICE_CREATE` hoặc `ADMIN` | Phát hành hóa đơn bán hàng chính thức từ các phiếu giao hàng |
+| `GET` | `` | `INVOICE_VIEW` hoặc `ADMIN` | Tìm kiếm, lọc và phân trang danh sách hóa đơn (`dealerId`, `status`, `startDate`, `endDate`, `keyword`, `page`, `size`) |
+| `GET` | `/{id}` | `INVOICE_VIEW` hoặc `ADMIN` | Xem chi tiết hóa đơn, các dòng hàng thực giao, phiếu giao liên kết và chứng từ điều chỉnh |
+| `PUT` | `/{id}` | `INVOICE_CREATE` hoặc `ADMIN` | Chặn sửa hóa đơn đã phát hành (luôn trả 400 Bad Request) |
+| `DELETE` | `/{id}` | `INVOICE_CREATE` hoặc `ADMIN` | Chặn xóa hóa đơn đã phát hành (luôn trả 400 Bad Request) |
+| `POST` | `/{id}/adjustments` | `INVOICE_ADJUST` hoặc `ADMIN` | Lập chứng từ điều chỉnh cho hóa đơn đã phát hành (bắt buộc lý do) |
+| `GET` | `/{id}/adjustments` | `INVOICE_VIEW` hoặc `ADMIN` | Danh sách chứng từ điều chỉnh của hóa đơn |
+| `GET` | `/{id}/pdf` | `INVOICE_VIEW` hoặc `ADMIN` | Xuất file PDF hóa đơn bán hàng (`application/pdf`) |
+| `GET` | `/{id}/print-preview` | `INVOICE_VIEW` hoặc `ADMIN` | Xem trước bản in hóa đơn dạng HTML (`text/html`) |
+| `GET` | `/{id}/adjustments/{adjustmentId}/pdf` | `INVOICE_VIEW` hoặc `ADMIN` | Xuất file PDF chứng từ điều chỉnh (`application/pdf`) |
+
+### 3. Payload mẫu
+
+#### Phát hành hóa đơn (`POST /api/invoices`)
+
+```json
+{
+  "dealerId": 1,
+  "orderIds": [101, 102],
+  "invoiceDate": "2026-10-22T14:30:00",
+  "note": "Xuất hóa đơn đợt 1 tháng 10/2026"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message": "Phát hành hóa đơn thành công",
+  "data": {
+    "id": 1,
+    "invoiceNumber": "00000001",
+    "invoiceCode": "HD-00000001",
+    "invoiceDate": "2026-10-22T14:30:00",
+    "status": "ISSUED",
+    "statusLabel": "Đã phát hành",
+    "dealerId": 1,
+    "dealerCode": "DL-TEST-001",
+    "dealerName": "Đại lý Bia Mai Linh",
+    "dealerTaxCode": "0109988776",
+    "subtotalAmount": 3850000.00,
+    "discountAmount": 0.00,
+    "totalAmount": 3850000.00,
+    "adjustedTotalAmount": 3850000.00,
+    "items": [
+      {
+        "orderId": 101,
+        "orderCode": "PG-20261022-001",
+        "productCode": "SP-BIA-HN",
+        "productName": "Bia Hà Nội Lon 330ml",
+        "unit": "thùng",
+        "orderedQuantity": 10,
+        "deliveredQuantity": 7,
+        "invoicedQuantity": 7,
+        "unitPrice": 300000.00,
+        "subtotalAmount": 2100000.00,
+        "totalAmount": 2100000.00
+      }
+    ]
+  }
+}
+```
+
+#### Lập chứng từ điều chỉnh (`POST /api/invoices/{id}/adjustments`)
+
+```json
+{
+  "adjustmentType": "DECREASE",
+  "adjustmentReason": "Chiết khấu bổ sung hỗ trợ đại lý 50,000 do bao bì cấn móp",
+  "adjustmentAmount": 50000.00,
+  "note": "Đã có biên bản kiểm tra hàng lỗi với đại lý"
+}
+```

@@ -55,6 +55,11 @@ public enum Permission {
     FINANCE_VIEW_DEBT("Xem công nợ"),
     FINANCE_MANAGE("Quản lý công nợ"),
 
+    // ── Hóa đơn bán hàng (S7-01) ──
+    INVOICE_VIEW("Xem hóa đơn"),
+    INVOICE_CREATE("Phát hành hóa đơn"),
+    INVOICE_ADJUST("Lập chứng từ điều chỉnh"),
+
     // ── Báo cáo ──
     REPORT_SALES("Xem báo cáo bán hàng"),
     REPORT_INVENTORY("Xem báo cáo tồn kho"),

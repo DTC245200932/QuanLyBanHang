@@ -93,7 +93,7 @@ public class SecurityConfig {
                         "/api/orders/**", "/api/products/**", "/api/categories/**",
                         "/api/suppliers/**", "/api/price-lists/**", "/api/volume-discounts/**",
                         "/api/dealers/**", "/api/portal/**", "/api/finance/**",
-                        "/api/reports/**").authenticated()
+                        "/api/invoices/**", "/api/reports/**").authenticated()
 
                 .requestMatchers("/api/test/**").authenticated()
 

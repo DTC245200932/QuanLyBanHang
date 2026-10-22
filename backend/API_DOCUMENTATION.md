@@ -4,6 +4,21 @@ Base URL: `http://localhost:8080/api`
 
 Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
 
+## S5 — bản sửa tích hợp 22/10/2026
+
+Hợp đồng dưới đây ưu tiên hơn các ví dụ/role mặc định lịch sử ở cuối tài liệu.
+
+| API | Quyền và ràng buộc mới được kiểm thử |
+|---|---|
+| `POST /warehouse/export` | `WAREHOUSE_EXPORT` hoặc ADMIN; chỉ xuất tối đa tồn khả dụng (= tồn thực − giữ chỗ), kiểm tra dưới khóa dòng tồn. Không được dùng hàng giữ chỗ của đơn khác, kể cả ADMIN. |
+| `POST /warehouse/adjust` | `WAREHOUSE_ADJUST` hoặc ADMIN; kiểm tra kho được phân công cho người không phải ADMIN. Tồn sau điều chỉnh không âm và không dưới giữ chỗ. Một dòng lỗi hoàn lại cả giao dịch. |
+| `PUT /orders/{id}/delivery` | `WAREHOUSE_EXPORT` hoặc ADMIN, đồng thời kiểm tra phạm vi kho. Chỉ từ đã xuất sang đã giao (hoặc cập nhật lại khi đã giao). ID dòng phải thuộc đơn, không lặp; số thực giao 0..số đặt, tối đa 4 số lẻ; ghi chú tối đa 500 ký tự. Dòng không gửi giữ nguyên theo hợp đồng cập nhật từng phần. |
+| `GET /orders/{id}` | `OrderResponse.canUpdateDelivery` là khả năng chỉnh thực giao theo quyền, kho và vòng đời hiện tại; không thay thế kiểm tra quyền khi ghi. Trả thực giao/ngày giao/ghi chú/thiếu từ DB. |
+| `GET /portal/orders/{id}/reorder-preview` | ADMIN hoặc đại lý có `ORDER_VIEW` + `ORDER_CREATE`, giới hạn đơn thuộc đại lý. Frontend dùng `sourceOrderId`, `sourceOrderCode`, `defaultExpectedDeliveryDate`, `availableItems[].sourceItemId/currentPrice`, `discontinuedItems`, không yêu cầu thêm `PRODUCT_VIEW`. |
+| `POST /portal/orders/{id}/reorder` | Dùng API đặt lại chuyên biệt, không gọi tạo đơn chung. Gửi `deliveryPointId`, `expectedDeliveryDate`, `note`, `items[{productId,productCode,unit,quantity,note}]`; không gửi giá. Backend kiểm tra lại mặt hàng/bảng giá khi ghi và trả `data: {order, excludedItems, warnings}`. |
+
+Frontend đóng/xóa form và vô hiệu phản hồi đang chờ khi quyền thay đổi; chống bấm kép. Thu hồi quyền có hiệu lực trên API với JWT hiện tại. Form thực giao gửi toàn bộ các dòng được nhập; không tự coi số đặt là số đã giao. Ghi nhận thực giao không tự nhập trả phần giao thiếu; việc trả kho vẫn dùng chứng từ riêng.
+
 ## Ma trận quyền — cập nhật 20/10/2026
 
 **Quyền DB, không phải role mặc định, quyết định truy cập nghiệp vụ.** Các bảng role cũ bên dưới chỉ mô tả cấu hình mặc định; hợp đồng quyền ở mục này được ưu tiên. ROLE_ADMIN luôn được phép. Vai trò vẫn có thể giới hạn phạm vi đơn/kho/đại lý; không bỏ kiểm tra phạm vi khi cấp thêm quyền.

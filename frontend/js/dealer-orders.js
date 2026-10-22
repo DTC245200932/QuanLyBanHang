@@ -33,15 +33,26 @@
     },
   };
 
+  let ordersVersion = 0;
+  let detailVersion = 0;
+  let reorderVersion = 0;
+  let reorderBusy = false;
+
   const statusMap = {
     DRAFT: { label: "Nháp", className: "neutral" },
     PENDING_APPROVAL: { label: "Chờ duyệt", className: "pending" },
     APPROVED: { label: "Đã duyệt", className: "active" },
     RESERVED: { label: "Đã giữ hàng", className: "active" },
-    RECORDED: { label: "Đã ghi sổ", className: "active" },
+    RECORDED: { label: "Đã duyệt", className: "active" },
+    PICKING: { label: "Đang soạn", className: "active" },
+    PROCESSING: { label: "Đang soạn", className: "active" },
+    EXPORTED: { label: "Đã xuất kho", className: "active" },
+    SHIPPED: { label: "Đã xuất kho", className: "active" },
     SHIPPING: { label: "Đang giao", className: "active" },
     DELIVERED: { label: "Đã giao", className: "done" },
     COMPLETED: { label: "Hoàn tất", className: "done" },
+    CLOSED: { label: "Đã đóng", className: "done" },
+    EXPIRED: { label: "Hết hạn giữ chỗ", className: "danger" },
     CANCELLED: { label: "Đã huỷ", className: "danger" },
     REJECTED: { label: "Từ chối", className: "danger" },
     RETURNED: { label: "Cần chỉnh sửa", className: "pending" },
@@ -85,19 +96,12 @@
     return data?.content || data?.orders || data?.items || [];
   };
 
-  const getFutureDateString = (daysAhead = 3) => {
-    const d = new Date();
-    d.setDate(d.getDate() + daysAhead);
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
-
   /**
    * Kiểm tra quyền đặt lại đơn hàng (ORDER_CREATE).
-   * Đặt lại cần quyền tạo đơn và đọc danh mục để áp giá hiện hành.
+   * API đặt lại áp giá từ database, không yêu cầu quyền đọc danh mục riêng.
    */
   function canReorder() {
-    return Auth.hasPermission('ORDER_CREATE') && Auth.hasPermission('PRODUCT_VIEW');
+    return Auth.hasPermission('ORDER_VIEW') && Auth.hasPermission('ORDER_CREATE');
   }
 
   function setupShell() {
@@ -137,13 +141,13 @@
   function renderStats() {
     const total = state.orders.length;
     const delivered = state.orders.filter((order) =>
-      ["DELIVERED", "COMPLETED"].includes(String(order.status).toUpperCase())
+      ["DELIVERED", "COMPLETED", "CLOSED"].includes(String(order.status).toUpperCase())
     ).length;
     const shortage = state.orders.filter(
       (order) => order.hasShortage || (order.items || []).some((item) => item.isShortage)
     ).length;
     const pending = state.orders.filter(
-      (order) => !["DELIVERED", "COMPLETED", "CANCELLED", "REJECTED"].includes(String(order.status).toUpperCase())
+      (order) => !["DELIVERED", "COMPLETED", "CLOSED", "EXPIRED", "CANCELLED", "REJECTED"].includes(String(order.status).toUpperCase())
     ).length;
     if ($("stat-total")) $("stat-total").textContent = total;
     if ($("stat-pending")) $("stat-pending").textContent = pending;
@@ -202,6 +206,8 @@
   }
 
   async function loadOrders() {
+    const version = ++ordersVersion;
+    if (!Auth.hasPermission('ORDER_VIEW')) return;
     if (DealerPortalContext.isAdmin && !$('dealer-orders-select')?.value) return;
     const body = $("dealer-orders-body");
     if (body) {
@@ -211,11 +217,13 @@
     try {
       const response = await Auth.apiFetch(DealerPortalContext.url('/portal/orders'));
       const payload = await response.json().catch(() => ({}));
+      if (version !== ordersVersion || !Auth.hasPermission('ORDER_VIEW')) return;
       if (!response.ok) throw new Error(payload?.message || "Không thể tải danh sách đơn hàng.");
       state.orders = getOrders(payload);
       renderStats();
       applyFilters();
     } catch (error) {
+      if (version !== ordersVersion || !Auth.hasPermission('ORDER_VIEW')) return;
       state.orders = [];
       renderStats();
       if ($("orders-summary")) $("orders-summary").textContent = "Chưa tải được dữ liệu";
@@ -260,6 +268,8 @@
   }
 
   async function openDetail(id) {
+    if (!Auth.hasPermission('ORDER_VIEW')) return;
+    const version = ++detailVersion;
     const modal = $("dealer-order-detail-modal");
     if (modal) modal.hidden = false;
     if ($("dealer-order-detail-title")) $("dealer-order-detail-title").textContent = "Đang tải…";
@@ -269,10 +279,12 @@
     try {
       const response = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(id)}`));
       const payload = await response.json().catch(() => ({}));
+      if (version !== detailVersion || !Auth.hasPermission('ORDER_VIEW')) return;
       if (!response.ok) throw new Error(payload?.message || "Không thể tải chi tiết đơn hàng.");
       state.selectedOrder = unwrap(payload);
       renderDetail(state.selectedOrder);
     } catch (error) {
+      if (version !== detailVersion) return;
       if ($("dealer-order-detail-content")) {
         $("dealer-order-detail-content").innerHTML = `<div class="dealer-orders-empty">${escapeHtml(error.message || "Không thể tải chi tiết đơn hàng.")}</div>`;
       }
@@ -280,7 +292,9 @@
   }
 
   function closeDetail() {
+    detailVersion++;
     if ($("dealer-order-detail-modal")) $("dealer-order-detail-modal").hidden = true;
+    if ($("dealer-order-detail-content")) $("dealer-order-detail-content").innerHTML = '';
     state.selectedOrder = null;
   }
 
@@ -289,8 +303,11 @@
    * ───────────────────────────────────────────────────────────── */
 
   function closeReorderModal() {
+    reorderVersion++;
     const modal = $("dealer-reorder-modal");
     if (modal) modal.hidden = true;
+    if ($("dealer-reorder-tbody")) $("dealer-reorder-tbody").innerHTML = '';
+    if ($("btn-confirm-reorder")) $("btn-confirm-reorder").disabled = true;
     state.reorder = {
       sourceOrderId: null,
       sourceOrder: null,
@@ -331,7 +348,7 @@
 
     const confirmBtn = $("btn-confirm-reorder");
     if (confirmBtn) {
-      confirmBtn.disabled = selectedCount === 0;
+      confirmBtn.disabled = selectedCount === 0 || !canReorder() || reorderBusy;
     }
   }
 
@@ -367,7 +384,7 @@
           <td>
             <div class="dealer-reorder-qty-stepper">
               <button type="button" class="btn-qty-minus" data-item-id="${escapeHtml(item.id)}" aria-label="Giảm số lượng">-</button>
-              <input type="number" class="reorder-qty-input" data-item-id="${escapeHtml(item.id)}" value="${qty}" min="1" step="1" aria-label="Số lượng đặt" />
+              <input type="number" class="reorder-qty-input" data-item-id="${escapeHtml(item.id)}" value="${qty}" min="0.0001" step="0.0001" aria-label="Số lượng đặt" />
               <button type="button" class="btn-qty-plus" data-item-id="${escapeHtml(item.id)}" aria-label="Tăng số lượng">+</button>
             </div>
           </td>
@@ -380,6 +397,7 @@
   }
 
   async function openReorderModal(orderId) {
+    if (reorderBusy) return;
     if (!canReorder()) {
       if (typeof Toast !== "undefined") {
         Toast.show("Bạn không có quyền tạo đơn đặt lại.", "warning");
@@ -389,6 +407,8 @@
 
     const modal = $("dealer-reorder-modal");
     if (!modal) return;
+    closeReorderModal();
+    const version = ++reorderVersion;
     modal.hidden = false;
 
     if ($("dealer-reorder-loading")) $("dealer-reorder-loading").hidden = false;
@@ -397,16 +417,22 @@
     if ($("reorder-error-message")) $("reorder-error-message").hidden = true;
 
     try {
-      // 1. Tải chi tiết đơn hàng cũ
-      const sourceResponse = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(orderId)}`));
+      // Backend chọn dòng còn kinh doanh và áp lại bảng giá/đơn vị hiện hành.
+      const sourceResponse = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(orderId)}/reorder-preview`));
       const sourcePayload = await sourceResponse.json();
+      if (version !== reorderVersion || !canReorder()) return;
       if (!sourceResponse.ok || !sourcePayload.success) {
         throw new Error(sourcePayload.message || 'Không tải được đơn hàng cũ');
       }
-      const sourceOrder = unwrap(sourcePayload);
-      if (!sourceOrder || !Array.isArray(sourceOrder.items)) {
+      const preview = unwrap(sourcePayload);
+      if (!preview || !Array.isArray(preview.availableItems)) {
         throw new Error("Không thể tải thông tin đơn hàng cũ để đặt lại.");
       }
+      const sourceOrder = {
+        id: preview.sourceOrderId,
+        orderCode: preview.sourceOrderCode,
+        deliveryPointId: preview.deliveryPointId,
+      };
 
       state.reorder.sourceOrderId = orderId;
       state.reorder.sourceOrder = sourceOrder;
@@ -414,67 +440,10 @@
         $("reorder-source-code").textContent = sourceOrder.orderCode || `Đơn #${sourceOrder.id}`;
       }
 
-      const catalogResponse = await Auth.apiFetch(DealerPortalContext.url('/portal/catalog'));
-      const catalogPayload = await catalogResponse.json();
-      if (!catalogResponse.ok || !catalogPayload.success || !Array.isArray(catalogPayload.data)) {
-        throw new Error(catalogPayload.message || 'Không tải được bảng giá hiện hành');
-      }
-      const catalogById = new Map(catalogPayload.data.map((product) => [Number(product.id), product]));
-      const catalogByCode = new Map(catalogPayload.data.map((product) => [String(product.sku).toUpperCase(), product]));
-
-      // 4. Phân loại dòng hàng: mặt hàng ngừng kinh doanh vs mặt hàng khả dụng
-      const activeItems = [];
-      const discontinuedItems = [];
-      const selectedIds = new Set();
-      const quantities = {};
-
-      sourceOrder.items.forEach((item, index) => {
-        const itemId = String(item.id || `item-${index}`);
-        const catalogItem =
-          (item.productId != null ? catalogById.get(Number(item.productId)) : null) ||
-          (item.productCode ? catalogByCode.get(String(item.productCode).trim().toUpperCase()) : null);
-
-        // Kiểm tra ngừng kinh doanh:
-        // - Sản phẩm trong catalog có active === false hoặc status === 'INACTIVE'
-        // - Hoặc item cũ có cờ active === false / status === 'INACTIVE'
-        const isDiscontinued = !catalogItem || (catalogItem
-          ? catalogItem.active === false || String(catalogItem.status).toUpperCase() === "INACTIVE"
-          : item.active === false || String(item.status).toUpperCase() === "INACTIVE");
-
-        if (isDiscontinued) {
-          discontinuedItems.push({
-            id: itemId,
-            productCode: item.productCode || catalogItem?.code || "",
-            productName: item.productName || catalogItem?.name || "Sản phẩm ngừng kinh doanh",
-            unit: item.unit || item.baseUnit || catalogItem?.unit || "—",
-          });
-        } else {
-          // Áp lại theo giá hiện hành:
-          // Ưu tiên bảng giá hiệu lực hiện hành; nếu không có thì lấy giá catalog hiện tại
-          const pid = item.productId || catalogItem?.id;
-          const unitName = item.unit || item.baseUnit || catalogItem.baseUnit;
-          const currentUnit = catalogItem.units.find((unit) => unit.unitName === unitName);
-          if (!currentUnit) {
-            discontinuedItems.push(item);
-            return;
-          }
-          const currentPrice = Number(currentUnit.price);
-          const qty = Number(item.quantity || 1);
-          const activeItem = {
-            id: itemId,
-            productId: pid,
-            productCode: item.productCode || catalogItem?.code || "",
-            productName: item.productName || catalogItem?.name || "Sản phẩm",
-            unit: item.unit || item.baseUnit || catalogItem?.unit || "—",
-            oldPrice: Number(item.price || 0),
-            currentPrice: Number(currentPrice || 0),
-            quantity: qty,
-          };
-          activeItems.push(activeItem);
-          selectedIds.add(itemId);
-          quantities[itemId] = qty;
-        }
-      });
+      const activeItems = preview.availableItems.map((item) => ({ ...item, id: String(item.sourceItemId) }));
+      const discontinuedItems = preview.discontinuedItems || [];
+      const selectedIds = new Set(activeItems.map((item) => item.id));
+      const quantities = Object.fromEntries(activeItems.map((item) => [item.id, Number(item.quantity)]));
 
       state.reorder.activeItems = activeItems;
       state.reorder.discontinuedItems = discontinuedItems;
@@ -512,12 +481,10 @@
         if (selectionArea) selectionArea.hidden = false;
         if (confirmBtn) confirmBtn.disabled = false;
 
-        // Khởi tạo ngày giao dự kiến mong muốn (mặc định hôm nay + 3 ngày, tối thiểu hôm nay)
+        // Dùng mặc định từ server, không tự suy diễn lịch giao ở trình duyệt.
         const dateInput = $("reorder-delivery-date");
         if (dateInput) {
-          const minDate = getFutureDateString(0);
-          dateInput.min = minDate;
-          dateInput.value = getFutureDateString(3);
+          dateInput.value = preview.defaultExpectedDeliveryDate || '';
         }
 
         const noteInput = $("reorder-note");
@@ -532,6 +499,7 @@
       if ($("dealer-reorder-loading")) $("dealer-reorder-loading").hidden = true;
       if ($("dealer-reorder-content")) $("dealer-reorder-content").hidden = false;
     } catch (error) {
+      if (version !== reorderVersion || !canReorder()) return;
       if ($("dealer-reorder-loading")) {
         $("dealer-reorder-loading").textContent = error.message || "Không thể tải thông tin đặt lại đơn.";
       }
@@ -539,6 +507,10 @@
   }
 
   async function submitReorder() {
+    if (!canReorder() || reorderBusy) return;
+    const version = reorderVersion;
+    const sourceOrderId = state.reorder.sourceOrderId;
+    if (!sourceOrderId) return;
     const { sourceOrder, activeItems, selectedIds, quantities } = state.reorder;
     const errorEl = $("reorder-error-message");
     if (errorEl) errorEl.hidden = true;
@@ -562,7 +534,13 @@
     }
 
     const note = $("reorder-note")?.value?.trim() || "";
+    if (selectedItems.some((item) => !Number.isFinite(quantities[item.id]) || quantities[item.id] <= 0
+        || !/^\d+(?:\.\d{1,4})?$/.test(String(quantities[item.id])))) {
+      if (errorEl) { errorEl.textContent = 'Số lượng đặt phải lớn hơn 0 và tối đa 4 số thập phân.'; errorEl.hidden = false; }
+      return;
+    }
     const confirmBtn = $("btn-confirm-reorder");
+    reorderBusy = true;
     if (confirmBtn) confirmBtn.disabled = true;
 
     const payload = {
@@ -573,30 +551,33 @@
         productId: item.productId,
         productCode: item.productCode,
         unit: item.unit,
-        quantity: quantities[item.id] || 1,
+        quantity: quantities[item.id],
         note: "",
       })),
     };
 
     try {
-      const response = await Auth.apiFetch(DealerPortalContext.url('/portal/orders'), {
+      const response = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(sourceOrderId)}/reorder`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       const resData = await response.json().catch(() => ({}));
+      if (version !== reorderVersion || !canReorder()) return;
       if (!response.ok || (resData.success === false && !resData.data)) {
         throw new Error(resData?.message || "Không thể đặt lại đơn hàng. Vui lòng thử lại.");
       }
 
-      const newOrder = unwrap(resData);
+      const result = unwrap(resData);
+      const newOrder = result.order;
       const newCode = newOrder?.orderCode || (newOrder?.id ? `Đơn #${newOrder.id}` : "");
 
       closeReorderModal();
       closeDetail();
 
       if (typeof Toast !== "undefined") {
+        for (const warning of result.warnings || []) Toast.show(warning, 'warning');
         Toast.show(
           `Đặt lại đơn hàng thành công! ${newCode ? `Mã đơn mới: ${newCode}` : ""}`,
           "success"
@@ -605,12 +586,14 @@
 
       await loadOrders();
     } catch (error) {
+      if (version !== reorderVersion || !canReorder()) return;
       if (errorEl) {
         errorEl.textContent = error.message || "Đặt lại đơn hàng thất bại. Vui lòng thử lại.";
         errorEl.hidden = false;
       }
     } finally {
-      if (confirmBtn) confirmBtn.disabled = false;
+      reorderBusy = false;
+      updateReorderSummary();
     }
   }
 
@@ -619,6 +602,16 @@
   // ─────────────────────────────────────────────────────────────
 
   setupShell();
+
+  window.addEventListener('auth:permissions-changed', () => {
+    ordersVersion++;
+    closeDetail();
+    closeReorderModal();
+    state.orders = [];
+    renderStats();
+    applyFilters();
+    if (Auth.hasPermission('ORDER_VIEW')) loadOrders();
+  });
 
   $("orders-search")?.addEventListener("input", applyFilters);
   $("orders-status-filter")?.addEventListener("change", applyFilters);
@@ -730,8 +723,7 @@
     const qtyInput = event.target.closest(".reorder-qty-input");
     if (qtyInput) {
       const itemId = qtyInput.dataset.itemId;
-      let val = Math.max(1, Math.round(Number(qtyInput.value) || 1));
-      qtyInput.value = val;
+      const val = Number(qtyInput.value);
       state.reorder.quantities[itemId] = val;
       const item = state.reorder.activeItems.find((i) => i.id === itemId);
       const lineTotalEl = $(`line-total-${itemId}`);

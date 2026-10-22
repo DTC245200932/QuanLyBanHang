@@ -23,6 +23,26 @@ Kiểm chứng: **30 test backend mới qua 100%**:
 ---
 
 
+## S5 — Sửa lỗi tích hợp trên `fix/sprint-5` (22/10/2026)
+
+Đã đối chiếu các lỗi xác nhận trong audit Sprint 5; các mục bên dưới là trạng thái sau sửa, các phần cũ giữ để tham khảo lịch sử. Đã đọc AGENTS.md và hai skill trong SKILLS. Không commit/push/merge, không ghi DB thật, không restart backend thật.
+
+| Hạng mục S5 | Backend | Frontend | Kết nối / quyền / kiểm chứng |
+|---|---|---|---|
+| S5-01 Theo dõi đơn và thực giao | Bổ sung kiểm tra dòng thuộc đơn, ID không trùng, thực giao 0..số đặt, 4 số lẻ, độ dài ghi chú; trả `canUpdateDelivery` theo ma trận + kho + trạng thái | Form thực giao tại chi tiết `/orders`; ngày, số lượng từng dòng, ghi chú; chuyển Đã giao phải qua form; không mặc định số đặt thành số giao. Cổng đại lý hiển thị đúng nhãn/lọc Đang soạn, Đã xuất, Đã đóng, Hết hạn | Nối `PUT /orders/{id}/delivery`; quyền `WAREHOUSE_EXPORT`, kho được gán, ADMIN vẫn phải tuân thủ nghiệp vụ. Chrome kiểm tra lỗi giữ input, chống bấm kép, grant/revoke và phản hồi trễ; H2 kiểm tra thiếu/đủ/scope/403 |
+| S5-02 Đặt lại đơn | Dùng API chuyên biệt hiện có để chọn mặt hàng và kiểm tra lại bảng giá khi ghi | Thay đọc catalog + tạo đơn chung bằng preview/reorder của đơn gốc; chọn một phần/toàn bộ, số lượng lẻ; ngày mặc định từ server; hiển thị tạm tính trước CK, cảnh báo server | `ORDER_VIEW` + `ORDER_CREATE`, không đòi thêm `PRODUCT_VIEW`; đóng/xóa form khi đổi quyền, không khôi phục dữ liệu từ phản hồi cũ, chống gửi trùng. Node + Chrome pass |
+| S5-03 Kho/vị trí | Giữ nguyên | Giữ nguyên | Chrome hồi quy kho/vị trí + quyền pass |
+| S5-04 Phiếu kho / điều chỉnh | Đường điều chỉnh trực tiếp kiểm tra `WAREHOUSE_ADJUST` và phạm vi kho; chặn tồn âm/dưới giữ chỗ | Giữ luồng nhập/nháp/xác nhận/điều chỉnh hiện có | H2 kiểm tra kho ngoài phạm vi bị 403 và thu hồi quyền trên JWT hiện tại; Chrome phiếu nhập pass |
+| S5-05 Tồn thực / giữ chỗ / khả dụng | Bảo vệ tính nhất quán ba lượng khi có xuất/điều chỉnh độc lập với đơn | Giữ trang tồn kho hiện có | Chrome hồi quy lọc/phân trang/ba lượng và quyền pass |
+| S5-06 Giữ chỗ khi duyệt | Xuất trực tiếp chỉ được lấy tồn khả dụng; điều chỉnh không xuống dưới giữ chỗ, kể cả ADMIN. Kiểm tra dưới khóa dòng tồn | Gia cố toast tránh chuyển động ngang; giữ hiển thị số giữ chỗ/hết hạn theo server | H2: duyệt cạnh tranh xuất kho, rollback phiếu nhiều dòng, biên khả dụng, grant/revoke pass; Chrome luồng giữ chỗ pass. Phép đo responsive chờ hai frame để Chrome áp viewport/media query, không che overflow toàn trang |
+| S5-07 Chuyển kho | Giữ nguyên | Giữ nguyên | Chrome hồi quy luồng chuyển/nhận/chênh lệch + quyền pass |
+| S5-08 Kiểm kê | Giữ nguyên | Giữ nguyên | Chrome hồi quy nháp DB/chốt/lý do + ma trận `WAREHOUSE_ADJUST` pass |
+| S5-09 Tồn tối thiểu | Giữ nguyên | Giữ nguyên | Chrome hồi quy cấu hình/cảnh báo/dashboard + quyền pass. Sửa predicate test chờ bảng vẽ lại để không dereference ô chưa tồn tại |
+
+**Kiểm thử:** Maven `clean test` trong bản sao backend riêng, H2 tạm: **813 tests, 0 failures/errors**; Node **145/145**; Python routes **10/10**. Chrome chạy trang/script thật với HTTP fixtures: S5 orders mới, reservation, warehouses, import, stock-ledger, transfers, stocktake, minimums đều pass; hồi quy thêm stock-card, lots, units-read. Bố cục chung **162 checks / 27 trang / 6 widths (320–1920px)** pass. `git diff --check` sạch. Cập nhật API_DOCUMENTATION.md và docs/FRONTEND_ROUTES.md.
+
+**Giới hạn:** chưa chạy các thao tác ghi trên MySQL/DB thật của người dùng; Chrome dùng API giả lập kiểm soát, không thay cho UAT dữ liệu thật. Phần giao thiếu chỉ ghi nhận thực giao, không tự nhập trả tồn. Cần build/restart backend để áp dụng Java mới; chưa thực hiện trong lượt này. Không tự migration/đối soát dữ liệu lịch sử.
+
 ## S6-02 — Frontend thẻ kho, kết nối API và sửa số dư (22/10/2026)
 
 **Trạng thái mới nhất; phần “chỉ backend” phía dưới là lịch sử.** Nhánh `feature/S6-02-xem_the_kho_cua_mot_san_pham`. Đã đọc AGENTS.md và hai skill SKILLS; không tự commit/push/merge. Không ghi vào DB thật, không khởi động lại backend thật.

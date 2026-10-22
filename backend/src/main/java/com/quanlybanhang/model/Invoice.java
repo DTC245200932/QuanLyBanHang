@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -110,6 +111,27 @@ public class Invoice {
     @Builder.Default
     private BigDecimal adjustedTotalAmount = BigDecimal.ZERO;
 
+    /**
+     * Hạn thanh toán hóa đơn (S7-08).
+     * Mặc định = invoiceDate + maxDebtDays của đại lý (nếu có > 0), hoặc 30 ngày.
+     */
+    @Column(name = "due_date")
+    private LocalDate dueDate;
+
+    /**
+     * Trạng thái đã thanh toán đủ hay chưa (S7-08).
+     */
+    @Column(name = "is_paid", nullable = false)
+    @Builder.Default
+    private Boolean isPaid = false;
+
+    /**
+     * Số tiền đã thanh toán cho hóa đơn này (S7-08).
+     */
+    @Column(name = "paid_amount", precision = 15, scale = 2, nullable = false)
+    @Builder.Default
+    private BigDecimal paidAmount = BigDecimal.ZERO;
+
     @Column(length = 500)
     private String note;
 
@@ -184,6 +206,34 @@ public class Invoice {
         if (this.adjustedTotalAmount == null) {
             this.adjustedTotalAmount = this.totalAmount != null ? this.totalAmount : BigDecimal.ZERO;
         }
+        if (this.paidAmount == null) {
+            this.paidAmount = BigDecimal.ZERO;
+        }
+        if (this.isPaid == null) {
+            this.isPaid = false;
+        }
+        if (this.dueDate == null) {
+            this.dueDate = calculateDefaultDueDate();
+        }
+    }
+
+    /**
+     * Lấy hạn thanh toán thực tế của hóa đơn.
+     * Nếu dueDate null (chưa persist hoặc trong mock), tự tính từ ngày hóa đơn và hạn nợ đại lý.
+     */
+    public LocalDate getEffectiveDueDate() {
+        if (this.dueDate != null) {
+            return this.dueDate;
+        }
+        return calculateDefaultDueDate();
+    }
+
+    private LocalDate calculateDefaultDueDate() {
+        int days = (this.dealer != null && this.dealer.getMaxDebtDays() != null && this.dealer.getMaxDebtDays() > 0)
+                ? this.dealer.getMaxDebtDays()
+                : 30;
+        LocalDate baseDate = this.invoiceDate != null ? this.invoiceDate.toLocalDate() : LocalDate.now();
+        return baseDate.plusDays(days);
     }
 }
 

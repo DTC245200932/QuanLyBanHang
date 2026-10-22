@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -31,6 +32,11 @@ public class CreateInvoiceRequest {
      * Ngày phát hành hóa đơn (mặc định là thời điểm hiện tại nếu để trống).
      */
     private LocalDateTime invoiceDate;
+
+    /**
+     * Hạn thanh toán hóa đơn (S7-08). Nếu không truyền, hệ thống tự tính theo hạn nợ đại lý.
+     */
+    private LocalDate dueDate;
 
     /**
      * Ghi chú hóa đơn.

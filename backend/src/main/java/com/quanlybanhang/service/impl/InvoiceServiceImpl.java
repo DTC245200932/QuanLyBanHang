@@ -174,11 +174,21 @@ public class InvoiceServiceImpl implements InvoiceService {
         );
 
         LocalDateTime invoiceDate = request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now();
+        LocalDate dueDate = request.getDueDate();
+        if (dueDate == null) {
+            int debtDays = (dealer.getMaxDebtDays() != null && dealer.getMaxDebtDays() > 0)
+                    ? dealer.getMaxDebtDays()
+                    : 30;
+            dueDate = invoiceDate.toLocalDate().plusDays(debtDays);
+        }
 
         Invoice invoice = Invoice.builder()
                 .invoiceNumber(nextNumber.invoiceNumber())
                 .invoiceCode(nextNumber.invoiceCode())
                 .invoiceDate(invoiceDate)
+                .dueDate(dueDate)
+                .isPaid(false)
+                .paidAmount(BigDecimal.ZERO)
                 .dealer(dealer)
                 .dealerCode(dealer.getCode())
                 .dealerName(dealer.getName())
@@ -620,6 +630,9 @@ public class InvoiceServiceImpl implements InvoiceService {
                 .invoiceNumber(invoice.getInvoiceNumber())
                 .invoiceCode(invoice.getInvoiceCode())
                 .invoiceDate(invoice.getInvoiceDate())
+                .dueDate(invoice.getEffectiveDueDate())
+                .isPaid(Boolean.TRUE.equals(invoice.getIsPaid()))
+                .paidAmount(invoice.getPaidAmount() != null ? invoice.getPaidAmount() : BigDecimal.ZERO)
                 .status(invoice.getStatus())
                 .statusLabel(invoice.getStatus() != null ? invoice.getStatus().getDisplayName() : null)
                 .dealerId(invoice.getDealer() != null ? invoice.getDealer().getId() : null)

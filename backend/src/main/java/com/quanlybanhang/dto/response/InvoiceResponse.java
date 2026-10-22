@@ -4,6 +4,7 @@ import com.quanlybanhang.model.InvoiceStatus;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -17,6 +18,9 @@ public class InvoiceResponse {
     private String invoiceNumber;
     private String invoiceCode;
     private LocalDateTime invoiceDate;
+    private LocalDate dueDate;
+    private Boolean isPaid;
+    private BigDecimal paidAmount;
     private InvoiceStatus status;
     private String statusLabel;
 

@@ -440,8 +440,12 @@ public class WarehouseController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Integer thresholdDays,
             @RequestParam(required = false) String keyword) {
-        List<WarehouseLotInventoryResponse> stock = warehouseService.getLotInventory(
-                warehouseId, productId, status, thresholdDays, keyword);
+        List<WarehouseLotInventoryResponse> stock;
+        if (status == null && thresholdDays == null && keyword == null) {
+            stock = warehouseService.getLotInventory(warehouseId, productId);
+        } else {
+            stock = warehouseService.getLotInventory(warehouseId, productId, status, thresholdDays, keyword);
+        }
         return ApiResponse.success("Danh sách tồn kho theo lô", stock);
     }
 

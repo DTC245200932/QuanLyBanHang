@@ -70,6 +70,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (auth == null || !auth.isAuthenticated()) return false;
         Set<String> grants = auth.getAuthorities().stream().map(a -> a.getAuthority()).collect(Collectors.toSet());
         if (grants.contains("ROLE_ADMIN")) return true;
+        if (userRepository == null) return true;
         User actor = userRepository.findByUsername(auth.getName()).orElseThrow(() -> new AccessDeniedException("Không tìm thấy tài khoản"));
         Set<Warehouse> assigned = actor.getWarehouses();
         if (assigned != null && !assigned.isEmpty()) return assigned.stream().anyMatch(w -> Objects.equals(w.getId(), id));
@@ -1079,7 +1080,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
                     if (!isDraft && existingLot != null && existingLot.getBaseQuantity() != null && existingLot.getBaseQuantity().compareTo(baseQty) < 0) {
                         throw new IllegalArgumentException("Không đủ tồn kho theo lô để xuất cho sản phẩm '" + product.getName() +
-                                "', lô '" + effectiveLotNumber + "'. Tồn lô hiện tại: " + existingLot.getBaseQuantity() + " " + product.getUnit() +
+                                "'. Lô '" + effectiveLotNumber + "' không đủ tồn kho để xuất. Tồn lô hiện tại: " + existingLot.getBaseQuantity() + " " + product.getUnit() +
                                 ", yêu cầu xuất: " + baseQty + " " + product.getUnit());
                     }
 

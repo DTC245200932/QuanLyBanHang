@@ -182,7 +182,7 @@ class WarehouseExportLotSuggestionTest {
 
         WarehouseInventory totalInventory = WarehouseInventory.builder()
                 .warehouse(khoHcm).product(suaTuoi).baseQuantity(new BigDecimal("75")).baseUnit("hộp").build();
-        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 100L))
+        lenient().when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 100L))
                 .thenReturn(Optional.of(totalInventory));
         when(voucherRepository.save(any(WarehouseVoucher.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -326,7 +326,7 @@ class WarehouseExportLotSuggestionTest {
 
         WarehouseInventory totalInventory = WarehouseInventory.builder()
                 .warehouse(khoHcm).product(suaTuoi).baseQuantity(new BigDecimal("75")).baseUnit("hộp").build();
-        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 100L))
+        lenient().when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 100L))
                 .thenReturn(Optional.of(totalInventory));
 
         WarehouseVoucherRequest request = WarehouseVoucherRequest.builder()

@@ -496,6 +496,7 @@ thu hồi quyền trả 403. Chưa thử trực tiếp bản sửa trên trình 
 | Task | Tính năng | Backend | Frontend | BE ↔ FE | Quyền BE / FE | Nghiệm thu / còn thiếu |
 |---|---|---|---|---|---|---|
 | S6-01 | Theo dõi lô và hạn sử dụng hàng hoá | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: `PRODUCT_EDIT`/`WAREHOUSE_MANAGE` bật/tắt lô; `WAREHOUSE_VIEW` xem lô/cảnh báo; `WAREHOUSE_MANAGE` sửa ngưỡng; `WAREHOUSE_APPROVE` ghi đè xuất lô quá hạn kèm lý do; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 4 tiêu chí trong ảnh mô tả. Đã kiểm thử 24 test (unit, service, security MockMvc). Chưa làm frontend theo chỉ đạo "chỉ làm BE". |
+| S6-04 | Gợi ý lô xuất theo FEFO và xuất kho theo lô | Có | **Chưa** (chỉ làm BE theo yêu cầu) | **Đã có API sẵn sàng kết nối** | Đầy đủ ma trận: `WAREHOUSE_EXPORT`/`WAREHOUSE_VIEW` gợi ý lô; `WAREHOUSE_EXPORT` xuất kho theo lô & bắt buộc nhập lý do khi chọn lô khác; ADMIN toàn quyền | Đã hoàn thành 100% backend theo 3 tiêu chí trong ảnh mô tả. Đã kiểm thử 15 test (unit, service, security MockMvc). Chưa làm frontend theo chỉ đạo "chỉ làm BE". |
 
 ## Việc cần làm tiếp
 

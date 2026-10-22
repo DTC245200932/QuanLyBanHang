@@ -105,4 +105,16 @@ public class WarehouseVoucherItem {
 
     @Column(length = 255)
     private String note;
+
+    /**
+     * Xác nhận ghi đè xuất lô đã quá hạn (S6-01).
+     */
+    @Column(name = "override_expired_lot")
+    private Boolean overrideExpiredLot;
+
+    /**
+     * Lý do ghi đè xuất lô đã quá hạn (S6-01).
+     */
+    @Column(name = "expired_lot_override_reason", length = 500)
+    private String expiredLotOverrideReason;
 }

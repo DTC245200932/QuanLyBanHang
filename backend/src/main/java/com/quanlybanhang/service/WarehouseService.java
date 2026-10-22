@@ -88,6 +88,16 @@ public interface WarehouseService {
 
     List<com.quanlybanhang.dto.response.WarehouseLotInventoryResponse> getLotInventory(Long warehouseId, Long productId);
 
+    List<com.quanlybanhang.dto.response.WarehouseLotInventoryResponse> getLotInventory(
+            Long warehouseId, Long productId, String status, Integer thresholdDays, String keyword);
+
+    com.quanlybanhang.dto.response.LotExpiryAlertResponse getLotExpiryAlerts(
+            Long warehouseId, Long productId, Integer customThresholdDays, String status);
+
+    List<com.quanlybanhang.dto.response.LotThresholdResponse> getLotThresholds(String keyword);
+
+    com.quanlybanhang.dto.response.LotThresholdResponse updateLotThreshold(Long productId, Integer thresholdDays, String username);
+
     // S6-04: Gợi ý lô xuất theo FEFO (Hạn dùng gần nhất trước)
     LotSuggestionResponse suggestLotForExport(Long warehouseId, Long productId, BigDecimal quantity, String unit);
 

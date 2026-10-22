@@ -85,6 +85,7 @@ public class ProductServiceImpl implements ProductService {
                 .imageUrl(request.getImageUrl() != null ? request.getImageUrl().trim() : null)
                 .active(request.getActive() != null ? request.getActive() : true)
                 .manageLot(request.getManageLot() != null ? request.getManageLot() : false)
+                .expiryWarningDays(request.getExpiryWarningDays() != null ? request.getExpiryWarningDays() : 30)
                 .build();
 
         if (request.getUnitConversions() != null && !request.getUnitConversions().isEmpty()) {
@@ -180,7 +181,25 @@ public class ProductServiceImpl implements ProductService {
         if (request.getManageLot() != null) {
             product.setManageLot(request.getManageLot());
         }
+        if (request.getExpiryWarningDays() != null) {
+            product.setExpiryWarningDays(request.getExpiryWarningDays());
+        }
 
+        Product saved = productRepository.save(product);
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public ProductResponse toggleManageLot(Long id, Boolean manageLot, Integer expiryWarningDays) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + id));
+        if (manageLot != null) {
+            product.setManageLot(manageLot);
+        }
+        if (expiryWarningDays != null) {
+            product.setExpiryWarningDays(expiryWarningDays);
+        }
         Product saved = productRepository.save(product);
         return mapToResponse(saved);
     }
@@ -715,6 +734,7 @@ public class ProductServiceImpl implements ProductService {
                 .imageUrl(product.getImageUrl())
                 .active(product.getActive())
                 .manageLot(product.getManageLot() != null ? product.getManageLot() : false)
+                .expiryWarningDays(product.getExpiryWarningDays() != null ? product.getExpiryWarningDays() : 30)
                 .unitConversions(conversions)
                 .status(Boolean.TRUE.equals(product.getActive()) ? "Đang kinh doanh" : "Ngừng kinh doanh")
                 .hasTransactions(hasTrans)

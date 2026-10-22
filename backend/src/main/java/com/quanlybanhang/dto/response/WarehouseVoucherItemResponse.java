@@ -58,5 +58,7 @@ public class WarehouseVoucherItemResponse {
     private String overrideReason;
 
     private Boolean manageLot;
+    private Boolean overrideExpiredLot;
+    private String expiredLotOverrideReason;
     private String note;
 }

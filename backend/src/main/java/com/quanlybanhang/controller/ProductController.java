@@ -49,7 +49,7 @@ public class ProductController {
     // đọc toàn bộ hồ sơ sản phẩm hoặc làm lộ giá vốn/doanh thu.
     private static final String LOOKUP_PERMISSION = "hasRole('ADMIN') or hasAnyAuthority('PRODUCT_VIEW', "
             + "'PRODUCT_CREATE', 'PRODUCT_EDIT', 'ORDER_CREATE', 'WAREHOUSE_VIEW', "
-            + "'WAREHOUSE_MANAGE', 'WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT')";
+            + "'WAREHOUSE_MANAGE', 'WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT', 'WAREHOUSE_APPROVE', 'WAREHOUSE_ADJUST')";
 
     @GetMapping("/lookup")
     @PreAuthorize(LOOKUP_PERMISSION)
@@ -69,7 +69,7 @@ public class ProductController {
     private ProductResponse lookupProduct(ProductResponse product) {
         return ProductResponse.builder().id(product.getId()).code(product.getCode()).sku(product.getSku())
                 .name(product.getName()).categoryId(product.getCategoryId()).categoryName(product.getCategoryName())
-                .unit(product.getUnit()).price(product.getPrice()).active(product.getActive())
+                .unit(product.getUnit()).price(product.getPrice()).active(product.getActive()).manageLot(product.getManageLot())
                 .packingSpecification(product.getPackingSpecification()).imageUrl(product.getImageUrl()).build();
     }
 

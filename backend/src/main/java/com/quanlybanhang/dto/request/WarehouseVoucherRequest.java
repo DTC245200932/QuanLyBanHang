@@ -18,7 +18,10 @@ import java.util.List;
 @Builder
 public class WarehouseVoucherRequest {
 
+    @jakarta.validation.constraints.Size(max = 50)
     private String voucherCode;
+
+    private Long version;
 
     private Long warehouseId;
 
@@ -33,6 +36,7 @@ public class WarehouseVoucherRequest {
     /**
      * Số chứng từ đi kèm (hóa đơn, phiếu giao hàng NCC - S5-04).
      */
+    @jakarta.validation.constraints.Size(max = 100)
     private String documentNumber;
 
     /**
@@ -59,6 +63,7 @@ public class WarehouseVoucherRequest {
     /**
      * Lý do điều chỉnh (S5-04).
      */
+    @jakarta.validation.constraints.Size(max = 500)
     private String adjustmentReason;
 
     /**
@@ -72,8 +77,10 @@ public class WarehouseVoucherRequest {
      */
     private String expiredLotOverrideReason;
 
+    @jakarta.validation.constraints.Size(max = 500)
     private String note;
 
+    @jakarta.validation.constraints.Size(max = 500)
     private List<@NotNull @Valid WarehouseVoucherItemRequest> items;
 
     // Các trường tương thích ngược với payload đơn giản: {"productId": 1, "quantity": 50, "unit": "thùng"} hoặc {"delta": 10}

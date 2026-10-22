@@ -567,6 +567,35 @@
   grid-column: span 2;
 }
 
+#import-adjustment-form {
+  margin-top: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#import-adjustment-form > .form-field:first-child,
+#import-adjustment-form > button {
+  grid-column: 1 / -1;
+}
+
+#import-adjustment-form > button {
+  justify-self: start;
+}
+
+#import-adjustment-form textarea {
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+#panel-create-receipt .form-field,
+#import-adjustment-form .form-field {
+  min-width: 0;
+}
+
 .form-field label {
   display: block;
   font-size: 0.8125rem;
@@ -602,6 +631,36 @@
   background: #f8fafc !important;
 }
 
+.supplier-picker-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.btn--outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink-700);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn--outline:hover {
+  background: var(--line-light);
+  border-color: var(--line-dark, #cbd5e1);
+  color: var(--navy-900);
+}
+.badge--draft {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
 /* Line items section */
 .line-items-section {
   background: #fbfcfe;
@@ -624,15 +683,14 @@
   color: var(--navy-900);
 }
 .live-calc-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: block;
   font-size: 0.75rem;
   color: var(--ink-500);
 }
 
 .line-items-table {
   width: 100%;
+  min-width: 1050px;
   border-collapse: collapse;
   background: var(--surface-raised);
   border-radius: var(--radius-sm);
@@ -1294,6 +1352,9 @@
     width: 100%;
   }
   .receipt-form-meta {
+    grid-template-columns: 1fr;
+  }
+  #import-adjustment-form {
     grid-template-columns: 1fr;
   }
   .form-field--span2 {

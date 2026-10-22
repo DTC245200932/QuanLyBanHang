@@ -251,7 +251,7 @@ class WarehouseLotExpiryServiceTest {
 
         WarehouseInventory totalInv = WarehouseInventory.builder()
                 .warehouse(khoHcm).product(suaTuoi).baseQuantity(new BigDecimal("100.0000")).baseUnit("hộp").build();
-        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(totalInv));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 10L)).thenReturn(Optional.of(totalInv));
         when(voucherRepository.save(any(WarehouseVoucher.class))).thenAnswer(i -> i.getArgument(0));
 
         WarehouseVoucherResponse response = warehouseService.exportGoods(request, "staff01");
@@ -365,7 +365,7 @@ class WarehouseLotExpiryServiceTest {
 
         WarehouseInventory totalInv = WarehouseInventory.builder()
                 .warehouse(khoHcm).product(suaTuoi).baseQuantity(new BigDecimal("20.0000")).baseUnit("hộp").build();
-        when(inventoryRepository.findByWarehouseIdAndProductId(1L, 10L)).thenReturn(Optional.of(totalInv));
+        when(inventoryRepository.findByWarehouseIdAndProductIdForUpdate(1L, 10L)).thenReturn(Optional.of(totalInv));
         when(voucherRepository.save(any(WarehouseVoucher.class))).thenAnswer(i -> i.getArgument(0));
 
         WarehouseVoucherResponse response = warehouseService.exportGoods(request, "manager01");

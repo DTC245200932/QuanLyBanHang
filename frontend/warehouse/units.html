@@ -318,19 +318,29 @@
                 <div class="form-field">
                   <label for="receipt-warehouse">Kho thực hiện</label>
                   <select id="receipt-warehouse">
-                  <option value="">Đang tải danh sách kho…</option>
-                </select>
+                    <option value="">Đang tải danh sách kho…</option>
+                  </select>
                   <p id="warehouse-configuration-message" hidden>Chưa có kho đang hoạt động. Liên hệ quản trị viên để cấu hình kho thực tế trước khi ghi phiếu.</p>
                 </div>
 
                 <div class="form-field">
-                  <label for="receipt-partner" id="label-receipt-partner">Nhà cung cấp / Đối tác</label>
-                  <input type="text" id="receipt-partner" placeholder="VD: Nhà máy Bia Heineken VN..." />
+                  <label for="receipt-supplier-select" id="label-receipt-supplier">Nhà cung cấp</label>
+                  <div class="supplier-picker-wrap">
+                    <select id="receipt-supplier-select">
+                      <option value="">-- Chọn Nhà cung cấp --</option>
+                    </select>
+                    <input type="text" id="receipt-partner" placeholder="Hoặc nhập tên đối tác / chi nhánh..." />
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="receipt-doc-number">Số chứng từ / Hóa đơn giao hàng</label>
+                  <input type="text" id="receipt-doc-number" maxlength="100" placeholder="VD: HĐ-88219 / PXK-NCC-042" />
                 </div>
 
                 <div class="form-field form-field--span2">
                   <label for="receipt-notes">Ghi chú nghiệp vụ kho</label>
-                  <input type="text" id="receipt-notes" placeholder="Nhập theo lệnh điều phối số... lô hàng kèm phiếu kiểm đếm" />
+                  <input type="text" id="receipt-notes" maxlength="500" placeholder="Nhập theo lệnh điều phối số... lô hàng kèm phiếu kiểm đếm" />
                 </div>
               </div>
 
@@ -340,7 +350,7 @@
                   <h3>Chi tiết mặt hàng & Quy đổi ghi sổ</h3>
                   <span class="live-calc-hint">
                     <svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    Hệ thống sẽ chốt <strong>hệ số quy đổi</strong> tại thời điểm bấm ghi sổ.
+                    Hệ thống tự động quy về đơn vị cơ sở và chốt <strong>hệ số quy đổi</strong> tại thời điểm ghi sổ.
                   </span>
                 </div>
 
@@ -348,12 +358,14 @@
                   <table class="line-items-table" id="line-items-table">
                     <thead>
                       <tr>
-                        <th style="width: 28%">Sản phẩm / SKU</th>
-                        <th style="width: 18%">Đơn vị gọi hàng</th>
-                        <th style="width: 14%">Số lượng nhập/xuất</th>
-                        <th style="width: 16%">Tỷ lệ quy đổi áp dụng</th>
-                        <th style="width: 18%">Số lượng cơ sở ghi sổ</th>
-                        <th style="width: 6%"></th>
+                        <th style="width: 24%">Sản phẩm / SKU</th>
+                        <th style="width: 15%">Đơn vị tính</th>
+                        <th style="width: 11%">Số lượng</th>
+                        <th style="width: 14%">Số lô (Lot)</th>
+                        <th style="width: 13%">Hạn sử dụng</th>
+                        <th style="width: 11%">Tỷ lệ quy đổi</th>
+                        <th style="width: 14%">Cơ sở ghi sổ</th>
+                        <th style="width: 4%"></th>
                       </tr>
                     </thead>
                     <tbody id="line-items-body">
@@ -390,14 +402,18 @@
                 <div class="receipt-policy-notice">
                   <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                   <span>
-                    Khi bấm <strong>Ghi sổ kho</strong>, số lượng sẽ được quy về đơn vị cơ sở và khóa cố định hệ số quy đổi.
+                    <strong>Quy định kho:</strong> Phiếu nháp cho phép sửa và không thay đổi tồn kho. Khi <strong>Xác nhận ghi sổ</strong>, tồn kho thực tế được cộng ngay; phiếu đã ghi sổ bị khóa cố định, không được sửa đổi (chỉ được lập phiếu điều chỉnh).
                   </span>
                 </div>
                 <div class="action-buttons">
                   <button type="button" class="btn btn--secondary" id="btn-reset-receipt">Làm mới form</button>
+                  <button type="button" class="btn btn--outline" id="btn-save-draft-receipt">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span>Lưu bản nháp</span>
+                  </button>
                   <button type="button" class="btn btn--primary btn--lg" id="btn-save-receipt">
-                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    <span>Lưu & Ghi sổ kho</span>
+                    <svg viewBox="0 0 24 24" width="18" height="18"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Xác nhận ghi sổ kho</span>
                   </button>
                 </div>
               </div>

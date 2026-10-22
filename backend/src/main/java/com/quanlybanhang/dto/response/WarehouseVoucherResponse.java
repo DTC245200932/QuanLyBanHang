@@ -14,6 +14,7 @@ import java.util.List;
 public class WarehouseVoucherResponse {
 
     private Long id;
+    private Long version;
     private String voucherCode;
     private String documentNumber;
     private LocalDateTime voucherDate;

@@ -197,7 +197,7 @@ const MenuConfig = (() => {
       label: "Sổ cái kho",
       icon: '<path d="M4 3h16v18H4zM8 7h8M8 12h8M8 17h5"/>',
       href: "/warehouse/units?tab=ledger",
-      permission: "WAREHOUSE_VIEW",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_IMPORT", "WAREHOUSE_APPROVE", "WAREHOUSE_ADJUST"],
       roles: ["ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_WAREHOUSE_MANAGER", "ROLE_WAREHOUSE_STAFF", "ROLE_VIEWER"],
     },
     {

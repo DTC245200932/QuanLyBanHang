@@ -3018,3 +3018,262 @@ Tài liệu hợp đồng API phục vụ Quản lý kho theo dõi các chuyến
   "note": "Biên bản hoàn trả số BB-0123"
 }
 ```
+
+---
+
+## S7-04 — Hệ thống tự cảnh báo và khoá bán công nợ (22/10/2026)
+
+Tài liệu hợp đồng API phục vụ Bộ phận Kế toán - Tài chính và Quản lý kinh doanh quản lý rủi ro công nợ tự động, kiểm soát hạn mức nợ tiền, số ngày cho phép nợ, tự động khóa bán hoặc chuyển duyệt đơn khi đại lý vi phạm, và tự động gỡ cờ khi thu hồi công nợ.
+
+### 1. Nguyên tắc nghiệp vụ cốt lõi
+
+1. **Tự động gắn cờ đại lý vi phạm công nợ**:
+   - **Vượt hạn mức nợ tiền (`DEBT_LIMIT_EXCEEDED`)**: Khi công nợ hiện tại (`currentDebt = tổng đơn ghi sổ - tổng tiền đã thu`) lớn hơn hạn mức nợ cho phép (`debtLimit`) của đại lý.
+   - **Khoản nợ quá số ngày cho phép (`OVERDUE`)**: Khi đại lý có ít nhất một đơn hàng đã ghi sổ vượt quá số ngày nợ tối đa (`maxDebtDays`) tính từ ngày ghi sổ/tạo đơn mà chưa được thanh toán đủ theo nguyên tắc phân bổ thu tiền FIFO (tiền thu ưu tiên cấn trừ đơn nợ cũ nhất trước).
+   - **Cả hai vi phạm (`BOTH`)**: Đại lý đồng thời vừa vượt hạn mức tiền vừa có khoản nợ quá hạn.
+   - Cờ vi phạm gồm: `debtFlagged` (boolean), `debtFlagType` (`NONE`, `DEBT_LIMIT_EXCEEDED`, `OVERDUE`, `BOTH`), `debtFlagReason` (mô tả chi tiết số tiền vượt và số ngày nợ quá hạn), `debtFlaggedAt` và `lastDebtEvaluatedAt`.
+
+2. **Hành vi xử lý đơn hàng mới theo cấu hình kiểm soát rủi ro**:
+   - **Cấu hình toàn hệ thống (`DebtRiskConfig`)**:
+     - `limitExceededAction`: Hành vi mặc định khi vượt hạn mức tiền (`BLOCK` hoặc `REQUIRE_APPROVAL`).
+     - `overdueAction`: Hành vi mặc định khi có nợ quá hạn (`BLOCK` hoặc `REQUIRE_APPROVAL`).
+     - `defaultAction`: Hành vi dự phòng chung (`BLOCK` hoặc `REQUIRE_APPROVAL`).
+     - `autoFlagEnabled`: Bật/tắt tính năng tự động gắn cờ.
+   - **Cấu hình riêng biệt cho từng đại lý (`Dealer.debtActionConfig`)**:
+     - `DEFAULT`: Áp dụng theo cấu hình hệ thống tương ứng với loại vi phạm.
+     - `BLOCK`: Khóa bán hoàn toàn. Nhân viên kinh doanh / đại lý tạo đơn mới sẽ bị chặn ngay lập tức, API trả về `400 Bad Request` kèm thông báo chi tiết lý do bị khóa và mã đại lý.
+     - `REQUIRE_APPROVAL`: Cho phép ghi nhận tạo đơn nhưng đơn hàng tự động đánh dấu `orderRequiresApproval = true`, trạng thái chuyển `PENDING_APPROVAL`, bổ sung cảnh báo vi phạm công nợ vào đơn để Quản lý kinh doanh phê duyệt.
+
+3. **Tác vụ đánh giá công nợ tự động và tự động gỡ cờ**:
+   - **Tác vụ định kỳ hằng ngày**: Chạy tự động mỗi ngày một lần vào lúc 01:00 AM (`@Scheduled(cron = "${app.debt.evaluation.cron:0 0 1 * * ?}")`) quét toàn bộ đại lý, kiểm tra công nợ và ngày nợ thực tế để cập nhật cờ rủi ro.
+   - **Tự động chạy lại sau khi thu tiền**: Sau mỗi lần ghi nhận phiếu thu tiền công nợ (`POST /api/finance/debt-payments`), hệ thống tự động kích hoạt đánh giá lại công nợ ngay lập tức cho đại lý đó. Nếu công nợ giảm về dưới hạn mức và không còn nợ quá hạn, hệ thống tự động gỡ cờ (`debtFlagged = false`, `debtFlagType = NONE`, `debtFlagReason = null`).
+   - **Đánh giá thủ công theo yêu cầu**: Hỗ trợ gọi API chạy đánh giá toàn bộ đại lý (`POST /api/finance/debt/evaluate`) hoặc một đại lý cụ thể (`POST /api/finance/debt/{dealerId}/evaluate`).
+
+4. **Phân quyền ma trận (Database-backed Permission Matrix)**:
+   - Nguồn chân lý duy nhất là ma trận phân quyền lưu trong database, không dùng fallback vai trò mặc định.
+   - Các API đọc / tra cứu (`GET /api/finance/debt/config`, `/flagged-dealers`, `/debt-payments`): Bắt buộc quyền `FINANCE_VIEW_DEBT` hoặc `FINANCE_MANAGE` hoặc `ROLE_ADMIN`.
+   - Các API ghi / thay đổi cấu hình / thu tiền / đánh giá công nợ (`PUT /api/finance/debt/config`, `PUT /api/finance/debt/{dealerId}/action-config`, `POST /api/finance/debt-payments`, `POST /api/finance/debt/evaluate`, `POST /api/finance/debt/{dealerId}/evaluate`): Bắt buộc quyền `FINANCE_MANAGE` hoặc `ROLE_ADMIN`.
+   - Thu hồi quyền `FINANCE_MANAGE` hoặc `FINANCE_VIEW_DEBT` có hiệu lực ngay lập tức trên các request tiếp theo của cùng token JWT, trả về `403 Forbidden`.
+   - `ROLE_ADMIN` luôn có toàn quyền truy cập.
+
+---
+
+### 2. Danh sách Endpoints Quản lý Rủi ro Công nợ & Thu tiền
+
+| Method | Endpoint | Quyền yêu cầu | Mô tả |
+|---|---|---|---|
+| `GET` | `/api/finance/debt/config` | `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ADMIN` | Lấy cấu hình kiểm soát rủi ro công nợ toàn hệ thống |
+| `PUT` | `/api/finance/debt/config` | `FINANCE_MANAGE` hoặc `ADMIN` | Cập nhật cấu hình rủi ro công nợ hệ thống (hành vi khi vượt hạn mức, khi quá hạn, bật/tắt tự động) |
+| `PUT` | `/api/finance/debt/{dealerId}/action-config` | `FINANCE_MANAGE` hoặc `ADMIN` | Cập nhật hành vi xử lý công nợ riêng biệt cho một đại lý (`DEFAULT`, `BLOCK`, `REQUIRE_APPROVAL`) |
+| `GET` | `/api/finance/debt/flagged-dealers` | `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ADMIN` | Lấy danh sách các đại lý đang bị gắn cờ cảnh báo công nợ |
+| `POST` | `/api/finance/debt/evaluate` | `FINANCE_MANAGE` hoặc `ADMIN` | Chạy tác vụ đánh giá lại công nợ thủ công cho toàn bộ đại lý |
+| `POST` | `/api/finance/debt/{dealerId}/evaluate` | `FINANCE_MANAGE` hoặc `ADMIN` | Chạy tác vụ đánh giá lại công nợ cho một đại lý cụ thể |
+| `POST` | `/api/finance/debt-payments` | `FINANCE_MANAGE` hoặc `ADMIN` | Ghi nhận phiếu thu tiền công nợ đại lý (tự động đánh giá lại và gỡ cờ) |
+| `GET` | `/api/finance/debt-payments` | `FINANCE_VIEW_DEBT`, `FINANCE_MANAGE` hoặc `ADMIN` | Tra cứu lịch sử thu tiền công nợ có lọc theo `dealerId`, `paymentMethod`, khoảng ngày và phân trang |
+
+---
+
+### 3. Chi tiết Hợp đồng Payload và Request/Response Mẫu
+
+#### 3.1 Cấu hình kiểm soát rủi ro hệ thống (`PUT /api/finance/debt/config`)
+
+**Request Body:**
+```json
+{
+  "defaultAction": "BLOCK",
+  "overdueAction": "REQUIRE_APPROVAL",
+  "limitExceededAction": "BLOCK",
+  "autoFlagEnabled": true
+}
+```
+
+**Response Body:**
+```json
+{
+  "success": true,
+  "message": "Đã cập nhật cấu hình kiểm soát rủi ro công nợ",
+  "data": {
+    "id": 1,
+    "defaultAction": "BLOCK",
+    "overdueAction": "REQUIRE_APPROVAL",
+    "limitExceededAction": "BLOCK",
+    "autoFlagEnabled": true,
+    "updatedAt": "2026-10-22T16:30:00"
+  }
+}
+```
+
+---
+
+#### 3.2 Cấu hình hành vi xử lý công nợ riêng cho đại lý (`PUT /api/finance/debt/{dealerId}/action-config`)
+
+**Request Body:**
+```json
+{
+  "action": "REQUIRE_APPROVAL"
+}
+```
+
+**Response Body:**
+```json
+{
+  "success": true,
+  "message": "Đã cập nhật cấu hình hành vi đại lý",
+  "data": {
+    "id": 12,
+    "code": "DL-001",
+    "name": "Đại lý Cấp 1 Minh Phát",
+    "debtLimit": 50000000.00,
+    "maxDebtDays": 30,
+    "currentDebt": 55000000.00,
+    "debtFlagged": true,
+    "debtFlagType": "DEBT_LIMIT_EXCEEDED",
+    "debtActionConfig": "REQUIRE_APPROVAL"
+  }
+}
+```
+
+---
+
+#### 3.3 Tra cứu danh sách đại lý bị gắn cờ (`GET /api/finance/debt/flagged-dealers`)
+
+**Response Body:**
+```json
+{
+  "success": true,
+  "message": "Danh sách đại lý đang bị gắn cờ cảnh báo công nợ",
+  "data": [
+    {
+      "dealerId": 12,
+      "dealerCode": "DL-001",
+      "dealerName": "Đại lý Cấp 1 Minh Phát",
+      "currentDebt": 55000000.00,
+      "debtLimit": 50000000.00,
+      "excessDebtAmount": 5000000.00,
+      "maxDebtDays": 30,
+      "maxOverdueDays": 0,
+      "overdueAmount": 0.00,
+      "debtFlagType": "DEBT_LIMIT_EXCEEDED",
+      "debtFlagReason": "Vượt hạn mức nợ: Nợ hiện tại (55,000,000 đ) vượt hạn mức (50,000,000 đ) một khoản 5,000,000 đ",
+      "debtFlaggedAt": "2026-10-22T01:00:00",
+      "lastDebtEvaluatedAt": "2026-10-22T01:00:00",
+      "configuredAction": "REQUIRE_APPROVAL",
+      "effectiveAction": "REQUIRE_APPROVAL"
+    }
+  ]
+}
+```
+
+---
+
+#### 3.4 Kích hoạt tác vụ đánh giá công nợ (`POST /api/finance/debt/evaluate`)
+
+**Response Body:**
+```json
+{
+  "success": true,
+  "message": "Đã thực hiện tác vụ đánh giá lại công nợ toàn bộ đại lý",
+  "data": {
+    "evaluatedAt": "2026-10-22T16:35:00",
+    "totalEvaluated": 15,
+    "totalFlagged": 2,
+    "newlyFlagged": 1,
+    "unflagged": 0,
+    "limitExceededCount": 1,
+    "overdueCount": 1,
+    "bothCount": 0,
+    "flaggedDealers": [
+      {
+        "dealerId": 12,
+        "dealerCode": "DL-001",
+        "dealerName": "Đại lý Cấp 1 Minh Phát",
+        "currentDebt": 55000000.00,
+        "debtLimit": 50000000.00,
+        "excessDebtAmount": 5000000.00,
+        "maxDebtDays": 30,
+        "maxOverdueDays": 0,
+        "overdueAmount": 0.00,
+        "debtFlagType": "DEBT_LIMIT_EXCEEDED",
+        "debtFlagReason": "Vượt hạn mức nợ: Nợ hiện tại (55,000,000 đ) vượt hạn mức (50,000,000 đ) một khoản 5,000,000 đ",
+        "debtFlaggedAt": "2026-10-22T16:35:00",
+        "lastDebtEvaluatedAt": "2026-10-22T16:35:00",
+        "configuredAction": "DEFAULT",
+        "effectiveAction": "BLOCK"
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### 3.5 Ghi nhận phiếu thu tiền công nợ (`POST /api/finance/debt-payments`)
+
+**Request Body:**
+```json
+{
+  "dealerId": 12,
+  "amount": 10000000.00,
+  "paymentMethod": "BANK_TRANSFER",
+  "referenceCode": "UNC-20261022-88",
+  "note": "Thu nợ chuyển khoản đợt 2"
+}
+```
+
+**Response Body:**
+```json
+{
+  "success": true,
+  "message": "Ghi nhận thu tiền công nợ thành công",
+  "data": {
+    "id": 101,
+    "paymentCode": "PT-20261022-0001",
+    "dealerId": 12,
+    "dealerCode": "DL-001",
+    "dealerName": "Đại lý Cấp 1 Minh Phát",
+    "amount": 10000000.00,
+    "paymentDate": "2026-10-22T16:40:00",
+    "paymentMethod": "BANK_TRANSFER",
+    "referenceCode": "UNC-20261022-88",
+    "note": "Thu nợ chuyển khoản đợt 2",
+    "recordedBy": "accountant_user",
+    "createdAt": "2026-10-22T16:40:00"
+  }
+}
+```
+*(Ghi chú: Ngay sau khi phản hồi 201 Created, công nợ đại lý được trừ 10,000,000 đ, hệ thống tự động chạy đánh giá lại và gỡ cờ `debtFlagged = false` nếu công nợ còn lại <= hạn mức nợ và không còn đơn quá hạn).*
+
+---
+
+#### 3.6 Tra cứu danh sách phiếu thu tiền (`GET /api/finance/debt-payments?dealerId=12&page=0&size=20`)
+
+**Response Body:**
+```json
+{
+  "success": true,
+  "message": "Danh sách lịch sử thu tiền công nợ",
+  "data": {
+    "content": [
+      {
+        "id": 101,
+        "paymentCode": "PT-20261022-0001",
+        "dealerId": 12,
+        "dealerCode": "DL-001",
+        "dealerName": "Đại lý Cấp 1 Minh Phát",
+        "amount": 10000000.00,
+        "paymentDate": "2026-10-22T16:40:00",
+        "paymentMethod": "BANK_TRANSFER",
+        "referenceCode": "UNC-20261022-88",
+        "note": "Thu nợ chuyển khoản đợt 2",
+        "recordedBy": "accountant_user",
+        "createdAt": "2026-10-22T16:40:00"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1
+  }
+}
+```
+

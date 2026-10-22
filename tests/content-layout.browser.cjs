@@ -11,7 +11,7 @@ const cases = [
   '/discount-policies', '/dealers', '/suppliers', '/warehouse/units?tab=inventory',
   '/warehouse/units?tab=units', '/warehouse/units?tab=receipts', '/warehouse/units?tab=ledger',
   '/admin/users', '/admin/audit-logs', '/warehouses', '/warehouse/inventory', '/warehouse/transfers', '/warehouse/minimums',
-  '/warehouse/units?tab=stocktake', '/warehouse/lots',
+  '/warehouse/units?tab=stocktake', '/warehouse/lots', '/warehouse/stock-card',
 ];
 const user = { id: 1, username: 'admin', fullName: 'Quản trị viên', email: 'admin@example.invalid',
   phone: '0900000000', roles: ['ROLE_ADMIN'], permissions: [], warehouses: [], territories: [] };

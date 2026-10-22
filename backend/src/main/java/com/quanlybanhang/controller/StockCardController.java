@@ -25,6 +25,13 @@ public class StockCardController {
 
     private final StockCardService service;
 
+    @GetMapping("/options")
+    public ApiResponse options(){return ApiResponse.success("Bộ chọn thẻ kho",service.options());}
+
+    @GetMapping("/{productId}/sources/{sourceType}/{sourceId}")
+    public ApiResponse source(@PathVariable Long productId,@PathVariable String sourceType,@PathVariable Long sourceId,
+            @RequestParam(required=false) Long warehouseId){return ApiResponse.success("Chứng từ gốc — các phát sinh của SKU",service.source(productId,sourceType,sourceId,warehouseId));}
+
     /**
      * Lấy thẻ kho phân trang của một sản phẩm.
      *

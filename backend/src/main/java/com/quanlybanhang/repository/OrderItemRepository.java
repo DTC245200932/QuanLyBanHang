@@ -12,6 +12,8 @@ import java.util.Collection;
 
 @Repository
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
+    @Query("select i from OrderItem i join fetch i.order o join fetch o.warehouse w where i.product.id=:productId and w.id in :warehouseIds and exists (select h.id from OrderStatusHistory h where h.order=o and upper(h.newStatus) in ('EXPORTED','SHIPPED')) order by o.id,i.id")
+    List<OrderItem> findForStockCard(@Param("productId") Long productId, @Param("warehouseIds") Collection<Long> warehouseIds);
 
     List<OrderItem> findByOrderId(Long orderId);
 

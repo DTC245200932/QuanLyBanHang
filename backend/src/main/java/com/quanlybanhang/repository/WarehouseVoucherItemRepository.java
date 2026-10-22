@@ -33,8 +33,8 @@ public interface WarehouseVoucherItemRepository extends JpaRepository<WarehouseV
             "JOIN FETCH v.warehouse w " +
             "JOIN FETCH i.product p " +
             "WHERE i.product.id = :productId " +
-            "AND UPPER(v.status) != 'DRAFT' " +
-            "AND (:warehouseIds IS NULL OR w.id IN :warehouseIds) " +
+            "AND UPPER(v.status) IN ('RECORDED', 'CONFIRMED', 'ADJUSTED') " +
+            "AND w.id IN :warehouseIds " +
             "AND (:fromDate IS NULL OR COALESCE(v.recordedAt, v.voucherDate) >= :fromDate) " +
             "AND (:toDate IS NULL OR COALESCE(v.recordedAt, v.voucherDate) <= :toDate) " +
             "ORDER BY COALESCE(v.recordedAt, v.voucherDate) ASC, v.id ASC, i.id ASC")

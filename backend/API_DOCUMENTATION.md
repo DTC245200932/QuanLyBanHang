@@ -626,6 +626,18 @@ Hỗ trợ Nhân viên kho khai báo đơn vị quy đổi theo cách kho đang 
 
 ### Thẻ kho sản phẩm — Truy nguyên biến động tồn kho (S6-02)
 
+**Cập nhật frontend + sửa backend 22/10/2026:**
+
+- Trang `/warehouse/stock-card`, menu Kho hàng → Thẻ kho sản phẩm; liên kết từ Tồn kho chọn sẵn SKU và kho. Tất cả API dưới đây có tiền tố `/api/warehouse/stock-card`, cần WAREHOUSE_VIEW từ ma trận hoặc ADMIN, kể cả API chứng từ gốc. Không cần PRODUCT_VIEW/ORDER_VIEW; không trả giá bán hoặc hồ sơ khách hàng.
+- `GET /options`: `data={warehouses:[{id,code,name}],products:[{id,code,name}],pageSizes:[20,50,100],defaultPageSize:50}`. Kho theo phân công (gồm kho ngừng hoạt động để truy lịch sử); danh mục gồm SKU hiện tại và ngừng kinh doanh.
+- `GET /{productId}` giữ bộ tham số cũ. Kiểm fromDate <= toDate (400 khi ngược); thiếu quyền/sai scope kho trả 403. UI ngày bắt đầu đổi thành 00:00:00, ngày kết thúc thành 23:59:59.999999999 để bao gồm cả ngày.
+- Tính lịch sử đầy đủ **trước khi lọc ngày và phân trang**. Tồn đầu lịch sử đối chiếu với tổng tồn vật lý DB trong scope trừ toàn bộ phát sinh đã ghi; không sinh phiếu giả cho dữ liệu seed/migration. Tồn trước trang = tồn sau dòng đầu trừ biến động dòng đó. `openingBalance` trả ở cả trang 0 nếu tồn đầu khác 0 hoặc có fromDate; null chỉ có nghĩa 0 ở trang đầu không lọc từ. Khi khoảng lọc không có dòng, vẫn trả tồn tại cuối khoảng lọc. Page vượt cuối trả currentPage đã chặn về trang cuối, openingBalance theo trang thực tế.
+- Nguồn gồm phiếu đã ghi sổ RECORDED/CONFIRMED/ADJUSTED (không lấy DRAFT/CANCELLED), chuyển kho xuất/nhận/hủy, kiểm kê COMPLETED (chênh lệch có dấu), đơn đã có lịch sử EXPORTED/SHIPPED (mỗi dòng đơn chỉ ghi một lần ở lần xuất đầu tiên), điểm giao đã xác nhận nhập trả kho. Không tính giữ chỗ là trừ tồn vật lý.
+- `sourceType`: VOUCHER, TRANSFER, STOCK_COUNT, ORDER, DELIVERY_RETURN. Riêng DELIVERY_RETURN, sourceId là ID điểm giao và sourceCode là mã chuyến. Ngày/đơn vị/biến động từ bản ghi nghiệp vụ, không tính trong JS.
+- `GET /{productId}/sources/{sourceType}/{sourceId}?warehouseId=`: bản xem chứng từ gốc chỉ đọc **giới hạn các phát sinh của SKU trong scope kho**; response `data={sourceType,sourceId,sourceCode,productCode,productName,entries:[StockCardEntryResponse]}`. Không giới hạn 500 dòng đầu của thẻ kho khi tìm chứng từ. Không tìm thấy chứng từ đúng SKU/scope trả 403, không lộ thông tin kho ngoài scope. Đây không phải API sửa/hủy hay đọc toàn bộ dữ liệu bán hàng.
+- Chỉnh luồng `/warehouse/adjust` để dòng phiếu lưu `baseQuantity` là chênh lệch vật lý có dấu (sau - trước), không dùng lượng đích làm số tăng tồn. Không đổi cách điều chỉnh tồn hay quyền hiện tại. **Giới hạn lịch sử:** phiếu điều chỉnh tuyệt đối tạo trước bản sửa, thiếu số biến động có dấu, cần đối soát/migration riêng; không tự suy đoán audit hoặc sửa lại dữ liệu cũ. Dữ liệu bị chỉnh ngoài hệ thống không thể truy nguyên thành chứng từ.
+- Các phép đọc thẻ kho cùng transaction read-only REPEATABLE_READ; không ghi nghiệp vụ, không thêm schema. Quyền của JWT cũ vẫn nạp từ DB mỗi request, nhiều role lấy hợp quyền; ADMIN luôn được phép.
+
 Dành cho **Nhân viên kho (`ROLE_WAREHOUSE_STAFF`)**, Quản lý kho và Quản trị viên (`ROLE_ADMIN`):
 - **User story**: *"Là Nhân viên kho, tôi muốn xem thẻ kho của một sản phẩm, để truy nguyên được từ phiếu nào làm số tồn bị lệch."*
 - **Endpoint**: `GET /api/warehouse/stock-card/{productId}`
@@ -654,7 +666,7 @@ Dành cho **Nhân viên kho (`ROLE_WAREHOUSE_STAFF`)**, Quản lý kho và Quả
     - `sourceCode`: Mã chứng từ gốc (`voucherCode` hoặc `transferCode`).
     - `note`: Ghi chú trên chứng từ hoặc dòng hàng / lý do hủy chuyển kho.
   - Phân trang: `totalElements`, `totalPages`, `currentPage`, `pageSize`.
-  - `openingBalance`: Tồn kho đầu kỳ trước dòng đầu tiên của trang hiện tại (trang 0 trả `null`, từ trang 1 trở đi trả tồn tích lũy tại cuối trang trước giúp frontend hiển thị số dư lũy kế liên tục).
+  - `openingBalance`: Tồn vật lý trước dòng đầu tiên của trang thực tế. Trang đầu cũng có giá trị nếu có tồn đầu lịch sử hoặc lọc từ ngày; null chỉ biểu thị 0 ở trang đầu không lọc từ. Các trang sau tiếp tục số dư trang trước, không tính lại từ 0.
 
 ### Kiểm kê kho và ghi nhận chênh lệch (S5-08)
 

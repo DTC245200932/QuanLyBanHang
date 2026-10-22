@@ -29,6 +29,11 @@ class StockCardServiceTest {
     @Mock private WarehouseTransferItemRepository transferItemRepo;
     @Mock private ProductRepository productRepo;
     @Mock private StockLedgerService ledgerService;
+    @Mock private WarehouseInventoryRepository inventoryRepo;
+    @Mock private WarehouseStockCountItemRepository countItemRepo;
+    @Mock private OrderItemRepository orderItemRepo;
+    @Mock private OrderStatusHistoryRepository historyRepo;
+    @Mock private DeliveryTripStopItemRepository returnItemRepo;
 
     @InjectMocks
     private StockCardService service;
@@ -47,6 +52,25 @@ class StockCardServiceTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void returnedDeliveryStockAppearsAtActualReturnTimeWithOriginalStopIdentity() {
+        when(ledgerService.visibleWarehousesFor("WAREHOUSE_VIEW")).thenReturn(List.of(wh1));
+        when(productRepo.findById(100L)).thenReturn(Optional.of(product));
+        var t=LocalDateTime.of(2026,10,22,14,0);
+        var trip=DeliveryTrip.builder().id(8L).tripCode("CG-008").warehouse(wh1).build();
+        var stop=DeliveryTripStop.builder().id(9L).trip(trip).returnedToWarehouse(true).returnedAt(t).note("Nhập trả hàng chưa giao").build();
+        var item=DeliveryTripStopItem.builder().id(10L).stop(stop).product(product).quantity(new BigDecimal("6")).unit("Hộp").build();
+        when(returnItemRepo.findForStockCard(100L,List.of(1L))).thenReturn(List.of(item));
+        when(inventoryRepo.findByProductId(100L)).thenReturn(List.of(WarehouseInventory.builder().warehouse(wh1).product(product).baseQuantity(new BigDecimal("106")).build()));
+        var card=service.getStockCard(100L,1L,null,null,0,50);
+        assertThat(card.openingBalance()).isEqualByComparingTo("100");
+        assertThat(card.entries()).hasSize(1);
+        assertThat(card.entries().get(0).sourceType()).isEqualTo("DELIVERY_RETURN");
+        assertThat(card.entries().get(0).sourceId()).isEqualTo(9L);
+        assertThat(card.entries().get(0).runningBaseBalance()).isEqualByComparingTo("106");
+        assertThat(card.entries().get(0).eventTime()).isEqualTo(t);
     }
 
     @Test
@@ -403,5 +427,7 @@ class StockCardServiceTest {
         assertThat(response.entries()).hasSize(1);
         assertThat(response.entries().get(0).sourceCode()).isEqualTo("PN2");
         assertThat(response.entries().get(0).baseQuantityChange()).isEqualByComparingTo("20");
+        assertThat(response.openingBalance()).isEqualByComparingTo("10");
+        assertThat(response.entries().get(0).runningBaseBalance()).isEqualByComparingTo("30");
     }
 }

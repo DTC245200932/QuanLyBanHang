@@ -35,6 +35,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DealerDebtServiceImpl implements DealerDebtService {
 
+    private final com.quanlybanhang.repository.ReturnOrderRepository returnOrderRepository;
     private final DealerRepository dealerRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
@@ -89,7 +90,13 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         }
 
         // Công nợ thực tế hiện tại = Tổng đơn ghi sổ - Tổng tiền đã thu
-        BigDecimal currentDebt = totalOrderDebt.subtract(totalPaid).max(BigDecimal.ZERO);
+        java.util.Map<Long, BigDecimal> returnCredits = new java.util.HashMap<>();
+        if (returnOrderRepository != null) {
+            returnOrderRepository.creditsByOrder(dealer.getId(), OrderStatus.debtBearingStatuses())
+                    .forEach(row -> returnCredits.put(row.getOrderId(), row.getAmount()));
+        }
+        BigDecimal totalReturns = returnCredits.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal currentDebt = totalOrderDebt.subtract(totalPaid).subtract(totalReturns).max(BigDecimal.ZERO);
         BigDecimal remainingLimit = debtLimit.subtract(currentDebt);
 
         List<Order> recordedOrders = orderRepository.findByDealerIdAndStatusInOrderByRecordedAtAsc(dealer.getId(), OrderStatus.debtBearingStatuses());
@@ -104,7 +111,8 @@ public class DealerDebtServiceImpl implements DealerDebtService {
         if (maxDebtDays > 0) {
             BigDecimal unallocatedPayment = totalPaid;
             for (Order order : recordedOrders) {
-                BigDecimal orderAmt = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+                BigDecimal orderAmt = (order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO)
+                        .subtract(returnCredits.getOrDefault(order.getId(), BigDecimal.ZERO)).max(BigDecimal.ZERO);
                 if (unallocatedPayment.compareTo(orderAmt) >= 0) {
                     // Đơn này đã được thanh toán hết (FIFO)
                     unallocatedPayment = unallocatedPayment.subtract(orderAmt);

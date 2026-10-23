@@ -13,6 +13,10 @@ import java.util.Optional;
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpecificationExecutor<Invoice> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Invoice i where i.id = :id")
+    Optional<Invoice> findForReturnUpdate(@Param("id") Long id);
+
     Optional<Invoice> findByInvoiceNumber(String invoiceNumber);
 
     Optional<Invoice> findByInvoiceCode(String invoiceCode);

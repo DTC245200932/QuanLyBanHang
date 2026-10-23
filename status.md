@@ -1,5 +1,24 @@
 # Trạng thái sprint 1–7
 
+## S6-03 — Phiếu soạn hàng từ đơn đã duyệt (frontend + backend) — 23/10/2026
+
+Nhánh `feature/S6-03-frontend-va-backend-tao_phieu_soan_hang`. Đã đọc AGENTS.md và hai skill trong SKILLS. Triển khai theo 5 tiêu chí trong ảnh; giữ shared shell/frame hiện có, lưu nghiệp vụ ở DB. Theo yêu cầu cập nhật của người dùng: chỉ commit local, không tự push/merge develop. Không restart backend hoặc ghi/reset DB thật trong quá trình kiểm thử.
+
+| Tiêu chí / hạng mục | Backend | Frontend | Kết nối / ma trận quyền |
+|---|---|---|---|
+| Tạo phiếu từ đơn đã duyệt, còn giữ chỗ | Có — kiểm tra trạng thái, hạn giữ chỗ, kho đang hoạt động và phạm vi được gán | Có — chọn kho, tìm/chọn đơn có thể soạn | `/warehouse/picking-batches/eligible-orders` + POST; không đòi thêm ORDER_VIEW/PRODUCT_VIEW |
+| Dòng hàng có vị trí, sắp theo tuyến kho | Có — snapshot vị trí mặc định đang dùng, mã/tên SKU, lượng/đơn vị/hệ số; thứ tự khu/kệ có thể cấu hình bằng `pickingSequence`, fallback mã tự nhiên | Có — thẻ theo tuyến, thể hiện đơn gốc/SKU/vị trí/lượng cần; hàng chưa gán vị trí hiện cuối tuyến | Cấu hình tuyến trong Thêm/Sửa vị trí; vị trí/số lượng chốt từ server, thay danh mục không sửa snapshot cũ |
+| Gộp nhiều đơn một lượt | Có — cùng kho, tối đa 100 đơn/500 dòng; khóa đơn theo ID + claim DB duy nhất chống trùng đồng thời | Có — chọn nhiều đơn qua các trang, có bộ đếm đơn đã chọn | Mỗi dòng vẫn gắn đơn gốc để không mất phân bổ; đơn chuyển PICKING cùng giao dịch, không xuất/trừ tồn |
+| Đánh dấu đã soạn, lưu thực soạn từng dòng | Có — lưu null/0/số lẻ đúng nghĩa, quy đổi theo hệ số đóng băng; DB version + khóa phiếu trả 409 khi cũ | Có — input số, checkbox, Lưu dòng; chống gửi trùng, giữ input khi lỗi và giữ dòng khác đang nhập dở | PUT từng dòng; phản hồi DB cập nhật tiến độ; reload đọc dữ liệu thật từ API, không dùng local/sessionStorage cho nghiệp vụ |
+| Soạn thiếu bắt buộc lý do | Có — lượng 0..yêu cầu, tối đa 4 số lẻ; thiếu kể cả 0 bắt buộc lý do, không chỉ validate JS | Có — cảnh báo ngay trên dòng, không tự điền lượng đặt thành thực soạn | API vẫn chặn yêu cầu giả/bỏ qua UI; đánh dấu xong phải có thực soạn |
+| Hoàn tất/hủy lượt | Có — hoàn tất khi tất cả dòng đã soạn, bất biến sau hoàn tất; hủy phải lý do, giải phóng claim để tạo lượt mới | Có — chỉ bật hoàn tất sau lưu đủ dòng và không còn thay đổi chưa lưu; xem lịch sử, hủy an toàn | Mọi lỗi kể cả audit rollback trạng thái/dữ liệu/claim; không tự cập nhật thực giao hoặc hoàn tồn |
+| Điện thoại | API giữ payload hữu hạn/phân trang, dữ liệu thực soạn lưu lại được khi reload | Có — thẻ theo điểm dừng, input/nút tối thiểu 44px, bố cục 320–1920px, không tràn ngang toàn trang | Dùng `app-navigation.css`, không tạo outer frame riêng; đã xem screenshot mobile/desktop |
+| Phân quyền và giới hạn kho | Đọc WAREHOUSE_VIEW hoặc WAREHOUSE_EXPORT; ghi WAREHOUSE_EXPORT; ADMIN luôn có quyền, nghiệp vụ vẫn bắt buộc | Menu/guard và nút theo cùng ma trận; chỉ VIEW thì chỉ xem; grant/revoke trong phiên hiện tại | Role không cấp quyền thay DB; ngoài kho bị 403, không có kho gán không được đọc toàn hệ thống; phản hồi trễ không phục hồi form sau thu hồi |
+
+**Kiểm thử cuối:** Maven `clean test` trong bản sao backend/H2 tạm: **860 tests, 0 failures/errors**, trong đó **17 ca PickingBatchIntegrationTest** qua HTTP/JWT thật (gộp đơn, tuyến tự nhiên/cấu hình/snapshot, thiếu/0, hoàn tất/hủy, version cũ, đồng thời, kho ngừng hoạt động, scope, cấp/thu hồi JWT hiện tại, ADMIN và rollback audit). Node **146/146**; Python routes **11/11**. Chrome trang/script thật + HTTP fixtures S6-03 pass: chọn nhiều trang, tạo trùng, giữ input khi lỗi/409, giữ dòng khác nhập dở, hoàn tất/reload/hủy, read-only, grant/revoke + phản hồi đọc/ghi trễ, XSS, lọc/rỗng/retry và 6 widths. Hồi quy warehouses (kèm lưu/đọc thứ tự tuyến), S5 orders/reservation/import/stocktake/transfers, stock-card/lots/navigation pass; shared layout **168 checks / 28 trang / 6 widths (320–1920px)** pass. `git diff --cached --check` sạch. API_DOCUMENTATION.md và docs/FRONTEND_ROUTES.md đã cập nhật.
+
+**Triển khai / giới hạn:** cần build/restart backend để Hibernate theo cấu hình hiện có tạo ba bảng picking và thêm cột thứ tự cho vị trí; restart frontend server để nhận route Python mới. Kiểm thử dùng H2 tạm trong bản sao backend và Chrome với HTTP fixtures, không phải UAT MySQL thật. Tuyến theo cấu hình/mã khu-kệ, không tuyên bố tối ưu đường ngắn nhất theo tọa độ. Lượt soạn chỉ ghi thực soạn, chưa thay luồng chứng từ xuất/giao hàng.
+
 ## S7-01 — Phát hành hoá đơn bán hàng từ phiếu đã giao (Backend) — 22/10/2026
 
 Nhánh: `S7-01/phat-hanh-hoa-don-ban-hang-tu-phieu-da-giao-BE`. Nguồn tiêu chí: User story S7-01 (*"Là Kế toán công nợ, tôi muốn phát hành hoá đơn bán hàng từ phiếu đã giao, để xuất hoá đơn đúng số hàng thực giao thay vì số hàng đặt"*). Phạm vi thực hiện: **chỉ làm Backend** theo đúng yêu cầu người dùng, tuân thủ nghiêm ngặt `AGENTS.md` và ma trận phân quyền database-backed.

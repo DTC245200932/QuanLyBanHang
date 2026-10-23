@@ -108,6 +108,17 @@ class FrontendRoutingTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn('warehouse-transfers.js', body.decode('utf-8'))
 
+    def test_s603_picking_route_and_legacy_url(self):
+        status, _, body = self.get('/warehouse/picking')
+        self.assertEqual(status, 200)
+        html = body.decode('utf-8')
+        for text in ['Phiếu soạn hàng', 'pick-lines', 'warehouse-picking.js', 'app-shell.js', 'app-navigation.css']:
+            self.assertIn(text, html)
+        self.assertEqual(200, self.get('/warehouse/picking', method='HEAD')[0])
+        status, headers, _ = self.get('/warehouse/picking.html')
+        self.assertEqual(308, status)
+        self.assertEqual('/warehouse/picking', headers['Location'])
+
     def test_s508_stocktake_route_keeps_the_shared_shell_and_server_backed_scripts(self):
         status, _, body = self.get("/warehouse/units?tab=stocktake")
         self.assertEqual(200, status)

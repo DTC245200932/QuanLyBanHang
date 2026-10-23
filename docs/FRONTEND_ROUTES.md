@@ -1,5 +1,14 @@
 # Chạy frontend và đường dẫn trang
 
+## S6-03 — Phiếu soạn hàng (23/10/2026)
+
+- Menu **Kho hàng → Phiếu soạn hàng**, URL `/warehouse/picking` (URL cũ `/warehouse/picking.html` tự chuyển về URL sạch).
+- **Tạo lượt soạn**: chọn kho, chọn một hoặc nhiều đơn đã duyệt còn giữ chỗ (có thể chọn qua nhiều trang), nhập mã riêng hoặc để trống tự sinh. Backend kiểm tra và chốt snapshot ở DB.
+- Mở lượt để đi theo thứ tự khu/kệ; mỗi thẻ có đơn gốc, sản phẩm, số yêu cầu, thực soạn, lý do thiếu, checkbox **Đã soạn dòng này** và **Lưu dòng**. Thực soạn 0 không bị đổi thành số đặt; thiếu bắt buộc lý do. Lưu một dòng không xóa các dòng khác đang nhập dở.
+- **Hoàn tất lượt soạn** chỉ bật khi mọi dòng đã lưu/đánh dấu và không có thay đổi chưa lưu. Phiếu hoàn tất chỉ xem; hủy lượt đang soạn phải có lý do và không hoàn/trừ tồn tự động.
+- Trình bày dạng thẻ, nút/ô nhập tối thiểu 44px cho điện thoại; giữ shared app shell và frame trong `app-navigation.css`. Quyền đọc VIEW hoặc EXPORT, quyền ghi EXPORT theo DB; scope kho do API. Thu hồi quyền đóng/xóa form, hủy GET đang chờ, bỏ qua phản hồi ghi cũ và ẩn/tắt hành động tương ứng.
+- Chỉnh tuyến ở **Kho & vị trí lưu → Thêm/Sửa vị trí → Thứ tự đường đi khi soạn**; chỉ áp dụng lượt tạo mới. Chưa khai báo thì theo mã khu/kệ tự nhiên; hàng chưa gán vị trí hiện riêng ở cuối tuyến.
+
 ## S5 — tích hợp bản sửa 22/10/2026
 
 - `/orders` → Xem chi tiết → **Số lượng thực giao**: nhập ngày, số lượng từng dòng (kể cả 0), ghi chú; **Điền giao đủ** chỉ điền khi người dùng bấm. Nút chuyển sang Đã giao đưa tới form này. Chỉ được sửa nếu backend trả `canUpdateDelivery` và còn `WAREHOUSE_EXPORT`; người chỉ có quyền xem đọc được dữ liệu đã lưu.

@@ -499,6 +499,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .locationType(locationType)
                 .parent(parent)
                 .description(request.getDescription() != null ? request.getDescription().trim() : null)
+                .pickingSequence(request.getPickingSequence())
                 .active(request.getActive() != null ? request.getActive() : true)
                 .build();
 
@@ -603,6 +604,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (request.getDescription() != null) {
             location.setDescription(request.getDescription().trim());
         }
+        location.setPickingSequence(request.getPickingSequence());
 
         if (request.getActive() != null) {
             location.setActive(request.getActive());
@@ -2303,6 +2305,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .parentLocationCode(parentCode)
                 .parentLocationName(parentName)
                 .description(loc.getDescription())
+                .pickingSequence(loc.getPickingSequence())
                 .active(loc.getActive())
                 .fullDisplayName(fullDisplay)
                 .productCount(productCount)

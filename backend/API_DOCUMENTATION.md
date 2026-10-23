@@ -1,8 +1,35 @@
-# SaleStock API — Sprint 1–5
+# SaleStock API — Sprint 1–7
 
 Base URL: `http://localhost:8080/api`
 
 Mọi response nghiệp vụ dùng cấu trúc `{ "success": boolean, "message": string, "data": any }`.
+
+## S6-03 — Phiếu soạn hàng, frontend + backend (23/10/2026)
+
+Trang `/warehouse/picking`, menu **Kho hàng → Phiếu soạn hàng**. Quyền đọc: `WAREHOUSE_VIEW` **hoặc** `WAREHOUSE_EXPORT`; quyền tạo/lưu dòng/hoàn tất/hủy: `WAREHOUSE_EXPORT`. `ROLE_ADMIN` luôn được phép; người dùng khác chỉ thao tác kho được gán, kể cả khi role không phải Thủ kho. Không có kho được gán không đồng nghĩa truy cập toàn bộ kho. Thu hồi quyền có hiệu lực với JWT hiện tại ở request tiếp theo; UI đóng/xóa form và vô hiệu phản hồi trễ khi nhận thay đổi quyền.
+
+| Method | Endpoint (sau `/api`) | Hợp đồng |
+|---|---|---|
+| GET | `/warehouse/picking-batches/options` | Kho đang dùng trong phạm vi, nhãn trạng thái, `canCreate`, `maxOrders=100`, `maxLines=500`, `quantityScale=4`, mô tả tuyến |
+| GET | `/warehouse/picking-batches/eligible-orders?warehouseId=1&page=0&size=20&keyword=DH` | Chỉ đơn cùng kho, đã duyệt/đang soạn (`RECORDED/APPROVED/PICKING/PROCESSING`), còn giữ chỗ, chưa hết hạn và chưa có lượt soạn chưa hủy. Trả `Page<EligibleOrder>` không có giá/công nợ |
+| GET | `/warehouse/picking-batches?warehouseId=1&status=IN_PROGRESS&keyword=PSH&page=0&size=20` | `Page<Summary>`, lọc trong phạm vi kho; `size` 1–100, `page` không âm |
+| GET | `/warehouse/picking-batches/{id}` | `Detail{summary,note,cancelReason,completedAt,items,canEdit,canComplete,canCancel,blockedReason}` |
+| POST | `/warehouse/picking-batches` | `{warehouseId,orderIds:[101,102],code?:"PSH-001",note?:"..."}`; mã trống tự sinh; 1–100 đơn không trùng, cùng kho, tối đa 500 dòng |
+| PUT | `/warehouse/picking-batches/{id}/items/{itemId}` | `{version:0,pickedQuantity:1.5,checked:true,shortageReason:"Thiếu tại kệ"}`. `version` là phiên bản phiếu đang xem; số lượng theo đơn vị đóng băng của dòng đơn gốc |
+| POST | `/warehouse/picking-batches/{id}/complete` | `{version:1}`; mọi dòng đã lưu/đánh dấu, số thực soạn hợp lệ; hoàn tất rồi không sửa/hủy |
+| POST | `/warehouse/picking-batches/{id}/cancel` | `{version:1,reason:"Đổi tuyến soạn"}`; chỉ lượt đang soạn, bắt buộc lý do; giải phóng quyền chọn các đơn cho lượt mới, không đổi tồn |
+
+`Summary` gồm `id,version,code,warehouseId,warehouseCode,warehouseName,status,statusLabel,orderCount,lineCount,checkedCount,shortageCount,createdAt,createdBy`. Mỗi dòng trả `id,orderId,orderCode,productId,productCode,productName,unit,baseUnit,quantity,conversionFactor,pickedQuantity,pickedBaseQuantity,checked,shortageQuantity,shortageReason,locationId,locationCode,locationDisplay,routePosition`. Không tự mặc định số đặt thành thực soạn; chưa nhập trả null, số 0 được lưu nguyên.
+
+Quy tắc dữ liệu:
+
+- Tạo mới chốt số lượng/đơn vị/hệ số từ đơn và vị trí mặc định đang dùng trong kho. Dòng thuộc nhiều đơn được giữ liên kết riêng, nhưng sắp liền theo tuyến khu/kệ. Cột `pickingSequence` (0–1.000.000 hoặc null) được bổ sung vào API tạo/sửa/đọc vị trí hiện có; cấu hình ở **Kho & vị trí lưu → Thêm/Sửa vị trí → Thứ tự đường đi khi soạn**. Số nhỏ trong cùng khu đi trước, chưa khai báo thì so mã tự nhiên (`KE-2` trước `KE-10`), chưa có vị trí hợp lệ xếp cuối và hiển thị cảnh báo. Đây là thứ tự tuyến được khai báo, không tuyên bố đường ngắn nhất theo tọa độ.
+- Sau khi tạo, thay đổi tên/thứ tự/đơn vị trong danh mục không sửa lại snapshot phiếu cũ. Đơn đã duyệt chuyển sang `PICKING` trong cùng giao dịch; không trừ tồn thực hoặc nhả giữ chỗ.
+- Thực soạn từ 0 đến số yêu cầu, tối đa 11 chữ số nguyên và 4 số lẻ; quy đổi cơ sở cũng phải hợp lệ. Có ghi thực soạn thiếu thì bắt buộc lý do, kể cả 0 và dòng chưa đánh dấu. Đánh dấu đã soạn bắt buộc nhập thực soạn. API kiểm tra lại trạng thái/giữ chỗ/hạn của đơn và trạng thái kho mỗi lần lưu/hoàn tất; vẫn cho hủy lượt bị chặn để đối soát.
+- Khóa đơn theo ID tăng dần, claim DB duy nhất cho mỗi đơn chống tạo trùng đồng thời. Claim của phiếu hoàn tất được giữ để không soạn lại cùng đơn; hủy lượt giải phóng claim nhưng giữ các dòng lịch sử. Parent `@Version` + khóa phiếu ngăn ghi đè, phiên bản cũ trả **409**; frontend giữ nguyên dữ liệu nhập để người dùng đối chiếu/tải lại. Mọi lỗi giao dịch, kể cả audit, rollback cả dữ liệu/trạng thái/claim.
+- Phiếu soạn **không phải** phiếu xuất/giao hàng; không tự cập nhật `deliveredQuantity` hoặc nhập trả phần thiếu. Việc xuất/giao vẫn theo luồng chứng từ riêng. Không lưu nghiệp vụ vào localStorage/sessionStorage.
+
+Schema mới do cấu hình Hibernate `ddl-auto=update` hiện có tạo khi triển khai: `picking_batches`, `picking_batch_items`, `picking_order_claims`; thêm `warehouse_locations.picking_sequence`. Kiểm thử chạy trên H2 tạm và Chrome HTTP fixtures, không migration/reset/ghi dữ liệu DB thật.
 
 ## S5 — bản sửa tích hợp 22/10/2026
 

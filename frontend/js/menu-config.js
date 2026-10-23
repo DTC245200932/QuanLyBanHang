@@ -219,6 +219,15 @@ const MenuConfig = (() => {
       roles: ALL_ROLES,
     },
     {
+      id: "warehouse-picking",
+      section: "Kho hàng",
+      label: "Phiếu soạn hàng",
+      icon: '<path d="M9 3h6v4H9zM7 5H4v16h16V5h-3M8 12l2 2 4-4M8 18h8"/>',
+      href: "/warehouse/picking",
+      permissions: ["WAREHOUSE_VIEW", "WAREHOUSE_EXPORT"],
+      roles: ALL_ROLES,
+    },
+    {
       id: "warehouse-lots",
       section: "Kho hàng",
       label: "Lô & hạn sử dụng",

@@ -56,6 +56,9 @@ class ProductServiceTest {
     @Mock
     private com.quanlybanhang.repository.WarehouseVoucherItemRepository warehouseVoucherItemRepository;
 
+    @Mock
+    private com.quanlybanhang.repository.WarehouseLotInventoryRepository lotInventoryRepository;
+
     @InjectMocks
     private ProductServiceImpl productService;
 
@@ -72,7 +75,7 @@ class ProductServiceTest {
     private void mockSalesManagerAuth() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("sales.mgr", "pass",
-                        List.of(new SimpleGrantedAuthority("ROLE_SALES_MANAGER")))
+                        List.of(new SimpleGrantedAuthority("ROLE_SALES_MANAGER"), new SimpleGrantedAuthority("FINANCE_VIEW_COST_PRICE")))
         );
     }
 

@@ -29,6 +29,10 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version;
+
     @Column(name = "order_code", nullable = false, length = 50, unique = true)
     private String orderCode;
 
@@ -47,6 +51,11 @@ public class Order {
     @JoinColumn(name = "delivery_point_id")
     private DealerDeliveryPoint deliveryPoint;
 
+    /** Kho phục vụ / xuất hàng cho đơn (S4-03). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id")
+    private Warehouse warehouse;
+
     /** Ngày giao mong muốn của đơn hàng (S3-09). */
     @Column(name = "expected_delivery_date")
     private LocalDate expectedDeliveryDate;
@@ -55,9 +64,53 @@ public class Order {
     @JoinColumn(name = "price_list_id")
     private PriceList priceList;
 
+
+    /**
+     * Trạng thái đơn hàng theo vòng đời (S4-06):
+     * DRAFT, PENDING_APPROVAL, RECORDED/APPROVED, PICKING, EXPORTED, DELIVERED, CLOSED, CANCELLED, REJECTED
+     */
     @Column(length = 30)
     @Builder.Default
     private String status = "RECORDED";
+
+    /**
+     * Đánh dấu đơn hàng đã được giữ chỗ tồn kho trong kho (S4-06).
+     * Sẽ tự động nhả giữ chỗ khi huỷ đơn hoặc trừ tồn thực tế khi xuất kho.
+     */
+    @Column(name = "inventory_reserved", nullable = false)
+    @Builder.Default
+    private Boolean inventoryReserved = false;
+
+    /**
+     * Lý do huỷ đơn hàng (bắt buộc khi huỷ) (S4-06).
+     */
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
+    /**
+     * Người thực hiện huỷ đơn (S4-06).
+     */
+    @Column(name = "cancelled_by", length = 100)
+    private String cancelledBy;
+
+    /**
+     * Thời điểm huỷ đơn (S4-06).
+     */
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    /**
+     * Thời điểm bắt đầu giữ chỗ tồn kho (S5-06).
+     */
+    @Column(name = "reserved_at")
+    private LocalDateTime reservedAt;
+
+    /**
+     * Thời hạn giữ chỗ tồn kho (S5-06).
+     * Khi vượt quá thời điểm này mà đơn chưa xuất kho hoặc huỷ, hệ thống sẽ tự động nhả tồn giữ chỗ.
+     */
+    @Column(name = "reservation_expires_at")
+    private LocalDateTime reservationExpiresAt;
 
     /**
      * Đánh dấu đơn hàng có dòng sản phẩm bán dưới giá sàn cần qua duyệt (S2-10).
@@ -96,6 +149,21 @@ public class Order {
     @Column(length = 500)
     private String note;
 
+
+
+
+    /**
+     * Ngày thực tế giao hàng (S5-01).
+     */
+    @Column(name = "actual_delivery_date")
+    private LocalDate actualDeliveryDate;
+
+    /**
+     * Ghi chú giao hàng tổng thể / tình trạng giao (S5-01).
+     */
+    @Column(name = "delivery_note", length = 500)
+    private String deliveryNote;
+
     @Column(name = "created_by", length = 100)
     private String createdBy;
 
@@ -128,6 +196,9 @@ public class Order {
         }
         if (this.status == null) {
             this.status = "RECORDED";
+        }
+        if (this.inventoryReserved == null) {
+            this.inventoryReserved = false;
         }
         if (this.subtotalAmount == null) {
             this.subtotalAmount = BigDecimal.ZERO;

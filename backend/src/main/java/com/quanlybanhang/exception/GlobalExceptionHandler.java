@@ -172,6 +172,29 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Xử lý lỗi đơn hàng đã xuất kho không thể huỷ (S4-06).
+     */
+    @ExceptionHandler(DealerDebtBlockedException.class)
+    public ResponseEntity<ApiResponse> handleDealerDebtBlocked(DealerDebtBlockedException ex) {
+        Map<String, Object> details = new HashMap<>();
+        details.put("dealerCode", ex.getDealerCode());
+        details.put("dealerName", ex.getDealerName());
+        details.put("reason", ex.getReason());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(details)
+                        .build());
+    }
+
+    @ExceptionHandler(OrderCannotBeCancelledException.class)
+    public ResponseEntity<ApiResponse> handleOrderCannotBeCancelled(OrderCannotBeCancelledException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
      * Xử lý lỗi không có quyền truy cập (@PreAuthorize hoặc AccessDeniedException).
      * Trả về 403 Forbidden.
      */

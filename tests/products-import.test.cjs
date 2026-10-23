@@ -26,7 +26,7 @@ function setup(responder) {
     getElementById: element, querySelectorAll: () => [], addEventListener() {}};
   const context = vm.createContext({document, window: {}, console,
     FormData: class {constructor() {this.values = new Map();} append(key, value) {this.values.set(key, value);}},
-    Auth: {hasAnyRole: () => true, apiFetch: async (url, options) => {calls.push({url, options}); return responder(url, options);}},
+    Auth: {hasPermission: () => true, apiFetch: async (url, options) => {calls.push({url, options}); return responder(url, options);}},
   });
   for (const key of ['localStorage','sessionStorage']) {
     Object.defineProperty(context, key, {get() {throw new Error('Do not store business data in browser storage');}});

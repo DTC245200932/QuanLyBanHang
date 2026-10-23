@@ -44,6 +44,34 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("ProductController - API Quản lý sản phẩm")
 class ProductControllerTest {
 
+    @Test
+    @WithMockUser(authorities = {"ROLE_VIEWER", "WAREHOUSE_IMPORT"})
+    void warehouseReferenceDoesNotRequireProductViewOrExposeSensitiveValues() throws Exception {
+        when(productService.getAll((Long) null)).thenReturn(List.of(ProductResponse.builder()
+                .id(1L).code("SKU-1").name("Sản phẩm").costPrice(new BigDecimal("150000"))
+                .revenue(new BigDecimal("900000")).build()));
+        mockMvc.perform(get("/api/products/lookup"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].code").value("SKU-1"))
+                .andExpect(jsonPath("$.data[0].costPrice").isEmpty())
+                .andExpect(jsonPath("$.data[0].revenue").isEmpty());
+        mockMvc.perform(get("/api/products")).andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(authorities = {"ROLE_SALES_MANAGER"})
+    void productRoleCannotBypassRevokedDeletePermission() throws Exception {
+        mockMvc.perform(delete("/api/products/1")).andExpect(status().isForbidden());
+        org.mockito.Mockito.verify(productService, org.mockito.Mockito.never()).delete(any());
+    }
+
+    @Test
+    @WithMockUser(authorities = {"ROLE_VIEWER", "PRODUCT_DELETE"})
+    void explicitDeletePermissionWorksForAnotherRole() throws Exception {
+        mockMvc.perform(delete("/api/products/1")).andExpect(status().isOk());
+        org.mockito.Mockito.verify(productService).delete(1L);
+    }
+
     @Autowired
     private WebApplicationContext context;
 
@@ -81,7 +109,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.emp", roles = "SALES")
+    @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("GET /api/products danh sách sản phẩm thành công")
     void getAllProducts_Authenticated_Returns200() throws Exception {
         ProductResponse response = ProductResponse.builder()
@@ -100,7 +128,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("POST /api/products tạo sản phẩm thành công với SALES_MANAGER -> 201 Created")
     void createProduct_SalesManager_Returns201() throws Exception {
         ProductRequest request = ProductRequest.builder()
@@ -128,7 +156,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.emp", roles = "SALES")
+    @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("POST /api/products bị từ chối với vai trò SALES -> 403 Forbidden")
     void createProduct_SalesRole_Returns403() throws Exception {
         ProductRequest request = ProductRequest.builder()
@@ -144,7 +172,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("DELETE /api/products/{id} xóa sản phẩm thành công -> 200 OK")
     void deleteProduct_Success() throws Exception {
         doNothing().when(productService).delete(1L);
@@ -155,7 +183,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("DELETE /api/products/{id} thất bại khi sản phẩm đã phát sinh giao dịch -> 400 Bad Request")
     void deleteProduct_HasTransactions_Returns400() throws Exception {
         org.mockito.Mockito.doThrow(new com.quanlybanhang.exception.ProductHasTransactionsException("SP01", "iPhone 15"))
@@ -168,7 +196,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("PATCH /api/products/{id}/status chuyển trạng thái ngừng kinh doanh -> 200 OK")
     void updateProductStatus_Success() throws Exception {
         ProductResponse response = ProductResponse.builder()
@@ -189,7 +217,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("S2-08: GET /api/products/import/template tải tệp Excel mẫu thành công -> 200 OK")
     void downloadTemplate_SalesManager_Success() throws Exception {
         byte[] mockBytes = new byte[]{10, 20, 30};
@@ -204,7 +232,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.emp", roles = "SALES")
+    @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("S2-08: GET /api/products/import/template bị chặn với vai trò SALES -> 403 Forbidden")
     void downloadTemplate_SalesRole_Returns403() throws Exception {
         mockMvc.perform(get("/api/products/import/template"))
@@ -212,7 +240,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("S2-08: POST /api/products/import/preview xem trước từ file tải lên thành công -> 200 OK")
     void previewImportFile_SalesManager_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
@@ -259,7 +287,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.mgr", roles = "SALES_MANAGER")
+    @WithMockUser(username = "sales.mgr", authorities = {"ROLE_SALES_MANAGER", "PRODUCT_VIEW", "PRODUCT_CREATE", "PRODUCT_EDIT", "PRODUCT_DELETE", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "ORDER_APPROVE", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "WAREHOUSE_VIEW", "FINANCE_VIEW_COST_PRICE", "FINANCE_VIEW_PROFIT_MARGIN", "FINANCE_VIEW_DEBT", "FINANCE_MANAGE", "REPORT_SALES", "REPORT_INVENTORY", "REPORT_FINANCE"})
     @DisplayName("S2-08: POST /api/products/import nhập danh mục sản phẩm hàng loạt từ JSON -> 200 OK")
     void importProductsJson_SalesManager_Success() throws Exception {
         List<ProductImportRowRequest> rows = List.of(
@@ -286,7 +314,7 @@ class ProductControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "sales.emp", roles = "SALES")
+    @WithMockUser(username = "sales.emp", authorities = {"ROLE_SALES", "PRODUCT_VIEW", "ORDER_VIEW", "ORDER_CREATE", "ORDER_EDIT", "ORDER_CANCEL", "CUSTOMER_VIEW", "CUSTOMER_CREATE", "CUSTOMER_EDIT", "REPORT_SALES"})
     @DisplayName("S2-08: POST /api/products/import bị chặn đối với vai trò SALES -> 403 Forbidden")
     void importProducts_SalesRole_Returns403() throws Exception {
         mockMvc.perform(post("/api/products/import")

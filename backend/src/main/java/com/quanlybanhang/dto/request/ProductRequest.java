@@ -87,6 +87,18 @@ public class ProductRequest {
     private Boolean active = true;
 
     /**
+     * Cờ quản lý theo số lô và hạn sử dụng (S5-04).
+     */
+    // Omitted on an ordinary product edit means preserve the current lot setting.
+    private Boolean manageLot;
+
+    /**
+     * Ngưỡng cảnh báo sắp hết hạn (số ngày) (S6-01).
+     */
+    @jakarta.validation.constraints.Min(1)
+    private Integer expiryWarningDays;
+
+    /**
      * Danh sách đơn vị quy đổi khai báo kèm sản phẩm (S2-07).
      * Ví dụ: lon (cơ sở), lốc (hệ số 6), thùng (hệ số 24).
      */
@@ -106,4 +118,3 @@ public class ProductRequest {
         return "";
     }
 }
-

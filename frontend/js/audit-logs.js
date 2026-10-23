@@ -372,8 +372,8 @@
           <td><div class="actor-badge">${actorAvatarMarkup(log.actor)}<div class="actor-info"><span class="actor-name">${escapeHtml(log.actor.fullName)}</span><span class="actor-sub">${escapeHtml(log.actor.username)}${log.actor.role ? ` · ${escapeHtml(roleLabel(log.actor.role))}` : ""}</span></div></div></td>
           <td><span class="entity-tag ${escapeHtml(type.badgeClass)}">${escapeHtml(type.label)}</span><span class="action-title">${escapeHtml(log.action)}</span></td>
           <td class="target-cell"><span class="target-code">${escapeHtml(log.targetCode)}</span><span class="target-name">${escapeHtml(log.targetName)}</span></td>
-          <td class="diff-cell diff-cell--before"><span class="diff-val diff-val--before">${escapeHtml(log.valBefore)}</span></td>
-          <td class="diff-cell diff-cell--after"><span class="diff-val diff-val--after">${escapeHtml(log.valAfter)}</span><div class="diff-meta"><span class="diff-delta ${deltaClass}">${deltaPrefix}${escapeHtml(log.deltaText)}</span></div>${discrepancy}</td>
+          <td class="diff-cell diff-cell--before"><span class="diff-val diff-val--before" title="${escapeHtml(log.valBefore)}">${escapeHtml(log.valBefore)}</span></td>
+          <td class="diff-cell diff-cell--after"><span class="diff-val diff-val--after" title="${escapeHtml(log.valAfter)}">${escapeHtml(log.valAfter)}</span><div class="diff-meta"><span class="diff-delta ${deltaClass}">${deltaPrefix}${escapeHtml(log.deltaText)}</span></div>${discrepancy}</td>
           <td style="text-align:right"><button class="btn-view-detail" type="button" data-action="view" data-id="${escapeHtml(log.id)}">Xem</button></td>
         </tr>`;
     }).join("");

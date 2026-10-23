@@ -45,7 +45,36 @@ public class ProductController {
     private final ProductService productService;
     private final Path imageStoragePath = Paths.get("./data/products").toAbsolutePath().normalize();
 
+    // Dữ liệu tham chiếu tối thiểu cho tạo đơn, bảng giá và kho; không cấp quyền
+    // đọc toàn bộ hồ sơ sản phẩm hoặc làm lộ giá vốn/doanh thu.
+    private static final String LOOKUP_PERMISSION = "hasRole('ADMIN') or hasAnyAuthority('PRODUCT_VIEW', "
+            + "'PRODUCT_CREATE', 'PRODUCT_EDIT', 'ORDER_CREATE', 'WAREHOUSE_VIEW', "
+            + "'WAREHOUSE_MANAGE', 'WAREHOUSE_IMPORT', 'WAREHOUSE_EXPORT', 'WAREHOUSE_APPROVE', 'WAREHOUSE_ADJUST')";
+
+    @GetMapping("/lookup")
+    @PreAuthorize(LOOKUP_PERMISSION)
+    public ApiResponse lookupProducts(@RequestParam(required = false) String search,
+                                     @RequestParam(required = false) Boolean active) {
+        List<ProductResponse> rows = search != null || active != null
+                ? productService.getAll(null, search, active) : productService.getAll(null);
+        return ApiResponse.success("Danh mục tham chiếu sản phẩm", rows.stream().map(this::lookupProduct).toList());
+    }
+
+    @GetMapping("/lookup/{id}")
+    @PreAuthorize(LOOKUP_PERMISSION)
+    public ApiResponse lookupProductById(@PathVariable Long id) {
+        return ApiResponse.success("Sản phẩm tham chiếu", lookupProduct(productService.getById(id)));
+    }
+
+    private ProductResponse lookupProduct(ProductResponse product) {
+        return ProductResponse.builder().id(product.getId()).code(product.getCode()).sku(product.getSku())
+                .name(product.getName()).categoryId(product.getCategoryId()).categoryName(product.getCategoryName())
+                .unit(product.getUnit()).price(product.getPrice()).active(product.getActive()).manageLot(product.getManageLot())
+                .packingSpecification(product.getPackingSpecification()).imageUrl(product.getImageUrl()).build();
+    }
+
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_VIEW'))")
     public ApiResponse getAllProducts(
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) String search,
@@ -57,18 +86,19 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_VIEW'))")
     public ApiResponse getProductById(@PathVariable Long id) {
         return ApiResponse.success("Chi tiết sản phẩm", productService.getById(id));
     }
 
     @GetMapping("/{id}/price-history")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('FINANCE_VIEW_COST_PRICE'))")
     public ApiResponse getProductPriceHistory(@PathVariable Long id) {
         return ApiResponse.success("Lịch sử thay đổi giá", productService.getPriceHistory(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_CREATE'))")
     public ResponseEntity<ApiResponse> createProduct(@Valid @RequestBody ProductRequest request) {
         ProductResponse response = productService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -76,22 +106,37 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse updateProduct(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
         ProductResponse response = productService.update(id, request);
         return ApiResponse.success("Cập nhật sản phẩm thành công", response);
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse updateProductStatus(@PathVariable Long id, @RequestParam boolean active) {
         ProductResponse response = productService.updateStatus(id, active);
         String msg = active ? "Đã kích hoạt kinh doanh sản phẩm" : "Đã chuyển sản phẩm sang ngừng kinh doanh";
         return ApiResponse.success(msg, response);
     }
 
+    /**
+     * API bật/tắt quản lý lô và cập nhật ngưỡng cảnh báo hạn sử dụng theo từng SKU (S6-01).
+     */
+    @PatchMapping("/{id}/manage-lot")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCT_EDIT', 'WAREHOUSE_MANAGE')")
+    public ApiResponse toggleManageLot(
+            @PathVariable Long id,
+            @Valid @RequestBody com.quanlybanhang.dto.request.ManageLotToggleRequest request) {
+        ProductResponse response = productService.toggleManageLot(id, request.getManageLot(), request.getExpiryWarningDays());
+        String msg = Boolean.TRUE.equals(request.getManageLot())
+                ? "Đã bật quản lý lô cho sản phẩm"
+                : "Đã tắt quản lý lô cho sản phẩm";
+        return ApiResponse.success(msg, response);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_DELETE'))")
     public ApiResponse deleteProduct(@PathVariable Long id) {
         productService.delete(id);
         return ApiResponse.success("Xóa sản phẩm thành công", null);
@@ -101,7 +146,7 @@ public class ProductController {
      * Tải tệp Excel mẫu để nhập danh mục sản phẩm hàng loạt (S2-08).
      */
     @GetMapping("/import/template")
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('PRODUCT_CREATE', 'PRODUCT_EDIT'))")
     public ResponseEntity<byte[]> downloadImportTemplate() {
         byte[] excelBytes = productService.generateImportTemplate();
         return ResponseEntity.ok()
@@ -115,7 +160,7 @@ public class ProductController {
      * SKU đã tồn tại trong hệ thống được đánh dấu rõ action = "UPDATE", isUpdate = true.
      */
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_CREATE') and hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse previewImportFile(@RequestParam("file") MultipartFile file) {
         ProductImportResponse result = productService.previewImport(file);
         return ApiResponse.success("Kết quả kiểm tra tệp nhập sản phẩm", result);
@@ -125,7 +170,7 @@ public class ProductController {
      * Xem trước và kiểm tra lỗi theo từng dòng từ dữ liệu JSON (S2-08).
      */
     @PostMapping(value = "/import/preview", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_CREATE') and hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse previewImportJson(@RequestBody List<ProductImportRowRequest> rows) {
         ProductImportResponse result = productService.previewImport(rows);
         return ApiResponse.success("Kết quả kiểm tra dữ liệu nhập sản phẩm", result);
@@ -136,7 +181,7 @@ public class ProductController {
      * SKU đã tồn tại thì cập nhật thay vì tạo mới.
      */
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_CREATE') and hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse importProductsFile(@RequestParam("file") MultipartFile file) {
         ProductImportResponse result = productService.importProducts(file);
         return ApiResponse.success("Đã nhập thành công " + result.getImportedRows() + "/" + result.getTotalRows()
@@ -148,7 +193,7 @@ public class ProductController {
      * SKU đã tồn tại thì cập nhật thay vì tạo mới.
      */
     @PostMapping(value = "/import", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_CREATE') and hasAuthority('PRODUCT_EDIT'))")
     public ApiResponse importProductsJson(@RequestBody List<ProductImportRowRequest> rows) {
         ProductImportResponse result = productService.importProducts(rows);
         return ApiResponse.success("Đã nhập thành công " + result.getImportedRows() + "/" + result.getTotalRows()
@@ -159,7 +204,7 @@ public class ProductController {
      * Upload ảnh sản phẩm (S2-05).
      */
     @PostMapping(value = "/upload-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SALES_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAnyAuthority('PRODUCT_CREATE', 'PRODUCT_EDIT'))")
     public ResponseEntity<ApiResponse> uploadProductImage(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Tập tin ảnh không được để trống"));
@@ -204,6 +249,7 @@ public class ProductController {
      * Xem / Tải ảnh sản phẩm đã lưu.
      */
     @GetMapping("/images/{fileName:.+}")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PRODUCT_VIEW'))")
     public ResponseEntity<Resource> getProductImage(@PathVariable String fileName) {
         try {
             Path filePath = imageStoragePath.resolve(fileName).normalize();

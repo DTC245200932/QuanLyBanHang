@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chuyển kho nội bộ | SaleStock</title>
+  <link rel="icon" href="/assets/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/dashboard.css"><link rel="stylesheet" href="/css/app-shell.css">
+  <link rel="stylesheet" href="/css/toast.css"><link rel="stylesheet" href="/css/warehouse-transfers.css">
+  <link rel="stylesheet" href="/css/app-navigation.css"><script src="/js/app-transition.js"></script>
+</head>
+<body>
+  <div data-app-content><main class="content transfer-page">
+    <header class="transfer-heading"><div><h1>Chuyển kho nội bộ</h1><p>Theo dõi hàng xuất chuyển, hàng đang trên đường và số lượng thực nhận tại kho đến.</p></div>
+      <div class="transfer-actions"><button id="tr-reload" type="button" class="btn btn--secondary">Tải lại</button><button id="tr-new" type="button" class="btn btn--primary" hidden>Lập phiếu chuyển</button></div></header>
+    <p class="transfer-note">Hàng xuất chuyển được trừ khỏi kho đi và ghi nhận đang trên đường. Chỉ khi kho đến xác nhận, số lượng thực nhận mới được cộng vào tồn kho đến.</p>
+    <p id="tr-error" class="transfer-error" role="alert" hidden></p>
+    <section id="tr-create-panel" class="transfer-panel" aria-labelledby="tr-create-title" hidden>
+      <header class="transfer-heading"><h2 id="tr-create-title">Lập phiếu chuyển</h2><button id="tr-create-close" type="button" class="btn btn--secondary">Đóng</button></header>
+      <form id="tr-create-form">
+        <div class="transfer-grid"><label>Kho đi<select id="tr-source" required><option value="">Chọn kho đi</option></select></label><label>Kho đến<select id="tr-target" required><option value="">Chọn kho đến</option></select></label>
+          <label>Mã phiếu (không bắt buộc)<input id="tr-code" maxlength="50" placeholder="Để trống để hệ thống tự sinh"></label><label>Ghi chú<input id="tr-note" maxlength="500" placeholder="Thông tin xuất chuyển"></label></div>
+        <p class="transfer-hint">Chỉ chuyển được tồn khả dụng; phần hàng đã giữ chỗ cho đơn hàng không được dùng để chuyển.</p>
+        <div class="transfer-catalog"><label>Tìm hàng tại kho đi<input id="tr-product-search" type="search" maxlength="150" placeholder="Mã SKU hoặc tên sản phẩm" autocomplete="off" disabled></label>
+          <button id="tr-product-find" type="button" class="btn btn--secondary" disabled>Tìm hàng</button></div>
+        <div id="tr-products" class="transfer-products" aria-live="polite">Chọn kho đi để tải danh sách hàng.</div>
+        <div class="transfer-actions"><button id="tr-product-prev" class="btn btn--secondary" type="button" disabled>Hàng trước</button><span id="tr-product-page"></span><button id="tr-product-next" class="btn btn--secondary" type="button" disabled>Hàng sau</button></div>
+        <div class="transfer-scroll" tabindex="0" role="region" aria-label="Danh sách hàng chuyển"><table class="transfer-table"><thead><tr><th>Sản phẩm</th><th>Đơn vị</th><th class="transfer-number">Khả dụng khi chọn</th><th class="transfer-number">Số lượng chuyển</th><th>Thao tác</th></tr></thead><tbody id="tr-create-rows"><tr><td colspan="5" class="transfer-empty">Chưa chọn hàng.</td></tr></tbody></table></div>
+        <p id="tr-create-error" class="transfer-error" role="alert" hidden></p><div class="transfer-actions transfer-form-actions"><button id="tr-create-submit" type="submit" class="btn btn--primary">Xuất chuyển và lập phiếu</button></div>
+      </form>
+    </section>
+    <section class="transfer-panel" aria-labelledby="tr-list-title">
+      <form id="tr-filter" class="transfer-filters" role="search"><label>Tìm phiếu<input id="tr-keyword" type="search" maxlength="150" placeholder="Mã phiếu chuyển"></label>
+        <label>Kho đi<select id="tr-filter-source"><option value="">Tất cả kho</option></select></label><label>Kho đến<select id="tr-filter-target"><option value="">Tất cả kho</option></select></label>
+        <label>Trạng thái<select id="tr-status"><option value="">Tất cả trạng thái</option></select></label><div class="transfer-actions"><button id="tr-apply" type="submit" class="btn btn--primary" disabled>Lọc</button><button id="tr-reset" type="button" class="btn btn--secondary" disabled>Đặt lại</button></div></form>
+      <div class="transfer-heading transfer-result-heading"><h2 id="tr-list-title">Danh sách phiếu chuyển</h2><span id="tr-count" role="status">Đang tải…</span></div>
+      <div class="transfer-scroll" tabindex="0" role="region" aria-label="Danh sách phiếu chuyển kho"><table class="transfer-table"><thead><tr><th>Mã phiếu</th><th>Kho đi</th><th>Kho đến</th><th>Trạng thái</th><th>Ngày xuất chuyển</th><th>Thao tác</th></tr></thead><tbody id="tr-rows"><tr><td colspan="6" class="transfer-empty">Đang tải dữ liệu…</td></tr></tbody></table></div>
+      <footer class="transfer-pagination"><label>Số dòng<select id="tr-size"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label><span id="tr-page"></span><div class="transfer-actions"><button id="tr-prev" class="btn btn--secondary" type="button" disabled>Trước</button><button id="tr-next" class="btn btn--secondary" type="button" disabled>Sau</button></div></footer>
+    </section>
+  </main></div>
+  <dialog id="tr-detail" class="transfer-dialog" aria-labelledby="tr-detail-title"><header class="transfer-heading"><div><h2 id="tr-detail-title">Chi tiết phiếu chuyển</h2><p id="tr-detail-code"></p></div><button id="tr-detail-close" type="button" class="btn btn--secondary">Đóng</button></header>
+    <p id="tr-detail-error" class="transfer-error" role="alert" hidden></p><div id="tr-detail-info" class="transfer-detail-info"></div>
+    <form id="tr-receive-form"><div class="transfer-scroll" tabindex="0" role="region" aria-label="Số lượng chuyển và thực nhận"><table class="transfer-table"><thead><tr><th>Sản phẩm</th><th>Đơn vị</th><th class="transfer-number">Đã chuyển</th><th class="transfer-number">Thực nhận</th><th class="transfer-number">Chênh lệch (chuyển − nhận)</th><th>Lý do chênh lệch</th></tr></thead><tbody id="tr-detail-rows"></tbody></table></div>
+      <label class="transfer-receive-note">Ghi chú nhận hàng<input id="tr-receive-note" maxlength="500"></label><p class="transfer-hint" id="tr-receive-hint">Nhập đầy đủ số lượng thực nhận. Mọi chênh lệch, kể cả nhận thừa, đều bắt buộc có lý do.</p>
+      <div class="transfer-actions transfer-form-actions"><button id="tr-receive-all" class="btn btn--secondary" type="button">Điền nhận đủ</button><button id="tr-receive-submit" class="btn btn--primary" type="submit">Xác nhận thực nhận</button></div></form>
+    <form id="tr-cancel-form" class="transfer-cancel"><label>Lý do hủy phiếu<input id="tr-cancel-reason" maxlength="500" required placeholder="Hàng chưa đến kho nhận; hoàn trả về kho đi"></label><button id="tr-cancel-submit" class="btn btn--danger" type="submit">Hủy và hoàn tồn kho đi</button></form>
+  </dialog>
+  <script src="/js/auth.js"></script><script src="/js/menu-config.js"></script><script src="/js/app-shell.js"></script><script src="/js/app-navigation.js"></script><script src="/js/toast.js"></script><script src="/js/warehouse-transfers.js"></script>
+</body></html>

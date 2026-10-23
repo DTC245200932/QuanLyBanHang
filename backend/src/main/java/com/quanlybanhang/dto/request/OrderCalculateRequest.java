@@ -21,6 +21,8 @@ public class OrderCalculateRequest {
 
     private Long dealerId;
 
+    private Long warehouseId;
+
     private CustomerGroup customerGroup;
 
     private Long priceListId;

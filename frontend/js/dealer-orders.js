@@ -3,11 +3,12 @@
  * S5-02: Đặt lại một đơn đã mua trước đây theo bảng giá hiện hành,
  * loại bỏ mặt hàng đã ngừng kinh doanh kèm thông báo, cho phép chọn toàn bộ hoặc một phần dòng hàng.
  */
-(() => {
+(async () => {
   if (typeof Auth !== "undefined" && !Auth.requireLogin()) return;
+  if (typeof Auth !== "undefined") await Auth.ready;
 
   const user = typeof Auth !== "undefined" ? Auth.getUser() : null;
-  if (typeof Auth !== "undefined" && !Auth.hasAnyRole("ROLE_ADMIN", "ROLE_DEALER")) {
+  if (typeof Auth !== "undefined" && (!Auth.hasAnyRole("ROLE_ADMIN", "ROLE_DEALER") || !Auth.hasPermission("ORDER_VIEW"))) {
     if (typeof sessionStorage !== "undefined") {
       sessionStorage.setItem("errorMessage", "Bạn không có quyền truy cập cổng đại lý.");
     }
@@ -32,15 +33,26 @@
     },
   };
 
+  let ordersVersion = 0;
+  let detailVersion = 0;
+  let reorderVersion = 0;
+  let reorderBusy = false;
+
   const statusMap = {
     DRAFT: { label: "Nháp", className: "neutral" },
     PENDING_APPROVAL: { label: "Chờ duyệt", className: "pending" },
     APPROVED: { label: "Đã duyệt", className: "active" },
     RESERVED: { label: "Đã giữ hàng", className: "active" },
-    RECORDED: { label: "Đã ghi sổ", className: "active" },
+    RECORDED: { label: "Đã duyệt", className: "active" },
+    PICKING: { label: "Đang soạn", className: "active" },
+    PROCESSING: { label: "Đang soạn", className: "active" },
+    EXPORTED: { label: "Đã xuất kho", className: "active" },
+    SHIPPED: { label: "Đã xuất kho", className: "active" },
     SHIPPING: { label: "Đang giao", className: "active" },
     DELIVERED: { label: "Đã giao", className: "done" },
     COMPLETED: { label: "Hoàn tất", className: "done" },
+    CLOSED: { label: "Đã đóng", className: "done" },
+    EXPIRED: { label: "Hết hạn giữ chỗ", className: "danger" },
     CANCELLED: { label: "Đã huỷ", className: "danger" },
     REJECTED: { label: "Từ chối", className: "danger" },
     RETURNED: { label: "Cần chỉnh sửa", className: "pending" },
@@ -84,26 +96,12 @@
     return data?.content || data?.orders || data?.items || [];
   };
 
-  const getFutureDateString = (daysAhead = 3) => {
-    const d = new Date();
-    d.setDate(d.getDate() + daysAhead);
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
-
   /**
    * Kiểm tra quyền đặt lại đơn hàng (ORDER_CREATE).
-   * Đại lý hoặc Quản trị viên có quyền ORDER_CREATE mới được thực hiện đặt lại.
+   * API đặt lại áp giá từ database, không yêu cầu quyền đọc danh mục riêng.
    */
   function canReorder() {
-    if (typeof Auth === "undefined") return true;
-    const u = Auth.getUser();
-    if (!u) return false;
-    if (Auth.hasRole("ROLE_ADMIN")) return true;
-    if (Array.isArray(u.permissions)) {
-      return u.permissions.includes("ORDER_CREATE");
-    }
-    return Auth.hasRole("ROLE_DEALER");
+    return Auth.hasPermission('ORDER_VIEW') && Auth.hasPermission('ORDER_CREATE');
   }
 
   function setupShell() {
@@ -143,13 +141,13 @@
   function renderStats() {
     const total = state.orders.length;
     const delivered = state.orders.filter((order) =>
-      ["DELIVERED", "COMPLETED"].includes(String(order.status).toUpperCase())
+      ["DELIVERED", "COMPLETED", "CLOSED"].includes(String(order.status).toUpperCase())
     ).length;
     const shortage = state.orders.filter(
       (order) => order.hasShortage || (order.items || []).some((item) => item.isShortage)
     ).length;
     const pending = state.orders.filter(
-      (order) => !["DELIVERED", "COMPLETED", "CANCELLED", "REJECTED"].includes(String(order.status).toUpperCase())
+      (order) => !["DELIVERED", "COMPLETED", "CLOSED", "EXPIRED", "CANCELLED", "REJECTED"].includes(String(order.status).toUpperCase())
     ).length;
     if ($("stat-total")) $("stat-total").textContent = total;
     if ($("stat-pending")) $("stat-pending").textContent = pending;
@@ -208,19 +206,24 @@
   }
 
   async function loadOrders() {
+    const version = ++ordersVersion;
+    if (!Auth.hasPermission('ORDER_VIEW')) return;
+    if (DealerPortalContext.isAdmin && !$('dealer-orders-select')?.value) return;
     const body = $("dealer-orders-body");
     if (body) {
       body.innerHTML = '<tr><td colspan="6"><div class="dealer-orders-loading">Đang tải danh sách đơn hàng…</div></td></tr>';
     }
     if ($("dealer-orders-message")) $("dealer-orders-message").hidden = true;
     try {
-      const response = await Auth.apiFetch("/portal/orders");
+      const response = await Auth.apiFetch(DealerPortalContext.url('/portal/orders'));
       const payload = await response.json().catch(() => ({}));
+      if (version !== ordersVersion || !Auth.hasPermission('ORDER_VIEW')) return;
       if (!response.ok) throw new Error(payload?.message || "Không thể tải danh sách đơn hàng.");
       state.orders = getOrders(payload);
       renderStats();
       applyFilters();
     } catch (error) {
+      if (version !== ordersVersion || !Auth.hasPermission('ORDER_VIEW')) return;
       state.orders = [];
       renderStats();
       if ($("orders-summary")) $("orders-summary").textContent = "Chưa tải được dữ liệu";
@@ -265,6 +268,8 @@
   }
 
   async function openDetail(id) {
+    if (!Auth.hasPermission('ORDER_VIEW')) return;
+    const version = ++detailVersion;
     const modal = $("dealer-order-detail-modal");
     if (modal) modal.hidden = false;
     if ($("dealer-order-detail-title")) $("dealer-order-detail-title").textContent = "Đang tải…";
@@ -272,12 +277,14 @@
       $("dealer-order-detail-content").innerHTML = '<div class="dealer-orders-loading">Đang tải chi tiết đơn hàng…</div>';
     }
     try {
-      const response = await Auth.apiFetch(`/portal/orders/${encodeURIComponent(id)}`);
+      const response = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(id)}`));
       const payload = await response.json().catch(() => ({}));
+      if (version !== detailVersion || !Auth.hasPermission('ORDER_VIEW')) return;
       if (!response.ok) throw new Error(payload?.message || "Không thể tải chi tiết đơn hàng.");
       state.selectedOrder = unwrap(payload);
       renderDetail(state.selectedOrder);
     } catch (error) {
+      if (version !== detailVersion) return;
       if ($("dealer-order-detail-content")) {
         $("dealer-order-detail-content").innerHTML = `<div class="dealer-orders-empty">${escapeHtml(error.message || "Không thể tải chi tiết đơn hàng.")}</div>`;
       }
@@ -285,7 +292,9 @@
   }
 
   function closeDetail() {
+    detailVersion++;
     if ($("dealer-order-detail-modal")) $("dealer-order-detail-modal").hidden = true;
+    if ($("dealer-order-detail-content")) $("dealer-order-detail-content").innerHTML = '';
     state.selectedOrder = null;
   }
 
@@ -294,8 +303,11 @@
    * ───────────────────────────────────────────────────────────── */
 
   function closeReorderModal() {
+    reorderVersion++;
     const modal = $("dealer-reorder-modal");
     if (modal) modal.hidden = true;
+    if ($("dealer-reorder-tbody")) $("dealer-reorder-tbody").innerHTML = '';
+    if ($("btn-confirm-reorder")) $("btn-confirm-reorder").disabled = true;
     state.reorder = {
       sourceOrderId: null,
       sourceOrder: null,
@@ -336,7 +348,7 @@
 
     const confirmBtn = $("btn-confirm-reorder");
     if (confirmBtn) {
-      confirmBtn.disabled = selectedCount === 0;
+      confirmBtn.disabled = selectedCount === 0 || !canReorder() || reorderBusy;
     }
   }
 
@@ -372,7 +384,7 @@
           <td>
             <div class="dealer-reorder-qty-stepper">
               <button type="button" class="btn-qty-minus" data-item-id="${escapeHtml(item.id)}" aria-label="Giảm số lượng">-</button>
-              <input type="number" class="reorder-qty-input" data-item-id="${escapeHtml(item.id)}" value="${qty}" min="1" step="1" aria-label="Số lượng đặt" />
+              <input type="number" class="reorder-qty-input" data-item-id="${escapeHtml(item.id)}" value="${qty}" min="0.0001" step="0.0001" aria-label="Số lượng đặt" />
               <button type="button" class="btn-qty-plus" data-item-id="${escapeHtml(item.id)}" aria-label="Tăng số lượng">+</button>
             </div>
           </td>
@@ -385,6 +397,7 @@
   }
 
   async function openReorderModal(orderId) {
+    if (reorderBusy) return;
     if (!canReorder()) {
       if (typeof Toast !== "undefined") {
         Toast.show("Bạn không có quyền tạo đơn đặt lại.", "warning");
@@ -394,6 +407,8 @@
 
     const modal = $("dealer-reorder-modal");
     if (!modal) return;
+    closeReorderModal();
+    const version = ++reorderVersion;
     modal.hidden = false;
 
     if ($("dealer-reorder-loading")) $("dealer-reorder-loading").hidden = false;
@@ -402,23 +417,22 @@
     if ($("reorder-error-message")) $("reorder-error-message").hidden = true;
 
     try {
-      // 1. Tải chi tiết đơn hàng cũ
-      let sourceOrder = null;
-      try {
-        const res = await Auth.apiFetch(`/portal/orders/${encodeURIComponent(orderId)}`);
-        const payload = await res.json().catch(() => ({}));
-        if (res.ok) sourceOrder = unwrap(payload);
-      } catch {}
-      if (!sourceOrder) {
-        try {
-          const res = await Auth.apiFetch(`/orders/${encodeURIComponent(orderId)}`);
-          const payload = await res.json().catch(() => ({}));
-          if (res.ok) sourceOrder = unwrap(payload);
-        } catch {}
+      // Backend chọn dòng còn kinh doanh và áp lại bảng giá/đơn vị hiện hành.
+      const sourceResponse = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(orderId)}/reorder-preview`));
+      const sourcePayload = await sourceResponse.json();
+      if (version !== reorderVersion || !canReorder()) return;
+      if (!sourceResponse.ok || !sourcePayload.success) {
+        throw new Error(sourcePayload.message || 'Không tải được đơn hàng cũ');
       }
-      if (!sourceOrder || !Array.isArray(sourceOrder.items)) {
+      const preview = unwrap(sourcePayload);
+      if (!preview || !Array.isArray(preview.availableItems)) {
         throw new Error("Không thể tải thông tin đơn hàng cũ để đặt lại.");
       }
+      const sourceOrder = {
+        id: preview.sourceOrderId,
+        orderCode: preview.sourceOrderCode,
+        deliveryPointId: preview.deliveryPointId,
+      };
 
       state.reorder.sourceOrderId = orderId;
       state.reorder.sourceOrder = sourceOrder;
@@ -426,100 +440,10 @@
         $("reorder-source-code").textContent = sourceOrder.orderCode || `Đơn #${sourceOrder.id}`;
       }
 
-      // 2. Tải danh mục sản phẩm hiện hành để kiểm tra sản phẩm đã ngừng kinh doanh
-      let catalog = [];
-      try {
-        const res = await Auth.apiFetch("/products");
-        const payload = await res.json().catch(() => ({}));
-        if (res.ok) catalog = unwrap(payload) || [];
-      } catch {}
-
-      const catalogById = new Map();
-      const catalogByCode = new Map();
-      for (const p of catalog) {
-        if (p.id != null) catalogById.set(Number(p.id), p);
-        if (p.code) catalogByCode.set(String(p.code).trim().toUpperCase(), p);
-        if (p.sku) catalogByCode.set(String(p.sku).trim().toUpperCase(), p);
-      }
-
-      // 3. Tải bảng giá hiệu lực hiện hành theo nhóm khách hàng của đại lý
-      const customerGroup =
-        sourceOrder.customerGroup ||
-        sourceOrder.dealer?.customerGroup ||
-        user?.customerGroup ||
-        "DAI_LY_CAP_1";
-
-      const effectivePriceMap = new Map();
-      try {
-        const res = await Auth.apiFetch(
-          `/price-lists/effective?customerGroup=${encodeURIComponent(customerGroup)}`
-        );
-        const payload = await res.json().catch(() => ({}));
-        if (res.ok && payload.data && Array.isArray(payload.data.items)) {
-          for (const pli of payload.data.items) {
-            const pid = pli.productId ?? pli.product?.id;
-            if (pid != null) {
-              effectivePriceMap.set(Number(pid), Number(pli.sellingPrice ?? pli.price));
-            }
-          }
-        }
-      } catch {}
-
-      // 4. Phân loại dòng hàng: mặt hàng ngừng kinh doanh vs mặt hàng khả dụng
-      const activeItems = [];
-      const discontinuedItems = [];
-      const selectedIds = new Set();
-      const quantities = {};
-
-      sourceOrder.items.forEach((item, index) => {
-        const itemId = String(item.id || `item-${index}`);
-        const catalogItem =
-          (item.productId != null ? catalogById.get(Number(item.productId)) : null) ||
-          (item.productCode ? catalogByCode.get(String(item.productCode).trim().toUpperCase()) : null);
-
-        // Kiểm tra ngừng kinh doanh:
-        // - Sản phẩm trong catalog có active === false hoặc status === 'INACTIVE'
-        // - Hoặc item cũ có cờ active === false / status === 'INACTIVE'
-        const isDiscontinued = catalogItem
-          ? catalogItem.active === false || String(catalogItem.status).toUpperCase() === "INACTIVE"
-          : item.active === false || String(item.status).toUpperCase() === "INACTIVE";
-
-        if (isDiscontinued) {
-          discontinuedItems.push({
-            id: itemId,
-            productCode: item.productCode || catalogItem?.code || "",
-            productName: item.productName || catalogItem?.name || "Sản phẩm ngừng kinh doanh",
-            unit: item.unit || item.baseUnit || catalogItem?.unit || "—",
-          });
-        } else {
-          // Áp lại theo giá hiện hành:
-          // Ưu tiên bảng giá hiệu lực hiện hành; nếu không có thì lấy giá catalog hiện tại
-          const pid = item.productId || catalogItem?.id;
-          let currentPrice = pid != null && effectivePriceMap.has(Number(pid))
-            ? effectivePriceMap.get(Number(pid))
-            : (catalogItem?.price != null ? Number(catalogItem.price) : Number(item.price || 0));
-
-          // Tính theo hệ số quy đổi đơn vị nếu có
-          if (item.conversionFactor && item.conversionFactor > 1 && effectivePriceMap.has(Number(pid))) {
-            currentPrice = currentPrice * Number(item.conversionFactor);
-          }
-
-          const qty = Math.max(1, Math.round(Number(item.quantity) || 1));
-          const activeItem = {
-            id: itemId,
-            productId: pid,
-            productCode: item.productCode || catalogItem?.code || "",
-            productName: item.productName || catalogItem?.name || "Sản phẩm",
-            unit: item.unit || item.baseUnit || catalogItem?.unit || "—",
-            oldPrice: Number(item.price || 0),
-            currentPrice: Number(currentPrice || 0),
-            quantity: qty,
-          };
-          activeItems.push(activeItem);
-          selectedIds.add(itemId);
-          quantities[itemId] = qty;
-        }
-      });
+      const activeItems = preview.availableItems.map((item) => ({ ...item, id: String(item.sourceItemId) }));
+      const discontinuedItems = preview.discontinuedItems || [];
+      const selectedIds = new Set(activeItems.map((item) => item.id));
+      const quantities = Object.fromEntries(activeItems.map((item) => [item.id, Number(item.quantity)]));
 
       state.reorder.activeItems = activeItems;
       state.reorder.discontinuedItems = discontinuedItems;
@@ -557,12 +481,10 @@
         if (selectionArea) selectionArea.hidden = false;
         if (confirmBtn) confirmBtn.disabled = false;
 
-        // Khởi tạo ngày giao dự kiến mong muốn (mặc định hôm nay + 3 ngày, tối thiểu hôm nay)
+        // Dùng mặc định từ server, không tự suy diễn lịch giao ở trình duyệt.
         const dateInput = $("reorder-delivery-date");
         if (dateInput) {
-          const minDate = getFutureDateString(0);
-          dateInput.min = minDate;
-          dateInput.value = getFutureDateString(3);
+          dateInput.value = preview.defaultExpectedDeliveryDate || '';
         }
 
         const noteInput = $("reorder-note");
@@ -577,6 +499,7 @@
       if ($("dealer-reorder-loading")) $("dealer-reorder-loading").hidden = true;
       if ($("dealer-reorder-content")) $("dealer-reorder-content").hidden = false;
     } catch (error) {
+      if (version !== reorderVersion || !canReorder()) return;
       if ($("dealer-reorder-loading")) {
         $("dealer-reorder-loading").textContent = error.message || "Không thể tải thông tin đặt lại đơn.";
       }
@@ -584,6 +507,10 @@
   }
 
   async function submitReorder() {
+    if (!canReorder() || reorderBusy) return;
+    const version = reorderVersion;
+    const sourceOrderId = state.reorder.sourceOrderId;
+    if (!sourceOrderId) return;
     const { sourceOrder, activeItems, selectedIds, quantities } = state.reorder;
     const errorEl = $("reorder-error-message");
     if (errorEl) errorEl.hidden = true;
@@ -607,11 +534,16 @@
     }
 
     const note = $("reorder-note")?.value?.trim() || "";
+    if (selectedItems.some((item) => !Number.isFinite(quantities[item.id]) || quantities[item.id] <= 0
+        || !/^\d+(?:\.\d{1,4})?$/.test(String(quantities[item.id])))) {
+      if (errorEl) { errorEl.textContent = 'Số lượng đặt phải lớn hơn 0 và tối đa 4 số thập phân.'; errorEl.hidden = false; }
+      return;
+    }
     const confirmBtn = $("btn-confirm-reorder");
+    reorderBusy = true;
     if (confirmBtn) confirmBtn.disabled = true;
 
     const payload = {
-      dealerId: sourceOrder?.dealerId || sourceOrder?.dealer?.id || null,
       deliveryPointId: sourceOrder?.deliveryPointId || sourceOrder?.deliveryPoint?.id || null,
       expectedDeliveryDate: deliveryDate,
       note: note,
@@ -619,48 +551,33 @@
         productId: item.productId,
         productCode: item.productCode,
         unit: item.unit,
-        quantity: quantities[item.id] || 1,
-        price: item.currentPrice,
+        quantity: quantities[item.id],
         note: "",
       })),
     };
 
     try {
-      // Ưu tiên endpoint cổng đại lý nếu có, fallback sang /api/orders
-      let response = await Auth.apiFetch("/portal/orders/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await Auth.apiFetch(DealerPortalContext.url(`/portal/orders/${encodeURIComponent(sourceOrderId)}/reorder`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).catch(() => null);
-
-      if (!response || response.status === 404) {
-        response = await Auth.apiFetch("/portal/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }).catch(() => null);
-      }
-
-      if (!response || response.status === 404) {
-        response = await Auth.apiFetch("/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      }
+      });
 
       const resData = await response.json().catch(() => ({}));
+      if (version !== reorderVersion || !canReorder()) return;
       if (!response.ok || (resData.success === false && !resData.data)) {
         throw new Error(resData?.message || "Không thể đặt lại đơn hàng. Vui lòng thử lại.");
       }
 
-      const newOrder = unwrap(resData);
+      const result = unwrap(resData);
+      const newOrder = result.order;
       const newCode = newOrder?.orderCode || (newOrder?.id ? `Đơn #${newOrder.id}` : "");
 
       closeReorderModal();
       closeDetail();
 
       if (typeof Toast !== "undefined") {
+        for (const warning of result.warnings || []) Toast.show(warning, 'warning');
         Toast.show(
           `Đặt lại đơn hàng thành công! ${newCode ? `Mã đơn mới: ${newCode}` : ""}`,
           "success"
@@ -669,12 +586,14 @@
 
       await loadOrders();
     } catch (error) {
+      if (version !== reorderVersion || !canReorder()) return;
       if (errorEl) {
         errorEl.textContent = error.message || "Đặt lại đơn hàng thất bại. Vui lòng thử lại.";
         errorEl.hidden = false;
       }
     } finally {
-      if (confirmBtn) confirmBtn.disabled = false;
+      reorderBusy = false;
+      updateReorderSummary();
     }
   }
 
@@ -683,6 +602,16 @@
   // ─────────────────────────────────────────────────────────────
 
   setupShell();
+
+  window.addEventListener('auth:permissions-changed', () => {
+    ordersVersion++;
+    closeDetail();
+    closeReorderModal();
+    state.orders = [];
+    renderStats();
+    applyFilters();
+    if (Auth.hasPermission('ORDER_VIEW')) loadOrders();
+  });
 
   $("orders-search")?.addEventListener("input", applyFilters);
   $("orders-status-filter")?.addEventListener("change", applyFilters);
@@ -794,8 +723,7 @@
     const qtyInput = event.target.closest(".reorder-qty-input");
     if (qtyInput) {
       const itemId = qtyInput.dataset.itemId;
-      let val = Math.max(1, Math.round(Number(qtyInput.value) || 1));
-      qtyInput.value = val;
+      const val = Number(qtyInput.value);
       state.reorder.quantities[itemId] = val;
       const item = state.reorder.activeItems.find((i) => i.id === itemId);
       const lineTotalEl = $(`line-total-${itemId}`);
@@ -818,6 +746,26 @@
     }
   });
 
-  loadOrders();
-})();
+  async function init() {
+    try {
+      if (DealerPortalContext.isAdmin) {
+        $('dealer-orders-title').textContent = 'Đơn hàng đại lý';
+        $('dealer-orders-intro').textContent = 'Chọn đại lý để theo dõi trạng thái, ngày giao dự kiến và số lượng thực giao.';
+        $('dealer-orders-scope').textContent = 'Đơn hàng của đại lý được chọn';
+      }
+      const ready = await DealerPortalContext.init('dealer-orders-switcher', 'dealer-orders-select');
+      if (ready) {
+        await loadOrders();
+      } else {
+        $('orders-summary').textContent = 'Chưa chọn đại lý';
+        $('dealer-orders-body').innerHTML = '<tr><td colspan="6"><div class="dealer-orders-empty">Chọn đại lý để xem đơn hàng.</div></td></tr>';
+      }
+    } catch (error) {
+      $('dealer-orders-body').innerHTML = '';
+      $('dealer-orders-message').textContent = error.message;
+      $('dealer-orders-message').hidden = false;
+    }
+  }
 
+  init();
+})();

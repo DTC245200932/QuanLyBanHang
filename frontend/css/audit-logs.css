@@ -588,7 +588,9 @@
 
 .diff-cell .diff-val {
   display: inline-block;
-  max-width: 100%;
+  /* A percentage alone is cyclic in an auto-layout table: long strings then
+     size the column itself. Use a real bound so ellipsis can take effect. */
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: top;
@@ -783,6 +785,7 @@
 
 .diff-comparison-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   margin-block: 10px;
   background: #fff;
@@ -797,7 +800,10 @@
   font-size: 12.5px;
   border-bottom: 1px solid var(--line-light);
   text-align: left;
+  overflow-wrap: anywhere;
 }
+
+.diff-comparison-table td { white-space: pre-wrap; }
 
 .diff-comparison-table th {
   background: #f1f5f9;

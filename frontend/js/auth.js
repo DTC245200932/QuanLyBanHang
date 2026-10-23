@@ -19,6 +19,64 @@ const Auth = (() => {
   let refreshTimer = null;
   let refreshRequest = null;
   let sessionExpiryHandled = false;
+  let permissionRequest = null;
+  const permissionBindings = [];
+
+  function permissionKey(user) {
+    return JSON.stringify([(user?.roles || []).slice().sort(), (user?.permissions || []).slice().sort()]);
+  }
+
+  function applyPermissionBindings() {
+    for (const binding of permissionBindings) {
+      document.querySelectorAll(binding.selector).forEach(element => {
+        const allowed = binding.permissions.every(hasPermission);
+        if (!allowed) {
+          if (!element.hasAttribute("data-permission-hidden")) {
+            element.dataset.permissionWasHidden = String(element.hidden);
+          }
+          element.setAttribute("data-permission-hidden", "");
+          element.hidden = true;
+        } else if (element.hasAttribute("data-permission-hidden")) {
+          element.hidden = element.dataset.permissionWasHidden === "true";
+          element.removeAttribute("data-permission-hidden");
+        }
+      });
+    }
+  }
+
+  function bindPermissions(selector, ...permissions) {
+    permissionBindings.push({ selector, permissions });
+    applyPermissionBindings();
+  }
+
+  async function syncPermissions() {
+    if (!isLoggedIn()) return false;
+    if (permissionRequest) return permissionRequest;
+    permissionRequest = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/auth/permissions`, {
+          headers: { Authorization: `Bearer ${getAccessToken()}` },
+          cache: "no-store",
+        });
+        if (!response.ok) return false;
+        const result = await response.json();
+        if (!result.success || !Array.isArray(result.data?.permissions)) return false;
+        const previous = getUser();
+        const next = { ...previous, ...result.data };
+        sessionStorage.setItem("user", JSON.stringify(next));
+        if (permissionKey(previous) !== permissionKey(next)) {
+          applyPermissionBindings();
+          window.dispatchEvent(new CustomEvent("auth:permissions-changed", { detail: next }));
+        }
+        return true;
+      } catch {
+        return false;
+      } finally {
+        permissionRequest = null;
+      }
+    })();
+    return permissionRequest;
+  }
 
   // ── Token helpers ──
 
@@ -83,6 +141,12 @@ const Auth = (() => {
     }
   }
 
+  // Đồng bộ quyền hiện tại từ DB khi mở trang. Access token có thể vẫn còn hạn
+  // nhưng ma trận quyền đã được quản trị viên thay đổi.
+  async function refreshPermissions() {
+    return syncPermissions();
+  }
+
   async function performTokenRefresh() {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
@@ -99,6 +163,7 @@ const Auth = (() => {
 
       if (response.ok) {
         const data = await response.json();
+        const previousUser = getUser();
         sessionStorage.setItem("accessToken", data.accessToken);
         sessionStorage.setItem(
           "user",
@@ -116,6 +181,11 @@ const Auth = (() => {
             avatarThumbnailUrl: data.avatarThumbnailUrl || null,
           }),
         );
+        const nextUser = getUser();
+        if (permissionKey(previousUser) !== permissionKey(nextUser)) {
+          applyPermissionBindings();
+          window.dispatchEvent(new CustomEvent("auth:permissions-changed", { detail: nextUser }));
+        }
         return true;
       }
 
@@ -141,7 +211,8 @@ const Auth = (() => {
       if (token && isTokenExpiringSoon(token)) {
         await refreshAccessToken();
       }
-    }, CHECK_INTERVAL_MS);
+      await syncPermissions();
+    }, Math.min(CHECK_INTERVAL_MS, 15000));
   }
 
   function stopAutoRefresh() {
@@ -228,6 +299,9 @@ const Auth = (() => {
       requestUrl,
       { ...options, headers },
     );
+
+    // Cập nhật giao diện cả khi token chưa hết hạn nhưng quyền vừa bị thu hồi.
+    if (response.status === 403) await syncPermissions();
 
     // Handle 401 — try refresh once
     if (response.status === 401) {
@@ -328,6 +402,13 @@ const Auth = (() => {
     return "/login";
   }
 
+  if (typeof window !== "undefined") {
+    window.addEventListener("focus", syncPermissions);
+    if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
+      new MutationObserver(applyPermissionBindings).observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
+
   // ── Public API ──
   return {
     getAccessToken,
@@ -338,6 +419,10 @@ const Auth = (() => {
     apiFetch,
     setProtectedImage,
     requireLogin,
+    refreshPermissions,
+    syncPermissions,
+    bindPermissions,
+    get ready() { return syncPermissions(); },
     hasRole,
     hasAnyRole,
     hasPermission,

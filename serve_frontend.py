@@ -3,7 +3,7 @@
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit, parse_qsl, urlencode
 import argparse
 
 
@@ -17,14 +17,23 @@ ROUTES = {
     "/price-lists": "price-lists.html",
     "/discount-policies": "discount-policies.html",
     "/dealers": "dealers.html",
+    "/orders": "orders.html",
     "/create-order": "create-order.html",
     "/order-approval": "order-approval.html",
     "/dealer-orders": "dealer-orders.html",
+    "/dealer-portal": "dealer-portal.html",
     "/suppliers": "suppliers.html",
     "/product-units": "product-units.html",
     "/warehouse/units": "warehouse/units.html",
     "/warehouse/delivery": "warehouse/delivery.html",
     "/delivery-confirmation": "warehouse/delivery.html",
+    "/warehouse/inventory": "warehouse/inventory.html",
+    "/warehouse/minimums": "warehouse/minimums.html",
+    "/warehouse/lots": "warehouse/lots.html",
+    "/warehouse/stock-card": "warehouse/stock-card.html",
+    "/warehouse/transfers": "warehouse/transfers.html",
+    "/warehouse/picking": "warehouse/picking.html",
+    "/warehouses": "warehouses.html",
     "/admin/users": "admin/users.html",
     "/admin/audit-logs": "admin/audit-logs.html",
     "/forgot-password": "forgot-password.html",
@@ -116,6 +125,10 @@ class FrontendRequestHandler(SimpleHTTPRequestHandler):
             return
         if path.endswith("/") and path.rstrip("/") in ROUTES:
             self._redirect(path.rstrip("/"), url.query)
+            return
+        if path == "/warehouse/units" and dict(parse_qsl(url.query)).get("tab") == "inventory":
+            remaining = urlencode([(key, value) for key, value in parse_qsl(url.query) if key != "tab"])
+            self._redirect("/warehouse/inventory", remaining)
             return
         if path in ROUTES:
             self._serve_file(ROUTES[path], head_only)
